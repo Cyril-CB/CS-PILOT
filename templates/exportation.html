@@ -20,7 +20,7 @@
         </div>
 
         <div class="section">
-            <table class="table" style="width:100%;">
+            <table class="data-table" style="width:100%;">
                 <thead>
                     <tr>
                         <th style="width:30px;">
@@ -42,19 +42,55 @@
                         <td>{% if e.date_ecriture %}{{ e.date_ecriture[8:10] }}/{{ e.date_ecriture[5:7] }}/{{ e.date_ecriture[0:4] }}{% else %}—{% endif %}</td>
                         <td><code>{{ e.compte }}</code></td>
                         <td>{{ e.code_analytique or '—' }}</td>
-                        <td style="font-size:0.9em;">{{ e.libelle }}</td>
+                        <td>{{ e.libelle }}</td>
                         <td>{{ e.numero_facture or '—' }}</td>
                         <td style="text-align:right;">{% if e.debit %}{{ '{:,.2f}'.format(e.debit).replace(',', ' ') }}{% endif %}</td>
                         <td style="text-align:right;">{% if e.credit %}{{ '{:,.2f}'.format(e.credit).replace(',', ' ') }}{% endif %}</td>
                     </tr>
                     {% endfor %}
                     {% if not ecritures %}
-                    <tr><td colspan="8" style="text-align:center; padding:2rem; color:#888;">Aucune écriture validée à exporter.</td></tr>
+                    <tr><td colspan="8" style="text-align:center; padding:2rem; color:var(--gray-500);">Aucune écriture validée à exporter.</td></tr>
                     {% endif %}
                 </tbody>
             </table>
         </div>
     </form>
+
+    {# ── Archives des exports ── #}
+    <div class="section" style="margin-top:2rem;">
+        <h2 style="margin-bottom:1rem;">Archives des exportations</h2>
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Fichier</th>
+                    <th>Écritures</th>
+                    <th>Exporté par</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in archives %}
+                <tr>
+                    <td><strong>{{ a.nom_fichier }}</strong></td>
+                    <td>{{ a.nb_ecritures }}</td>
+                    <td>{% if a.prenom %}{{ a.prenom }} {{ a.user_nom }}{% else %}—{% endif %}</td>
+                    <td>{{ a.created_at[8:10] }}/{{ a.created_at[5:7] }}/{{ a.created_at[0:4] }} {{ a.created_at[11:16] }}</td>
+                    <td style="white-space:nowrap;">
+                        <a href="{{ url_for('exportation_bp.telecharger_archive', archive_id=a.id) }}" class="btn btn-sm btn-primary">Télécharger</a>
+                        <form method="POST" action="{{ url_for('exportation_bp.supprimer_archive', archive_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette archive ?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not archives %}
+                <tr><td colspan="5" style="text-align:center; padding:2rem; color:var(--gray-500);">Aucune archive d'export.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <script>

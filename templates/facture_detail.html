@@ -9,7 +9,7 @@
             <h1>Détail de la facture</h1>
             <p class="subtitle">{{ facture.fichier_nom or 'Facture' }}</p>
         </div>
-        <a href="{{ url_for('factures_bp.liste_factures') }}" class="btn btn-secondary">Retour aux factures</a>
+        <a href="{% if session.profil == 'responsable' %}{{ url_for('factures_bp.approbation_factures') }}{% else %}{{ url_for('factures_bp.liste_factures') }}{% endif %}" class="btn btn-secondary">{% if session.profil == 'responsable' %}Retour aux approbations{% else %}Retour aux factures{% endif %}</a>
     </div>
 
     {# ── Informations principales ── #}

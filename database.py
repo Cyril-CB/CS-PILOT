@@ -41,6 +41,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0020', 'Solde initial global tresorerie'),
     ('0021', 'Ajout epargne tresorerie'),
     ('0022', 'Module comptable factures'),
+    ('0023', 'Archivage exportations ecritures'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -883,6 +884,19 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (facture_id) REFERENCES factures(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # ===== Table archives export (migration 0023) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS archives_export (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom_fichier TEXT NOT NULL,
+            fichier_path TEXT NOT NULL,
+            nb_ecritures INTEGER DEFAULT 0,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
         )
     ''')
 
