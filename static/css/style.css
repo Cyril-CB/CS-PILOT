@@ -1,28 +1,29 @@
 /* === VARIABLES ET BASE === */
 :root {
-    --primary: #2563eb;
-    --primary-dark: #1e40af;
-    --primary-light: #3b82f6;
-    --accent: #f97316;
-    --accent-light: #fb923c;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --gray-50: #f8fafc;
-    --gray-100: #f1f5f9;
-    --gray-200: #e2e8f0;
-    --gray-300: #cbd5e1;
-    --gray-500: #64748b;
-    --gray-700: #334155;
-    --gray-900: #0f172a;
+    --primary: #2f5d50;
+    --primary-dark: #23463d;
+    --primary-light: #3f7666;
+    --accent: #c56a2a;
+    --accent-light: #dd8649;
+    --success: #3f8a60;
+    --warning: #ba7a2a;
+    --danger: #bf4444;
+    --gray-50: #faf8f5;
+    --gray-100: #f3eee7;
+    --gray-200: #e7ddd1;
+    --gray-300: #d3c2b1;
+    --gray-500: #786b60;
+    --gray-700: #3f4b45;
+    --gray-900: #222d28;
     --white: #ffffff;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
     --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.06);
-    --nav-bg: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    --nav-bg: linear-gradient(160deg, #faf8f5 0%, #f0e8dc 58%, #e8dccb 100%);
     --nav-border: var(--primary);
     --dropdown-bg: white;
+    --font-sans: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-lg: 14px;
@@ -47,25 +48,25 @@
 
 /* === THÈME SOMBRE === */
 [data-theme="dark"] {
-    --gray-50: #1e293b;
-    --gray-100: #1e3a5f;
-    --gray-200: #334155;
-    --gray-300: #475569;
-    --gray-500: #94a3b8;
-    --gray-700: #cbd5e1;
-    --gray-900: #f1f5f9;
-    --white: #0f172a;
+    --gray-50: #202824;
+    --gray-100: #2b3732;
+    --gray-200: #36453f;
+    --gray-300: #455a51;
+    --gray-500: #a9b6ac;
+    --gray-700: #dbe3dc;
+    --gray-900: #f3f6f3;
+    --white: #131a17;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.35), 0 1px 2px 0 rgba(0, 0, 0, 0.25);
     --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
-    --nav-bg: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    --nav-border: #3b82f6;
-    --dropdown-bg: #1e293b;
+    --nav-bg: linear-gradient(160deg, #202824 0%, #18201d 100%);
+    --nav-border: #5c8f7f;
+    --dropdown-bg: #202824;
 }
 
 [data-theme="dark"] body {
-    background: linear-gradient(160deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+    background: linear-gradient(160deg, #131a17 0%, #1b2421 55%, #202824 100%);
 }
 
 [data-theme="dark"] .nav-dropdown-menu {
@@ -157,7 +158,7 @@ footer {
     height: 18px;
     padding: 0 5px;
     border-radius: 99px;
-    background: #ef4444;
+    background: var(--danger);
     color: white;
     font-size: 11px;
     font-weight: 700;
@@ -173,8 +174,8 @@ footer {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-    background: linear-gradient(160deg, #e8f0fe 0%, #dbeafe 25%, #e0e7ff 50%, #ede9fe 75%, #f3e8ff 100%);
+    font-family: var(--font-sans);
+    background: linear-gradient(170deg, #faf8f5 0%, #f4eee6 58%, #ece3d7 100%);
     min-height: 100vh;
     color: var(--gray-900);
     line-height: 1.6;
@@ -2360,7 +2361,7 @@ a.btn-icon:-webkit-any-link {
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #667eea, #764ba2);
+    background: linear-gradient(135deg, var(--primary-light), var(--primary));
     color: #fff;
     font-size: 0.7rem;
     font-weight: 700;
@@ -2372,7 +2373,7 @@ a.btn-icon:-webkit-any-link {
 
 .sv-avatar:hover {
     transform: scale(1.1);
-    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+    box-shadow: 0 2px 8px rgba(47, 110, 166, 0.35);
 }
 
 .sv-avatar-sm {
