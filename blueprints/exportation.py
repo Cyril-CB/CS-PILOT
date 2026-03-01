@@ -75,9 +75,14 @@ def exporter():
         FROM ecritures_comptables e
         LEFT JOIN factures f ON e.facture_id = f.id
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
-        WHERE e.id IN ({placeholders})
+        WHERE e.id IN ({placeholders}) AND e.statut = 'validee'
         ORDER BY e.date_ecriture, e.id
     ''', ids).fetchall()
+
+    if not ecritures:
+        conn.close()
+        flash('Aucune écriture validée à exporter.', 'warning')
+        return redirect(url_for('exportation_bp.liste_exportation'))
 
     # Générer le fichier tabulé
     output = io.StringIO()
@@ -104,10 +109,12 @@ def exporter():
                           debit, credit, analytique, echeance])
         output.write(line + '\n')
 
-    # Marquer les écritures comme exportées
+    # Marquer les écritures comme exportées (uniquement celles validées)
+    exported_ids = [str(e['id']) for e in ecritures]
+    exported_placeholders = ','.join('?' * len(exported_ids))
     conn.execute(
-        f"UPDATE ecritures_comptables SET statut='exportee', updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders})",
-        ids
+        f"UPDATE ecritures_comptables SET statut='exportee', updated_at=CURRENT_TIMESTAMP WHERE id IN ({exported_placeholders}) AND statut='validee'",
+        exported_ids
     )
 
     # Archiver le fichier sur disque
