@@ -105,6 +105,11 @@ from blueprints.subventions import subventions_bp
 from blueprints.benevoles import benevoles_bp
 from blueprints.salles import salles_bp
 from blueprints.tresorerie import tresorerie_bp
+from blueprints.factures import factures_bp
+from blueprints.fournisseurs import fournisseurs_bp
+from blueprints.regles_comptables import regles_comptables_bp
+from blueprints.ecritures import ecritures_bp
+from blueprints.exportation import exportation_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -135,6 +140,11 @@ app.register_blueprint(subventions_bp)
 app.register_blueprint(benevoles_bp)
 app.register_blueprint(salles_bp)
 app.register_blueprint(tresorerie_bp)
+app.register_blueprint(factures_bp)
+app.register_blueprint(fournisseurs_bp)
+app.register_blueprint(regles_comptables_bp)
+app.register_blueprint(ecritures_bp)
+app.register_blueprint(exportation_bp)
 
 
 # ==================== Context Processors ====================

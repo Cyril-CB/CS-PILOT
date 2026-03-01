@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}Règles comptables - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+            <h1>Règles comptables</h1>
+            <p class="subtitle">Règles utilisées par l'IA pour générer les écritures comptables</p>
+        </div>
+        <button class="btn btn-primary" onclick="document.getElementById('modalAjout').style.display='flex'">+ Ajouter une règle</button>
+    </div>
+
+    <div class="section">
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Type</th>
+                    <th>Cible</th>
+                    <th>Compte comptable</th>
+                    <th>Code analytique</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in regles %}
+                <tr>
+                    <td><strong>{{ r.nom }}</strong></td>
+                    <td>
+                        {% if r.type_regle == 'type_depense' %}
+                        <span class="badge" style="background:#8b5cf6;color:#fff;">Type de dépense</span>
+                        {% else %}
+                        <span class="badge" style="background:#0891b2;color:#fff;">Fournisseur</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.cible }}</td>
+                    <td><code>{{ r.compte_comptable }}</code></td>
+                    <td>
+                        {% if r.code_analytique_1 %}
+                            {{ r.code_analytique_1 }}{% if r.code_analytique_2 %} ({{ r.pourcentage_analytique_1|int }}%) / {{ r.code_analytique_2 }} ({{ r.pourcentage_analytique_2|int }}%){% endif %}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.statut == 'active' %}
+                        <span class="badge" style="background:#10b981;color:#fff;">Active</span>
+                        {% else %}
+                        <span class="badge" style="background:#9ca3af;color:#fff;">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-secondary" onclick='openEditRegle({{ r|tojson }})'>Éditer</button>
+                        <form method="POST" action="{{ url_for('regles_comptables_bp.supprimer_regle', regle_id=r.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette règle ?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not regles %}
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:#888;">Aucune règle comptable définie.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Modal Ajout ── #}
+<div id="modalAjout" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <h3>Ajouter une règle comptable</h3>
+            <button class="modal-close" onclick="document.getElementById('modalAjout').style.display='none'">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('regles_comptables_bp.ajouter_regle') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label>Nom de la règle *</label>
+                <input type="text" name="nom" required placeholder="Ex: Fournitures bureau">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Type de règle *</label>
+                    <select name="type_regle" required onchange="toggleCibleField(this, 'ajout')">
+                        <option value="">-- Choisir --</option>
+                        <option value="type_depense">Type de dépense</option>
+                        <option value="fournisseur">Fournisseur</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cible *</label>
+                    <input type="text" name="cible" id="ajoutCible" required placeholder="Décrivez le type de dépense ou le fournisseur">
+                    <select name="cible_fournisseur" id="ajoutCibleFournisseur" style="display:none;">
+                        <option value="">-- Fournisseur --</option>
+                        {% for f in fournisseurs %}
+                        <option value="{{ f.nom }}">{{ f.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Compte comptable (charge) *</label>
+                <input type="text" name="compte_comptable" required placeholder="Ex: 606100">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Code analytique 1</label>
+                    <input type="text" name="code_analytique_1" placeholder="Ex: ANA01">
+                </div>
+                <div class="form-group">
+                    <label>% analytique 1</label>
+                    <input type="number" name="pourcentage_analytique_1" value="100" min="0" max="100">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Code analytique 2</label>
+                    <input type="text" name="code_analytique_2" placeholder="Optionnel">
+                </div>
+                <div class="form-group">
+                    <label>% analytique 2</label>
+                    <input type="number" name="pourcentage_analytique_2" value="0" min="0" max="100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Modèle de libellé</label>
+                <input type="text" name="modele_libelle" value="{supplier} {invoice_number} {date} {period}" placeholder="Variables: {supplier} {invoice_number} {date} {period}">
+                <p class="help-text">Variables : {supplier} {invoice_number} {date} {period}</p>
+            </div>
+            <div class="form-group">
+                <label>Statut</label>
+                <select name="statut">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Ajouter</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalAjout').style.display='none'">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── Modal Édition ── #}
+<div id="modalEdit" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:600px;">
+        <div class="modal-header">
+            <h3>Modifier la règle comptable</h3>
+            <button class="modal-close" onclick="document.getElementById('modalEdit').style.display='none'">&times;</button>
+        </div>
+        <form method="POST" id="editRegleForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label>Nom de la règle *</label>
+                <input type="text" name="nom" id="editNom" required>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Type de règle *</label>
+                    <select name="type_regle" id="editType" required onchange="toggleCibleField(this, 'edit')">
+                        <option value="type_depense">Type de dépense</option>
+                        <option value="fournisseur">Fournisseur</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Cible *</label>
+                    <input type="text" name="cible" id="editCible" required>
+                    <select name="cible_fournisseur" id="editCibleFournisseur" style="display:none;">
+                        <option value="">-- Fournisseur --</option>
+                        {% for f in fournisseurs %}
+                        <option value="{{ f.nom }}">{{ f.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Compte comptable (charge) *</label>
+                <input type="text" name="compte_comptable" id="editCompte" required>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Code analytique 1</label>
+                    <input type="text" name="code_analytique_1" id="editAna1">
+                </div>
+                <div class="form-group">
+                    <label>% analytique 1</label>
+                    <input type="number" name="pourcentage_analytique_1" id="editPct1" min="0" max="100">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Code analytique 2</label>
+                    <input type="text" name="code_analytique_2" id="editAna2">
+                </div>
+                <div class="form-group">
+                    <label>% analytique 2</label>
+                    <input type="number" name="pourcentage_analytique_2" id="editPct2" min="0" max="100">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Modèle de libellé</label>
+                <input type="text" name="modele_libelle" id="editLibelle">
+                <p class="help-text">Variables : {supplier} {invoice_number} {date} {period}</p>
+            </div>
+            <div class="form-group">
+                <label>Statut</label>
+                <select name="statut" id="editStatut">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEdit').style.display='none'">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleCibleField(select, prefix) {
+    var cibleInput = document.getElementById(prefix === 'edit' ? 'editCible' : 'ajoutCible');
+    var cibleSelect = document.getElementById(prefix === 'edit' ? 'editCibleFournisseur' : 'ajoutCibleFournisseur');
+    if (select.value === 'fournisseur') {
+        cibleInput.style.display = 'none';
+        cibleInput.removeAttribute('required');
+        cibleSelect.style.display = 'block';
+        cibleSelect.setAttribute('name', 'cible');
+        cibleSelect.setAttribute('required', 'required');
+        cibleInput.setAttribute('name', 'cible_text');
+    } else {
+        cibleInput.style.display = 'block';
+        cibleInput.setAttribute('required', 'required');
+        cibleInput.setAttribute('name', 'cible');
+        cibleSelect.style.display = 'none';
+        cibleSelect.removeAttribute('required');
+        cibleSelect.setAttribute('name', 'cible_fournisseur');
+    }
+}
+
+function openEditRegle(r) {
+    document.getElementById('editRegleForm').action = '/regles-comptables/' + r.id + '/modifier';
+    document.getElementById('editNom').value = r.nom;
+    document.getElementById('editType').value = r.type_regle;
+    document.getElementById('editCible').value = r.cible;
+    document.getElementById('editCompte').value = r.compte_comptable;
+    document.getElementById('editAna1').value = r.code_analytique_1 || '';
+    document.getElementById('editAna2').value = r.code_analytique_2 || '';
+    document.getElementById('editPct1').value = r.pourcentage_analytique_1 || 100;
+    document.getElementById('editPct2').value = r.pourcentage_analytique_2 || 0;
+    document.getElementById('editLibelle').value = r.modele_libelle || '';
+    document.getElementById('editStatut').value = r.statut || 'active';
+    toggleCibleField(document.getElementById('editType'), 'edit');
+    document.getElementById('modalEdit').style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Approbation factures - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="margin-bottom:1.5rem;">
+        <h1>Approbation des factures</h1>
+        <p class="subtitle">Factures en attente d'approbation pour votre périmètre</p>
+    </div>
+
+    <div class="section">
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Fournisseur</th>
+                    <th>N° Facture</th>
+                    <th>Date</th>
+                    <th>Montant TTC</th>
+                    <th>Secteur</th>
+                    <th>Fichier</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in factures %}
+                <tr>
+                    <td><strong>{{ f.fournisseur_nom or 'Inconnu' }}</strong></td>
+                    <td>{{ f.numero_facture or '—' }}</td>
+                    <td>{% if f.date_facture %}{{ f.date_facture[8:10] }}/{{ f.date_facture[5:7] }}/{{ f.date_facture[0:4] }}{% else %}—{% endif %}</td>
+                    <td>{% if f.montant_ttc %}{{ '{:,.2f}'.format(f.montant_ttc).replace(',', ' ') }} €{% else %}—{% endif %}</td>
+                    <td>
+                        {% if f.assigned_direction %}
+                        <span class="badge" style="background:#dc2626;color:#fff;">Direction</span>
+                        {% elif f.secteur_nom %}
+                        <span class="badge" style="background:#2563eb;color:#fff;">{{ f.secteur_nom }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if f.fichier_path %}
+                        <a href="{{ url_for('factures_bp.telecharger_facture', facture_id=f.id) }}" class="btn btn-sm btn-secondary">Télécharger</a>
+                        {% endif %}
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}" class="btn btn-sm btn-secondary">Détail</a>
+                        <form method="POST" action="{{ url_for('factures_bp.approuver_facture', facture_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Approuver cette facture ?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-primary">Approuver</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not factures %}
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:#888;">Aucune facture en attente d'approbation.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

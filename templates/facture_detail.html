@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Détail facture - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+            <h1>Détail de la facture</h1>
+            <p class="subtitle">{{ facture.fichier_nom or 'Facture' }}</p>
+        </div>
+        <a href="{% if session.profil == 'responsable' %}{{ url_for('factures_bp.approbation_factures') }}{% else %}{{ url_for('factures_bp.liste_factures') }}{% endif %}" class="btn btn-secondary">{% if session.profil == 'responsable' %}Retour aux approbations{% else %}Retour aux factures{% endif %}</a>
+    </div>
+
+    {# ── Informations principales ── #}
+    <div class="section" style="margin-bottom:1.5rem;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
+            <div>
+                <h3 style="margin-bottom:1rem;">Informations</h3>
+                <table style="width:100%;">
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600; width:40%;">Fournisseur</td>
+                        <td>{{ facture.fournisseur_nom or 'Inconnu' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">Date</td>
+                        <td>{% if facture.date_facture %}{{ facture.date_facture[8:10] }}/{{ facture.date_facture[5:7] }}/{{ facture.date_facture[0:4] }}{% else %}—{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">Montant TTC</td>
+                        <td>{% if facture.montant_ttc %}<strong>{{ '{:,.2f}'.format(facture.montant_ttc).replace(',', ' ') }} €</strong>{% else %}—{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">N° Facture</td>
+                        <td>{{ facture.numero_facture or '—' }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">Échéance</td>
+                        <td>{% if facture.date_echeance %}{{ facture.date_echeance[8:10] }}/{{ facture.date_echeance[5:7] }}/{{ facture.date_echeance[0:4] }}{% else %}Non précisée{% endif %}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">Statut</td>
+                        <td>
+                            {% if facture.statut == 'traitee' %}
+                            <span class="badge" style="background:#10b981;color:#fff;">Traitée</span>
+                            {% else %}
+                            <span class="badge" style="background:#ef4444;color:#fff;">A traiter</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0.4rem 0; font-weight:600;">Approbation</td>
+                        <td>
+                            {% if facture.approbation == 'approuvee' %}
+                            <span class="badge" style="background:#10b981;color:#fff;">Approuvée</span>
+                            {% else %}
+                            <span class="badge" style="background:#f59e0b;color:#fff;">En attente</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <div>
+                <h3 style="margin-bottom:1rem;">Description</h3>
+                <p style="color:#555;">{{ facture.description or 'Aucune description.' }}</p>
+                <div style="margin-top:1.5rem;">
+                    <h3 style="margin-bottom:0.5rem;">Secteur assigné</h3>
+                    {% if facture.assigned_direction %}
+                    <span class="badge" style="background:#dc2626;color:#fff;">Direction</span>
+                    {% elif facture.secteur_nom %}
+                    <span class="badge" style="background:#2563eb;color:#fff;">{{ facture.secteur_nom }}</span>
+                    {% else %}
+                    <span class="badge" style="background:#9ca3af;color:#fff;">Non assigné</span>
+                    {% endif %}
+                </div>
+                {% if facture.fichier_path %}
+                <div style="margin-top:1.5rem;">
+                    <a href="{{ url_for('factures_bp.telecharger_facture', facture_id=facture.id) }}" class="btn btn-primary">Télécharger la facture</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ── Historique et Commentaires côte à côte ── #}
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
+        {# ── Historique ── #}
+        <div class="section">
+            <h3 style="margin-bottom:1rem;">Historique</h3>
+            <div style="max-height:400px; overflow-y:auto;">
+                {% for h in historique %}
+                <div style="border-left:3px solid #2563eb; padding:0.5rem 0 0.5rem 1rem; margin-bottom:0.75rem;">
+                    <div style="font-weight:600;">{{ h.action }}</div>
+                    {% if h.details %}<div style="color:#555; font-size:0.9em;">{{ h.details }}</div>{% endif %}
+                    <div style="color:#888; font-size:0.8em;">
+                        {{ h.created_at[8:10] }}/{{ h.created_at[5:7] }}/{{ h.created_at[0:4] }} {{ h.created_at[11:16] }}
+                        {% if h.prenom %} — {{ h.prenom }} {{ h.user_nom }}{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not historique %}
+                <p style="color:#888;">Aucun historique.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        {# ── Commentaires ── #}
+        <div class="section">
+            <h3 style="margin-bottom:1rem;">Commentaires</h3>
+            <div style="max-height:300px; overflow-y:auto; margin-bottom:1rem;">
+                {% for c in commentaires %}
+                <div style="background:var(--gray-50, #f8f9fa); border-radius:8px; padding:0.75rem; margin-bottom:0.5rem;">
+                    <div style="font-weight:600; font-size:0.9em;">
+                        {{ c.prenom }} {{ c.user_nom }}
+                        <span class="badge" style="background:#6366f1;color:#fff; font-size:0.75em;">{{ c.profil }}</span>
+                    </div>
+                    <div style="margin-top:0.25rem;">{{ c.commentaire }}</div>
+                    <div style="color:#888; font-size:0.8em; margin-top:0.25rem;">
+                        {{ c.created_at[8:10] }}/{{ c.created_at[5:7] }}/{{ c.created_at[0:4] }} {{ c.created_at[11:16] }}
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not commentaires %}
+                <p style="color:#888;">Aucun commentaire.</p>
+                {% endif %}
+            </div>
+            <form method="POST" action="{{ url_for('factures_bp.commenter_facture', facture_id=facture.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="form-group">
+                    <textarea name="commentaire" rows="3" placeholder="Ajouter un commentaire..." required style="width:100%;"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Envoyer</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
