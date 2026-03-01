@@ -94,7 +94,7 @@ def _supprimer_fichier(fichier_path):
         chemin = os.path.join(docs_dir, fichier_path)
         chemin_reel = os.path.realpath(chemin)
         dossier_reel = os.path.realpath(docs_dir)
-        if (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)) and os.path.exists(chemin):
+        if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
             os.remove(chemin)
 
 
@@ -387,7 +387,7 @@ def telecharger_document(doc_id):
     chemin = os.path.join(_get_documents_dir(), doc['fichier_path'])
     chemin_reel = os.path.realpath(chemin)
     dossier_reel = os.path.realpath(_get_documents_dir())
-    if not (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)) or not os.path.exists(chemin):
+    if not chemin_reel.startswith(dossier_reel + os.sep) or not os.path.exists(chemin):
         flash("Fichier introuvable sur le serveur.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=doc['user_id']))
 
@@ -442,7 +442,7 @@ def telecharger_contrat(contrat_id):
     chemin = os.path.join(_get_documents_dir(), contrat['fichier_path'])
     chemin_reel = os.path.realpath(chemin)
     dossier_reel = os.path.realpath(_get_documents_dir())
-    if not (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)) or not os.path.exists(chemin):
+    if not chemin_reel.startswith(dossier_reel + os.sep) or not os.path.exists(chemin):
         flash("Fichier introuvable sur le serveur.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=contrat['user_id']))
 

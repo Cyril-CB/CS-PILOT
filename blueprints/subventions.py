@@ -250,7 +250,7 @@ def api_supprimer_subvention(sub_id):
             chemin = os.path.join(DOCUMENTS_DIR, sub['justificatif_path'])
             chemin_reel = os.path.realpath(chemin)
             dossier_reel = os.path.realpath(DOCUMENTS_DIR)
-            if (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)) and os.path.exists(chemin):
+            if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
                 os.remove(chemin)
         conn.execute('DELETE FROM subventions WHERE id = ?', (sub_id,))
         conn.commit()
@@ -409,7 +409,7 @@ def api_upload_justificatif(sub_id):
             old_path = os.path.join(DOCUMENTS_DIR, sub['justificatif_path'])
             old_path_reel = os.path.realpath(old_path)
             dossier_reel = os.path.realpath(DOCUMENTS_DIR)
-            if (old_path_reel == dossier_reel or old_path_reel.startswith(dossier_reel + os.sep)) and os.path.exists(old_path):
+            if old_path_reel.startswith(dossier_reel + os.sep) and os.path.exists(old_path):
                 os.remove(old_path)
 
         fichier.save(chemin_complet)
@@ -447,7 +447,7 @@ def telecharger_justificatif(sub_id):
     chemin = os.path.join(DOCUMENTS_DIR, sub['justificatif_path'])
     chemin_reel = os.path.realpath(chemin)
     dossier_reel = os.path.realpath(DOCUMENTS_DIR)
-    if not (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)):
+    if not chemin_reel.startswith(dossier_reel + os.sep):
         flash("Accès non autorisé.", "error")
         return redirect(url_for('subventions_bp.gestion_subventions'))
 
