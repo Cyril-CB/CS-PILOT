@@ -6,9 +6,8 @@ Versions actuellement prises en charge par les mises à jour de sécurité.
 
 | Version | Prise en charge |
 | ------- | ----------------|
-
 | 2.8.x | :white_check_mark: |
-| < 2.8 | :x: |
+| >2.8 | :x: |
 
 ## Signaler une vulnérabilité
 
