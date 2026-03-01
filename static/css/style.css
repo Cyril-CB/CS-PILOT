@@ -1,26 +1,26 @@
 /* === VARIABLES ET BASE === */
 :root {
-    --primary: #1f4f82;
-    --primary-dark: #16385b;
-    --primary-light: #2f6ea6;
-    --accent: #b45309;
-    --accent-light: #d97706;
-    --success: #2f855a;
-    --warning: #b7791f;
-    --danger: #c53030;
-    --gray-50: #f7f8fa;
-    --gray-100: #eef1f4;
-    --gray-200: #dde3ea;
-    --gray-300: #c3ccd7;
-    --gray-500: #617286;
-    --gray-700: #2f3e4d;
-    --gray-900: #1f2933;
+    --primary: #2f5d50;
+    --primary-dark: #23463d;
+    --primary-light: #3f7666;
+    --accent: #c56a2a;
+    --accent-light: #dd8649;
+    --success: #3f8a60;
+    --warning: #ba7a2a;
+    --danger: #bf4444;
+    --gray-50: #faf8f5;
+    --gray-100: #f3eee7;
+    --gray-200: #e7ddd1;
+    --gray-300: #d3c2b1;
+    --gray-500: #786b60;
+    --gray-700: #3f4b45;
+    --gray-900: #222d28;
     --white: #ffffff;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08), 0 1px 2px 0 rgba(0, 0, 0, 0.04);
     --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.06);
-    --nav-bg: linear-gradient(160deg, #f7f8fa 0%, #e8eef5 58%, #dde7f2 100%);
+    --nav-bg: linear-gradient(160deg, #faf8f5 0%, #f0e8dc 58%, #e8dccb 100%);
     --nav-border: var(--primary);
     --dropdown-bg: white;
     --font-sans: "Inter", "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
@@ -48,25 +48,25 @@
 
 /* === THÈME SOMBRE === */
 [data-theme="dark"] {
-    --gray-50: #1d2733;
-    --gray-100: #253342;
-    --gray-200: #2f3e4d;
-    --gray-300: #3b4f62;
-    --gray-500: #9aa9b9;
-    --gray-700: #d7dfe7;
-    --gray-900: #f1f4f8;
-    --white: #111a24;
+    --gray-50: #202824;
+    --gray-100: #2b3732;
+    --gray-200: #36453f;
+    --gray-300: #455a51;
+    --gray-500: #a9b6ac;
+    --gray-700: #dbe3dc;
+    --gray-900: #f3f6f3;
+    --white: #131a17;
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.35), 0 1px 2px 0 rgba(0, 0, 0, 0.25);
     --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 12px 24px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
-    --nav-bg: linear-gradient(160deg, #1d2733 0%, #17212c 100%);
-    --nav-border: #4c83bc;
-    --dropdown-bg: #1d2733;
+    --nav-bg: linear-gradient(160deg, #202824 0%, #18201d 100%);
+    --nav-border: #5c8f7f;
+    --dropdown-bg: #202824;
 }
 
 [data-theme="dark"] body {
-    background: linear-gradient(160deg, #111a24 0%, #162230 55%, #1d2733 100%);
+    background: linear-gradient(160deg, #131a17 0%, #1b2421 55%, #202824 100%);
 }
 
 [data-theme="dark"] .nav-dropdown-menu {
@@ -175,7 +175,7 @@ footer {
 
 body {
     font-family: var(--font-sans);
-    background: linear-gradient(170deg, #f7f8fa 0%, #eef2f6 58%, #e6edf4 100%);
+    background: linear-gradient(170deg, #faf8f5 0%, #f4eee6 58%, #ece3d7 100%);
     min-height: 100vh;
     color: var(--gray-900);
     line-height: 1.6;
