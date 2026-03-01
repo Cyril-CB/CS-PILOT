@@ -71,7 +71,7 @@ def liste_ecritures():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    ecritures = conn.execute('''
+    ecritures_rows = conn.execute('''
         SELECT e.*, f.fournisseur_id, fr.nom as fournisseur_nom
         FROM ecritures_comptables e
         LEFT JOIN factures f ON e.facture_id = f.id
@@ -85,6 +85,9 @@ def liste_ecritures():
     ).fetchone()['nb']
 
     conn.close()
+
+    # Convertir les Row en dicts pour que tojson fonctionne dans le template
+    ecritures = [dict(e) for e in ecritures_rows]
 
     models = get_available_models()
     has_key = len(models) > 0

@@ -23,9 +23,12 @@ def liste_regles():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    regles = conn.execute('SELECT * FROM regles_comptables ORDER BY nom').fetchall()
+    regles_rows = conn.execute('SELECT * FROM regles_comptables ORDER BY nom').fetchall()
     fournisseurs = conn.execute('SELECT id, nom FROM fournisseurs ORDER BY nom').fetchall()
     conn.close()
+
+    # Convertir les Row en dicts pour que tojson fonctionne dans le template
+    regles = [dict(r) for r in regles_rows]
 
     return render_template('regles_comptables.html', regles=regles, fournisseurs=fournisseurs)
 
