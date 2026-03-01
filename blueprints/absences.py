@@ -348,8 +348,11 @@ def supprimer_absence(absence_id):
 
         # Supprimer le justificatif si present
         if absence['justificatif_path']:
-            chemin = os.path.join(_get_documents_dir(), absence['justificatif_path'])
-            if os.path.exists(chemin):
+            docs_dir = _get_documents_dir()
+            chemin = os.path.join(docs_dir, absence['justificatif_path'])
+            chemin_reel = os.path.realpath(chemin)
+            dossier_reel = os.path.realpath(docs_dir)
+            if (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)) and os.path.exists(chemin):
                 os.remove(chemin)
 
         # Historique
@@ -402,7 +405,7 @@ def telecharger_justificatif(absence_id):
     # Securite : verifier que le chemin est bien dans le dossier documents
     chemin_reel = os.path.realpath(chemin)
     dossier_reel = os.path.realpath(_get_documents_dir())
-    if not chemin_reel.startswith(dossier_reel):
+    if not (chemin_reel == dossier_reel or chemin_reel.startswith(dossier_reel + os.sep)):
         flash('Accès non autorisé au fichier.', 'error')
         return redirect(url_for('absences_bp.absences'))
 

@@ -119,3 +119,80 @@ class TestSecretKeyValidation:
         """En mode test, l'app doit utiliser une clé custom."""
         assert app.secret_key != 'dev-secret-key-do-not-use-in-production'
         assert app.secret_key == 'test-secret-key-for-pytest'
+
+
+class TestPathTraversalProtection:
+    """Vérifie la protection contre les chemins de type ../documents_evil."""
+
+    def _login_admin(self, client):
+        client.post('/login', data={'login': 'admin', 'password': 'Admin1234'}, follow_redirects=False)
+
+    def test_infos_salaries_refuse_path_traversal(self, app, db, client, sample_users, monkeypatch, tmp_path):
+        from blueprints import infos_salaries as infos_module
+        docs_dir = tmp_path / 'documents'
+        evil_dir = tmp_path / 'documents_evil'
+        docs_dir.mkdir()
+        evil_dir.mkdir()
+        (evil_dir / 'pwn.pdf').write_bytes(b'not-a-real-pdf')
+        monkeypatch.setattr(infos_module, 'DOCUMENTS_DIR', str(docs_dir))
+
+        with app.app_context():
+            db.execute(
+                '''INSERT INTO documents_salaries
+                   (user_id, type_document, description, fichier_path, fichier_nom, saisi_par)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (sample_users['salarie_id'], 'AUTRE-1', 'doc test', '../documents_evil/pwn.pdf', 'pwn.pdf',
+                 sample_users['directeur_id'])
+            )
+            db.commit()
+            doc_id = db.execute('SELECT MAX(id) as id FROM documents_salaries').fetchone()['id']
+
+        self._login_admin(client)
+        response = client.get(f'/infos_salaries/telecharger_document/{doc_id}', follow_redirects=False)
+        assert response.status_code == 302
+
+    def test_absences_refuse_path_traversal(self, app, db, client, sample_users, monkeypatch, tmp_path):
+        from blueprints import absences as absences_module
+        docs_dir = tmp_path / 'documents'
+        evil_dir = tmp_path / 'documents_evil'
+        docs_dir.mkdir()
+        evil_dir.mkdir()
+        (evil_dir / 'pwn.pdf').write_bytes(b'not-a-real-pdf')
+        monkeypatch.setattr(absences_module, 'DOCUMENTS_DIR', str(docs_dir))
+
+        with app.app_context():
+            db.execute(
+                '''INSERT INTO absences
+                   (user_id, motif, date_debut, date_fin, jours_ouvres, justificatif_path, justificatif_nom, saisi_par)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                (sample_users['salarie_id'], 'Maladie', '2025-01-01', '2025-01-01', 1,
+                 '../documents_evil/pwn.pdf', 'pwn.pdf', sample_users['directeur_id'])
+            )
+            db.commit()
+            absence_id = db.execute('SELECT MAX(id) as id FROM absences').fetchone()['id']
+
+        self._login_admin(client)
+        response = client.get(f'/absences/justificatif/{absence_id}', follow_redirects=False)
+        assert response.status_code == 302
+
+    def test_subventions_refuse_path_traversal(self, app, db, client, sample_users, monkeypatch, tmp_path):
+        from blueprints import subventions as subventions_module
+        docs_dir = tmp_path / 'documents'
+        evil_dir = tmp_path / 'documents_evil'
+        docs_dir.mkdir()
+        evil_dir.mkdir()
+        (evil_dir / 'pwn.pdf').write_bytes(b'not-a-real-pdf')
+        monkeypatch.setattr(subventions_module, 'DOCUMENTS_DIR', str(docs_dir))
+
+        with app.app_context():
+            db.execute(
+                '''INSERT INTO subventions (nom, justificatif_path, justificatif_nom)
+                   VALUES (?, ?, ?)''',
+                ('Subvention test', '../documents_evil/pwn.pdf', 'pwn.pdf')
+            )
+            db.commit()
+            sub_id = db.execute('SELECT MAX(id) as id FROM subventions').fetchone()['id']
+
+        self._login_admin(client)
+        response = client.get(f'/subventions/justificatif/{sub_id}', follow_redirects=False)
+        assert response.status_code == 302
