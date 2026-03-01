@@ -310,6 +310,14 @@ def detail_facture(facture_id):
         flash('Facture introuvable.', 'error')
         return redirect(url_for('factures_bp.liste_factures'))
 
+    # Responsable : vérifier que la facture est de son secteur
+    if session.get('profil') == 'responsable':
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if not user or user['secteur_id'] != facture['secteur_id']:
+            conn.close()
+            flash('Accès non autorisé à cette facture.', 'error')
+            return redirect(url_for('factures_bp.approbation_factures'))
+
     historique = conn.execute('''
         SELECT h.*, u.prenom, u.nom as user_nom
         FROM facture_historique h
@@ -367,13 +375,22 @@ def telecharger_facture(facture_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    facture = conn.execute('SELECT fichier_path, fichier_nom FROM factures WHERE id=?', (facture_id,)).fetchone()
-    conn.close()
+    facture = conn.execute('SELECT fichier_path, fichier_nom, secteur_id FROM factures WHERE id=?', (facture_id,)).fetchone()
 
     if not facture or not facture['fichier_path'] or not os.path.exists(facture['fichier_path']):
+        conn.close()
         flash('Fichier introuvable.', 'error')
         return redirect(url_for('factures_bp.liste_factures'))
 
+    # Responsable : vérifier que la facture est de son secteur
+    if session.get('profil') == 'responsable':
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if not user or user['secteur_id'] != facture['secteur_id']:
+            conn.close()
+            flash('Accès non autorisé à cette facture.', 'error')
+            return redirect(url_for('factures_bp.approbation_factures'))
+
+    conn.close()
     return send_file(facture['fichier_path'], as_attachment=True, download_name=facture['fichier_nom'])
 
 
