@@ -45,32 +45,11 @@
             </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>✅ Validations{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %}</span><span class="sidebar-arrow">&#9662;</span>
+                    <span>✅ Validations et suivi{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %}</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble</a>
                     <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Demandes récup</a>
-                </div>
-            </div>
-            <div class="sidebar-section">
-                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>⚙️ Administration</span><span class="sidebar-arrow">&#9662;</span>
-                </button>
-                <div class="sidebar-section-menu">
-                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
-                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
-                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
-                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
-                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
-                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
-                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
-                </div>
-            </div>
-            <div class="sidebar-section">
-                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>📋 Suivi & Contrôle</span><span class="sidebar-arrow">&#9662;</span>
-                </button>
-                <div class="sidebar-section-menu">
                     <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
                     <a href="{{ url_for('suivi_bp.historique_modifications') }}">📝 Historique modifs</a>
                     <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
@@ -115,6 +94,20 @@
                 </div>
             </div>
             <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
+            <div class="sidebar-section">
+                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
+                    <span>⚙️ Administration</span><span class="sidebar-arrow">&#9662;</span>
+                </button>
+                <div class="sidebar-section-menu">
+                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
+                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
+                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
+                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
+                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
+                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
+                </div>
+            </div>
 
             {% elif session.profil == 'comptable' %}
             {# ── COMPTABLE ── #}
@@ -143,32 +136,11 @@
             </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>✅ Validations{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %}</span><span class="sidebar-arrow">&#9662;</span>
+                    <span>✅ Validations et suivi{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %}</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble</a>
                     <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Demandes récup</a>
-                </div>
-            </div>
-            <div class="sidebar-section">
-                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>⚙️ Administration</span><span class="sidebar-arrow">&#9662;</span>
-                </button>
-                <div class="sidebar-section-menu">
-                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
-                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
-                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
-                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
-                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
-                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
-                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
-                </div>
-            </div>
-            <div class="sidebar-section">
-                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>📋 Suivi & Contrôle</span><span class="sidebar-arrow">&#9662;</span>
-                </button>
-                <div class="sidebar-section-menu">
                     <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
                     <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
                 </div>
@@ -212,6 +184,20 @@
                 </div>
             </div>
             <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
+            <div class="sidebar-section">
+                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
+                    <span>⚙️ Administration</span><span class="sidebar-arrow">&#9662;</span>
+                </button>
+                <div class="sidebar-section-menu">
+                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
+                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
+                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
+                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
+                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
+                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
+                </div>
+            </div>
 
             {% elif session.profil == 'responsable' %}
             {# ── RESPONSABLE ── #}
