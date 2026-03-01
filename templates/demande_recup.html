@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Demande de récupération{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Demande de récupération</h1>
+    <p class="subtitle">Votre solde actuel : <strong style="color: {% if solde_recup >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.2f"|format(solde_recup) }}h</strong></p>
+    
+    <form method="POST" action="{{ url_for('recup_bp.demande_recup') }}">
+        <div class="form-group">
+            <label for="date_debut">Date de début *</label>
+            <input type="date" id="date_debut" name="date_debut" required>
+            <p class="help-text">Premier jour de récupération</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="date_fin">Date de fin *</label>
+            <input type="date" id="date_fin" name="date_fin" required>
+            <p class="help-text">Dernier jour de récupération (inclus)</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="motif_demande">Motif (optionnel)</label>
+            <textarea id="motif_demande" name="motif_demande" rows="3" placeholder="Ex: Raisons personnelles, récupération heures supplémentaires..."></textarea>
+        </div>
+        
+        <div class="help-box">
+            <h4>Informations importantes</h4>
+            <ul>
+                <li>Seuls les <strong>jours ouvrés</strong> (lundi-vendredi) sont comptés</li>
+                <li>Les heures seront <strong>calculées exactement selon votre planning</strong> jour par jour</li>
+                <li>Exemple : si vous travaillez 8h le lundi et 4h le mercredi, poser ces 2 jours = 12h déduites</li>
+                <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
+                <li>Vous pouvez suivre l'état de votre demande dans "Mes demandes"</li>
+            </ul>
+        </div>
+        
+        <div class="actions">
+            <button type="submit" class="btn btn-primary">Créer la demande</button>
+            <a href="{{ url_for('recup_bp.mes_demandes_recup') }}" class="btn btn-secondary">Mes demandes</a>
+            <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des salles - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="salles-page">
+    <div class="salles-header">
+        <div>
+            <h1>Gestion des salles</h1>
+            <p class="subtitle">Reservations et disponibilites</p>
+        </div>
+    </div>
+
+    {# ══════ SECTION : Gestion des salles (admin) ══════ #}
+    {% if is_admin %}
+    <div class="salles-section">
+        <h2 class="salles-section-title" onclick="toggleSection('section-salles')">
+            <span class="salles-arrow" id="arrow-section-salles">▸</span>
+            Gestion des salles
+        </h2>
+        <div id="section-salles" class="salles-section-body" style="display:none;">
+            <form method="POST" action="{{ url_for('salles_bp.ajouter_salle') }}" class="salles-form-inline">
+                <input type="text" name="nom" placeholder="Nom de la salle" required>
+                <input type="number" name="capacite" placeholder="Capacite" min="1" style="width:100px;">
+                <input type="text" name="description" placeholder="Description">
+                <input type="color" name="couleur" value="#2563eb" title="Couleur" style="width:50px;height:36px;padding:2px;">
+                <button type="submit" class="btn btn-primary">Ajouter</button>
+            </form>
+
+            {% if salles %}
+            <table class="salles-table">
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Capacite</th>
+                        <th>Description</th>
+                        <th>Couleur</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for s in salles %}
+                    <tr>
+                        <form method="POST" action="{{ url_for('salles_bp.modifier_salle', salle_id=s.id) }}">
+                            <td><input type="text" name="nom" value="{{ s.nom }}" required></td>
+                            <td><input type="number" name="capacite" value="{{ s.capacite or '' }}" min="1" style="width:80px;"></td>
+                            <td><input type="text" name="description" value="{{ s.description or '' }}"></td>
+                            <td><input type="color" name="couleur" value="{{ s.couleur }}" style="width:40px;height:30px;padding:2px;"></td>
+                            <td class="salles-actions">
+                                <button type="submit" class="btn btn-sm btn-primary">Modifier</button>
+                        </form>
+                                <form method="POST" action="{{ url_for('salles_bp.supprimer_salle', salle_id=s.id) }}"
+                                      onsubmit="return confirm('Desactiver cette salle ?');" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                                </form>
+                            </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ══════ SECTION : Reservations du jour ══════ #}
+    <div class="salles-section">
+        <h2 class="salles-section-title">
+            Reservations du
+            <input type="date" id="date-sel" value="{{ date_sel }}"
+                   onchange="window.location='{{ url_for('salles_bp.salles') }}?date='+this.value"
+                   style="font-size:16px;padding:4px 8px;border-radius:6px;border:1px solid var(--gray-300);">
+            {% set ds = date_sel.split('-') %}
+            {% set jj = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'] %}
+        </h2>
+
+        {# Grille des creneaux par salle #}
+        {% if salles %}
+        <div class="salles-grid-wrapper">
+            <div class="salles-timeline">
+                {% for h in range(7, 23) %}
+                <div class="salles-time-label">{{ '%02d'|format(h) }}:00</div>
+                {% endfor %}
+            </div>
+            <div class="salles-grid">
+                {% for s in salles %}
+                <div class="salles-grid-row">
+                    <div class="salles-grid-label">
+                        <span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
+                        <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id) }}">{{ s.nom }}</a>
+                        {% if s.capacite %}<small>({{ s.capacite }} pl.)</small>{% endif %}
+                    </div>
+                    <div class="salles-grid-track">
+                        {% for h in range(7, 23) %}
+                        <div class="salles-grid-hour"></div>
+                        {% endfor %}
+                        {% for r in reservations if r.salle_id == s.id %}
+                        {% set h_start = r.heure_debut.split(':') %}
+                        {% set h_end = r.heure_fin.split(':') %}
+                        {% set start_min = (h_start[0]|int - 7) * 60 + h_start[1]|int %}
+                        {% set end_min = (h_end[0]|int - 7) * 60 + h_end[1]|int %}
+                        {% set total_min = 16 * 60 %}
+                        <div class="salles-grid-block"
+                             style="left:{{ (start_min / total_min * 100)|round(2) }}%;
+                                    width:{{ ((end_min - start_min) / total_min * 100)|round(2) }}%;
+                                    background:{{ s.couleur }};"
+                             title="{{ r.titre }} ({{ r.heure_debut }}-{{ r.heure_fin }})&#10;Par {{ r.prenom }} {{ r.nom_user }}{% if r.description %}&#10;{{ r.description }}{% endif %}">
+                            <span class="salles-block-text">{{ r.titre }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <p style="color:var(--gray-500);padding:20px;">Aucune salle configuree. {% if is_admin %}Ajoutez une salle ci-dessus.{% endif %}</p>
+        {% endif %}
+
+        {# Liste detaillee #}
+        {% if reservations %}
+        <div class="salles-list">
+            <table class="salles-table">
+                <thead>
+                    <tr>
+                        <th>Salle</th>
+                        <th>Horaire</th>
+                        <th>Titre</th>
+                        <th>Description</th>
+                        <th>Reserve par</th>
+                        <th>Type</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for r in reservations %}
+                <tr>
+                    <td><span class="salles-color-dot" style="background:{{ r.couleur }};"></span> {{ r.salle_nom }}</td>
+                    <td>{{ r.heure_debut }} - {{ r.heure_fin }}</td>
+                    <td><strong>{{ r.titre }}</strong></td>
+                    <td>{{ r.description or '—' }}</td>
+                    <td>{{ r.prenom }} {{ r.nom_user }}</td>
+                    <td>
+                        {% if r.recurrence_id %}
+                        <span class="badge badge-info">Recurrence</span>
+                        {% else %}
+                        <span class="badge badge-success">Ponctuelle</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if r.created_by == session.user_id or is_admin %}
+                        <form method="POST" action="{{ url_for('salles_bp.supprimer_reservation', resa_id=r.id) }}"
+                              onsubmit="return confirm('Supprimer cette reservation ?');" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% elif salles %}
+        <p style="color:var(--gray-500);padding:10px 0;">Aucune reservation pour cette date.</p>
+        {% endif %}
+    </div>
+
+    {# ══════ SECTION : Nouvelle reservation ponctuelle ══════ #}
+    {% if salles %}
+    <div class="salles-section">
+        <h2 class="salles-section-title" onclick="toggleSection('section-resa')">
+            <span class="salles-arrow" id="arrow-section-resa">▸</span>
+            Nouvelle reservation ponctuelle
+        </h2>
+        <div id="section-resa" class="salles-section-body" style="display:none;">
+            <form method="POST" action="{{ url_for('salles_bp.reserver') }}" class="salles-form">
+                <div class="salles-form-grid">
+                    <div class="salles-form-field">
+                        <label>Salle *</label>
+                        <select name="salle_id" required>
+                            <option value="">-- Choisir --</option>
+                            {% for s in salles %}
+                            <option value="{{ s.id }}">{{ s.nom }}{% if s.capacite %} ({{ s.capacite }} pl.){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Titre *</label>
+                        <input type="text" name="titre" placeholder="Ex: Reunion equipe" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Date *</label>
+                        <input type="date" name="date" value="{{ date_sel }}" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Heure debut *</label>
+                        <input type="time" name="heure_debut" value="09:00" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Heure fin *</label>
+                        <input type="time" name="heure_fin" value="10:00" required>
+                    </div>
+                    <div class="salles-form-field" style="grid-column:1/-1;">
+                        <label>Description</label>
+                        <input type="text" name="description_resa" placeholder="Details optionnels">
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <button type="submit" class="btn btn-primary">Reserver</button>
+                    <span id="dispo-msg" style="margin-left:12px;"></span>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ══════ SECTION : Recurrences (admin) ══════ #}
+    {% if is_admin and salles %}
+    <div class="salles-section">
+        <h2 class="salles-section-title" onclick="toggleSection('section-rec')">
+            <span class="salles-arrow" id="arrow-section-rec">▸</span>
+            Recurrences
+        </h2>
+        <div id="section-rec" class="salles-section-body" style="display:none;">
+
+            {# Formulaire nouvelle recurrence #}
+            <h3 style="margin:0 0 12px;">Nouvelle recurrence</h3>
+            <form method="POST" action="{{ url_for('salles_bp.creer_recurrence') }}" class="salles-form">
+                <div class="salles-form-grid">
+                    <div class="salles-form-field">
+                        <label>Salle *</label>
+                        <select name="salle_id" required>
+                            <option value="">-- Choisir --</option>
+                            {% for s in salles %}
+                            <option value="{{ s.id }}">{{ s.nom }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Titre *</label>
+                        <input type="text" name="titre_rec" placeholder="Ex: Cours de yoga" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Jour de la semaine *</label>
+                        <select name="jour_semaine" required>
+                            {% for j in jours_semaine %}
+                            <option value="{{ loop.index0 }}">{{ j }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Heure debut *</label>
+                        <input type="time" name="heure_debut_rec" value="09:00" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Heure fin *</label>
+                        <input type="time" name="heure_fin_rec" value="10:00" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Date debut *</label>
+                        <input type="date" name="date_debut_rec" value="{{ today }}" required>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>Date fin *</label>
+                        <input type="date" name="date_fin_rec" required>
+                    </div>
+                    <div class="salles-form-field" style="grid-column:1/-1;">
+                        <label>Description</label>
+                        <input type="text" name="description_rec" placeholder="Details optionnels">
+                    </div>
+                    <div class="salles-form-field">
+                        <label>
+                            <input type="checkbox" name="exclure_vacances" value="1" checked>
+                            Exclure vacances scolaires
+                        </label>
+                    </div>
+                    <div class="salles-form-field">
+                        <label>
+                            <input type="checkbox" name="exclure_feries" value="1" checked>
+                            Exclure jours feries
+                        </label>
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <button type="submit" class="btn btn-primary">Creer la recurrence</button>
+                </div>
+            </form>
+
+            {# Liste des recurrences actives #}
+            {% if recurrences %}
+            <h3 style="margin:24px 0 12px;">Recurrences actives</h3>
+            <table class="salles-table">
+                <thead>
+                    <tr>
+                        <th>Salle</th>
+                        <th>Titre</th>
+                        <th>Jour</th>
+                        <th>Horaire</th>
+                        <th>Periode</th>
+                        <th>Exclusions</th>
+                        <th>Cree par</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rc in recurrences %}
+                <tr>
+                    <td>{{ rc.salle_nom }}</td>
+                    <td><strong>{{ rc.titre }}</strong></td>
+                    <td>{{ jours_semaine[rc.jour_semaine] }}</td>
+                    <td>{{ rc.heure_debut }} - {{ rc.heure_fin }}</td>
+                    <td>{{ rc.date_debut[8:10] }}/{{ rc.date_debut[5:7] }}/{{ rc.date_debut[:4] }}
+                        → {{ rc.date_fin[8:10] }}/{{ rc.date_fin[5:7] }}/{{ rc.date_fin[:4] }}</td>
+                    <td>
+                        {% if rc.exclure_vacances %}<span class="badge badge-info">Vacances</span>{% endif %}
+                        {% if rc.exclure_feries %}<span class="badge badge-warning">Feries</span>{% endif %}
+                    </td>
+                    <td>{{ rc.prenom }} {{ rc.nom_user }}</td>
+                    <td class="salles-actions">
+                        <form method="POST" action="{{ url_for('salles_bp.regenerer_recurrence', rec_id=rc.id) }}"
+                              style="display:inline;" title="Regenerer les reservations futures">
+                            <button type="submit" class="btn btn-sm btn-primary">Regenerer</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('salles_bp.supprimer_recurrence', rec_id=rc.id) }}"
+                              onsubmit="return confirm('Desactiver cette recurrence et supprimer les reservations futures ?');"
+                              style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# ══════ Liens calendriers ══════ #}
+    {% if salles %}
+    <div class="salles-section">
+        <h2 class="salles-section-title">Calendriers par salle</h2>
+        <div class="salles-calendrier-links">
+            {% for s in salles %}
+            <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id) }}" class="salles-cal-link">
+                <span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
+                {{ s.nom }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleSection(id) {
+    var el = document.getElementById(id);
+    var arrow = document.getElementById('arrow-' + id);
+    if (el.style.display === 'none') {
+        el.style.display = 'block';
+        if (arrow) arrow.textContent = '▾';
+    } else {
+        el.style.display = 'none';
+        if (arrow) arrow.textContent = '▸';
+    }
+}
+</script>
+{% endblock %}

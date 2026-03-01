@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}Gestion des comptes - Trésorerie - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+.comptes-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+}
+.comptes-header h2 { margin: 0; color: var(--gray-900); }
+.comptes-actions { display: flex; gap: 8px; }
+.comptes-actions .btn {
+    padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: var(--gray-200); color: var(--gray-700); }
+.btn-secondary:hover { background: var(--gray-300); }
+.btn-sm {
+    padding: 4px 10px; font-size: 12px; border-radius: 4px; border: none;
+    cursor: pointer; font-weight: 600;
+}
+.btn-save { background: var(--success); color: white; }
+.btn-toggle-on { background: var(--success); color: white; }
+.btn-toggle-off { background: var(--gray-300); color: var(--gray-700); }
+
+.comptes-info {
+    font-size: 13px; color: var(--gray-500); margin-bottom: 16px;
+    padding: 10px 16px; background: var(--gray-50); border-radius: 8px;
+}
+
+.comptes-section { margin-bottom: 24px; }
+.comptes-section h3 {
+    font-size: 14px; margin: 0 0 10px 0; padding: 8px 12px;
+    border-radius: 6px; color: white; font-weight: 700;
+}
+.section-produits h3 { background: var(--success); }
+.section-charges h3 { background: var(--danger); }
+.section-attente h3 { background: var(--warning); }
+
+.comptes-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    background: var(--white); border-radius: 8px; overflow: hidden;
+    box-shadow: var(--shadow);
+}
+.comptes-table th {
+    background: var(--gray-100); padding: 8px 12px; text-align: left;
+    font-weight: 600; color: var(--gray-700); font-size: 12px;
+}
+.comptes-table td {
+    padding: 6px 12px; border-bottom: 1px solid var(--gray-200);
+    vertical-align: middle;
+}
+.comptes-table tr:last-child td { border-bottom: none; }
+.comptes-table tr:hover td { background: var(--gray-50); }
+
+.comptes-table input[type="text"],
+.comptes-table input[type="number"],
+.comptes-table select {
+    padding: 4px 8px; border: 1px solid var(--gray-300); border-radius: 4px;
+    font-size: 12px; background: var(--white); color: var(--gray-900);
+}
+.comptes-table input[type="text"] { width: 200px; }
+.comptes-table input[type="number"] { width: 60px; text-align: center; }
+
+.compte-num { font-family: monospace; font-size: 12px; color: var(--gray-500); }
+.compte-inactif { opacity: 0.5; }
+.total-hist { font-size: 11px; color: var(--gray-500); }
+.total-positif { color: var(--success); }
+.total-negatif { color: var(--danger); }
+</style>
+
+<div class="comptes-header">
+    <h2>Gestion des comptes de trésorerie</h2>
+    <div class="comptes-actions">
+        <a href="{{ url_for('tresorerie_bp.tresorerie') }}" class="btn btn-secondary">Retour à la projection</a>
+    </div>
+</div>
+
+<div class="comptes-info">
+    <strong>{{ comptes|length }}</strong> comptes détectés.
+    Modifiez le libellé affiché, le type (produit/charge/attente), l'ordre d'affichage,
+    ou désactivez un compte pour l'exclure de la projection.
+    Les modifications sont enregistrées individuellement.
+</div>
+
+{% set types_map = {'produit': 'Recettes (entrées)', 'charge': 'Dépenses (sorties)', 'attente': "Comptes d'attente"} %}
+
+{% for type_key, type_label in [('produit', 'Recettes (entrées)'), ('charge', 'Dépenses (sorties)'), ('attente', "Comptes d'attente")] %}
+{% set comptes_type = comptes|selectattr('type_compte', 'equalto', type_key)|list %}
+{% if comptes_type %}
+<div class="comptes-section section-{{ type_key }}s">
+    <h3>{{ type_label }} ({{ comptes_type|length }})</h3>
+    <table class="comptes-table">
+        <thead>
+            <tr>
+                <th style="width:90px;">N° Compte</th>
+                <th style="width:220px;">Libellé original</th>
+                <th style="width:220px;">Libellé affiché</th>
+                <th style="width:100px;">Type</th>
+                <th style="width:70px;">Ordre</th>
+                <th style="width:100px;">Total hist.</th>
+                <th style="width:60px;">Données</th>
+                <th style="width:80px;">Actif</th>
+                <th style="width:70px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in comptes_type %}
+            <tr class="{{ 'compte-inactif' if not c.actif }}" id="row-{{ c.compte_num }}">
+                <td class="compte-num">{{ c.compte_num }}</td>
+                <td>{{ c.libelle_original or '-' }}</td>
+                <td>
+                    <input type="text" value="{{ c.libelle_affiche or '' }}"
+                           id="libelle-{{ c.compte_num }}"
+                           placeholder="{{ c.libelle_original or c.compte_num }}">
+                </td>
+                <td>
+                    <select id="type-{{ c.compte_num }}">
+                        <option value="produit" {{ 'selected' if c.type_compte == 'produit' }}>Produit (+)</option>
+                        <option value="charge" {{ 'selected' if c.type_compte == 'charge' }}>Charge (-)</option>
+                        <option value="attente" {{ 'selected' if c.type_compte == 'attente' }}>Attente (~)</option>
+                    </select>
+                </td>
+                <td>
+                    <input type="number" value="{{ c.ordre_affichage }}"
+                           id="ordre-{{ c.compte_num }}" min="0" max="9999">
+                </td>
+                <td class="total-hist {{ 'total-positif' if c.total_historique > 0 }}{{ 'total-negatif' if c.total_historique < 0 }}">
+                    {{ '{:,.0f}'.format(c.total_historique).replace(',', ' ') }} €
+                </td>
+                <td style="text-align:center;">{{ c.nb_donnees }}</td>
+                <td style="text-align:center;">
+                    <button class="btn-sm {{ 'btn-toggle-on' if c.actif else 'btn-toggle-off' }}"
+                            onclick="toggleActif('{{ c.compte_num }}', {{ 0 if c.actif else 1 }})">
+                        {{ 'Actif' if c.actif else 'Inactif' }}
+                    </button>
+                </td>
+                <td>
+                    <button class="btn-sm btn-save" onclick="sauverCompte('{{ c.compte_num }}')">Sauver</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endfor %}
+
+<script>
+function sauverCompte(compteNum) {
+    var libelle = document.getElementById('libelle-' + compteNum).value;
+    var type = document.getElementById('type-' + compteNum).value;
+    var ordre = parseInt(document.getElementById('ordre-' + compteNum).value) || 999;
+
+    var promises = [
+        fetch('/api/tresorerie/comptes/' + compteNum + '/modifier', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({field: 'libelle_affiche', value: libelle})
+        }),
+        fetch('/api/tresorerie/comptes/' + compteNum + '/modifier', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({field: 'type_compte', value: type})
+        }),
+        fetch('/api/tresorerie/comptes/' + compteNum + '/modifier', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({field: 'ordre_affichage', value: ordre})
+        })
+    ];
+
+    Promise.all(promises).then(function() {
+        location.reload();
+    }).catch(function(e) {
+        alert('Erreur: ' + e.message);
+    });
+}
+
+function toggleActif(compteNum, newVal) {
+    fetch('/api/tresorerie/comptes/' + compteNum + '/modifier', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({field: 'actif', value: newVal})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) location.reload();
+        else alert(d.error || 'Erreur');
+    });
+}
+</script>
+{% endblock %}

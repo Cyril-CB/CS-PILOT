@@ -1,0 +1,676 @@
+{% extends "base.html" %}
+
+{% block title %}Mon equipe - Semaine du {{ lundi.strftime('%d/%m/%Y') }}{% endblock %}
+
+{% block content %}
+<div class="mon-equipe-page">
+    <h1>Mon equipe{% if secteur_nom %} <span style="font-weight: 400; font-size: 0.75em; color: var(--gray-500);">- {{ secteur_nom }}</span>{% endif %}</h1>
+    <p class="subtitle">Planning hebdomadaire de l'equipe</p>
+
+    <!-- Navigation semaine -->
+    <div class="week-nav">
+        {% if semaine_offset > 0 %}
+        <a href="{{ url_for('mon_equipe_bp.mon_equipe', semaine=0) }}" class="btn btn-secondary btn-sm">&larr; Semaine en cours</a>
+        {% else %}
+        <span class="btn btn-secondary btn-sm" style="opacity: 0.4; cursor: default;">&larr; Semaine en cours</span>
+        {% endif %}
+
+        <div class="week-label">
+            <span class="week-dates">{{ lundi.strftime('%d/%m') }} - {{ vendredi.strftime('%d/%m/%Y') }}</span>
+            {% if semaine_offset == 0 %}
+            <span class="week-badge">Cette semaine</span>
+            {% else %}
+            <span class="week-badge week-badge-next">Semaine prochaine</span>
+            {% endif %}
+        </div>
+
+        {% if semaine_offset < 1 %}
+        <a href="{{ url_for('mon_equipe_bp.mon_equipe', semaine=1) }}" class="btn btn-secondary btn-sm">Semaine suivante &rarr;</a>
+        {% else %}
+        <span class="btn btn-secondary btn-sm" style="opacity: 0.4; cursor: default;">Semaine suivante &rarr;</span>
+        {% endif %}
+    </div>
+
+    {% if grille %}
+    <!-- Grille equipe -->
+    <div class="equipe-grid">
+        <!-- En-tete jours -->
+        <div class="equipe-row equipe-header">
+            <div class="equipe-cell equipe-name-col">Collaborateur</div>
+            {% for j in jours_header %}
+            <div class="equipe-cell equipe-day-col {% if j.is_today %}equipe-today{% endif %}">
+                <span class="day-name">{{ j.nom }}</span>
+                <span class="day-date">{{ j.date }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% for row in grille %}
+        <div class="equipe-row">
+            <!-- Nom du salarie -->
+            <div class="equipe-cell equipe-name-col">
+                <div class="member-name">{{ row.nom }} {{ row.prenom }}</div>
+                <div class="member-role">
+                    {% if row.profil == 'responsable' %}
+                    <span class="role-badge role-resp">Responsable</span>
+                    {% else %}
+                    <span class="role-badge">{{ row.profil }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% for jour in row.jours %}
+            <div class="equipe-cell equipe-day-col {% if jours_header[loop.index0].is_today %}equipe-today{% endif %}">
+
+                {% if jour.ferie %}
+                <!-- Jour ferie -->
+                <div class="day-card card-ferie">
+                    <span class="card-label">Ferie</span>
+                </div>
+
+                {% elif jour.type_saisie == 'absence' %}
+                <!-- Absence -->
+                <div class="day-card card-absence">
+                    <span class="card-label">{{ jour.absence }}</span>
+                </div>
+
+                {% elif jour.type_saisie == 'recup' %}
+                <!-- Recuperation -->
+                <div class="day-card card-recup">
+                    <span class="card-label">Recuperation</span>
+                </div>
+
+                {% elif jour.matin or jour.aprem %}
+                <!-- Horaires -->
+                <div class="day-card card-present {% if jour.type_saisie == 'theorique' %}card-theorique{% endif %}">
+                    {% if jour.matin and jour.matin[0] and jour.matin[1] %}
+                    <div class="slot slot-matin">{{ jour.matin[0] }} - {{ jour.matin[1] }}</div>
+                    {% elif jour.matin and jour.matin[0] %}
+                    <div class="slot slot-matin">{{ jour.matin[0] }} - ...</div>
+                    {% endif %}
+                    {% if jour.aprem and jour.aprem[0] and jour.aprem[1] %}
+                    <div class="slot slot-aprem">{{ jour.aprem[0] }} - {{ jour.aprem[1] }}</div>
+                    {% elif jour.aprem and jour.aprem[0] %}
+                    <div class="slot slot-aprem">{{ jour.aprem[0] }} - ...</div>
+                    {% endif %}
+                </div>
+
+                {% else %}
+                <!-- Pas d'info -->
+                <div class="day-card card-empty">
+                    <span class="card-label">-</span>
+                </div>
+                {% endif %}
+
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Legende -->
+    <div class="equipe-legend">
+        <span class="legend-item"><span class="legend-dot dot-present"></span> Present (saisi)</span>
+        <span class="legend-item"><span class="legend-dot dot-theorique"></span> Horaire theorique</span>
+        <span class="legend-item"><span class="legend-dot dot-absence"></span> Absent</span>
+        <span class="legend-item"><span class="legend-dot dot-recup"></span> Recuperation</span>
+        <span class="legend-item"><span class="legend-dot dot-ferie"></span> Ferie</span>
+    </div>
+
+    {% if is_creche %}
+    <!-- ================================================ -->
+    <!-- CRECHE : Frequentation moyenne + Taux encadrement -->
+    <!-- ================================================ -->
+
+    <!-- Section frequentation moyenne (saisie) -->
+    {% if session.profil == 'responsable' %}
+    <div class="presences-horaires-section">
+        <h2 class="presences-horaires-titre">Frequentation moyenne</h2>
+        <p class="presences-horaires-subtitle">Nombre moyen d'enfants par tranche horaire (sert au calcul du taux d'encadrement)</p>
+
+        <div class="freq-input-grid">
+            {% for tranche in presences_horaires %}
+            <div class="freq-input-row">
+                <span class="freq-label">{{ tranche.label }}</span>
+                <div class="freq-input-wrapper">
+                    <input type="number" step="0.5" min="0" max="99"
+                           class="freq-input"
+                           data-tranche="{{ tranche.label }}"
+                           value="{{ tranche.nb_enfants }}"
+                           placeholder="0">
+                    <span class="freq-unit">enfants</span>
+                </div>
+                <label class="freq-terrain-label" title="Si coche, le responsable est compte dans l'effectif pour ce creneau">
+                    <input type="checkbox"
+                           class="freq-terrain-checkbox"
+                           data-tranche="{{ tranche.label }}"
+                           {% if tranche.responsable_terrain %}checked{% endif %}>
+                    <span class="freq-terrain-text">Sur le terrain</span>
+                </label>
+                <span class="freq-requis" data-tranche="{{ tranche.label }}">
+                    {% if tranche.requis > 0 %}
+                    = {{ tranche.requis }} pro requis
+                    {% else %}
+                    -
+                    {% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="freq-actions">
+            <button type="button" id="btnSaveFreq" class="btn btn-primary btn-sm" onclick="saveFrequentation()">
+                Sauvegarder la frequentation
+            </button>
+            <span id="saveFreqStatus" class="budget-save-status"></span>
+        </div>
+        <p class="freq-help">Regle : 1 professionnel pour 6 enfants, minimum 2 (hors responsable)</p>
+    </div>
+    {% endif %}
+
+    <!-- Section presences avec taux d'encadrement -->
+    <div class="presences-horaires-section">
+        <h2 class="presences-horaires-titre">Presences par tranche horaire - Taux d'encadrement</h2>
+        <p class="presences-horaires-subtitle">Professionnels presents vs requis ({{ nb_pro }} pro hors responsable, +1 si responsable sur le terrain)</p>
+
+        <div class="presences-horaires-grid" style="grid-template-columns: 130px 90px 80px repeat(5, 1fr);">
+            <!-- En-tete -->
+            <div class="ph-cell ph-header ph-label-col">Creneau</div>
+            <div class="ph-cell ph-header">Enfants</div>
+            <div class="ph-cell ph-header">Requis</div>
+            {% for j in jours_header %}
+            <div class="ph-cell ph-header {% if j.is_today %}ph-today{% endif %}">
+                <span class="ph-day-name">{{ j.court }}</span>
+                <span class="ph-day-date">{{ j.date }}</span>
+            </div>
+            {% endfor %}
+
+            <!-- Lignes par tranche -->
+            {% for tranche in presences_horaires %}
+            <div class="ph-cell ph-label-col ph-tranche-label">{{ tranche.label }}</div>
+            <div class="ph-cell" style="font-size: 0.85rem; font-weight: 600; color: var(--gray-700);">
+                {% if tranche.nb_enfants > 0 %}{{ tranche.nb_enfants }}{% else %}-{% endif %}
+            </div>
+            <div class="ph-cell" style="font-size: 0.85rem; font-weight: 700;">
+                {% if tranche.requis > 0 %}
+                <span style="color: var(--primary);">{{ tranche.requis }}</span>
+                {% else %}-{% endif %}
+            </div>
+            {% for count in tranche.comptes %}
+            <div class="ph-cell ph-count {% if jours_header[loop.index0].is_today %}ph-today{% endif %}
+                {% if tranche.requis == 0 %}ph-count-zero
+                {% elif count < tranche.requis %}ph-count-danger
+                {% elif count == tranche.requis %}ph-count-warning
+                {% else %}ph-count-ok{% endif %}">
+                <span class="ph-count-value">{{ count }}</span>
+            </div>
+            {% endfor %}
+            {% endfor %}
+        </div>
+
+        <!-- Legende encadrement -->
+        <div class="equipe-legend" style="margin-top: 0.75rem;">
+            <span class="legend-item"><span class="legend-dot dot-encadrement-ok"></span> Effectif suffisant</span>
+            <span class="legend-item"><span class="legend-dot dot-encadrement-warning"></span> Effectif juste</span>
+            <span class="legend-item"><span class="legend-dot dot-encadrement-danger"></span> Effectif insuffisant</span>
+        </div>
+    </div>
+
+    {% else %}
+    <!-- ================================================ -->
+    <!-- STANDARD : Presences par tranche horaire          -->
+    <!-- ================================================ -->
+    <div class="presences-horaires-section">
+        <h2 class="presences-horaires-titre">Presences par tranche horaire</h2>
+        <p class="presences-horaires-subtitle">Nombre de salaries presents sur chaque creneau (equipe : {{ nb_membres }} pers.)</p>
+
+        <div class="presences-horaires-grid">
+            <!-- En-tete -->
+            <div class="ph-cell ph-header ph-label-col">Creneau</div>
+            {% for j in jours_header %}
+            <div class="ph-cell ph-header {% if j.is_today %}ph-today{% endif %}">
+                <span class="ph-day-name">{{ j.court }}</span>
+                <span class="ph-day-date">{{ j.date }}</span>
+            </div>
+            {% endfor %}
+
+            <!-- Lignes par tranche -->
+            {% for tranche in presences_horaires %}
+            <div class="ph-cell ph-label-col ph-tranche-label">{{ tranche.label }}</div>
+            {% for count in tranche.comptes %}
+            <div class="ph-cell ph-count {% if jours_header[loop.index0].is_today %}ph-today{% endif %}
+                {% if count == 0 %}ph-count-zero{% elif count <= 2 %}ph-count-low{% elif count >= nb_membres - 1 %}ph-count-full{% else %}ph-count-mid{% endif %}">
+                <span class="ph-count-value">{{ count }}</span>
+            </div>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="no-data" style="margin-top: 2rem;">
+        <p>Aucun collaborateur dans votre secteur.</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* ---- Layout ---- */
+.mon-equipe-page { max-width: 1200px; margin: 0 auto; }
+
+.week-nav {
+    display: flex; align-items: center; justify-content: center;
+    gap: 1.5rem; margin: 1.5rem 0;
+}
+.week-label { text-align: center; min-width: 230px; }
+.week-dates { font-size: 1.15rem; font-weight: 700; display: block; }
+.week-badge {
+    display: inline-block; margin-top: 4px;
+    font-size: 0.75rem; font-weight: 600;
+    padding: 2px 10px; border-radius: 12px;
+    background: var(--primary, #1976d2); color: #fff;
+}
+.week-badge-next { background: #7b1fa2; }
+
+/* ---- Grid ---- */
+.equipe-grid {
+    display: grid;
+    grid-template-columns: 180px repeat(5, 1fr);
+    border: 1px solid var(--gray-200, #e0e0e0);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--white, #fff);
+}
+.equipe-row { display: contents; }
+.equipe-cell {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--gray-100, #f0f0f0);
+    display: flex; flex-direction: column; justify-content: center;
+    min-height: 68px;
+}
+.equipe-header .equipe-cell {
+    background: var(--gray-50, #f8f9fa);
+    font-weight: 700; text-align: center;
+    min-height: 48px; align-items: center;
+    border-bottom: 2px solid var(--gray-200, #e0e0e0);
+}
+.equipe-name-col {
+    padding-left: 12px;
+    border-right: 1px solid var(--gray-200, #e0e0e0);
+    position: sticky; left: 0; z-index: 1;
+    background: var(--white, #fff);
+}
+.equipe-header .equipe-name-col {
+    background: var(--gray-50, #f8f9fa);
+}
+.equipe-day-col { align-items: center; text-align: center; }
+.equipe-today {
+    background: rgba(25, 118, 210, 0.04) !important;
+}
+.equipe-header .equipe-today {
+    background: rgba(25, 118, 210, 0.1) !important;
+}
+.day-name { font-size: 0.85rem; font-weight: 700; }
+.day-date { font-size: 0.78rem; color: var(--gray-500); }
+
+/* ---- Member info ---- */
+.member-name { font-weight: 600; font-size: 0.9rem; line-height: 1.2; }
+.member-role { margin-top: 2px; }
+.role-badge {
+    font-size: 0.7rem; padding: 1px 7px;
+    border-radius: 8px; background: var(--gray-100, #eee);
+    color: var(--gray-600, #666);
+}
+.role-resp { background: #e8eaf6; color: #3949ab; font-weight: 600; }
+
+/* ---- Day cards ---- */
+.day-card {
+    border-radius: 8px; padding: 6px 8px;
+    width: 100%; min-height: 46px;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    font-size: 0.8rem; line-height: 1.35;
+    transition: transform 0.1s;
+}
+.card-present {
+    background: #e3f2fd; border-left: 3px solid #1976d2;
+    color: #0d47a1;
+}
+.card-theorique {
+    background: #f5f5f5; border-left: 3px solid #bdbdbd;
+    color: #757575;
+    font-style: italic;
+}
+.card-absence {
+    background: #fce4ec; border-left: 3px solid #e53935;
+    color: #b71c1c;
+}
+.card-recup {
+    background: #fff3e0; border-left: 3px solid #fb8c00;
+    color: #e65100;
+}
+.card-ferie {
+    background: #f3e5f5; border-left: 3px solid #8e24aa;
+    color: #6a1b9a;
+}
+.card-empty {
+    background: transparent;
+    color: var(--gray-300);
+}
+.card-label {
+    font-weight: 600; font-size: 0.78rem;
+    text-align: center; word-break: break-word;
+}
+
+.slot { white-space: nowrap; font-weight: 600; }
+.slot-matin { margin-bottom: 2px; }
+.slot-aprem { font-size: 0.76rem; }
+
+/* ---- Legend ---- */
+.equipe-legend {
+    display: flex; gap: 1.2rem; flex-wrap: wrap;
+    margin-top: 1rem; padding: 0.6rem 1rem;
+    font-size: 0.8rem; color: var(--gray-600);
+    justify-content: center;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.dot-present { background: #e3f2fd; border: 2px solid #1976d2; }
+.dot-theorique { background: #f5f5f5; border: 2px solid #bdbdbd; }
+.dot-absence { background: #fce4ec; border: 2px solid #e53935; }
+.dot-recup { background: #fff3e0; border: 2px solid #fb8c00; }
+.dot-ferie { background: #f3e5f5; border: 2px solid #8e24aa; }
+
+/* ---- Dark mode ---- */
+[data-theme="dark"] .equipe-grid {
+    border-color: var(--gray-600); background: var(--gray-800, #1e1e1e);
+}
+[data-theme="dark"] .equipe-header .equipe-cell {
+    background: var(--gray-700, #333);
+    border-color: var(--gray-600);
+}
+[data-theme="dark"] .equipe-name-col { background: var(--gray-800, #1e1e1e); }
+[data-theme="dark"] .equipe-header .equipe-name-col { background: var(--gray-700, #333); }
+[data-theme="dark"] .equipe-cell { border-color: var(--gray-700, #333); }
+[data-theme="dark"] .equipe-today { background: rgba(25, 118, 210, 0.1) !important; }
+[data-theme="dark"] .equipe-header .equipe-today { background: rgba(25, 118, 210, 0.18) !important; }
+
+[data-theme="dark"] .card-present { background: #0d2137; border-color: #1976d2; color: #90caf9; }
+[data-theme="dark"] .card-theorique { background: #2a2a2a; border-color: #616161; color: #9e9e9e; }
+[data-theme="dark"] .card-absence { background: #3e1014; border-color: #e53935; color: #ef9a9a; }
+[data-theme="dark"] .card-recup { background: #3e2600; border-color: #fb8c00; color: #ffcc80; }
+[data-theme="dark"] .card-ferie { background: #2a0e35; border-color: #8e24aa; color: #ce93d8; }
+[data-theme="dark"] .role-badge { background: var(--gray-700); color: var(--gray-300); }
+[data-theme="dark"] .role-resp { background: #1a237e; color: #9fa8da; }
+
+/* ---- Presences par tranche horaire ---- */
+.presences-horaires-section {
+    margin-top: 2.5rem;
+}
+.presences-horaires-titre {
+    font-size: 1.1rem; font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+.presences-horaires-subtitle {
+    font-size: 0.82rem; color: var(--gray-500);
+    margin-bottom: 1rem;
+}
+.presences-horaires-grid {
+    display: grid;
+    grid-template-columns: 110px repeat(5, 1fr);
+    border: 1px solid var(--gray-200, #e0e0e0);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--white, #fff);
+}
+.ph-cell {
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--gray-100, #f0f0f0);
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    min-height: 42px; text-align: center;
+}
+.ph-header {
+    background: var(--gray-50, #f8f9fa);
+    font-weight: 700; font-size: 0.82rem;
+    min-height: 44px;
+    border-bottom: 2px solid var(--gray-200, #e0e0e0);
+}
+.ph-label-col {
+    border-right: 1px solid var(--gray-200, #e0e0e0);
+    background: var(--white, #fff);
+    position: sticky; left: 0; z-index: 1;
+}
+.ph-header.ph-label-col {
+    background: var(--gray-50, #f8f9fa);
+}
+.ph-tranche-label {
+    font-weight: 600; font-size: 0.82rem;
+    color: var(--gray-700, #444);
+}
+.ph-today {
+    background: rgba(25, 118, 210, 0.04) !important;
+}
+.ph-header.ph-today {
+    background: rgba(25, 118, 210, 0.1) !important;
+}
+.ph-day-name { font-size: 0.8rem; font-weight: 700; }
+.ph-day-date { font-size: 0.72rem; color: var(--gray-500); }
+.ph-count {
+    font-size: 0.9rem;
+}
+.ph-count-value {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-weight: 700; font-size: 0.95rem;
+}
+.ph-count-zero .ph-count-value {
+    background: #f5f5f5; color: #bdbdbd;
+}
+.ph-count-low .ph-count-value {
+    background: #fff3e0; color: #e65100;
+    border: 2px solid #fb8c00;
+}
+.ph-count-mid .ph-count-value {
+    background: #e3f2fd; color: #1565c0;
+}
+.ph-count-full .ph-count-value {
+    background: #e8f5e9; color: #2e7d32;
+    border: 2px solid #43a047;
+}
+
+/* ---- Dark mode presences horaires ---- */
+[data-theme="dark"] .presences-horaires-grid {
+    border-color: var(--gray-600); background: var(--gray-800, #1e1e1e);
+}
+[data-theme="dark"] .ph-header {
+    background: var(--gray-700, #333);
+    border-color: var(--gray-600);
+}
+[data-theme="dark"] .ph-label-col { background: var(--gray-800, #1e1e1e); }
+[data-theme="dark"] .ph-header.ph-label-col { background: var(--gray-700, #333); }
+[data-theme="dark"] .ph-cell { border-color: var(--gray-700, #333); }
+[data-theme="dark"] .ph-tranche-label { color: var(--gray-300); }
+[data-theme="dark"] .ph-today { background: rgba(25, 118, 210, 0.1) !important; }
+[data-theme="dark"] .ph-header.ph-today { background: rgba(25, 118, 210, 0.18) !important; }
+[data-theme="dark"] .ph-count-zero .ph-count-value { background: #2a2a2a; color: #616161; }
+[data-theme="dark"] .ph-count-low .ph-count-value { background: #3e2600; color: #ffcc80; border-color: #fb8c00; }
+[data-theme="dark"] .ph-count-mid .ph-count-value { background: #0d2137; color: #90caf9; }
+[data-theme="dark"] .ph-count-full .ph-count-value { background: #1b3a1e; color: #a5d6a7; border-color: #43a047; }
+
+/* ---- Creche : frequentation inputs ---- */
+.freq-input-grid {
+    display: flex; flex-direction: column; gap: 0.5rem;
+    max-width: 500px;
+}
+.freq-input-row {
+    display: flex; align-items: center; gap: 0.75rem;
+}
+.freq-label {
+    min-width: 110px; font-weight: 600; font-size: 0.9rem;
+    color: var(--gray-700);
+}
+.freq-input-wrapper {
+    display: flex; align-items: center; gap: 0.4rem;
+}
+.freq-input {
+    width: 70px; padding: 6px 8px;
+    border: 1px solid var(--gray-200); border-radius: 6px;
+    font-size: 0.9rem; text-align: center;
+    background: var(--white);
+    color: var(--gray-900);
+}
+.freq-input:focus {
+    border-color: var(--primary); outline: none;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+.freq-unit {
+    font-size: 0.8rem; color: var(--gray-500);
+}
+.freq-terrain-label {
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer; white-space: nowrap;
+}
+.freq-terrain-checkbox {
+    width: 16px; height: 16px; cursor: pointer;
+    accent-color: var(--primary, #1976d2);
+}
+.freq-terrain-text {
+    font-size: 0.78rem; color: var(--gray-600);
+    font-weight: 500;
+}
+.freq-requis {
+    font-size: 0.82rem; color: var(--primary);
+    font-weight: 600; min-width: 110px;
+}
+.freq-actions {
+    margin-top: 1rem; display: flex; align-items: center; gap: 1rem;
+}
+.freq-help {
+    font-size: 0.78rem; color: var(--gray-500); margin-top: 0.5rem;
+    font-style: italic;
+}
+
+/* ---- Creche : couleurs taux encadrement ---- */
+.ph-count-ok .ph-count-value {
+    background: #e8f5e9; color: #2e7d32;
+    border: 2px solid #43a047;
+}
+.ph-count-warning .ph-count-value {
+    background: #fff3e0; color: #e65100;
+    border: 2px solid #fb8c00;
+}
+.ph-count-danger .ph-count-value {
+    background: #fce4ec; color: #c62828;
+    border: 2px solid #e53935;
+}
+.dot-encadrement-ok { background: #e8f5e9; border: 2px solid #43a047; }
+.dot-encadrement-warning { background: #fff3e0; border: 2px solid #fb8c00; }
+.dot-encadrement-danger { background: #fce4ec; border: 2px solid #e53935; }
+
+/* ---- Dark mode creche ---- */
+[data-theme="dark"] .freq-input {
+    background: var(--gray-200); border-color: var(--gray-300);
+    color: var(--gray-900);
+}
+[data-theme="dark"] .freq-label { color: var(--gray-300); }
+[data-theme="dark"] .freq-terrain-text { color: var(--gray-400); }
+[data-theme="dark"] .ph-count-ok .ph-count-value { background: #1b3a1e; color: #a5d6a7; border-color: #43a047; }
+[data-theme="dark"] .ph-count-warning .ph-count-value { background: #3e2600; color: #ffcc80; border-color: #fb8c00; }
+[data-theme="dark"] .ph-count-danger .ph-count-value { background: #3e1014; color: #ef9a9a; border-color: #e53935; }
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+    .equipe-grid { grid-template-columns: 120px repeat(5, 1fr); font-size: 0.78rem; }
+    .equipe-cell { padding: 4px 3px; min-height: 54px; }
+    .day-card { padding: 4px; min-height: 38px; }
+    .member-name { font-size: 0.82rem; }
+    .day-name { font-size: 0.75rem; }
+    .slot { font-size: 0.72rem; }
+    .presences-horaires-grid { grid-template-columns: 90px repeat(5, 1fr); }
+    .ph-cell { padding: 4px 3px; min-height: 36px; }
+    .ph-count-value { width: 28px; height: 28px; font-size: 0.82rem; }
+    .ph-tranche-label { font-size: 0.72rem; }
+    .freq-input-row { flex-wrap: wrap; gap: 0.4rem; }
+    .freq-label { min-width: 70px; font-size: 0.82rem; }
+    .freq-terrain-text { font-size: 0.72rem; }
+    .freq-requis { font-size: 0.75rem; min-width: 90px; }
+}
+</style>
+
+{% if is_creche and session.profil == 'responsable' %}
+<script>
+(function() {
+    var SECTEUR_ID = {{ secteur_id }};
+    var RATIO = 6;
+    var MIN_PRO = 2;
+
+    function calcRequis(nb) {
+        if (nb <= 0) return 0;
+        return Math.max(MIN_PRO, Math.ceil(nb / RATIO));
+    }
+
+    // Mettre a jour l'affichage requis en temps reel
+    document.querySelectorAll('.freq-input').forEach(function(input) {
+        input.addEventListener('input', function() {
+            var tranche = this.dataset.tranche;
+            var nb = parseFloat(this.value) || 0;
+            var requis = calcRequis(nb);
+            var el = document.querySelector('.freq-requis[data-tranche="' + tranche + '"]');
+            if (el) {
+                el.textContent = requis > 0 ? '= ' + requis + ' pro requis' : '-';
+            }
+        });
+    });
+
+    window.saveFrequentation = function() {
+        var tranches = [];
+        document.querySelectorAll('.freq-input').forEach(function(input) {
+            var trancheLabel = input.dataset.tranche;
+            var checkbox = document.querySelector('.freq-terrain-checkbox[data-tranche="' + trancheLabel + '"]');
+            tranches.push({
+                tranche: trancheLabel,
+                nb_enfants: parseFloat(input.value) || 0,
+                responsable_terrain: checkbox ? checkbox.checked : false
+            });
+        });
+
+        var statusEl = document.getElementById('saveFreqStatus');
+        var btnEl = document.getElementById('btnSaveFreq');
+        statusEl.textContent = 'Sauvegarde...';
+        statusEl.className = 'budget-save-status';
+        btnEl.disabled = true;
+
+        fetch('{{ url_for("mon_equipe_bp.api_save_frequentation") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                secteur_id: SECTEUR_ID,
+                tranches: tranches
+            })
+        })
+        .then(function(resp) { return resp.json().then(function(data) { return {ok: resp.ok, data: data}; }); })
+        .then(function(result) {
+            btnEl.disabled = false;
+            if (result.ok && result.data.success) {
+                statusEl.textContent = '✓ ' + result.data.message;
+                statusEl.className = 'budget-save-status budget-save-success';
+                // Recharger la page pour mettre a jour le tableau de presences
+                setTimeout(function() { location.reload(); }, 1200);
+            } else {
+                statusEl.textContent = '✗ ' + (result.data.error || 'Erreur');
+                statusEl.className = 'budget-save-status budget-save-error';
+            }
+            setTimeout(function() { statusEl.textContent = ''; }, 5000);
+        })
+        .catch(function(err) {
+            btnEl.disabled = false;
+            statusEl.textContent = '✗ Erreur reseau';
+            statusEl.className = 'budget-save-status budget-save-error';
+        });
+    };
+})();
+</script>
+{% endif %}
+{% endblock %}

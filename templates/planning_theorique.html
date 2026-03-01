@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block title %}Planning théorique{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Planning théorique</h1>
+    <p class="subtitle">Définissez vos horaires habituels selon les périodes (par jour de la semaine)</p>
+    
+    {% if semaine_actuelle and semaine_actuelle != 'fixe' %}
+    <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 1.5rem; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 2rem;">
+        <h3 style="color: var(--primary-dark); margin-bottom: 0.5rem;">
+            🔄 Planning alterné activé
+        </h3>
+        <p style="color: var(--gray-700); font-size: 1.1rem; margin: 0;">
+            <strong>Cette semaine :</strong> 
+            <span style="background: var(--primary); color: white; padding: 0.25rem 1rem; border-radius: 4px; font-size: 1rem;">
+                {% if semaine_actuelle == 'semaine_1' %}
+                Semaine 1
+                {% else %}
+                Semaine 2
+                {% endif %}
+            </span>
+        </p>
+        {% if references %}
+        <p style="color: var(--gray-600); font-size: 0.9rem; margin-top: 0.5rem; margin-bottom: 0;">
+            Date de référence (début semaine 1) : {{ references[0].date_reference }}
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+    
+    {% if plannings %}
+    <div class="section">
+        <h2>Historique des plannings</h2>
+        <p class="help-text" style="margin-bottom: 1rem;">
+            Les plannings sont conservés avec leur date de début de validité. Le système utilise automatiquement le bon planning selon la date des heures saisies.
+        </p>
+        {% for p in plannings %}
+        {% set est_actif = (p.date_debut_validite <= date_actuelle) %}
+        <div style="margin-bottom: 2rem; padding: 1.5rem; background: {% if est_actif %}#dbeafe{% else %}var(--gray-50){% endif %}; border-radius: 8px; border-left: 4px solid {% if est_actif %}var(--primary){% else %}var(--gray-300){% endif %};">
+            <h3 style="color: var(--primary-dark); margin-bottom: 0.5rem;">
+                {% if p.type_alternance and p.type_alternance != 'fixe' %}
+                    {% if p.type_alternance == 'semaine_1' %}
+                    🔄 Semaine 1 - 
+                    {% else %}
+                    🔄 Semaine 2 - 
+                    {% endif %}
+                {% endif %}
+                {% if p.type_periode == 'periode_scolaire' %}
+                📚 Période scolaire
+                {% else %}
+                🏖️ Vacances scolaires
+                {% endif %}
+                {% if est_actif %}
+                <span style="background: var(--primary); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">✓ ACTIF</span>
+                {% else %}
+                <span style="background: var(--gray-400); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">Historique</span>
+                {% endif %}
+            </h3>
+            <p style="color: var(--gray-600); font-size: 0.9rem; margin-bottom: 1rem;">
+                <strong>Valable à partir du :</strong> {{ p.date_debut_validite }} 
+                ({{ "%.1f"|format(p.total_hebdo) }}h/semaine)
+            </p>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Jour</th>
+                        <th>Matin</th>
+                        <th>Après-midi</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Lundi</strong></td>
+                        <td>{{ p.lundi_matin_debut or '-' }} - {{ p.lundi_matin_fin or '-' }}</td>
+                        <td>{{ p.lundi_aprem_debut or '-' }} - {{ p.lundi_aprem_fin or '-' }}</td>
+                        <td>
+                            {% set lundi_h = ((p.lundi_matin_debut and p.lundi_matin_fin) | default(0, true)) %}
+                            {% if lundi_h %}
+                            {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 %}
+                            {% set h_aprem = (p.lundi_aprem_fin.split(':')[0]|int * 60 + p.lundi_aprem_fin.split(':')[1]|int - p.lundi_aprem_debut.split(':')[0]|int * 60 - p.lundi_aprem_debut.split(':')[1]|int) / 60 if p.lundi_aprem_debut and p.lundi_aprem_fin else 0 %}
+                            {{ "%.1f"|format(h_matin + h_aprem) }}h
+                            {% else %}
+                            Non travaillé
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Mardi</strong></td>
+                        <td>{{ p.mardi_matin_debut or '-' }} - {{ p.mardi_matin_fin or '-' }}</td>
+                        <td>{{ p.mardi_aprem_debut or '-' }} - {{ p.mardi_aprem_fin or '-' }}</td>
+                        <td>
+                            {% if p.mardi_matin_debut %}
+                            {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 %}
+                            {% set h_aprem = (p.mardi_aprem_fin.split(':')[0]|int * 60 + p.mardi_aprem_fin.split(':')[1]|int - p.mardi_aprem_debut.split(':')[0]|int * 60 - p.mardi_aprem_debut.split(':')[1]|int) / 60 if p.mardi_aprem_debut and p.mardi_aprem_fin else 0 %}
+                            {{ "%.1f"|format(h_matin + h_aprem) }}h
+                            {% else %}
+                            Non travaillé
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Mercredi</strong></td>
+                        <td>{{ p.mercredi_matin_debut or '-' }} - {{ p.mercredi_matin_fin or '-' }}</td>
+                        <td>{{ p.mercredi_aprem_debut or '-' }} - {{ p.mercredi_aprem_fin or '-' }}</td>
+                        <td>
+                            {% if p.mercredi_matin_debut %}
+                            {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 %}
+                            {% set h_aprem = (p.mercredi_aprem_fin.split(':')[0]|int * 60 + p.mercredi_aprem_fin.split(':')[1]|int - p.mercredi_aprem_debut.split(':')[0]|int * 60 - p.mercredi_aprem_debut.split(':')[1]|int) / 60 if p.mercredi_aprem_debut and p.mercredi_aprem_fin else 0 %}
+                            {{ "%.1f"|format(h_matin + h_aprem) }}h
+                            {% else %}
+                            Non travaillé
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Jeudi</strong></td>
+                        <td>{{ p.jeudi_matin_debut or '-' }} - {{ p.jeudi_matin_fin or '-' }}</td>
+                        <td>{{ p.jeudi_aprem_debut or '-' }} - {{ p.jeudi_aprem_fin or '-' }}</td>
+                        <td>
+                            {% if p.jeudi_matin_debut %}
+                            {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 %}
+                            {% set h_aprem = (p.jeudi_aprem_fin.split(':')[0]|int * 60 + p.jeudi_aprem_fin.split(':')[1]|int - p.jeudi_aprem_debut.split(':')[0]|int * 60 - p.jeudi_aprem_debut.split(':')[1]|int) / 60 if p.jeudi_aprem_debut and p.jeudi_aprem_fin else 0 %}
+                            {{ "%.1f"|format(h_matin + h_aprem) }}h
+                            {% else %}
+                            Non travaillé
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><strong>Vendredi</strong></td>
+                        <td>{{ p.vendredi_matin_debut or '-' }} - {{ p.vendredi_matin_fin or '-' }}</td>
+                        <td>{{ p.vendredi_aprem_debut or '-' }} - {{ p.vendredi_aprem_fin or '-' }}</td>
+                        <td>
+                            {% if p.vendredi_matin_debut %}
+                            {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 %}
+                            {% set h_aprem = (p.vendredi_aprem_fin.split(':')[0]|int * 60 + p.vendredi_aprem_fin.split(':')[1]|int - p.vendredi_aprem_debut.split(':')[0]|int * 60 - p.vendredi_aprem_debut.split(':')[1]|int) / 60 if p.vendredi_aprem_debut and p.vendredi_aprem_fin else 0 %}
+                            {{ "%.1f"|format(h_matin + h_aprem) }}h
+                            {% else %}
+                            Non travaillé
+                            {% endif %}
+                        </td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3"><strong>Total hebdomadaire</strong></td>
+                        <td><strong>{{ "%.2f"|format(p.total_hebdo) }}h</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <div class="section">
+        <h2>{% if plannings %}Modifier{% else %}Créer{% endif %} un planning</h2>
+        
+        <form method="POST" action="{{ url_for('planning_bp.planning_theorique') }}">
+            <div class="form-group">
+                <label for="type_periode">Type de période *</label>
+                <select id="type_periode" name="type_periode" required>
+                    <option value="">-- Choisir --</option>
+                    <option value="periode_scolaire">Période scolaire</option>
+                    <option value="vacances">Vacances scolaires</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="type_alternance">Type de planning *</label>
+                <select id="type_alternance" name="type_alternance" required>
+                    <option value="fixe">Planning fixe (pas d'alternance)</option>
+                    <option value="semaine_1">Semaine 1 (planning alterné)</option>
+                    <option value="semaine_2">Semaine 2 (planning alterné)</option>
+                </select>
+                <p class="help-text">
+                    <strong>Planning alterné :</strong> Si vous avez des horaires qui changent chaque semaine (ex: semaine 1 = 35h, semaine 2 = 28h), créez un planning pour chaque semaine.
+                </p>
+            </div>
+            
+            <div id="date-reference-group" class="form-group" style="display: none;">
+                <label for="date_reference">Date de référence (début de la semaine 1) *</label>
+                <input type="date" id="date_reference" name="date_reference">
+                <p class="help-text">
+                    <strong>Important :</strong> Choisissez un LUNDI qui sera considéré comme le début d'une "semaine 1". 
+                    L'alternance se calculera automatiquement à partir de cette date.
+                    <br><strong>Exemple :</strong> Si vous choisissez le lundi 06/01/2026, alors :
+                    <br>• Semaine du 06/01 = Semaine 1
+                    <br>• Semaine du 13/01 = Semaine 2
+                    <br>• Semaine du 20/01 = Semaine 1
+                    <br>• ...et ainsi de suite
+                </p>
+            </div>
+            
+            <div class="form-group">
+                <label for="date_debut_validite">Date de début de validité *</label>
+                <input type="date" id="date_debut_validite" name="date_debut_validite" required>
+                <p class="help-text">
+                    <strong>Important :</strong> Ce planning sera utilisé pour tous les calculs à partir de cette date.
+                    Si vous modifiez un planning existant, saisissez la date à partir de laquelle le nouveau planning s'applique.
+                </p>
+            </div>
+            
+            <p class="help-text" style="margin-bottom: 1.5rem; background: #dbeafe; padding: 1rem; border-radius: 6px;">
+                <strong>Conseil :</strong> Laissez les horaires vides pour les jours non travaillés. Les heures vides = jour de repos.
+            </p>
+            
+            <!-- LUNDI -->
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Lundi</h3>
+                <div class="time-grid">
+                    <div class="time-section">
+                        <h4>Matin</h4>
+                        <div class="form-group">
+                            <label for="lundi_matin_debut">Heure d'arrivée</label>
+                            <input type="time" id="lundi_matin_debut" name="lundi_matin_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="lundi_matin_fin">Heure de départ</label>
+                            <input type="time" id="lundi_matin_fin" name="lundi_matin_fin">
+                        </div>
+                    </div>
+                    <div class="time-section">
+                        <h4>Après-midi</h4>
+                        <div class="form-group">
+                            <label for="lundi_aprem_debut">Heure d'arrivée</label>
+                            <input type="time" id="lundi_aprem_debut" name="lundi_aprem_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="lundi_aprem_fin">Heure de départ</label>
+                            <input type="time" id="lundi_aprem_fin" name="lundi_aprem_fin">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MARDI -->
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Mardi</h3>
+                <div class="time-grid">
+                    <div class="time-section">
+                        <h4>Matin</h4>
+                        <div class="form-group">
+                            <label for="mardi_matin_debut">Heure d'arrivée</label>
+                            <input type="time" id="mardi_matin_debut" name="mardi_matin_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="mardi_matin_fin">Heure de départ</label>
+                            <input type="time" id="mardi_matin_fin" name="mardi_matin_fin">
+                        </div>
+                    </div>
+                    <div class="time-section">
+                        <h4>Après-midi</h4>
+                        <div class="form-group">
+                            <label for="mardi_aprem_debut">Heure d'arrivée</label>
+                            <input type="time" id="mardi_aprem_debut" name="mardi_aprem_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="mardi_aprem_fin">Heure de départ</label>
+                            <input type="time" id="mardi_aprem_fin" name="mardi_aprem_fin">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MERCREDI -->
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Mercredi</h3>
+                <div class="time-grid">
+                    <div class="time-section">
+                        <h4>Matin</h4>
+                        <div class="form-group">
+                            <label for="mercredi_matin_debut">Heure d'arrivée</label>
+                            <input type="time" id="mercredi_matin_debut" name="mercredi_matin_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="mercredi_matin_fin">Heure de départ</label>
+                            <input type="time" id="mercredi_matin_fin" name="mercredi_matin_fin">
+                        </div>
+                    </div>
+                    <div class="time-section">
+                        <h4>Après-midi</h4>
+                        <div class="form-group">
+                            <label for="mercredi_aprem_debut">Heure d'arrivée</label>
+                            <input type="time" id="mercredi_aprem_debut" name="mercredi_aprem_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="mercredi_aprem_fin">Heure de départ</label>
+                            <input type="time" id="mercredi_aprem_fin" name="mercredi_aprem_fin">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- JEUDI -->
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Jeudi</h3>
+                <div class="time-grid">
+                    <div class="time-section">
+                        <h4>Matin</h4>
+                        <div class="form-group">
+                            <label for="jeudi_matin_debut">Heure d'arrivée</label>
+                            <input type="time" id="jeudi_matin_debut" name="jeudi_matin_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="jeudi_matin_fin">Heure de départ</label>
+                            <input type="time" id="jeudi_matin_fin" name="jeudi_matin_fin">
+                        </div>
+                    </div>
+                    <div class="time-section">
+                        <h4>Après-midi</h4>
+                        <div class="form-group">
+                            <label for="jeudi_aprem_debut">Heure d'arrivée</label>
+                            <input type="time" id="jeudi_aprem_debut" name="jeudi_aprem_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="jeudi_aprem_fin">Heure de départ</label>
+                            <input type="time" id="jeudi_aprem_fin" name="jeudi_aprem_fin">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- VENDREDI -->
+            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Vendredi</h3>
+                <div class="time-grid">
+                    <div class="time-section">
+                        <h4>Matin</h4>
+                        <div class="form-group">
+                            <label for="vendredi_matin_debut">Heure d'arrivée</label>
+                            <input type="time" id="vendredi_matin_debut" name="vendredi_matin_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="vendredi_matin_fin">Heure de départ</label>
+                            <input type="time" id="vendredi_matin_fin" name="vendredi_matin_fin">
+                        </div>
+                    </div>
+                    <div class="time-section">
+                        <h4>Après-midi</h4>
+                        <div class="form-group">
+                            <label for="vendredi_aprem_debut">Heure d'arrivée</label>
+                            <input type="time" id="vendredi_aprem_debut" name="vendredi_aprem_debut">
+                        </div>
+                        <div class="form-group">
+                            <label for="vendredi_aprem_fin">Heure de départ</label>
+                            <input type="time" id="vendredi_aprem_fin" name="vendredi_aprem_fin">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">💾 Enregistrer le planning</button>
+                <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Annuler</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Pré-remplir la date de début de validité avec la date du jour
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById('date_debut_validite');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = '{{ date_actuelle }}';
+    }
+    
+    // Gestion affichage date de référence selon type d'alternance
+    const typeAlternanceSelect = document.getElementById('type_alternance');
+    const dateReferenceGroup = document.getElementById('date-reference-group');
+    const dateReferenceInput = document.getElementById('date_reference');
+    
+    function toggleDateReference() {
+        const typeValue = typeAlternanceSelect.value;
+        
+        if (typeValue === 'semaine_1' || typeValue === 'semaine_2') {
+            // Afficher le champ date de référence
+            dateReferenceGroup.style.display = 'block';
+            dateReferenceInput.setAttribute('required', 'required');
+            
+            // Pré-remplir avec le prochain lundi si pas déjà rempli
+            if (!dateReferenceInput.value) {
+                const today = new Date('{{ date_actuelle }}');
+                const dayOfWeek = today.getDay();
+                const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek);
+                const nextMonday = new Date(today);
+                nextMonday.setDate(today.getDate() + daysUntilMonday);
+                
+                const year = nextMonday.getFullYear();
+                const month = String(nextMonday.getMonth() + 1).padStart(2, '0');
+                const day = String(nextMonday.getDate()).padStart(2, '0');
+                dateReferenceInput.value = `${year}-${month}-${day}`;
+            }
+        } else {
+            // Masquer et retirer l'obligation
+            dateReferenceGroup.style.display = 'none';
+            dateReferenceInput.removeAttribute('required');
+        }
+    }
+    
+    // Déclencher au chargement et au changement
+    typeAlternanceSelect.addEventListener('change', toggleDateReference);
+    toggleDateReference(); // Initial
+});
+</script>
+{% endblock %}

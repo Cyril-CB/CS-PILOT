@@ -1,0 +1,742 @@
+{% extends "base.html" %}
+{% block title %}Pesée ALISFA — Classification{% endblock %}
+{% block content %}
+
+<style>
+    .pa-container { max-width: 900px; margin: 0 auto; padding: 10px 0; }
+    .pa-header { text-align: center; margin-bottom: 24px; }
+    .pa-header .pa-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .pa-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+    .pa-header .pa-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .pa-card { background: var(--white); border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+    .pa-stitle { font-size: 15px; font-weight: 800; color: var(--gray-900); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+    /* API key */
+    .pa-key-box { padding: 16px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px; margin-bottom: 16px; }
+    .pa-key-box.pa-key-ok { background: #f0fdf4; border-color: #86efac; }
+
+    /* Upload */
+    .pa-upload { border: 2px dashed var(--gray-300); border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--gray-50); }
+    .pa-upload:hover { border-color: #7c3aed; background: #faf5ff; }
+    .pa-upload.pa-has-file { border-color: var(--success); background: #f0fdf4; border-style: solid; }
+    .pa-upload input[type="file"] { display: none; }
+
+    /* Context inputs */
+    .pa-context { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .pa-context.pa-context-2 { grid-template-columns: 1fr 1fr; }
+    .pa-context label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .pa-context input, .pa-context select { width: 100%; padding: 8px 10px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+
+    /* Buttons */
+    .pa-btn { padding: 10px 24px; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    .pa-btn-primary { background: #7c3aed; color: white; }
+    .pa-btn-primary:hover { background: #6d28d9; }
+    .pa-btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+    .pa-btn-success { background: var(--success); color: white; }
+    .pa-btn-success:hover { background: #059669; }
+    .pa-btn-sm { padding: 5px 12px; font-size: 12px; }
+    .pa-btn-danger { background: var(--danger); color: white; }
+
+    /* Progress */
+    .pa-progress { margin: 20px 0; }
+    .pa-progress-bar { height: 6px; background: var(--gray-200); border-radius: 99px; overflow: hidden; }
+    .pa-progress-fill { height: 100%; background: #7c3aed; border-radius: 99px; transition: width 0.5s; }
+    .pa-progress-label { font-size: 13px; color: var(--gray-500); margin-top: 6px; text-align: center; }
+
+    /* Score banner */
+    .pa-score-banner { background: linear-gradient(135deg, #7c3aed, #a855f7); border-radius: 12px; padding: 20px; color: white; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .pa-score-banner .pa-sb-label { font-size: 12px; opacity: 0.85; margin-bottom: 4px; }
+    .pa-score-banner .pa-sb-value { font-size: 28px; font-weight: 800; font-family: 'Courier New', monospace; }
+    .pa-score-banner .pa-sb-center { text-align: center; }
+    .pa-score-banner .pa-sb-right { text-align: right; }
+
+    /* Criterion card */
+    .pa-criterion { border: 2px solid var(--gray-200); border-radius: 12px; padding: 16px; margin-bottom: 12px; transition: all 0.2s; }
+    .pa-criterion:hover { box-shadow: var(--shadow-md); }
+    .pa-criterion.pa-locked { border-color: #86efac; background: #f0fdf4; }
+    .pa-criterion-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .pa-criterion-name { font-size: 16px; font-weight: 700; color: var(--gray-900); }
+    .pa-criterion-level { font-size: 13px; color: #7c3aed; font-weight: 600; margin-top: 4px; }
+    .pa-criterion-points { background: #ede9fe; color: #7c3aed; padding: 6px 14px; border-radius: 99px; font-size: 15px; font-weight: 800; white-space: nowrap; margin-left: 12px; flex-shrink: 0; }
+    .pa-criterion-justif { background: var(--gray-50); border-radius: 8px; padding: 12px; margin-top: 10px; font-size: 13px; color: var(--gray-700); line-height: 1.6; }
+
+    /* Certainty bar */
+    .pa-cert { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .pa-cert-bar { width: 80px; height: 6px; background: var(--gray-200); border-radius: 99px; overflow: hidden; }
+    .pa-cert-fill { height: 100%; border-radius: 99px; }
+    .pa-cert-label { font-size: 11px; font-weight: 600; }
+
+    /* Lock toggle */
+    .pa-lock-btn { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; cursor: pointer; border: 1px solid; transition: all 0.2s; }
+    .pa-lock-btn.pa-unlocked { background: #fff; border-color: var(--gray-300); color: var(--gray-500); }
+    .pa-lock-btn.pa-is-locked { background: #dcfce7; border-color: #86efac; color: #16a34a; }
+
+    /* Level selector */
+    .pa-level-select { margin-top: 8px; padding: 6px; border: 2px solid #7c3aed; border-radius: 8px; font-size: 13px; font-weight: 600; width: 100%; }
+
+    /* Alert */
+    .pa-alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; }
+    .pa-alert-warn { background: #fffbeb; border-left: 4px solid #f59e0b; color: #92400e; }
+    .pa-alert-info { background: #eff6ff; border-left: 4px solid #3b82f6; color: #1e40af; }
+    .pa-alert-error { background: #fef2f2; border-left: 4px solid #ef4444; color: #991b1b; }
+
+    /* Extraction facts */
+    .pa-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; }
+    .pa-fact { padding: 8px 12px; background: var(--gray-50); border-radius: 8px; border: 1px solid var(--gray-100); }
+    .pa-fact-label { font-weight: 700; color: var(--gray-500); font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .pa-fact-value { color: var(--gray-900); margin-top: 2px; }
+
+    .pa-synthese { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+
+    @media (max-width: 700px) {
+        .pa-context { grid-template-columns: 1fr; }
+        .pa-score-banner { grid-template-columns: 1fr; }
+        .pa-facts { grid-template-columns: 1fr; }
+    }
+
+    /* Diagnostic */
+    .pa-diag-global { background: #faf5ff; border: 1px solid #e9d5ff; border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 14px; color: var(--gray-700); line-height: 1.7; }
+    .pa-diag-subtitle { font-size: 14px; font-weight: 800; margin: 16px 0 8px 0; display: flex; align-items: center; gap: 6px; }
+    .pa-diag-fort { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; color: #166534; }
+    .pa-diag-probleme { border: 1px solid var(--gray-200); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+    .pa-diag-probleme-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .pa-diag-badge-fond { background: #fef2f2; color: #991b1b; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .pa-diag-badge-forme { background: #fffbeb; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .pa-diag-extrait { font-size: 12px; color: var(--gray-500); font-style: italic; margin: 6px 0; padding-left: 10px; border-left: 2px solid var(--gray-200); }
+    .pa-diag-suggestion { background: #eff6ff; border-left: 3px solid #3b82f6; border-radius: 0 8px 8px 0; padding: 10px 12px; margin-top: 8px; font-size: 13px; color: #1e40af; }
+    .pa-diag-terme { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; padding: 10px; border: 1px solid var(--gray-100); border-radius: 8px; margin-bottom: 6px; font-size: 13px; }
+    .pa-diag-fleche { color: #7c3aed; font-weight: 800; font-size: 16px; padding-top: 2px; }
+    .pa-diag-priorite { background: linear-gradient(135deg, #faf5ff, #ede9fe); border: 2px solid #c4b5fd; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .pa-diag-priorite-label { font-size: 12px; font-weight: 800; color: #7c3aed; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+</style>
+
+<div class="pa-container">
+    <div class="pa-header">
+        <div class="pa-label">Classification CCN ALISFA</div>
+        <h2>Pesée de fiche de poste</h2>
+        <div class="pa-sub">Analyse IA en deux passes — extraction factuelle + cotation</div>
+    </div>
+
+    <!-- Statut clé API -->
+    <div id="paKeySection" class="pa-key-box {{ 'pa-key-ok' if has_api_key else '' }}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div class="pa-stitle" style="margin-bottom:0;">🔑 Configuration IA</div>
+            {% if has_api_key %}
+            <span style="font-size:12px;color:#16a34a;font-weight:600;">✓ Clé(s) API configurée(s)</span>
+            {% endif %}
+        </div>
+        {% if has_api_key %}
+        <p style="font-size:13px;color:#15803d;margin:8px 0 0 0;">Les clés API sont configurées. Les appels IA sont effectués côté serveur.</p>
+        {% else %}
+        <p style="font-size:13px;color:#92400e;margin:8px 0 4px 0;">Aucune clé API configurée. Configurez au moins une clé API pour activer l'analyse IA.</p>
+        <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}" class="pa-btn pa-btn-primary pa-btn-sm" style="display:inline-block;text-decoration:none;margin-top:4px;">Configurer les clés API</a>
+        {% endif %}
+    </div>
+
+    <!-- Upload & contexte -->
+    <div class="pa-card">
+        <div class="pa-stitle">📄 Fiche de poste</div>
+
+        <div class="pa-upload" id="paUploadZone" onclick="document.getElementById('paPdfInput').click();">
+            <input type="file" id="paPdfInput" accept=".pdf" onchange="paFileSelected(this)" />
+            <div id="paUploadLabel">
+                <div style="font-size:28px;margin-bottom:8px;">📎</div>
+                <div style="font-weight:700;color:var(--gray-700);">Cliquez pour charger un PDF</div>
+                <div style="font-size:12px;color:var(--gray-500);margin-top:4px;">Fiche de poste au format PDF</div>
+            </div>
+        </div>
+
+        <div class="pa-context pa-context-2">
+            <div>
+                <label>Famille de metier *</label>
+                <select id="paFamille" onchange="paUpdateEmplois()">
+                    <option value="">-- Choisir --</option>
+                    {% for f in familles %}
+                    <option value="{{ f }}">{{ f }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label>Emploi repere *</label>
+                <select id="paEmploi" onchange="paCheckReady()">
+                    <option value="">-- Choisir une famille d'abord --</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="pa-context">
+            <div>
+                <label>Nombre d'ETP</label>
+                <input type="number" id="paNbEtp" placeholder="Ex: 25" />
+                <div style="font-size:10px;color:#aaa;margin-top:2px;">Pour criteres RH et securite</div>
+            </div>
+            <div>
+                <label>Budget global (€)</label>
+                <input type="number" id="paBudget" placeholder="Ex: 1500000" />
+                <div style="font-size:10px;color:#aaa;margin-top:2px;">Contexte responsabilites financieres</div>
+            </div>
+            <div>
+                <label>Modele IA</label>
+                <select id="paModel">
+                    {% for m in available_models %}
+                    <option value="{{ m.id }}">{{ m.label }} — {{ m.provider_name }}</option>
+                    {% endfor %}
+                    {% if not available_models %}
+                    <option value="" disabled selected>Aucun modele disponible</option>
+                    {% endif %}
+                </select>
+            </div>
+        </div>
+
+        <div style="margin-top:16px;text-align:center;">
+            <button class="pa-btn pa-btn-primary" id="paAnalyzeBtn" onclick="paAnalyze()" disabled>
+                Analyser la fiche de poste
+            </button>
+        </div>
+    </div>
+
+    <!-- Progression -->
+    <div id="paProgressBox" style="display:none;" class="pa-card">
+        <div class="pa-progress">
+            <div class="pa-progress-bar"><div class="pa-progress-fill" id="paProgressFill" style="width:0%;"></div></div>
+            <div class="pa-progress-label" id="paProgressLabel">Préparation...</div>
+        </div>
+    </div>
+
+    <!-- Erreur -->
+    <div id="paErrorBox" style="display:none;" class="pa-alert pa-alert-error"></div>
+
+    <!-- Résultats -->
+    <div id="paResults" style="display:none;">
+
+        <!-- Extraction factuelle (collapsible) -->
+        <div class="pa-card">
+            <div class="pa-stitle" style="cursor:pointer;justify-content:space-between;" onclick="document.getElementById('paFactsBody').style.display=document.getElementById('paFactsBody').style.display==='none'?'block':'none';">
+                <span>🔍 Passe 1 — Éléments factuels extraits</span>
+                <span style="font-size:12px;color:#aaa;">cliquer pour déplier/replier</span>
+            </div>
+            <div id="paFactsBody" style="display:none;">
+                <div class="pa-facts" id="paFactsGrid"></div>
+            </div>
+        </div>
+
+        <!-- Score banner -->
+        <div class="pa-score-banner" id="paScoreBanner"></div>
+
+        <!-- Synthèse -->
+        <div class="pa-synthese" id="paSynthese"></div>
+
+        <!-- Alertes -->
+        <div id="paAlertes"></div>
+
+        <!-- Actions -->
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+            <button class="pa-btn pa-btn-primary" id="paReanalyzeBtn" onclick="paReanalyze()">
+                🔄 Ré-analyser les critères déverrouillés
+            </button>
+            <button class="pa-btn pa-btn-success" onclick="paExportPDF()">
+                📥 Exporter PDF
+            </button>
+            <span style="font-size:12px;color:var(--gray-500);align-self:center;">
+                Verrouillez les critères validés puis ré-analysez pour plus de stabilité.
+            </span>
+        </div>
+
+        <!-- Critères -->
+        <div id="paCriteriaList"></div>
+
+        <!-- Diagnostic qualité fiche de poste -->
+        <div id="paDiagnosticSection" style="display:none;">
+            <div class="pa-card" style="border-left:4px solid #7c3aed;">
+                <div class="pa-stitle">📋 Passe 3 — Diagnostic qualité de la fiche de poste</div>
+                <div id="paDiagGlobal" class="pa-diag-global"></div>
+                <div id="paDiagForts"></div>
+                <div id="paDiagProblemes"></div>
+                <div id="paDiagTermes"></div>
+                <div id="paDiagPriorite"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// Pesée ALISFA — Vanilla JS
+// ════════════════════════════════════════════════════════════════
+
+// État
+let PA = {
+    hasKey: {{ 'true' if has_api_key else 'false' }},
+    pdfFile: null,
+    extraction: null,
+    cotation: null,
+    lockedCriteria: {},
+    criteres: {{ criteres|tojson }},
+    emploisReperes: {{ emplois_reperes|tojson }},
+};
+
+// ── Emplois repères ──
+function paUpdateEmplois() {
+    const famille = document.getElementById('paFamille').value;
+    const sel = document.getElementById('paEmploi');
+    sel.innerHTML = '<option value="">-- Choisir --</option>';
+    if (famille && PA.emploisReperes[famille]) {
+        PA.emploisReperes[famille].forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = e.nom;
+            opt.textContent = e.nom;
+            sel.appendChild(opt);
+        });
+    }
+    paCheckReady();
+}
+
+// ── Upload ──
+function paFileSelected(input) {
+    const file = input.files[0];
+    if (file && file.type === 'application/pdf') {
+        PA.pdfFile = file;
+        const zone = document.getElementById('paUploadZone');
+        zone.classList.add('pa-has-file');
+        document.getElementById('paUploadLabel').innerHTML = `
+            <div style="font-size:24px;">✅</div>
+            <div style="font-weight:700;color:#16a34a;">${file.name}</div>
+            <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">${(file.size/1024).toFixed(0)} Ko — Cliquer pour changer</div>
+        `;
+        paCheckReady();
+    }
+}
+
+function paCheckReady() {
+    const emploi = document.getElementById('paEmploi').value;
+    document.getElementById('paAnalyzeBtn').disabled = !(PA.hasKey && PA.pdfFile && emploi);
+}
+
+// ── Analyse ──
+async function paAnalyze() {
+    const btn = document.getElementById('paAnalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Analyse en cours...';
+
+    const progressBox = document.getElementById('paProgressBox');
+    const progressFill = document.getElementById('paProgressFill');
+    const progressLabel = document.getElementById('paProgressLabel');
+    const errorBox = document.getElementById('paErrorBox');
+    const resultsBox = document.getElementById('paResults');
+
+    progressBox.style.display = 'block';
+    errorBox.style.display = 'none';
+    resultsBox.style.display = 'none';
+
+    progressFill.style.width = '10%';
+    progressLabel.textContent = '📄 Extraction du texte du PDF...';
+
+    const formData = new FormData();
+    formData.append('pdf', PA.pdfFile);
+    formData.append('famille_metier', document.getElementById('paFamille').value);
+    formData.append('emploi_repere', document.getElementById('paEmploi').value);
+    formData.append('nb_etp', document.getElementById('paNbEtp').value);
+    formData.append('budget', document.getElementById('paBudget').value);
+    formData.append('model', document.getElementById('paModel').value);
+
+    // Simulation de progression
+    let progress = 10;
+    const progressTimer = setInterval(() => {
+        if (progress < 30) {
+            progress += 2;
+            progressLabel.textContent = '🔍 Passe 1 — Extraction des éléments factuels...';
+        } else if (progress < 60) {
+            progress += 1;
+            progressLabel.textContent = '⚖️ Passe 2 — Cotation ALISFA critère par critère...';
+        } else if (progress < 90) {
+            progress += 0.8;
+            progressLabel.textContent = '📋 Passe 3 — Diagnostic qualité de la fiche...';
+        } else if (progress < 97) {
+            progress += 0.2;
+            progressLabel.textContent = '📊 Finalisation de l\'analyse...';
+        }
+        progressFill.style.width = progress + '%';
+    }, 500);
+
+    try {
+        const res = await fetch('/api/pesee_alisfa/analyze', {
+            method: 'POST',
+            body: formData,
+        });
+        clearInterval(progressTimer);
+
+        const data = await res.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        PA.extraction = data.extraction;
+        PA.cotation = data.cotation;
+        PA.diagnostic = data.diagnostic || null;
+        PA.lockedCriteria = {};
+
+        progressFill.style.width = '100%';
+        progressLabel.textContent = '✅ Analyse terminée !';
+
+        setTimeout(() => {
+            progressBox.style.display = 'none';
+            resultsBox.style.display = 'block';
+            renderResults();
+        }, 800);
+
+    } catch(e) {
+        clearInterval(progressTimer);
+        progressBox.style.display = 'none';
+        errorBox.textContent = '❌ ' + e.message;
+        errorBox.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Analyser la fiche de poste';
+    paCheckReady();
+}
+
+// ── Ré-analyse partielle ──
+async function paReanalyze() {
+    const btn = document.getElementById('paReanalyzeBtn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Ré-analyse...';
+
+    const errorBox = document.getElementById('paErrorBox');
+    errorBox.style.display = 'none';
+
+    // Construire les critères verrouillés
+    const locked = {};
+    if (PA.cotation && PA.cotation.criteres) {
+        PA.cotation.criteres.forEach((c, idx) => {
+            if (PA.lockedCriteria[idx]) {
+                locked[c.nom] = {niveau: c.niveau, points: c.points, justification: c.justification};
+            }
+        });
+    }
+
+    try {
+        const res = await fetch('/api/pesee_alisfa/reanalyze', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                extraction: PA.extraction,
+                locked_criteria: locked,
+                famille_metier: document.getElementById('paFamille').value,
+                emploi_repere: document.getElementById('paEmploi').value,
+                model: document.getElementById('paModel').value,
+            }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+
+        PA.cotation = data.cotation;
+        renderResults();
+    } catch(e) {
+        errorBox.textContent = '❌ ' + e.message;
+        errorBox.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🔄 Ré-analyser les critères déverrouillés';
+}
+
+// ── Rendu résultats ──
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function certColor(c) {
+    if (c >= 80) return '#10b981';
+    if (c >= 60) return '#eab308';
+    if (c >= 40) return '#f97316';
+    return '#ef4444';
+}
+function certLabel(c) {
+    if (c >= 80) return 'Très confiant';
+    if (c >= 60) return 'Confiant';
+    if (c >= 40) return 'Incertain';
+    return 'Très incertain';
+}
+
+function renderResults() {
+    const cot = PA.cotation;
+    if (!cot) return;
+
+    // Extraction facts
+    if (PA.extraction) {
+        const facts = PA.extraction;
+        const factsHtml = Object.entries(facts).filter(([k,v]) => k !== 'elements_remarquables' && k !== 'missions_principales').map(([k,v]) => {
+            const label = k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const val = Array.isArray(v) ? v.join(', ') : (v || 'non mentionné');
+            return `<div class="pa-fact"><div class="pa-fact-label">${esc(label)}</div><div class="pa-fact-value">${esc(val)}</div></div>`;
+        }).join('');
+        document.getElementById('paFactsGrid').innerHTML = factsHtml;
+    }
+
+    // Score banner
+    const totalPts = cot.total_points || cot.criteres.reduce((s, c) => s + (typeof c.points === 'number' ? c.points : 0), 0);
+    const certGlobal = cot.certitude_globale || 0;
+    document.getElementById('paScoreBanner').innerHTML = `
+        <div>
+            <div class="pa-sb-label">Poste analysé</div>
+            <div style="font-size:18px;font-weight:700;">${esc(cot.intitule_poste || '—')}</div>
+            ${cot.emploi_repere ? `<div style="font-size:12px;opacity:0.8;margin-top:4px;">Repère : ${esc(cot.emploi_repere)}</div>` : ''}
+        </div>
+        <div class="pa-sb-center">
+            <div class="pa-sb-label">Points totaux</div>
+            <div class="pa-sb-value">${totalPts}</div>
+            <div style="font-size:11px;opacity:0.7;">+ SSC (Salaire Socle Conventionnel)</div>
+        </div>
+        <div class="pa-sb-right">
+            <div class="pa-sb-label">Certitude globale</div>
+            <div class="pa-sb-value">${certGlobal}%</div>
+        </div>
+    `;
+
+    // Synthèse
+    document.getElementById('paSynthese').innerHTML = `
+        <div style="font-size:13px;font-weight:700;color:#1e40af;margin-bottom:6px;">📝 Synthèse</div>
+        <div style="font-size:14px;color:var(--gray-700);line-height:1.6;">${esc(cot.synthese || '')}</div>
+    `;
+
+    // Alertes
+    const alertes = cot.alertes || [];
+    document.getElementById('paAlertes').innerHTML = alertes.length > 0 ?
+        alertes.map(a => `<div class="pa-alert pa-alert-warn">⚠️ ${esc(a)}</div>`).join('') : '';
+
+    // Critères
+    renderCriteria();
+
+    // Diagnostic
+    renderDiagnostic();
+}
+
+function renderDiagnostic() {
+    const diag = PA.diagnostic;
+    const section = document.getElementById('paDiagnosticSection');
+    if (!diag) { section.style.display = 'none'; return; }
+    section.style.display = 'block';
+
+    // Diagnostic global
+    document.getElementById('paDiagGlobal').innerHTML = esc(diag.diagnostic_global || '');
+
+    // Points forts
+    const forts = diag.points_forts || [];
+    document.getElementById('paDiagForts').innerHTML = forts.length > 0 ? `
+        <div class="pa-diag-subtitle">✅ Points forts de la fiche</div>
+        ${forts.map(f => `<div class="pa-diag-fort">• ${esc(f)}</div>`).join('')}
+    ` : '';
+
+    // Problèmes de rédaction
+    const problemes = diag.problemes_redaction || [];
+    document.getElementById('paDiagProblemes').innerHTML = problemes.length > 0 ? `
+        <div class="pa-diag-subtitle">⚠️ Problèmes identifiés par critère</div>
+        ${problemes.map(p => `
+            <div class="pa-diag-probleme">
+                <div class="pa-diag-probleme-head">
+                    <strong>${esc(p.critere || '')}</strong>
+                    <span class="${p.type === 'fond' ? 'pa-diag-badge-fond' : 'pa-diag-badge-forme'}">
+                        ${p.type === 'fond' ? '🔴 FOND — info absente' : '🟡 FORME — mal formulé'}
+                    </span>
+                </div>
+                <div style="font-size:13px;color:var(--gray-700);">${esc(p.probleme || '')}</div>
+                ${p.extrait_actuel && p.extrait_actuel !== 'absent' ? `
+                    <div class="pa-diag-extrait">« ${esc(p.extrait_actuel)} »</div>
+                ` : '<div class="pa-diag-extrait">Aucune mention dans la fiche actuelle</div>'}
+                <div class="pa-diag-suggestion">
+                    <strong>💡 Suggestion :</strong> ${esc(p.suggestion || '')}
+                </div>
+            </div>
+        `).join('')}
+    ` : '';
+
+    // Termes faibles
+    const termes = diag.termes_faibles || [];
+    document.getElementById('paDiagTermes').innerHTML = termes.length > 0 ? `
+        <div class="pa-diag-subtitle">📝 Termes à renforcer</div>
+        ${termes.map(t => `
+            <div class="pa-diag-terme">
+                <div class="pa-diag-fleche">→</div>
+                <div>
+                    <div><s style="color:#ef4444;">${esc(t.terme_actuel || '')}</s> → <strong style="color:#16a34a;">${esc(t.terme_suggere || '')}</strong></div>
+                    <div style="font-size:12px;color:var(--gray-500);margin-top:2px;">Contexte : « ${esc(t.contexte || '')} »</div>
+                    <div style="font-size:12px;color:#7c3aed;margin-top:2px;">${esc(t.impact_pesee || '')}</div>
+                </div>
+            </div>
+        `).join('')}
+    ` : '';
+
+    // Recommandation prioritaire
+    const prio = diag.recommandation_prioritaire;
+    document.getElementById('paDiagPriorite').innerHTML = prio ? `
+        <div class="pa-diag-priorite">
+            <div class="pa-diag-priorite-label">🎯 Recommandation prioritaire</div>
+            <div style="font-size:14px;color:var(--gray-800);line-height:1.6;">${esc(prio)}</div>
+        </div>
+    ` : '';
+}
+
+function renderCriteria() {
+    const criteres = PA.cotation.criteres || [];
+    const html = criteres.map((c, idx) => {
+        const isLocked = PA.lockedCriteria[idx] || false;
+        const cc = certColor(c.certitude);
+        const cl = certLabel(c.certitude);
+        const ptsDisplay = (typeof c.points === 'number') ? `${c.points} pts` : 'SSC';
+
+        // Trouver les niveaux disponibles pour ce critère
+        const critRef = PA.criteres.find(cr => cr.nom === c.nom);
+        const niveauxOptions = critRef ? critRef.niveaux.map(n =>
+            `<option value="${n.niveau}" ${n.niveau === c.niveau ? 'selected' : ''}>${n.niveau} — ${n.label} (${n.points} pts)</option>`
+        ).join('') : '';
+
+        return `
+        <div class="pa-criterion ${isLocked ? 'pa-locked' : ''}" id="paCrit${idx}">
+            <div class="pa-criterion-head">
+                <div style="flex:1;">
+                    <div class="pa-criterion-name">${esc(c.nom)}</div>
+                    <div class="pa-criterion-level">Niveau ${c.niveau} : ${esc(c.label_niveau || '')}</div>
+                    <div class="pa-cert">
+                        <div class="pa-cert-bar"><div class="pa-cert-fill" style="width:${c.certitude}%;background:${cc};"></div></div>
+                        <span class="pa-cert-label" style="color:${cc};">${cl} (${c.certitude}%)</span>
+                    </div>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:end;gap:6px;">
+                    <span class="pa-criterion-points">${ptsDisplay}</span>
+                    <button class="pa-lock-btn ${isLocked ? 'pa-is-locked' : 'pa-unlocked'}" onclick="paToggleLock(${idx})">
+                        ${isLocked ? '🔒 Verrouillé' : '🔓 Libre'}
+                    </button>
+                </div>
+            </div>
+
+            ${isLocked ? `
+            <div style="margin-top:8px;">
+                <label style="font-size:11px;font-weight:700;color:var(--gray-500);">Modifier le niveau :</label>
+                <select class="pa-level-select" onchange="paChangeLevel(${idx}, this.value)">
+                    ${niveauxOptions}
+                </select>
+            </div>` : ''}
+
+            <div class="pa-criterion-justif">
+                <div style="font-size:12px;font-weight:700;color:var(--gray-500);margin-bottom:4px;">Justification :</div>
+                ${c.justification && c.justification.includes('⚠️ [Correction auto]')
+                    ? esc(c.justification.split('⚠️ [Correction auto]')[0]) +
+                      '<div style="margin-top:8px;padding:8px;background:#fffbeb;border-left:3px solid #f59e0b;border-radius:4px;font-size:12px;color:#92400e;font-weight:600;">⚠️ ' +
+                      esc(c.justification.split('⚠️ [Correction auto]')[1]) + '</div>'
+                    : esc(c.justification || '')
+                }
+            </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('paCriteriaList').innerHTML = html;
+}
+
+function paToggleLock(idx) {
+    PA.lockedCriteria[idx] = !PA.lockedCriteria[idx];
+    renderCriteria();
+}
+
+function paChangeLevel(idx, newLevel) {
+    newLevel = parseInt(newLevel);
+    const c = PA.cotation.criteres[idx];
+    const critRef = PA.criteres.find(cr => cr.nom === c.nom);
+    if (!critRef) return;
+
+    const niveauRef = critRef.niveaux.find(n => n.niveau === newLevel);
+    if (!niveauRef) return;
+
+    c.niveau = newLevel;
+    c.label_niveau = niveauRef.label;
+    c.points = niveauRef.points;
+
+    // Recalculer total
+    PA.cotation.total_points = PA.cotation.criteres.reduce((s, cr) =>
+        s + (typeof cr.points === 'number' ? cr.points : 0), 0);
+
+    renderResults();
+}
+
+// ── Export PDF ──
+function paExportPDF() {
+    const cot = PA.cotation;
+    if (!cot) return;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>Pesée ALISFA - ${cot.intitule_poste || 'Analyse'}</title>
+    <style>
+        body{font-family:Arial,sans-serif;line-height:1.6;color:#333;max-width:800px;margin:0 auto;padding:20px;}
+        h1{color:#7c3aed;border-bottom:3px solid #7c3aed;padding-bottom:10px;}
+        .score{background:#7c3aed;color:white;padding:20px;border-radius:8px;text-align:center;margin:20px 0;}
+        .score .pts{font-size:36px;font-weight:800;}
+        .criterion{border:2px solid #e5e7eb;border-radius:8px;padding:15px;margin:10px 0;page-break-inside:avoid;}
+        .criterion h3{color:#7c3aed;margin:0 0 5px 0;}
+        .criterion .level{color:#666;font-size:14px;}
+        .criterion .justif{background:#f9fafb;padding:10px;border-radius:6px;margin-top:10px;font-size:13px;}
+        .criterion .pts-badge{float:right;background:#ede9fe;color:#7c3aed;padding:4px 12px;border-radius:20px;font-weight:700;}
+        .synthese{background:#eff6ff;border:1px solid #bfdbfe;padding:15px;border-radius:8px;margin:15px 0;}
+        .footer{text-align:center;color:#999;font-size:12px;margin-top:30px;border-top:1px solid #eee;padding-top:15px;}
+    </style></head><body>
+    <h1>Analyse CCN ALISFA</h1>
+    <p><strong>Poste :</strong> ${cot.intitule_poste || '—'}</p>
+    ${cot.emploi_repere ? `<p><strong>Emploi repère :</strong> ${cot.emploi_repere}</p>` : ''}
+    <div class="score"><div>Points totaux</div><div class="pts">${cot.total_points} + SSC</div><div>Certitude globale : ${cot.certitude_globale}%</div></div>
+    <div class="synthese"><strong>Synthèse :</strong> ${cot.synthese || ''}</div>
+    ${(cot.criteres || []).map(c => `
+        <div class="criterion">
+            <span class="pts-badge">${typeof c.points === 'number' ? c.points + ' pts' : 'SSC'}</span>
+            <h3>${c.nom}</h3>
+            <div class="level">Niveau ${c.niveau} : ${c.label_niveau || ''} — Certitude : ${c.certitude}%</div>
+            <div class="justif">${c.justification || ''}</div>
+        </div>
+    `).join('')}
+    ${PA.diagnostic ? `
+    <div style="page-break-before:always;"></div>
+    <h2 style="color:#7c3aed;border-bottom:2px solid #7c3aed;padding-bottom:8px;">Diagnostic qualité de la fiche de poste</h2>
+    <div class="synthese">${PA.diagnostic.diagnostic_global || ''}</div>
+    ${(PA.diagnostic.points_forts || []).length > 0 ? `
+        <h3>Points forts</h3>
+        <ul>${PA.diagnostic.points_forts.map(f => `<li style="color:#166534;">${f}</li>`).join('')}</ul>
+    ` : ''}
+    ${(PA.diagnostic.problemes_redaction || []).length > 0 ? `
+        <h3>Problèmes identifiés</h3>
+        ${PA.diagnostic.problemes_redaction.map(p => `
+            <div class="criterion" style="border-color:${p.type==='fond'?'#ef4444':'#f59e0b'};">
+                <strong>${p.critere || ''}</strong> <em style="font-size:12px;color:#666;">(${p.type === 'fond' ? 'information absente' : 'mal formulé'})</em>
+                <p style="margin:6px 0;">${p.probleme || ''}</p>
+                ${p.extrait_actuel && p.extrait_actuel !== 'absent' ? `<p style="font-style:italic;color:#666;border-left:2px solid #ddd;padding-left:8px;">« ${p.extrait_actuel} »</p>` : ''}
+                <div style="background:#eff6ff;border-left:3px solid #3b82f6;padding:8px;margin-top:6px;border-radius:4px;">
+                    <strong>Suggestion :</strong> ${p.suggestion || ''}
+                </div>
+            </div>
+        `).join('')}
+    ` : ''}
+    ${(PA.diagnostic.termes_faibles || []).length > 0 ? `
+        <h3>Termes à renforcer</h3>
+        ${PA.diagnostic.termes_faibles.map(t => `
+            <p><s style="color:#ef4444;">${t.terme_actuel || ''}</s> → <strong style="color:#16a34a;">${t.terme_suggere || ''}</strong><br/>
+            <small style="color:#666;">Impact : ${t.impact_pesee || ''}</small></p>
+        `).join('')}
+    ` : ''}
+    ${PA.diagnostic.recommandation_prioritaire ? `
+        <div style="background:#faf5ff;border:2px solid #c4b5fd;border-radius:8px;padding:15px;margin-top:15px;">
+            <strong style="color:#7c3aed;">🎯 Recommandation prioritaire :</strong><br/>
+            ${PA.diagnostic.recommandation_prioritaire}
+        </div>
+    ` : ''}
+    ` : ''}
+    <div class="footer">
+        <p>Analyse réalisée selon la CCN ALISFA — Convention Collective des Acteurs du Lien Social et Familial</p>
+        <p>Date : ${new Date().toLocaleDateString('fr-FR')}</p>
+    </div></body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', paCheckReady);
+</script>
+{% endblock %}

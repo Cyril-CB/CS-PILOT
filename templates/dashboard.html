@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>📊 Tableau de bord</h1>
+    <p class="subtitle">Bienvenue {{ session.prenom }} {{ session.nom }}</p>
+
+    {% if notif_email_off %}
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:1.5rem;font-size:13px;color:#1e40af;display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">&#128276;</span>
+        <span>
+            Les notifications par email sont desactivees pour votre compte.
+            <a href="{{ url_for('parametres_bp.parametres') }}" style="color:#7c3aed;font-weight:700;text-decoration:underline;">Configurer mes parametres</a>
+        </span>
+    </div>
+    {% endif %}
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-content">
+                <h3>Solde récupération</h3>
+                <p class="stat-value" style="color: {% if solde_recup > 0 %}#28a745{% elif solde_recup < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {% if solde_recup > 0 %}+{% endif %}{{ "%.2f"|format(solde_recup) }}h
+                </p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">🏖️</div>
+            <div class="stat-content">
+                <h3>Congés payés</h3>
+                <p class="stat-value" style="font-size: 1.4rem; color: {% if cp_solde > 0 %}#28a745{% elif cp_solde < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {{ "%.2f"|format(cp_solde) }} j
+                </p>
+                <p style="font-size: 0.75rem; color: #888; margin-top: 0.25rem;">
+                    Acquis : {{ "%.2f"|format(cp_acquis) }} | À prendre : {{ "%.2f"|format(cp_a_prendre) }} | Pris : {{ "%.2f"|format(cp_pris) }}
+                </p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-content">
+                <h3>Congés conventionnels</h3>
+                <p class="stat-value" style="font-size: 1.4rem; color: {% if cc_solde > 0 %}#28a745{% elif cc_solde < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {{ "%.2f"|format(cc_solde) }} j
+                </p>
+                <p style="font-size: 0.75rem; color: #888; margin-top: 0.25rem;">
+                    Solde disponible
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>📝 Dernières saisies</h2>
+        
+        {% if heures %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Matin</th>
+                    <th>Après-midi</th>
+                    <th>Total jour</th>
+                    <th>Écart</th>
+                    <th>Commentaire</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in heures %}
+                <tr>
+                    <td>{{ h.date }}</td>
+                    <td>
+                        {% if h.heure_debut_matin %}
+                        {{ h.heure_debut_matin }} - {{ h.heure_fin_matin }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if h.heure_debut_aprem %}
+                        {{ h.heure_debut_aprem }} - {{ h.heure_fin_aprem }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td><strong>{{ "%.2f"|format(h.total_reel) }}h</strong></td>
+                    <td>
+                        {% if h.ecart > 0 %}
+                        <span style="color: #28a745;">+{{ "%.2f"|format(h.ecart) }}h</span>
+                        {% elif h.ecart < 0 %}
+                        <span style="color: #dc3545;">{{ "%.2f"|format(h.ecart) }}h</span>
+                        {% else %}
+                        <span style="color: #6c757d;">0h</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ h.commentaire or '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('saisie_bp.saisie_heures', date=h.date) }}" class="btn-icon" title="Modifier">✏️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucune saisie pour le moment</p>
+        {% endif %}
+        
+        <div class="actions">
+            <a href="{{ url_for('saisie_bp.saisie_heures') }}" class="btn btn-primary">➕ Nouvelle saisie</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

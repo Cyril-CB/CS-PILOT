@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des jours fériés{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Gestion des jours fériés</h1>
+    <p class="subtitle">Configuration annuelle des jours fériés pour le calcul du forfait jour</p>
+    
+    <div class="section">
+        <h2>Ajouter un jour férié</h2>
+        <form method="POST" action="{{ url_for('admin_bp.gestion_jours_feries') }}">
+            <input type="hidden" name="action" value="ajouter">
+            
+            <div style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 1rem; align-items: end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="date">Date *</label>
+                    <input type="date" id="date" name="date" required>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="libelle">Libellé *</label>
+                    <input type="text" id="libelle" name="libelle" required placeholder="Ex: Jour de l'an, Fête du travail...">
+                </div>
+                
+                <button type="submit" class="btn btn-primary">+ Ajouter</button>
+            </div>
+        </form>
+    </div>
+    
+    {% if jours_feries %}
+    <div class="section">
+        <h2>Jours fériés configurés</h2>
+        
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Année</th>
+                    <th>Date</th>
+                    <th>Jour</th>
+                    <th>Libellé</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in jours_feries %}
+                <tr>
+                    <td><strong>{{ f.annee }}</strong></td>
+                    <td>{{ f.date }}</td>
+                    <td>{{ f.jour_semaine }}</td>
+                    <td>{{ f.libelle }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('admin_bp.gestion_jours_feries') }}" style="display: inline;">
+                            <input type="hidden" name="action" value="supprimer">
+                            <input type="hidden" name="ferie_id" value="{{ f.id }}">
+                            <button type="submit" class="btn-icon" style="color: var(--danger);" 
+                                    onclick="return confirm('Supprimer ce jour férié ?')">
+                                🗑️
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-data">
+        <p>Aucun jour férié configuré</p>
+    </div>
+    {% endif %}
+    
+    <div class="help-box">
+        <h4>Jours fériés français 2026</h4>
+        <ul>
+            <li>1er janvier - Jour de l'an (mercredi)</li>
+            <li>21 avril - Lundi de Pâques</li>
+            <li>1er mai - Fête du Travail (vendredi)</li>
+            <li>8 mai - Victoire 1945 (vendredi)</li>
+            <li>29 mai - Ascension (vendredi)</li>
+            <li>9 juin - Lundi de Pentecôte</li>
+            <li>14 juillet - Fête nationale (mardi)</li>
+            <li>15 août - Assomption (samedi)</li>
+            <li>1er novembre - Toussaint (dimanche)</li>
+            <li>11 novembre - Armistice 1918 (mercredi)</li>
+            <li>25 décembre - Noël (vendredi)</li>
+        </ul>
+        <p><strong>Note :</strong> Seuls les jours fériés tombant du lundi au vendredi sont comptabilisés dans le forfait jour.</p>
+    </div>
+    
+    <div class="actions">
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour</a>
+    </div>
+</div>
+
+<script>
+// Pré-remplir la date avec aujourd'hui
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById('date');
+    if (!dateInput.value) {
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+    }
+});
+</script>
+{% endblock %}

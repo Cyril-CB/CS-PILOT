@@ -1,0 +1,974 @@
+{% extends "base.html" %}
+{% block title %}Planning Enfance — Annualisation{% endblock %}
+{% block content %}
+
+<style>
+    /* ═══ Planning Enfance — styles dédiés ═══ */
+    .pe-container { max-width: 1100px; margin: 0 auto; padding: 10px 0; }
+    .pe-header { text-align: center; margin-bottom: 20px; }
+    .pe-header .pe-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: var(--danger); margin-bottom: 4px; }
+    .pe-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); letter-spacing: -0.5px; margin-bottom: 0; }
+    .pe-header .pe-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .pe-selector { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; margin-bottom: 20px; padding: 16px; background: var(--white); border-radius: 10px; border: 1px solid var(--gray-200); box-shadow: var(--shadow-sm); }
+    .pe-selector label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .pe-selector select, .pe-selector input[type="number"] { padding: 7px 10px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; font-weight: 600; }
+    .pe-selector .pe-btn-load { padding: 8px 20px; background: var(--primary); color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; }
+    .pe-selector .pe-btn-load:hover { background: var(--primary-dark); }
+
+    /* Summary cards */
+    .pe-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .pe-scard { background: var(--white); border-radius: 10px; padding: 12px 10px; border: 1px solid var(--gray-200); text-align: center; box-shadow: var(--shadow-sm); }
+    .pe-scard .pe-sval { font-size: 20px; font-weight: 800; font-family: 'Courier New', monospace; letter-spacing: -0.5px; }
+    .pe-scard .pe-slbl { font-size: 10px; color: var(--gray-500); font-weight: 600; }
+
+    /* Tabs */
+    .pe-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--gray-200); overflow-x: auto; }
+    .pe-tab { padding: 10px 18px; border: none; cursor: pointer; font-weight: 700; font-size: 13px; background: transparent; color: var(--gray-500); border-bottom: 3px solid transparent; transition: all 0.2s; }
+    .pe-tab:hover { color: var(--gray-700); }
+    .pe-tab.active { color: var(--gray-900); border-bottom-color: var(--danger); background: var(--white); }
+    .pe-tab-content { background: var(--white); border-radius: 0 0 12px 12px; padding: 20px; border: 1px solid var(--gray-200); border-top: none; }
+    .pe-tab-panel { display: none; }
+    .pe-tab-panel.active { display: block; }
+
+    /* Cards */
+    .pe-card { background: var(--white); border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+    .pe-stitle { font-size: 15px; font-weight: 800; color: var(--gray-900); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; letter-spacing: -0.2px; }
+
+    /* Stats grid */
+    .pe-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .pe-stat { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; border: 1px solid #eee; }
+    .pe-stat-label { font-size: 12px; color: var(--gray-500); }
+    .pe-pill { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+
+    /* Table créneaux */
+    .pe-table { width: 100%; border-collapse: collapse; }
+    .pe-table th { font-size: 11px; font-weight: 700; color: #666; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 4px; text-align: center; border-bottom: 2px solid var(--gray-200); }
+    .pe-table td { padding: 6px 4px; text-align: center; border-bottom: 1px solid var(--gray-100); }
+    .pe-table tbody tr:hover { background: var(--gray-50); }
+    .pe-table .pe-foot td { border-top: 2px solid var(--gray-900); font-weight: 800; }
+    .pe-table th.pe-th-left, .pe-table td.pe-td-left { text-align: left; }
+
+    .pe-time { width: 100px; padding: 5px 8px; border: 2px solid #ddd; border-radius: 6px; font-size: 14px; font-family: 'Courier New', monospace; text-align: center; }
+    .pe-time:focus { border-color: var(--primary); outline: none; }
+    .pe-time.pe-filled { background: #f0faf4; border-color: var(--success); color: var(--gray-900); }
+
+    /* Alert */
+    .pe-alert { display: flex; gap: 10px; padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; }
+    .pe-alert-icon { font-size: 16px; flex-shrink: 0; }
+    .pe-alert-title { font-weight: 700; font-size: 13px; }
+    .pe-alert-detail { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .pe-alert-danger { background: #fdf0ed; border-left: 4px solid var(--danger); }
+    .pe-alert-danger .pe-alert-title, .pe-alert-danger .pe-alert-detail { color: #c0392b; }
+    .pe-alert-warning { background: #fef9ed; border-left: 4px solid var(--warning); }
+    .pe-alert-warning .pe-alert-title, .pe-alert-warning .pe-alert-detail { color: #8a6d0b; }
+    .pe-alert-success { background: #edf9f0; border-left: 4px solid var(--success); }
+    .pe-alert-success .pe-alert-title, .pe-alert-success .pe-alert-detail { color: #1e8449; }
+    .pe-alert-info { background: #edf4fc; border-left: 4px solid var(--primary); }
+    .pe-alert-info .pe-alert-title, .pe-alert-info .pe-alert-detail { color: #1a5276; }
+
+    /* Progress bar */
+    .pe-bar-track { height: 8px; background: #e8e8e8; border-radius: 99px; overflow: hidden; }
+    .pe-bar-fill { height: 100%; border-radius: 99px; transition: width 0.5s ease; }
+
+    /* Vacances / Fériés pills */
+    .pe-vac-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: #fef5e7; border-radius: 8px; font-size: 12px; border: 1px solid #f0c987; margin: 3px; }
+    .pe-fer-pill { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 8px; font-size: 11px; margin: 3px; }
+
+    /* AccSco */
+    .pe-accsco-item { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; background: #f4ecf7; border-radius: 8px; border: 1px solid #d2b4de; margin: 4px; }
+
+    /* Reunion item */
+    .pe-reunion-item { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; background: #fef5e7; border-radius: 8px; border: 1px solid #f0c987; margin: 4px; }
+
+    /* Result box */
+    .pe-result { padding: 16px; border-radius: 10px; margin-top: 16px; }
+    .pe-result-vac { background: #fef5e7; border: 1px solid #f0c987; }
+    .pe-result-hv { background: #edf4fc; border: 1px solid #a9cce3; }
+    .pe-result .pe-result-head { display: flex; justify-content: space-between; align-items: center; }
+    .pe-result .pe-result-big { font-size: 28px; font-weight: 800; font-family: 'Courier New', monospace; }
+
+    /* Bilan grid */
+    .pe-bilan-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
+    .pe-bilan-box { padding: 12px; border-radius: 10px; }
+
+    /* Save button */
+    .pe-btn-save { padding: 10px 24px; background: var(--success); color: #fff; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; margin-top: 10px; }
+    .pe-btn-save:hover { background: #0a9f6e; }
+    .pe-btn-save:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+    .pe-mono { font-family: 'Courier New', monospace; }
+    .pe-mercredi { background: #f0faf4 !important; }
+
+    .pe-config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .pe-config-grid label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .pe-config-grid input[type="number"], .pe-config-grid select { padding: 7px 10px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 16px; font-weight: 800; width: 75px; font-family: 'Courier New', monospace; }
+    .pe-config-grid select { width: auto; font-weight: 600; }
+    .pe-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+    .pe-suggestion { margin-top: 12px; padding: 12px; background: #d6eaf8; border-radius: 8px; font-size: 13px; color: #1a5276; }
+    .pe-ecart-box { margin-top: 16px; padding: 16px; border-radius: 10px; text-align: center; border: 2px solid; }
+
+    /* Responsive */
+    @media (max-width: 700px) {
+        .pe-summary { grid-template-columns: repeat(2, 1fr); }
+        .pe-bilan-grid { grid-template-columns: 1fr; }
+        .pe-tab { padding: 8px 10px; font-size: 12px; }
+        .pe-config-grid { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+
+<div class="pe-container">
+    <div class="pe-header">
+        <div class="pe-label">Module Enfance</div>
+        <h2>Simulateur Planning Annualisé</h2>
+        <div class="pe-sub" id="peSubtitle">Année civile</div>
+    </div>
+
+    <!-- Sélection salarié / année -->
+    <div class="pe-selector">
+        <div>
+            <label>Salarié</label>
+            <select id="peSelectUser">
+                <option value="">— Choisir —</option>
+                {% for s in salaries %}
+                <option value="{{ s.id }}" {% if selected_user_id == s.id %}selected{% endif %}>
+                    {{ s.nom }} {{ s.prenom }} {% if s.secteur_nom %}({{ s.secteur_nom }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label>Année</label>
+            <select id="peSelectAnnee">
+                {% for y in range(annee - 1, annee + 3) %}
+                <option value="{{ y }}" {% if y == annee %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="pe-btn-load" onclick="peLoad()">Charger</button>
+        <button class="pe-btn-save" id="peBtnSave" onclick="peSave()" style="display:none;">💾 Sauvegarder</button>
+        <span id="peSaveStatus" style="font-size:12px;color:var(--success);font-weight:600;display:none;">✓ Sauvegardé</span>
+    </div>
+
+    <!-- Conteneur principal (masqué tant qu'aucun salarié sélectionné) -->
+    <div id="peMain" style="display:none;">
+
+        <!-- Summary cards -->
+        <div class="pe-summary" id="peSummary"></div>
+
+        <!-- Tabs -->
+        <div class="pe-tabs">
+            <button class="pe-tab active" data-tab="config" onclick="peShowTab('config')">⚙ Config</button>
+            <button class="pe-tab" data-tab="vacances" onclick="peShowTab('vacances')">☀ Vacances</button>
+            <button class="pe-tab" data-tab="horsvac" onclick="peShowTab('horsvac')">📖 Hors vac.</button>
+            <button class="pe-tab" data-tab="bilan" onclick="peShowTab('bilan')">📊 Bilan</button>
+        </div>
+
+        <div class="pe-tab-content">
+            <!-- CONFIG -->
+            <div id="peTabConfig" class="pe-tab-panel active"></div>
+            <!-- VACANCES -->
+            <div id="peTabVacances" class="pe-tab-panel"></div>
+            <!-- HORS VACANCES -->
+            <div id="peTabHorsVac" class="pe-tab-panel"></div>
+            <!-- BILAN -->
+            <div id="peTabBilan" class="pe-tab-panel"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// Planning Enfance — Vanilla JS (converti depuis React)
+// ════════════════════════════════════════════════════════════════
+
+const JOURS = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi"];
+
+// ── État global ──
+let PE = {
+    userId: null,
+    annee: {{ annee }},
+    heuresHebdo: 35,
+    cpJours: 25,
+    seuilHebdo: 46,
+    vacances: [],
+    feries: [],
+    cVac: Array.from({length:5}, ()=>({m1:"08:00",m2:"12:00",a1:"13:00",a2:"18:30"})),
+    cHV: Array.from({length:5}, (_,i)=> i===2 ? {m1:"08:00",m2:"12:00",a1:"13:30",a2:"18:00"} : {m1:"",m2:"",a1:"",a2:""}),
+    accSco: [{jour:1,debut:"16:30",fin:"18:30"},{jour:3,debut:"16:30",fin:"18:30"}],
+    reunionsPrepa: [],
+    heuresPrepaHebdo: 0,
+    // Résultats calculés
+    analyse: null,
+    calc: null,
+};
+
+// ── Utilitaires ──
+function timeToMin(t) { if(!t) return 0; const [h,m]=t.split(":").map(Number); return h*60+(m||0); }
+function creneauxToH(c) {
+    let h=0;
+    if(c.m1&&c.m2) h += timeToMin(c.m2)-timeToMin(c.m1);
+    if(c.a1&&c.a2) h += timeToMin(c.a2)-timeToMin(c.a1);
+    return Math.max(0, h/60);
+}
+function isVac(ds, vacs) { return vacs.some(v=>ds>=v.debut&&ds<=v.fin); }
+function fmtD(ds) {
+    const d=new Date(ds+"T12:00:00");
+    return d.toLocaleDateString("fr-FR",{day:"numeric",month:"short"});
+}
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ── Analyse calendrier ──
+function analyzeYear(annee, vacs, feries) {
+    const ferDates = feries.filter(f=>f.ouvre).map(f=>f.date);
+    const start = new Date(`${annee}-01-01T12:00:00`);
+    const end = new Date(`${annee}-12-31T12:00:00`);
+    const r = {
+        joursOuvresTotal:0, feriesEnSemaine:[], joursVac:[], joursHV:[],
+        vacParWd:[0,0,0,0,0], hvParWd:[0,0,0,0,0], feriesParWd:[0,0,0,0,0],
+        hvAccScoParWd:[0,0,0,0,0],
+        semVac:new Set(), semHV:new Set(), semAccSco:new Set(),
+    };
+    let cur = new Date(start);
+    while(cur <= end) {
+        const y=cur.getFullYear(), mo=String(cur.getMonth()+1).padStart(2,"0"), da=String(cur.getDate()).padStart(2,"0");
+        const ds = `${y}-${mo}-${da}`;
+        const w = (cur.getDay()+6)%7; // 0=lun
+        if(w < 5) {
+            r.joursOuvresTotal++;
+            if(ferDates.includes(ds)) {
+                const fl = feries.find(f=>f.date===ds);
+                r.feriesEnSemaine.push({date:ds, wd:w, label:fl?fl.label:""});
+                r.feriesParWd[w]++;
+            } else if(isVac(ds, vacs)) {
+                r.joursVac.push(ds); r.vacParWd[w]++;
+                const mon=new Date(cur); mon.setDate(cur.getDate()-w); r.semVac.add(mon.toISOString().slice(0,10));
+            } else {
+                r.joursHV.push(ds); r.hvParWd[w]++;
+                const mon=new Date(cur); mon.setDate(cur.getDate()-w); r.semHV.add(mon.toISOString().slice(0,10));
+                // AccSco : septembre à juin uniquement (pas juillet/août)
+                const month = cur.getMonth(); // 0=jan … 6=jul, 7=août
+                if(month !== 6 && month !== 7) {
+                    r.hvAccScoParWd[w]++;
+                    r.semAccSco.add(mon.toISOString().slice(0,10));
+                }
+            }
+        }
+        cur.setDate(cur.getDate()+1);
+    }
+    // Semaines équivalentes (jours / 5) pour éviter le double comptage
+    // lié aux semaines calendaires chevauchant deux années (53 sem. en 2026)
+    r.nbSemVac = parseFloat((r.joursVac.length / 5).toFixed(1));
+    r.nbSemHV = parseFloat((r.joursHV.length / 5).toFixed(1));
+    r.nbSemAccSco = parseFloat((r.hvAccScoParWd.reduce((s,x)=>s+x, 0) / 5).toFixed(1));
+    r.nbFeries = r.feriesEnSemaine.length;
+    return r;
+}
+
+// ── Calculs principaux ──
+function computeAll() {
+    const a = PE.analyse;
+    if(!a) return null;
+
+    const moyJour = PE.heuresHebdo / 5;
+    const brut = PE.heuresHebdo * 52;
+
+    const hVacJour = PE.cVac.map(c => creneauxToH(c));
+    const hebdoVac = hVacJour.reduce((s,x)=>s+x,0);
+    const totVacParWd = a.vacParWd.map((nb,i)=>nb*hVacJour[i]);
+    const totVac = totVacParWd.reduce((s,x)=>s+x,0);
+
+    const hHVJour = PE.cHV.map(c => creneauxToH(c));
+    const hAccScoJour = [0,0,0,0,0];
+    PE.accSco.forEach(ac => {
+        if(ac.debut && ac.fin) hAccScoJour[ac.jour] += (timeToMin(ac.fin)-timeToMin(ac.debut))/60;
+    });
+    const hHVTotal = hHVJour.map((h,i)=>h+hAccScoJour[i]);
+    const hebdoHV = hHVTotal.reduce((s,x)=>s+x,0) + PE.heuresPrepaHebdo;
+    // Semaines HV en équivalent temps plein :
+    // - jours HV = hors vacances scolaires et hors jours fériés
+    // - puis retrait des CP (en jours ouvrés)
+    const nbSemHVEquiv = Math.max(0, (a.joursHV.length - PE.cpJours) / 5);
+    // AccSco uniquement sept-juin : base HV × tous les jours HV, AccSco × jours HV sept-juin seulement
+    const totHVParWdBrut = a.hvParWd.map((nb,i)=>nb*hHVJour[i] + a.hvAccScoParWd[i]*hAccScoJour[i]);
+    const totAccScoBrut = a.hvAccScoParWd.reduce((s,nb,i)=>s+nb*hAccScoJour[i],0);
+    // Les CP sont retirés proportionnellement du volume HV (les fériés sont déjà exclus via joursHV)
+    const coeffHVEquiv = a.joursHV.length > 0 ? Math.max(0, (a.joursHV.length - PE.cpJours) / a.joursHV.length) : 0;
+    const totHVParWd = totHVParWdBrut.map(h=>h*coeffHVEquiv);
+    const totAccSco = totAccScoBrut * coeffHVEquiv;
+    const totHV = totHVParWd.reduce((s,x)=>s+x,0) + (PE.heuresPrepaHebdo * nbSemHVEquiv);
+
+    const totReunions = PE.reunionsPrepa.reduce((s,r)=>s+(r.heures||0),0);
+    const deductCP = PE.cpJours * moyJour;
+
+    let deductFeries = 0;
+    a.feriesEnSemaine.forEach(f => {
+        if(isVac(f.date, PE.vacances)) {
+            deductFeries += hVacJour[f.wd]||0;
+        } else {
+            // En juillet-août, pas d'AccSco → déduire uniquement les heures de base
+            const mo = parseInt(f.date.split('-')[1]);
+            const avecAccSco = (mo !== 7 && mo !== 8);
+            deductFeries += avecAccSco ? (hHVTotal[f.wd]||0) : (hHVJour[f.wd]||0);
+        }
+    });
+
+    const cible = brut - deductCP - deductFeries;
+    const totalPlanifie = totVac + totHV + totReunions;
+    const ecart = totalPlanifie - cible;
+
+    const joursVidesHV = a.hvParWd.reduce((acc,nb,i)=> hHVTotal[i]===0 ? acc+nb : acc, 0);
+    const hResteParJour = joursVidesHV>0 ? Math.max(0, cible-totalPlanifie)/joursVidesHV : 0;
+
+    // Alertes
+    const alertes = [];
+    if(hebdoVac>48) alertes.push({type:"danger",title:`Semaine vacances : ${hebdoVac.toFixed(1)}h > 48h (max légal absolu)`,detail:"Art. L3121-20 du Code du travail."});
+    else if(hebdoVac>PE.seuilHebdo) alertes.push({type:"warning",title:`Semaine vacances : ${hebdoVac.toFixed(1)}h > seuil ${PE.seuilHebdo}h`,detail:"Vérifier la moyenne sur 12 semaines (max 44h)."});
+    if(hebdoHV>48) alertes.push({type:"danger",title:`Semaine hors vac. : ${hebdoHV.toFixed(1)}h > 48h`,detail:"Maximum légal absolu dépassé."});
+    else if(hebdoHV>PE.seuilHebdo) alertes.push({type:"warning",title:`Semaine hors vac. : ${hebdoHV.toFixed(1)}h > seuil ${PE.seuilHebdo}h`});
+
+    hVacJour.forEach((h,i)=>{ if(h>10) alertes.push({type:"danger",title:`${JOURS[i]} vac. : ${h.toFixed(1)}h > 10h/jour`,detail:"Art. L3121-18 (12h dérogatoire sur accord)."}); });
+    hHVTotal.forEach((h,i)=>{ if(h>10) alertes.push({type:"danger",title:`${JOURS[i]} hors vac. : ${h.toFixed(1)}h > 10h/jour`,detail:"Vérifier aussi repos 11h entre 2 journées."}); });
+
+    PE.accSco.forEach(ac => {
+        if(ac.fin && timeToMin(ac.fin)>timeToMin("21:00"))
+            alertes.push({type:"warning",title:`AccSco ${JOURS[ac.jour]} : fin après 21h`,detail:"Vérifier convention collective sur travail en soirée."});
+    });
+
+    if(Math.abs(ecart)<15) alertes.push({type:"success",title:"Planning équilibré",detail:`Écart ${ecart>0?"+":""}${ecart.toFixed(1)}h. Marge acceptable.`});
+    else if(ecart>0) alertes.push({type:"warning",title:`Surcharge +${ecart.toFixed(0)}h au-dessus du volume cible`,detail:"Réduire les horaires ou ajouter des congés."});
+    else alertes.push({type:"info",title:`${Math.abs(ecart).toFixed(0)}h restantes à répartir`, detail: joursVidesHV>0 ? `${joursVidesHV} jours vides hors vac. → ~${hResteParJour.toFixed(1)}h/jour.` : "Aucun jour vide disponible."});
+
+    return {
+        brut, moyJour, deductCP, deductFeries, cible,
+        nbSemHVEquiv,
+        hVacJour, hebdoVac, totVac, totVacParWd,
+        hHVJour, hAccScoJour, hHVTotal, hebdoHV, totHV, totHVParWd, totAccSco,
+        totReunions, totalPlanifie, ecart, joursVidesHV, hResteParJour, alertes,
+    };
+}
+
+// ── Chargement données ──
+async function peLoad() {
+    const uid = document.getElementById('peSelectUser').value;
+    const annee = parseInt(document.getElementById('peSelectAnnee').value);
+    if(!uid) { alert('Veuillez sélectionner un salarié.'); return; }
+
+    PE.userId = parseInt(uid);
+    PE.annee = annee;
+
+    // Charger vacances et fériés depuis la BDD
+    try {
+        const [vacRes, ferRes, confRes] = await Promise.all([
+            fetch(`/api/planning_enfance/vacances/${annee}`).then(r=>r.json()),
+            fetch(`/api/planning_enfance/feries/${annee}`).then(r=>r.json()),
+            fetch(`/api/planning_enfance/config?user_id=${uid}&annee=${annee}`).then(r=>r.json()),
+        ]);
+
+        PE.vacances = vacRes;
+        PE.feries = ferRes;
+
+        // Sync réunions prépa avec vacances
+        PE.reunionsPrepa = PE.vacances.map(v => ({nomVac: v.nom, heures: 3}));
+
+        // Si config sauvegardée, la restaurer
+        if(confRes) {
+            if(confRes.heuresHebdo) PE.heuresHebdo = confRes.heuresHebdo;
+            if(confRes.cpJours !== undefined) PE.cpJours = confRes.cpJours;
+            if(confRes.seuilHebdo) PE.seuilHebdo = confRes.seuilHebdo;
+            if(confRes.cVac) PE.cVac = confRes.cVac;
+            if(confRes.cHV) PE.cHV = confRes.cHV;
+            if(confRes.accSco) PE.accSco = confRes.accSco;
+            if(confRes.reunionsPrepa) PE.reunionsPrepa = confRes.reunionsPrepa;
+            if(confRes.heuresPrepaHebdo !== undefined) PE.heuresPrepaHebdo = confRes.heuresPrepaHebdo;
+        }
+
+        if(PE.vacances.length === 0) {
+            alert('⚠ Aucune période de vacances saisie pour ' + annee + '.\nAllez dans Administration > Vacances scolaires pour les configurer.');
+        }
+        if(PE.feries.length === 0) {
+            alert('⚠ Aucun jour férié saisi pour ' + annee + '.\nAllez dans Administration > Jours fériés pour les configurer.');
+        }
+
+        PE.analyse = analyzeYear(annee, PE.vacances, PE.feries);
+        PE.calc = computeAll();
+
+        document.getElementById('peMain').style.display = 'block';
+        document.getElementById('peBtnSave').style.display = 'inline-block';
+        document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
+
+        renderAll();
+    } catch(e) {
+        console.error(e);
+        alert('Erreur lors du chargement des données.');
+    }
+}
+
+// ── Sauvegarde ──
+async function peSave() {
+    const btn = document.getElementById('peBtnSave');
+    const status = document.getElementById('peSaveStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳ Sauvegarde...';
+
+    const config = {
+        heuresHebdo: PE.heuresHebdo,
+        cpJours: PE.cpJours,
+        seuilHebdo: PE.seuilHebdo,
+        cVac: PE.cVac,
+        cHV: PE.cHV,
+        accSco: PE.accSco,
+        reunionsPrepa: PE.reunionsPrepa,
+        heuresPrepaHebdo: PE.heuresPrepaHebdo,
+    };
+
+    try {
+        const res = await fetch('/api/planning_enfance/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: PE.userId, annee: PE.annee, config}),
+        });
+        const data = await res.json();
+        if(data.success) {
+            status.style.display = 'inline';
+            setTimeout(()=> status.style.display='none', 3000);
+        } else {
+            alert('Erreur : ' + (data.error || 'inconnue'));
+        }
+    } catch(e) {
+        alert('Erreur réseau.');
+    }
+    btn.disabled = false;
+    btn.textContent = '💾 Sauvegarder';
+}
+
+// ── Recalcul + rafraîchissement ──
+function peRecalc() {
+    PE.calc = computeAll();
+    if(_peTimeEditing) return; // ne pas re-render pendant saisie horaire
+    renderAll();
+}
+
+// ── Gestion des onglets ──
+function peShowTab(id) {
+    const panelMap = {config:'Config', vacances:'Vacances', horsvac:'HorsVac', bilan:'Bilan'};
+    document.querySelectorAll('.pe-tab').forEach(t => t.classList.toggle('active', t.dataset.tab===id));
+    document.querySelectorAll('.pe-tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('peTab' + panelMap[id]).classList.add('active');
+    // Re-render l'onglet actif
+    if(id==='config') renderConfig();
+    else if(id==='vacances') renderVacances();
+    else if(id==='horsvac') renderHorsVac();
+    else if(id==='bilan') renderBilan();
+}
+
+// ════════════════════════════════════════
+// RENDU
+// ════════════════════════════════════════
+
+function renderAll() {
+    renderSummary();
+    renderConfig();
+    renderVacances();
+    renderHorsVac();
+    renderBilan();
+}
+
+function ecartColor(ecart) {
+    return Math.abs(ecart)<15 ? "var(--success)" : ecart>0 ? "var(--danger)" : "var(--primary)";
+}
+
+// ── Summary cards ──
+function renderSummary() {
+    const c = PE.calc;
+    if(!c) return;
+    const ec = ecartColor(c.ecart);
+    const items = [
+        {l:"Brut annuel",v:`${c.brut}h`,color:"var(--gray-500)"},
+        {l:"Cible (−CP−fériés)",v:`${c.cible.toFixed(0)}h`,color:"var(--gray-900)"},
+        {l:"Vacances",v:`${c.totVac.toFixed(0)}h`,color:"#e67e22"},
+        {l:"Hors vacances",v:`${c.totHV.toFixed(0)}h`,color:"var(--primary)"},
+        {l:"Écart",v:`${c.ecart>0?"+":""}${c.ecart.toFixed(1)}h`,color:ec},
+    ];
+    document.getElementById('peSummary').innerHTML = items.map(it=>`
+        <div class="pe-scard">
+            <div class="pe-sval" style="color:${it.color}">${it.v}</div>
+            <div class="pe-slbl">${it.l}</div>
+        </div>
+    `).join('');
+}
+
+// ── Tab Config ──
+function renderConfig() {
+    const c = PE.calc, a = PE.analyse;
+    if(!c || !a) return;
+
+    let html = `
+    <div class="pe-config-grid">
+        <div>
+            <label>Temps contractuel</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <input type="number" id="peHeuresHebdo" value="${PE.heuresHebdo}" step="0.5" min="1" max="48" onchange="PE.heuresHebdo=parseFloat(this.value)||35;peRecalc();" />
+                <span style="font-size:12px;color:#888;">h/sem</span>
+            </div>
+            <div class="pe-hint">Brut : ${c.brut}h (${PE.heuresHebdo}×52)</div>
+        </div>
+        <div>
+            <label>Congés payés</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <input type="number" id="peCpJours" value="${PE.cpJours}" min="0" max="50" onchange="PE.cpJours=parseInt(this.value)||25;peRecalc();" style="width:75px;" />
+                <span style="font-size:12px;color:#888;">j. ouvrés</span>
+            </div>
+            <div class="pe-hint">= ${c.deductCP.toFixed(0)}h (×${c.moyJour.toFixed(1)}h moy.)</div>
+        </div>
+        <div>
+            <label>Seuil alerte hebdo</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+                <input type="number" id="peSeuilHebdo" value="${PE.seuilHebdo}" min="35" max="48" onchange="PE.seuilHebdo=parseFloat(this.value)||44;peRecalc();" style="width:75px;" />
+                <span style="font-size:12px;color:#888;">h/sem</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Décompte -->
+    <div class="pe-card">
+        <div class="pe-stitle">📅 Décompte ${PE.annee}</div>
+        <div style="padding:12px;background:var(--gray-50);border-radius:8px;margin-bottom:14px;font-size:13px;color:var(--gray-500);line-height:1.8;">
+            <strong>Calcul du volume cible :</strong><br/>
+            ${c.brut}h (brut) − ${c.deductCP.toFixed(0)}h (CP : ${PE.cpJours}j × ${c.moyJour.toFixed(1)}h) − ${c.deductFeries.toFixed(0)}h (fériés : heures réelles) = <strong style="font-size:15px;color:var(--gray-900);">${c.cible.toFixed(0)}h à planifier</strong>
+        </div>
+        <div class="pe-stats">
+            ${[
+                {l:"Jours ouvrés",v:a.joursOuvresTotal,bg:"var(--gray-50)",c:"var(--gray-500)"},
+                {l:"Fériés (lun-ven)",v:a.nbFeries,bg:"#f4ecf7",c:"#8e44ad"},
+                {l:"Jours vacances scol.",v:a.joursVac.length,bg:"#fef5e7",c:"#e67e22"},
+                {l:"Jours hors vacances",v:a.joursHV.length,bg:"#edf4fc",c:"var(--primary)"},
+                {l:"Semaines vacances",v:a.nbSemVac,bg:"#fef5e7",c:"#e67e22"},
+                {l:"Semaines hors vac. (cal.)",v:a.nbSemHV,bg:"#edf4fc",c:"var(--primary)"},
+                {l:"Semaines HV équiv. (fériés & −CP)",v:c.nbSemHVEquiv.toFixed(1),bg:"#edf4fc",c:"var(--primary)"},
+                {l:"Sem. AccSco (sept-juin)",v:a.nbSemAccSco,bg:"#f4ecf7",c:"#8e44ad"},
+                {l:"Mercredis hors vac.",v:a.hvParWd[2],bg:"#edf9f0",c:"var(--success)"},
+            ].map(it=>`
+                <div class="pe-stat" style="background:${it.bg};">
+                    <span class="pe-stat-label">${it.l}</span>
+                    <span class="pe-pill" style="background:${it.c}15;color:${it.c};">${it.v}</span>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+
+    <!-- Vacances scolaires (lecture seule, issues de la BDD) -->
+    <div class="pe-card">
+        <div class="pe-stitle" style="justify-content:space-between;">
+            <span>🗓 Vacances scolaires</span>
+            <span style="font-size:11px;color:#aaa;">Issues de l'administration</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;">
+            ${PE.vacances.length===0 ? '<span style="color:#aaa;font-style:italic;">Aucune période saisie</span>' :
+            PE.vacances.map(v=>`
+                <div class="pe-vac-pill">
+                    <strong style="color:#b8860b;">${esc(v.nom)}</strong>
+                    <span style="color:#a67c00;">${fmtD(v.debut)} → ${fmtD(v.fin)}</span>
+                </div>
+            `).join('')}
+        </div>
+    </div>
+
+    <!-- Jours fériés (lecture seule, issues de la BDD) -->
+    <div class="pe-card">
+        <div class="pe-stitle" style="justify-content:space-between;">
+            <span>🎌 Jours fériés</span>
+            <span style="font-size:11px;color:#aaa;">Issues de l'administration</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;">
+            ${PE.feries.length===0 ? '<span style="color:#aaa;font-style:italic;">Aucun jour férié saisi</span>' :
+            PE.feries.map(f=>{
+                const enVac = isVac(f.date, PE.vacances);
+                const mo = parseInt(f.date.split('-')[1]);
+                const avecAccSco = (mo !== 7 && mo !== 8);
+                const hDed = f.ouvre ? (enVac ? (c.hVacJour[f.wd]||0) : (avecAccSco ? (c.hHVTotal[f.wd]||0) : (c.hHVJour[f.wd]||0))) : 0;
+                const bg = !f.ouvre ? "#f5f5f5" : enVac ? "#fef5e7" : "#f4ecf7";
+                const brd = !f.ouvre ? "#ddd" : enVac ? "#f0c987" : "#d2b4de";
+                return `<div class="pe-fer-pill" style="background:${bg};border:1px solid ${brd};">
+                    <span style="font-weight:700;color:#555;">${fmtD(f.date)}</span>
+                    <span style="color:#888;">${esc(f.label)}</span>
+                    <span style="color:#888;font-size:10px;">(${f.jour_semaine})</span>
+                    ${f.ouvre ? `<span class="pe-pill" style="background:${hDed>0?'#f4ecf7':'#f5f5f5'};color:${hDed>0?'#8e44ad':'#aaa'};">${hDed.toFixed(1)}h</span>` :
+                    `<span class="pe-pill" style="background:#f5f5f5;color:#aaa;">WE</span>`}
+                </div>`;
+            }).join('')}
+        </div>
+        <div style="font-size:11px;color:#aaa;margin-top:8px;">
+            Total déduit fériés : <strong>${c.deductFeries.toFixed(1)}h</strong> (heures réelles qui auraient été travaillées)
+        </div>
+    </div>`;
+
+    document.getElementById('peTabConfig').innerHTML = html;
+}
+
+// ── Génération HTML champ time ──
+// Utilise onblur pour eviter qu'un re-render detruise l'input pendant la saisie
+function timeInput(id, value) {
+    return `<input type="time" class="pe-time ${value?'pe-filled':''}" id="${id}" value="${value||''}" onfocus="peTimeFocus(this)" onblur="peTimeBlur('${id}', this.value)" />`;
+}
+
+var _peTimeEditing = false;
+
+function peTimeFocus(el) {
+    _peTimeEditing = true;
+}
+
+function peTimeBlur(id, val) {
+    _peTimeEditing = false;
+    const parts = id.split('_');
+    const zone = parts[0]; // vac, hv ou accsco
+    const idx = parseInt(parts[1]);
+    const field = parts[2]; // m1,m2,a1,a2 ou debut,fin
+
+    if(zone === 'vac') {
+        PE.cVac[idx][field] = val;
+    } else if(zone === 'hv') {
+        PE.cHV[idx][field] = val;
+    } else if(zone === 'accsco') {
+        PE.accSco[idx][field] = val;
+    }
+    peRecalc();
+}
+
+function peAccScoJourChanged(idx, val) {
+    PE.accSco[idx].jour = parseInt(val);
+    peRecalc();
+}
+
+// ── Tab Vacances ──
+function renderVacances() {
+    const c = PE.calc, a = PE.analyse;
+    if(!c || !a) return;
+
+    let rows = JOURS.map((j,i) => {
+        const h = creneauxToH(PE.cVac[i]);
+        const warn = h>10;
+        return `<tr class="${i===2?'pe-mercredi':''}">
+            <td class="pe-td-left" style="font-weight:700;font-size:12px;color:#555;">${j}</td>
+            <td>${timeInput('vac_'+i+'_m1', PE.cVac[i].m1)}</td>
+            <td>${timeInput('vac_'+i+'_m2', PE.cVac[i].m2)}</td>
+            <td>${timeInput('vac_'+i+'_a1', PE.cVac[i].a1)}</td>
+            <td>${timeInput('vac_'+i+'_a2', PE.cVac[i].a2)}</td>
+            <td class="pe-mono" style="font-weight:800;font-size:14px;color:${warn?'var(--danger)':h>0?'var(--gray-900)':'#ccc'};">${h>0?h.toFixed(h%1?1:0)+'h':'—'}</td>
+        </tr>`;
+    }).join('');
+
+    const semColor = c.hebdoVac>48 ? 'var(--danger)' : c.hebdoVac>PE.seuilHebdo ? '#e67e22' : 'var(--success)';
+
+    let html = `
+    <div class="pe-stitle">☀️ Créneaux type — Vacances scolaires (ALSH)</div>
+    <p style="font-size:13px;color:#888;margin-bottom:16px;">Horaires début/fin matin et après-midi pour une semaine type de vacances.</p>
+    <div style="overflow-x:auto;">
+        <table class="pe-table">
+            <thead><tr>
+                <th class="pe-th-left" style="width:80px;">Jour</th>
+                <th>Matin début</th><th>Matin fin</th><th>A-M début</th><th>A-M fin</th>
+                <th style="color:var(--danger);">Total</th>
+            </tr></thead>
+            <tbody>
+                ${rows}
+                <tr class="pe-foot">
+                    <td class="pe-td-left">TOTAL</td>
+                    <td colspan="4"></td>
+                    <td class="pe-mono" style="font-size:16px;color:${semColor};">${c.hebdoVac.toFixed(1)}h/sem</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Réunions prépa -->
+    <div class="pe-card" style="margin-top:16px;">
+        <div class="pe-stitle">📋 Réunions de préparation (avant chaque période de vacances)</div>
+        <div style="display:flex;flex-wrap:wrap;">
+            ${PE.reunionsPrepa.map((r,i)=>`
+                <div class="pe-reunion-item">
+                    <span style="font-size:12px;font-weight:700;color:#b8860b;">${esc(r.nomVac)}</span>
+                    <input type="number" step="0.5" min="0" max="16" value="${r.heures||''}" onchange="PE.reunionsPrepa[${i}].heures=parseFloat(this.value)||0;peRecalc();"
+                        style="width:48px;padding:4px 6px;text-align:center;border:1px solid #f0c987;border-radius:6px;font-size:14px;font-weight:700;font-family:'Courier New',monospace;" />
+                    <span style="font-size:12px;color:#a67c00;">h</span>
+                </div>
+            `).join('')}
+        </div>
+        <div style="font-size:12px;color:#aaa;margin-top:8px;">
+            Total réunions : <strong>${c.totReunions.toFixed(0)}h</strong> sur l'année
+        </div>
+    </div>
+
+    <!-- Résultat vacances -->
+    <div class="pe-result pe-result-vac">
+        <div class="pe-result-head">
+            <div>
+                <div style="font-weight:800;color:#b8860b;font-size:14px;">Total vacances + réunions prépa</div>
+                <div style="font-size:12px;color:#a67c00;">${a.nbSemVac} sem × ~${c.hebdoVac.toFixed(1)}h + ${c.totReunions.toFixed(0)}h réunions</div>
+            </div>
+            <div class="pe-result-big" style="color:#b8860b;">${(c.totVac+c.totReunions).toFixed(0)}h</div>
+        </div>
+        <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:13px;">
+                <span style="color:#555;">${(((c.totVac+c.totReunions)/c.cible)*100).toFixed(0)}% du volume cible</span>
+                <span class="pe-mono" style="font-weight:800;">${(c.totVac+c.totReunions).toFixed(1)}h / ${c.cible.toFixed(0)}h</span>
+            </div>
+            <div class="pe-bar-track"><div class="pe-bar-fill" style="width:${Math.min(((c.totVac+c.totReunions)/c.cible)*100,100)}%;background:#e67e22;"></div></div>
+        </div>
+    </div>`;
+
+    document.getElementById('peTabVacances').innerHTML = html;
+}
+
+// ── Tab Hors Vacances ──
+function renderHorsVac() {
+    const c = PE.calc, a = PE.analyse;
+    if(!c||!a) return;
+
+    let rows = JOURS.map((j,i)=>{
+        const hBase = creneauxToH(PE.cHV[i]);
+        const hAcc = c.hAccScoJour[i];
+        const hTot = c.hHVTotal[i];
+        return `<tr class="${i===2?'pe-mercredi':''}">
+            <td class="pe-td-left" style="font-weight:700;font-size:12px;color:#555;">${j}</td>
+            <td>${timeInput('hv_'+i+'_m1', PE.cHV[i].m1)}</td>
+            <td>${timeInput('hv_'+i+'_m2', PE.cHV[i].m2)}</td>
+            <td>${timeInput('hv_'+i+'_a1', PE.cHV[i].a1)}</td>
+            <td>${timeInput('hv_'+i+'_a2', PE.cHV[i].a2)}</td>
+            <td class="pe-mono" style="font-weight:700;font-size:13px;color:${hBase>0?'var(--primary)':'#ccc'};">${hBase>0?hBase.toFixed(1)+'h':'—'}</td>
+            <td class="pe-mono" style="font-weight:700;font-size:13px;color:${hAcc>0?'#8e44ad':'#ccc'};">${hAcc>0?'+'+hAcc.toFixed(1)+'h':'—'}</td>
+            <td class="pe-mono" style="font-weight:800;font-size:14px;color:${hTot>10?'var(--danger)':hTot>0?'var(--gray-900)':'#ccc'};">${hTot>0?hTot.toFixed(1)+'h':'—'}</td>
+        </tr>`;
+    }).join('');
+
+    const semColor = c.hebdoHV>48?'var(--danger)':c.hebdoHV>PE.seuilHebdo?'#e67e22':'var(--primary)';
+
+    let html = `
+    <div class="pe-stitle">📖 Créneaux type — Hors vacances scolaires</div>
+    <p style="font-size:13px;color:#888;margin-bottom:16px;">Horaires de base (mercredi ALSH, journées de travail…). L'AccSco se paramètre en dessous.</p>
+    <div style="overflow-x:auto;margin-bottom:16px;">
+        <table class="pe-table">
+            <thead><tr>
+                <th class="pe-th-left" style="width:80px;">Jour</th>
+                <th>Matin début</th><th>Matin fin</th><th>A-M début</th><th>A-M fin</th>
+                <th style="color:var(--primary);">Base</th>
+                <th style="color:#8e44ad;">AccSco</th>
+                <th style="color:var(--danger);">Total</th>
+            </tr></thead>
+            <tbody>
+                ${rows}
+                <tr class="pe-foot">
+                    <td class="pe-td-left">TOTAL</td>
+                    <td colspan="4"></td>
+                    <td style="color:var(--primary);">${c.hHVJour.reduce((a,b)=>a+b,0).toFixed(1)}h</td>
+                    <td style="color:#8e44ad;">${c.hAccScoJour.reduce((a,b)=>a+b,0).toFixed(1)}h</td>
+                    <td class="pe-mono" style="font-size:16px;color:${semColor};">${c.hebdoHV.toFixed(1)}h/sem</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- AccSco -->
+    <div class="pe-card">
+        <div class="pe-stitle" style="justify-content:space-between;">
+            <span>📗 Accompagnement à la scolarité (AccSco) <span style="font-size:11px;font-weight:400;color:#aaa;">sept. → juin</span></span>
+            <button onclick="peAddAccSco()" style="font-size:12px;padding:4px 12px;border-radius:6px;border:1px solid #8e44ad;background:#f4ecf7;cursor:pointer;color:#8e44ad;font-weight:700;">+ Ajouter</button>
+        </div>
+        ${PE.accSco.length===0 ? '<p style="font-size:13px;color:#bbb;font-style:italic;">Aucun créneau AccSco.</p>' :
+        `<div style="display:flex;flex-wrap:wrap;">${PE.accSco.map((ac,idx)=>{
+            const dur = ac.debut&&ac.fin ? ((timeToMin(ac.fin)-timeToMin(ac.debut))/60).toFixed(1) : '—';
+            return `<div class="pe-accsco-item">
+                <select onchange="peAccScoJourChanged(${idx},this.value);" style="padding:4px 6px;border-radius:6px;border:1px solid #d2b4de;font-size:13px;font-weight:600;">
+                    ${JOURS.map((j,i)=>i!==2?`<option value="${i}" ${ac.jour===i?'selected':''}>${j}</option>`:'').join('')}
+                </select>
+                ${timeInput('accsco_'+idx+'_debut', ac.debut)}
+                <span style="color:#8e44ad;font-size:12px;">→</span>
+                ${timeInput('accsco_'+idx+'_fin', ac.fin)}
+                <span class="pe-mono" style="font-weight:700;color:#8e44ad;font-size:13px;">${dur}h</span>
+                <button onclick="PE.accSco.splice(${idx},1);peRecalc();" style="background:none;border:none;cursor:pointer;color:var(--danger);font-weight:700;font-size:16px;">×</button>
+            </div>`;
+        }).join('')}</div>`}
+    </div>
+
+    <!-- Prépa hebdo -->
+    <div class="pe-card">
+        <div class="pe-stitle">📋 Préparation / réunion hebdomadaire</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" step="0.5" min="0" max="10" value="${PE.heuresPrepaHebdo||''}"
+                onchange="PE.heuresPrepaHebdo=parseFloat(this.value)||0;peRecalc();"
+                style="width:60px;padding:7px 10px;border:2px solid var(--gray-200);border-radius:8px;font-size:16px;font-weight:800;font-family:'Courier New',monospace;" />
+            <span style="font-size:13px;color:#888;">h/semaine (non affectées à un jour précis)</span>
+        </div>
+    </div>
+
+    <!-- Résultat HV -->
+    <div class="pe-result pe-result-hv">
+        <div class="pe-result-head">
+            <div>
+                <div style="font-weight:800;color:#1a5276;font-size:14px;">Total heures hors vacances</div>
+                <div style="font-size:12px;color:var(--primary);">${c.nbSemHVEquiv.toFixed(1)} sem HV équiv. (après CP)${c.totAccSco>0 ? ` · dont AccSco ${c.totAccSco.toFixed(0)}h (${a.nbSemAccSco} sem sept-juin)` : ''}</div>
+            </div>
+            <div class="pe-result-big" style="color:#1a5276;">${c.totHV.toFixed(0)}h</div>
+        </div>
+        ${c.joursVidesHV > 0 && c.ecart < -5 ? `
+        <div class="pe-suggestion">
+            💡 <strong>Suggestion :</strong> ${Math.abs(c.ecart).toFixed(0)}h restantes sur ${c.joursVidesHV} jours vides → ~<strong>${c.hResteParJour.toFixed(1)}h/jour</strong>
+            ${c.hResteParJour>8 ? '<span style="color:var(--danger);"> ⚠ Trop élevé.</span>' : ''}
+        </div>` : ''}
+    </div>`;
+
+    document.getElementById('peTabHorsVac').innerHTML = html;
+}
+
+function peAddAccSco() {
+    const used = new Set(PE.accSco.map(a=>a.jour));
+    const av = [0,1,3,4].find(d=>!used.has(d));
+    if(av!==undefined) {
+        PE.accSco.push({jour:av, debut:"16:30", fin:"18:30"});
+        peRecalc();
+    }
+}
+
+// ── Tab Bilan ──
+function renderBilan() {
+    const c = PE.calc, a = PE.analyse;
+    if(!c||!a) return;
+    const ec = ecartColor(c.ecart);
+
+    let html = `
+    <div class="pe-stitle">📊 Bilan annuel ${PE.annee}</div>
+
+    <div class="pe-card" style="padding:24px;">
+        <div style="font-size:13px;color:var(--gray-500);margin-bottom:16px;line-height:1.8;">
+            <strong>Volume brut :</strong> ${c.brut}h (${PE.heuresHebdo}h × 52 sem.)<br/>
+            <strong>− Congés payés :</strong> ${c.deductCP.toFixed(0)}h (${PE.cpJours}j × ${c.moyJour.toFixed(1)}h moyenne)<br/>
+            <strong>− Jours fériés :</strong> ${c.deductFeries.toFixed(1)}h (${a.nbFeries} jours, heures réelles)<br/>
+            <strong style="font-size:15px;color:var(--gray-900);">= Volume à planifier : ${c.cible.toFixed(0)}h</strong>
+        </div>
+
+        <!-- Barre progression -->
+        <div style="margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px;font-size:13px;">
+                <span style="color:var(--gray-500);font-weight:500;">Volume planifié vs cible</span>
+                <span class="pe-mono" style="font-weight:800;color:${c.totalPlanifie>c.cible?'var(--danger)':'var(--gray-900)'};">${c.totalPlanifie.toFixed(1)}h <span style="font-weight:400;color:#999;">/ ${c.cible.toFixed(0)}h</span></span>
+            </div>
+            <div class="pe-bar-track"><div class="pe-bar-fill" style="width:${Math.min((c.totalPlanifie/c.cible)*100,100)}%;background:${ec};"></div></div>
+        </div>
+
+        <!-- Boîtes résumé -->
+        <div class="pe-bilan-grid">
+            <div class="pe-bilan-box" style="background:#fef5e7;border:1px solid #f0c987;">
+                <div style="font-size:11px;color:#a67c00;font-weight:700;">☀ Vacances</div>
+                <div class="pe-mono" style="font-size:22px;font-weight:800;color:#b8860b;">${c.totVac.toFixed(0)}h</div>
+                <div style="font-size:10px;color:#a67c00;">${((c.totVac/c.cible)*100).toFixed(0)}% • ~${c.hebdoVac.toFixed(1)}h/sem</div>
+            </div>
+            <div class="pe-bilan-box" style="background:#edf4fc;border:1px solid #a9cce3;">
+                <div style="font-size:11px;color:var(--primary);font-weight:700;">📖 Hors vacances</div>
+                <div class="pe-mono" style="font-size:22px;font-weight:800;color:#1a5276;">${c.totHV.toFixed(0)}h</div>
+                <div style="font-size:10px;color:var(--primary);">${((c.totHV/c.cible)*100).toFixed(0)}% • ~${c.hebdoHV.toFixed(1)}h/sem</div>
+            </div>
+            <div class="pe-bilan-box" style="background:#fef5e7;border:1px solid #f0c987;">
+                <div style="font-size:11px;color:#a67c00;font-weight:700;">📋 Réunions prépa</div>
+                <div class="pe-mono" style="font-size:22px;font-weight:800;color:#b8860b;">${c.totReunions.toFixed(0)}h</div>
+                <div style="font-size:10px;color:#a67c00;">${PE.vacances.length} périodes</div>
+            </div>
+        </div>
+
+        <!-- Écart -->
+        <div class="pe-ecart-box" style="background:${Math.abs(c.ecart)<15?'#edf9f0':c.ecart>0?'#fdf0ed':'#edf4fc'};border-color:${ec};">
+            <div style="font-size:13px;font-weight:700;color:${ec};">
+                ${Math.abs(c.ecart)<15 ? '✓ Planning équilibré' : c.ecart>0 ? '▲ Surcharge annuelle' : '▼ Heures à répartir'}
+            </div>
+            <div class="pe-mono" style="font-size:34px;font-weight:800;color:${ec};">${c.ecart>0?'+':''}${c.ecart.toFixed(1)}h</div>
+            <div style="font-size:12px;color:#999;">Planifié : ${c.totalPlanifie.toFixed(0)}h / Cible : ${c.cible.toFixed(0)}h</div>
+        </div>
+    </div>
+
+    <!-- Détail par jour -->
+    <div class="pe-card">
+        <div class="pe-stitle">📋 Ventilation par jour</div>
+        <div style="overflow-x:auto;">
+            <table class="pe-table" style="font-size:13px;">
+                <thead><tr>
+                    <th class="pe-th-left">Jour</th>
+                    <th style="color:#e67e22;">h/j vac.</th>
+                    <th style="color:#e67e22;">Nb j.</th>
+                    <th style="color:#e67e22;">Tot. vac.</th>
+                    <th style="color:var(--primary);">h/j HV</th>
+                    <th style="color:#8e44ad;">AccSco</th>
+                    <th style="color:var(--primary);">Nb j.</th>
+                    <th style="color:var(--primary);">Tot. HV</th>
+                </tr></thead>
+                <tbody>
+                    ${JOURS.map((j,i)=>`
+                    <tr class="${i===2?'pe-mercredi':''}">
+                        <td class="pe-td-left" style="font-weight:700;">${j}</td>
+                        <td>${c.hVacJour[i]>0?c.hVacJour[i].toFixed(1)+'h':'—'}</td>
+                        <td style="color:#bbb;">${a.vacParWd[i]}</td>
+                        <td style="font-weight:700;color:#e67e22;">${c.totVacParWd[i]>0?c.totVacParWd[i].toFixed(0)+'h':'—'}</td>
+                        <td>${c.hHVJour[i]>0?c.hHVJour[i].toFixed(1)+'h':'—'}</td>
+                        <td style="color:#8e44ad;font-weight:600;">${c.hAccScoJour[i]>0?'+'+c.hAccScoJour[i].toFixed(1)+'h':'—'}</td>
+                        <td style="color:#bbb;">${a.hvParWd[i]}</td>
+                        <td style="font-weight:700;color:var(--primary);">${c.totHVParWd[i]>0?c.totHVParWd[i].toFixed(0)+'h':'—'}</td>
+                    </tr>`).join('')}
+                    ${PE.heuresPrepaHebdo>0 ? `<tr style="font-style:italic;color:#888;">
+                        <td class="pe-td-left">Prépa hebdo</td>
+                        <td colspan="3">—</td>
+                        <td>${PE.heuresPrepaHebdo}h/sem</td>
+                        <td>—</td>
+                        <td>${c.nbSemHVEquiv.toFixed(1)}</td>
+                        <td style="font-weight:700;color:var(--primary);">${(PE.heuresPrepaHebdo*c.nbSemHVEquiv).toFixed(0)}h</td>
+                    </tr>` : ''}
+                    <tr class="pe-foot">
+                        <td class="pe-td-left">TOTAL</td>
+                        <td style="color:#e67e22;">${c.hebdoVac.toFixed(1)}h/sem</td>
+                        <td style="color:#bbb;">${a.joursVac.length}</td>
+                        <td style="color:#e67e22;font-size:15px;">${c.totVac.toFixed(0)}h</td>
+                        <td colspan="2" style="color:var(--primary);">${c.hebdoHV.toFixed(1)}h/sem</td>
+                        <td style="color:#bbb;">${a.joursHV.length}</td>
+                        <td style="color:var(--primary);font-size:15px;">${c.totHV.toFixed(0)}h</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alertes -->
+    <div class="pe-card">
+        <div class="pe-stitle">🔔 Alertes</div>
+        ${c.alertes.length===0 ? '<p style="color:var(--success);font-weight:600;">✓ Aucune alerte.</p>' :
+        c.alertes.map(al=>{
+            const icons = {danger:'🚨',warning:'⚠️',success:'✓',info:'ℹ'};
+            return `<div class="pe-alert pe-alert-${al.type}">
+                <span class="pe-alert-icon">${icons[al.type]||'•'}</span>
+                <div>
+                    <div class="pe-alert-title">${esc(al.title)}</div>
+                    ${al.detail ? `<div class="pe-alert-detail">${esc(al.detail)}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('')}
+    </div>
+
+    <!-- Résumé compact -->
+    <div style="padding:14px;background:var(--gray-50);border-radius:10px;border:1px dashed #ddd;font-size:12px;color:#999;line-height:2;font-family:'Courier New',monospace;">
+        <strong style="color:var(--gray-500);">📝 Résumé :</strong><br/>
+        Contrat : ${PE.heuresHebdo}h/sem — Année civile ${PE.annee}<br/>
+        Brut : ${c.brut}h − CP ${c.deductCP.toFixed(0)}h − Fériés ${c.deductFeries.toFixed(0)}h = Cible ${c.cible.toFixed(0)}h<br/>
+        Planifié : ${c.totalPlanifie.toFixed(0)}h | Écart : ${c.ecart>0?'+':''}${c.ecart.toFixed(1)}h<br/>
+        Vacances : ${c.totVac.toFixed(0)}h + Réunions ${c.totReunions.toFixed(0)}h + HV : ${c.totHV.toFixed(0)}h
+    </div>`;
+
+    document.getElementById('peTabBilan').innerHTML = html;
+}
+
+// ── Init au chargement ──
+document.addEventListener('DOMContentLoaded', function() {
+    // Si un user_id est pré-sélectionné, charger automatiquement
+    {% if selected_user_id %}
+    peLoad();
+    {% endif %}
+});
+</script>
+{% endblock %}

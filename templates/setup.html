@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Installation - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-box" style="max-width: 520px;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:1.5rem;">
+            <img src="{{ url_for('static', filename='img/petit-logo.png') }}" alt="" style="height:64px;width:auto;">
+            <div style="line-height:1.2;">
+                <div style="font-size:1.4rem;font-weight:700;color:var(--gray-900);">CS-PILOT</div>
+                <div style="font-size:0.75rem;color:var(--gray-500);">La plateforme libre des centres sociaux</div>
+            </div>
+        </div>
+        <h1>Configuration initiale</h1>
+        <p class="subtitle" style="margin-bottom: 1.5rem;">
+            Bienvenue ! Aucun compte n'existe encore dans l'application.<br>
+            Veuillez creer le premier compte administrateur pour commencer.
+        </p>
+
+        <div class="help-box" style="margin-bottom: 1.5rem;">
+            <h4>Profil Directeur</h4>
+            <p>Ce compte sera automatiquement cree avec le profil <strong>Directeur</strong>, qui dispose d'un acces complet a l'application (gestion des utilisateurs, validations, administration, etc.).</p>
+        </div>
+
+        <form method="POST" action="{{ url_for('auth.setup') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="nom">Nom *</label>
+                    <input type="text" id="nom" name="nom" required
+                           value="{{ request.form.get('nom', '') }}">
+                </div>
+
+                <div class="form-group">
+                    <label for="prenom">Prenom *</label>
+                    <input type="text" id="prenom" name="prenom" required
+                           value="{{ request.form.get('prenom', '') }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="login">Identifiant de connexion *</label>
+                <input type="text" id="login" name="login" required
+                       placeholder="Ex: jdupont"
+                       value="{{ request.form.get('login', '') }}">
+                <p class="help-text">Utilise pour se connecter a l'application</p>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Mot de passe *</label>
+                <input type="password" id="password" name="password" required
+                       minlength="8" oninput="checkPasswordStrength()">
+                <div id="password-strength" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+                <p class="help-text">Minimum 8 caracteres, 1 majuscule, 1 minuscule, 1 chiffre. Caractere special recommande.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="password_confirm">Confirmer le mot de passe *</label>
+                <input type="password" id="password_confirm" name="password_confirm" required
+                       minlength="8" oninput="checkPasswordMatch()">
+                <div id="password-match" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Profil</label>
+                <input type="text" value="Directeur" disabled
+                       style="background: var(--gray-100); cursor: not-allowed;">
+                <p class="help-text">Le premier compte est obligatoirement de profil Directeur</p>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-full">Creer le compte administrateur</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function checkPasswordStrength() {
+    var pw = document.getElementById('password').value;
+    var el = document.getElementById('password-strength');
+    var msgs = [];
+    if (pw.length < 8) msgs.push('8 caracteres minimum');
+    if (!/[A-Z]/.test(pw)) msgs.push('1 majuscule');
+    if (!/[a-z]/.test(pw)) msgs.push('1 minuscule');
+    if (!/[0-9]/.test(pw)) msgs.push('1 chiffre');
+    var warn = !/[^A-Za-z0-9]/.test(pw);
+    if (msgs.length > 0) {
+        el.innerHTML = '<span style="color:#dc3545;">Manque : ' + msgs.join(', ') + '</span>';
+    } else if (warn) {
+        el.innerHTML = '<span style="color:#f0ad4e;">Valide, mais un caractere special est recommande</span>';
+    } else {
+        el.innerHTML = '<span style="color:#28a745;">Mot de passe robuste</span>';
+    }
+    checkPasswordMatch();
+}
+
+function checkPasswordMatch() {
+    var pw = document.getElementById('password').value;
+    var confirm = document.getElementById('password_confirm').value;
+    var el = document.getElementById('password-match');
+    if (!confirm) {
+        el.innerHTML = '';
+    } else if (pw !== confirm) {
+        el.innerHTML = '<span style="color:#dc3545;">Les mots de passe ne correspondent pas</span>';
+    } else {
+        el.innerHTML = '<span style="color:#28a745;">Les mots de passe correspondent</span>';
+    }
+}
+</script>
+{% endblock %}

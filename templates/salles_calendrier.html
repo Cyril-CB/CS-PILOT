@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Calendrier {{ salle.nom }} - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="salles-page">
+    <div class="salles-header">
+        <div>
+            <h1>
+                <span class="salles-color-dot" style="background:{{ salle.couleur }};width:16px;height:16px;"></span>
+                {{ salle.nom }}
+            </h1>
+            <p class="subtitle">
+                Calendrier des reservations
+                {% if salle.capacite %} &mdash; {{ salle.capacite }} places{% endif %}
+            </p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+            {# Selecteur de salle #}
+            <select onchange="window.location=this.value" style="padding:6px 10px;border-radius:6px;border:1px solid var(--gray-300);font-size:14px;">
+                {% for s in toutes_salles %}
+                <option value="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id, mois=mois_str) }}"
+                        {% if s.id == salle.id %}selected{% endif %}>{{ s.nom }}</option>
+                {% endfor %}
+            </select>
+            <a href="{{ url_for('salles_bp.salles') }}" class="btn btn-secondary" style="font-size:13px;">Retour</a>
+        </div>
+    </div>
+
+    {# Navigation mois #}
+    <div class="salles-cal-nav">
+        <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=salle.id, mois=mois_prec) }}" class="btn btn-secondary">◀ Precedent</a>
+        <h2 class="salles-cal-month">{{ mois_nom }} {{ annee }}</h2>
+        <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=salle.id, mois=mois_suiv) }}" class="btn btn-secondary">Suivant ▶</a>
+    </div>
+
+    {# Grille calendrier #}
+    <div class="salles-cal-grid">
+        <div class="salles-cal-header">
+            <div>Lun</div><div>Mar</div><div>Mer</div><div>Jeu</div><div>Ven</div><div>Sam</div><div>Dim</div>
+        </div>
+        {% for semaine in semaines %}
+        <div class="salles-cal-week">
+            {% for jour in semaine %}
+            <div class="salles-cal-day {{ 'salles-cal-other' if not jour.mois_courant else '' }} {{ 'salles-cal-today' if jour.aujourd_hui else '' }}">
+                <div class="salles-cal-day-num">{{ jour.jour }}</div>
+                {% for r in jour.reservations %}
+                <div class="salles-cal-event" style="background:{{ salle.couleur }}20;border-left:3px solid {{ salle.couleur }};"
+                     title="{{ r.titre }}&#10;{{ r.heure_debut }} - {{ r.heure_fin }}{% if r.prenom %}&#10;Par {{ r.prenom }} {{ r.nom_user }}{% endif %}{% if r.description %}&#10;{{ r.description }}{% endif %}">
+                    <span class="salles-cal-event-time">{{ r.heure_debut }}-{{ r.heure_fin }}</span>
+                    <span class="salles-cal-event-title">{{ r.titre }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

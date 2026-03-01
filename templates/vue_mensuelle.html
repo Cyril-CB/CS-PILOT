@@ -1,0 +1,403 @@
+{% extends "base.html" %}
+
+{% block title %}Vue mensuelle - {{ nom_mois }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="vue-mensuelle">
+    <!-- Sélecteur d'utilisateur (si accès multi-utilisateurs) -->
+    {% if users_accessibles|length > 0 %}
+    <div class="user-selector" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <label for="user_select" style="margin-right: 1rem; font-weight: 500;">
+            {% if session.profil == 'responsable' %}
+            👨‍💼 Fiche de mon équipe :
+            {% else %}
+            👤 Fiche à afficher :
+            {% endif %}
+        </label>
+        <select id="user_select" onchange="changerUtilisateur()" style="padding: 0.5rem; border: 2px solid #667eea; border-radius: 5px; font-size: 1rem;">
+            {% for u in users_accessibles %}
+            <option value="{{ u.id }}" {% if u.id == user_id_a_afficher %}selected{% endif %}>
+                {{ u.prenom }} {{ u.nom }}
+                {% if u.profil == 'responsable' %}(Responsable){% elif u.profil == 'comptable' %}(Comptable){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <script>
+    function changerUtilisateur() {
+        const userId = document.getElementById('user_select').value;
+        window.location.href = "{{ url_for('validation_bp.vue_mensuelle') }}?user_id=" + userId + "&mois={{ mois }}&annee={{ annee }}";
+    }
+    </script>
+    {% endif %}
+    
+    <div class="month-header">
+        <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary">← {{ mois_precedent }}/{{ annee_precedente }}</a>
+
+        <h1>📅 {{ nom_mois }} {{ annee }}
+        {% if user_affiche.id != session.user_id %}
+        <br><small style="font-size: 0.6em; color: #888;">{{ user_affiche.prenom }} {{ user_affiche.nom }}</small>
+        {% endif %}
+        </h1>
+
+        <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary">{{ mois_suivant }}/{{ annee_suivante }} →</a>
+    </div>
+
+    <!-- Basculer entre les vues -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; justify-content: center;">
+        <span class="btn btn-primary" style="font-size: 0.85rem; cursor: default;">📋 Vue tableau</span>
+        <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois, annee=annee, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary" style="font-size: 0.85rem;">📅 Vue calendrier</a>
+    </div>
+    
+    <!-- Récapitulatif du mois -->
+    <div class="stats-grid" style="margin-bottom: 2rem;">
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <h3>Heures théoriques</h3>
+                <p class="stat-value">{{ "%.2f"|format(total_heures_theoriques) }}h</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-content">
+                <h3>Heures réelles</h3>
+                <p class="stat-value">{{ "%.2f"|format(total_heures_reelles) }}h</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">
+                {% if solde_mois > 0 %}➕{% elif solde_mois < 0 %}➖{% else %}➡️{% endif %}
+            </div>
+            <div class="stat-content">
+                <h3>Solde du mois</h3>
+                <p class="stat-value" style="color: {% if solde_mois > 0 %}#28a745{% elif solde_mois < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {% if solde_mois > 0 %}+{% endif %}{{ "%.2f"|format(solde_mois) }}h
+                </p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">💼</div>
+            <div class="stat-content">
+                <h3>Solde cumulé</h3>
+                <p class="stat-value" style="color: {% if solde_cumule > 0 %}#28a745{% elif solde_cumule < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {% if solde_cumule > 0 %}+{% endif %}{{ "%.2f"|format(solde_cumule) }}h
+                </p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tableau des journées -->
+    <div class="section">
+        {% if validation and validation.bloque %}
+        <div class="help-box" style="background: #d4edda; border-left-color: #28a745; margin-bottom: 1rem;">
+            <h4>🔒 Fiche verrouillée</h4>
+            <p>Cette fiche a été validée par le responsable et le directeur. <strong>Aucune modification n'est possible.</strong></p>
+            <p>Si vous devez apporter des corrections, contactez votre directeur.</p>
+        </div>
+        {% endif %}
+        
+        {% if nb_jours_non_declares > 0 %}
+        <div class="help-box" style="background: #fee2e2; border-left-color: #dc2626; margin-bottom: 1rem;">
+            <h4>⚠️ Jours non déclarés</h4>
+            <p><strong>{{ nb_jours_non_declares }} jour(s) travaillé(s) n'est/ne sont pas déclaré(s).</strong></p>
+            <p>Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.</p>
+            <p>Pour chaque jour rouge, cliquez sur ✏️ puis :</p>
+            <ul style="margin-bottom: 0;">
+                <li>Cochez "✅ Je certifie avoir travaillé mes heures habituelles" si c'est le cas</li>
+                <li>OU saisissez vos heures réelles si elles diffèrent</li>
+            </ul>
+        </div>
+        {% endif %}
+        
+        <table class="data-table month-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Jour</th>
+                    <th>Période</th>
+                    <th>Heures théo.</th>
+                    <th>Heures réelles</th>
+                    <th>Écart</th>
+                    <th>Statut</th>
+                    <th>Commentaire</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for j in journees %}
+                <tr class="{% if j.non_declare %}jour-non-declare{% elif j.est_saisi %}jour-saisi{% else %}jour-non-saisi{% endif %} {% if j.est_samedi %}jour-samedi{% endif %}">
+                    <td><strong>{{ j.date_obj.strftime('%d/%m') }}</strong></td>
+                    <td>
+                        {{ j.jour_semaine }}
+                        {% if j.est_samedi %}
+                        <span style="background: #ffc107; color: #000; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; margin-left: 5px;">Exceptionnel</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if j.est_samedi %}
+                        -
+                        {% elif j.type_periode == 'vacances' %}
+                        🏖️ Vacances
+                        {% else %}
+                        📚 Scolaire
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if j.est_samedi %}
+                        <span style="color: #6c757d;">0h</span>
+                        {% else %}
+                        {{ "%.2f"|format(j.heures_theoriques) }}h
+                        {% endif %}
+                    </td>
+                    <td>{{ "%.2f"|format(j.heures_reelles) }}h</td>
+                    <td>
+                        {% if j.ecart > 0 %}
+                        <span style="color: #28a745; font-weight: bold;">+{{ "%.2f"|format(j.ecart) }}h</span>
+                        {% elif j.ecart < 0 %}
+                        <span style="color: #dc3545; font-weight: bold;">{{ "%.2f"|format(j.ecart) }}h</span>
+                        {% else %}
+                        <span style="color: #6c757d;">0h</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if j.non_declare %}
+                            <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
+                        {% elif j.type_saisie == 'absence' %}
+                            <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
+                        {% elif j.est_declare %}
+                            <span class="badge" style="background: #3b82f6; color: white;">✅ Déclaré</span>
+                        {% elif j.est_saisi %}
+                            {% if j.type_saisie == 'recup_journee' %}
+                            <span class="badge" style="background: #ffc107; color: #000;">🏖️ Récup</span>
+                            {% else %}
+                            <span class="badge badge-success">✏️ Saisi</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
+                        {% endif %}
+                    </td>
+                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ j.commentaire or '-' }}
+                    </td>
+                    <td>
+                        {% if peut_modifier %}
+                        <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
+                           class="btn-icon"
+                           title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">
+                            {% if j.est_saisi %}✏️{% else %}➕{% endif %}
+                        </a>
+                        {% else %}
+                        <span class="btn-icon" style="opacity: 0.3;" title="Consultation seule">👁️</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="font-weight: bold; background: #f8f9fa;">
+                    <td colspan="3">TOTAL DU MOIS</td>
+                    <td>{{ "%.2f"|format(total_heures_theoriques) }}h</td>
+                    <td>{{ "%.2f"|format(total_heures_reelles) }}h</td>
+                    <td>
+                        {% if solde_mois > 0 %}
+                        <span style="color: #28a745;">+{{ "%.2f"|format(solde_mois) }}h</span>
+                        {% elif solde_mois < 0 %}
+                        <span style="color: #dc3545;">{{ "%.2f"|format(solde_mois) }}h</span>
+                        {% else %}
+                        <span style="color: #6c757d;">0h</span>
+                        {% endif %}
+                    </td>
+                    <td colspan="3"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    
+    <!-- Actions -->
+    <div class="actions" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
+        
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <!-- Bouton PDF si verrouillé -->
+            {% if validation and validation.bloque %}
+            <a href="{{ url_for('exports_bp.export_pdf_mensuel', user_id=user_id_a_afficher, mois=mois, annee=annee) }}" 
+               class="btn" style="background: #dc3545; color: white;">
+                📄 Télécharger PDF
+            </a>
+            
+            <!-- Bouton de déverrouillage (directeur uniquement) -->
+            {% if session.profil == 'directeur' %}
+            <button onclick="deverrouillerFiche()" class="btn" style="background: #ffc107; color: #000;">
+                🔓 Déverrouiller
+            </button>
+            {% endif %}
+            {% endif %}
+            
+            <!-- Statut de validation -->
+            {% if validation %}
+            <div class="validation-status" style="text-align: right;">
+                {% if validation.bloque %}
+                <span class="badge" style="background: #28a745; color: white; padding: 0.5rem 1rem; font-size: 1rem;">
+                    🔒 Fiche verrouillée
+                </span>
+                {% else %}
+                <div style="font-size: 0.85rem; color: #666;">
+                    {% if validation.validation_salarie %}✅ Salarié validé<br>{% endif %}
+                    {% if validation.validation_responsable %}✅ Responsable validé<br>{% endif %}
+                    {% if validation.validation_directeur %}✅ Directeur validé{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            <!-- Bouton de validation -->
+            {% if not mois_est_termine %}
+            <div class="help-box" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
+                <h4>⏳ Mois en cours</h4>
+                <p>La validation d'un mois n'est possible qu'une fois le mois terminé.</p>
+                <p><strong>Vous pourrez valider {{ nom_mois }} {{ annee }} à partir du 1er jour du mois suivant.</strong></p>
+            </div>
+            {% elif peut_valider_mois and not (validation and validation.bloque) %}
+            <form method="POST" action="{{ url_for('validation_bp.valider_mois') }}" onsubmit="return confirm('Êtes-vous sûr de vouloir valider ce mois ?');">
+                <input type="hidden" name="user_id" value="{{ user_id_a_afficher }}">
+                <input type="hidden" name="mois" value="{{ mois }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-primary">
+                    {% if session.profil == 'directeur' %}
+                    ✅ Valider (Directeur)
+                    {% elif session.profil == 'responsable' %}
+                    ✅ Valider (Responsable)
+                    {% else %}
+                    ✅ Valider le mois
+                    {% endif %}
+                </button>
+            </form>
+            {% elif validation and validation.bloque %}
+            <button class="btn" style="background: #28a745; color: white;" disabled>✅ Validé et verrouillé</button>
+            {% elif nb_jours_non_declares > 0 %}
+            <div class="help-box" style="background: #fee2e2; border-left: 4px solid #dc2626;">
+                <h4>⚠️ Déclarations incomplètes</h4>
+                <p><strong>{{ nb_jours_non_declares }} jour(s)</strong> doit être déclaré(s) ou saisi(s) avant de pouvoir valider le mois.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Légende -->
+    <div class="help-box">
+        <h4>📖 Légende</h4>
+        <ul>
+            <li><strong style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 3px;">✅ Déclaré</strong> : Déclaration conforme au planning théorique</li>
+            <li><strong>✏️ Saisi</strong> : Journée avec saisie manuelle des heures (heures sup ou différentes)</li>
+            <li><strong>🏖️ Récup</strong> : Récupération journée complète</li>
+            <li><strong style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 3px;">🏥 Absence</strong> : Arrêt maladie, congé ou autre absence saisie</li>
+            <li><strong style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px;">⚠️ Non déclaré</strong> : Jour passé qui doit être saisi ou déclaré (empêche la validation)</li>
+            <li><strong style="background: #fff3cd; padding: 2px 6px;">Samedi</strong> : N'apparaît que s'il y a une saisie. 0h théorique = tout en heures supplémentaires</li>
+        </ul>
+        <p><strong>Solde cumulé :</strong> Inclut les mois précédents ({{ "%.2f"|format(solde_anterieur) }}h) + ce mois ({{ "%.2f"|format(solde_mois) }}h)</p>
+        <p><strong>Important :</strong> Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.</p>
+    </div>
+</div>
+
+<script>
+function deverrouillerFiche() {
+    const motif = prompt("⚠️ ATTENTION : Vous êtes sur le point de déverrouiller cette fiche.\n\nToutes les validations seront supprimées et la fiche redeviendra modifiable.\n\nMotif obligatoire (sera enregistré dans l'historique) :");
+    
+    if (motif === null) {
+        // Annulé
+        return;
+    }
+    
+    if (!motif || motif.trim() === '') {
+        alert('Le motif est obligatoire pour déverrouiller.');
+        return;
+    }
+    
+    // Confirmation finale
+    if (!confirm('Êtes-vous absolument sûr de vouloir déverrouiller cette fiche ?\n\nMotif : ' + motif)) {
+        return;
+    }
+    
+    // Créer et soumettre le formulaire
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{{ url_for("validation_bp.deverrouiller_mois") }}';
+    
+    const fields = {
+        'user_id': '{{ user_id_a_afficher }}',
+        'mois': '{{ mois }}',
+        'annee': '{{ annee }}',
+        'motif': motif
+    };
+    
+    for (const key in fields) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = fields[key];
+        form.appendChild(input);
+    }
+    
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+
+<style>
+.vue-mensuelle {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.month-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.month-header h1 {
+    color: #667eea;
+    margin: 0;
+}
+
+.month-table {
+    font-size: 0.9rem;
+}
+
+.month-table tbody tr.jour-saisi {
+    background: #f8f9fa;
+}
+
+.month-table tbody tr.jour-non-saisi {
+    opacity: 0.7;
+}
+
+.month-table tbody tr.jour-non-declare {
+    background: #fee2e2 !important;
+    border-left: 4px solid #dc2626;
+}
+
+.month-table tbody tr.jour-samedi {
+    background: #fff3cd !important;
+    border-left: 4px solid #ffc107;
+}
+
+.month-table tbody tr:hover {
+    background: #e7f3ff !important;
+}
+
+.month-table tfoot tr {
+    border-top: 3px solid #667eea;
+}
+</style>
+{% endblock %}

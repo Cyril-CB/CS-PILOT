@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des budgets{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="budget-header">
+        <div>
+            <h1>💰 Gestion des budgets</h1>
+            <p class="subtitle">Définissez et suivez les budgets par secteur</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="budget-year-nav">
+                <a href="{{ url_for('budget_bp.gestion_budgets', annee=annee-1) }}" class="direction-month-btn" title="Année précédente">◀</a>
+                <span class="direction-month-label">{{ annee }}</span>
+                <a href="{{ url_for('budget_bp.gestion_budgets', annee=annee+1) }}" class="direction-month-btn" title="Année suivante">▶</a>
+            </div>
+            <a href="{{ url_for('budget_bp.gestion_postes_depense') }}" class="btn btn-secondary">⚙️ Postes de dépense</a>
+        </div>
+    </div>
+
+    {% set total_budgets = secteurs|selectattr('budget')|list|length %}
+    {% set total_global = secteurs|selectattr('budget')|map(attribute='budget')|map(attribute='montant_global')|sum %}
+    {% set total_reparti = secteurs|selectattr('budget')|map(attribute='budget')|map(attribute='total_reparti')|sum %}
+    {% set total_depense = secteurs|selectattr('budget')|map(attribute='budget')|map(attribute='total_reel')|sum %}
+
+    <!-- Stats globales -->
+    <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-card">
+            <div class="stat-icon">🏢</div>
+            <div class="stat-content">
+                <h3>Secteurs</h3>
+                <p class="stat-value">{{ secteurs|length }}</p>
+                <p class="stat-detail">{{ total_budgets }} budget(s) défini(s)</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">💶</div>
+            <div class="stat-content">
+                <h3>Budget total {{ annee }}</h3>
+                <p class="stat-value">{{ "{:,.2f}".format(total_global).replace(",", " ") }} €</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <h3>Total réparti</h3>
+                <p class="stat-value" style="color: {% if total_reparti > total_global %}var(--danger){% elif total_reparti == total_global %}var(--success){% else %}var(--warning){% endif %};">
+                    {{ "{:,.2f}".format(total_reparti).replace(",", " ") }} €
+                </p>
+                <p class="stat-detail">
+                    {% if total_global > 0 %}
+                    {{ "%.1f"|format(total_reparti / total_global * 100) }}% du budget global
+                    {% else %}
+                    Aucun budget défini
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">💸</div>
+            <div class="stat-content">
+                <h3>Total dépensé</h3>
+                <p class="stat-value" style="color: {% if total_depense > total_global %}var(--danger){% elif total_depense > 0 %}var(--primary){% else %}var(--gray-500){% endif %};">
+                    {{ "{:,.2f}".format(total_depense).replace(",", " ") }} €
+                </p>
+                <p class="stat-detail">
+                    {% if total_global > 0 %}
+                    {{ "%.1f"|format(total_depense / total_global * 100) }}% consommé
+                    {% else %}
+                    -
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tableau des secteurs -->
+    {% if secteurs %}
+    <div class="section" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Secteur</th>
+                    <th>Type</th>
+                    <th style="text-align: right;">Budget global</th>
+                    <th style="text-align: right;">Réparti</th>
+                    <th style="text-align: right;">Dépensé</th>
+                    <th style="text-align: right;">Solde</th>
+                    <th style="width: 180px;">Consommation</th>
+                    <th style="text-align: center;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in secteurs %}
+                <tr>
+                    <td>
+                        <strong>{{ s.nom }}</strong>
+                        <br><small style="color: var(--gray-500);">{{ s.nb_users }} salarié(s)</small>
+                    </td>
+                    <td>
+                        {% if s.type_secteur %}
+                        <span class="badge badge-info">{{ s.type_label }}</span>
+                        {% else %}
+                        <span class="badge badge-warning">Non défini</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right; font-weight: 600;">
+                        {% if s.budget %}
+                        {{ "{:,.2f}".format(s.budget.montant_global).replace(",", " ") }} €
+                        {% else %}
+                        <span style="color: var(--gray-500);">-</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if s.budget %}
+                        {{ "{:,.2f}".format(s.budget.total_reparti).replace(",", " ") }} €
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if s.budget %}
+                        <span style="color: {% if s.budget.total_reel > 0 %}var(--primary){% else %}var(--gray-500){% endif %};">
+                            {{ "{:,.2f}".format(s.budget.total_reel).replace(",", " ") }} €
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if s.budget %}
+                        {% set solde = s.budget.montant_global - s.budget.total_reel %}
+                        <span style="color: {% if solde < 0 %}var(--danger){% elif solde == 0 %}var(--gray-500){% else %}var(--success){% endif %}; font-weight: 600;">
+                            {{ "{:,.2f}".format(solde).replace(",", " ") }} €
+                        </span>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if s.budget and s.budget.montant_global > 0 %}
+                        <div class="budget-progress-bar">
+                            <div class="budget-progress-fill
+                                {% if s.budget.pct_reel > 100 %}budget-progress-danger
+                                {% elif s.budget.pct_reel >= 75 %}budget-progress-ok
+                                {% elif s.budget.pct_reel >= 50 %}budget-progress-low
+                                {% else %}budget-progress-low{% endif %}"
+                                 style="width: {{ [s.budget.pct_reel, 100]|min }}%;">
+                            </div>
+                        </div>
+                        <small style="color: var(--gray-500);">{{ s.budget.pct_reel }}% consommé</small>
+                        {% elif s.budget %}
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">Budget à 0 €</span>
+                        {% else %}
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">Non défini</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        {% if s.type_secteur %}
+                        <a href="{{ url_for('budget_bp.budget_secteur', secteur_id=s.id, annee=annee) }}"
+                           class="btn btn-primary btn-sm">
+                            {% if s.budget %}✏️ Gérer{% else %}➕ Créer{% endif %}
+                        </a>
+                        {% else %}
+                        <span class="badge badge-warning" title="Définissez un type de secteur pour activer le budget">Type requis</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            {% if total_global > 0 %}
+            <tfoot>
+                <tr>
+                    <td colspan="2"><strong>TOTAUX</strong></td>
+                    <td style="text-align: right; font-weight: 700;">{{ "{:,.2f}".format(total_global).replace(",", " ") }} €</td>
+                    <td style="text-align: right; font-weight: 700;">{{ "{:,.2f}".format(total_reparti).replace(",", " ") }} €</td>
+                    <td style="text-align: right; font-weight: 700;">{{ "{:,.2f}".format(total_depense).replace(",", " ") }} €</td>
+                    <td style="text-align: right; font-weight: 700;">
+                        {% set solde_total = total_global - total_depense %}
+                        <span style="color: {% if solde_total < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            {{ "{:,.2f}".format(solde_total).replace(",", " ") }} €
+                        </span>
+                    </td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+    {% else %}
+    <div class="direction-empty">
+        <p>Aucun secteur configuré. Commencez par créer des secteurs dans l'administration.</p>
+        <a href="{{ url_for('admin_bp.gestion_secteurs') }}" class="btn btn-primary" style="margin-top: 1rem;">🏢 Gérer les secteurs</a>
+    </div>
+    {% endif %}
+
+    <div class="help-box">
+        <h4>💡 Comment fonctionne la gestion budgétaire ?</h4>
+        <ul>
+            <li><strong>Direction / Comptable :</strong> définit le budget global de chaque secteur et peut ajuster la répartition par défaut</li>
+            <li><strong>Responsable :</strong> répartit le budget global de son secteur entre les différents postes de dépense, sans dépasser le montant global</li>
+            <li><strong>Accueil de loisirs :</strong> la répartition se fait par période (mercredis + 5 périodes de vacances)</li>
+            <li><strong>Postes de dépense :</strong> sont configurables et associés aux types de secteur</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

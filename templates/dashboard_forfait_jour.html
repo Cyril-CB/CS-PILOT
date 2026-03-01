@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Forfait Jour{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>Tableau de bord Forfait Jour</h1>
+    <p class="subtitle">Année {{ annee }}</p>
+    
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        <div class="stat-card">
+            <div class="stat-icon" style="font-size: 2rem;">📊</div>
+            <div class="stat-content">
+                <h3>Jours travaillés</h3>
+                <p class="stat-value">{{ stats.travaille }}</p>
+                <span style="color: var(--gray-500); font-size: 0.85rem;">/ {{ stats.config.jours_contrat }} jours</span>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="font-size: 2rem;">📈</div>
+            <div class="stat-content">
+                <h3>Progression</h3>
+                <p class="stat-value">{{ "%.1f"|format(stats.pourcentage_travail) }}%</p>
+                <div style="width: 100%; background: var(--gray-200); height: 8px; border-radius: 4px; margin-top: 0.5rem;">
+                    <div style="width: {{ stats.pourcentage_travail }}%; background: var(--primary); height: 100%; border-radius: 4px;"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="font-size: 2rem;">🏖️</div>
+            <div class="stat-content">
+                <h3>Congés payés</h3>
+                <p class="stat-value">{{ stats.conge_paye }}</p>
+                <span style="color: var(--gray-500); font-size: 0.85rem;">{{ stats.soldes.conges_payes_restants }} restants / {{ stats.config.jours_conges_payes }}</span>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="font-size: 2rem;">🎁</div>
+            <div class="stat-content">
+                <h3>Congés conv.</h3>
+                <p class="stat-value">{{ stats.conge_conv }}</p>
+                <span style="color: var(--gray-500); font-size: 0.85rem;">{{ stats.soldes.conges_conv_restants }} restants / {{ stats.config.jours_conges_conv }}</span>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon" style="font-size: 2rem;">🏠</div>
+            <div class="stat-content">
+                <h3>Repos forfait</h3>
+                <p class="stat-value">{{ stats.repos_forfait }}</p>
+                <span style="color: var(--gray-500); font-size: 0.85rem;">{{ stats.soldes.repos_forfait_restants }} restants / {{ stats.config.jours_repos_forfait }}</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Autres absences</h2>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            <div style="padding: 1rem; background: var(--gray-50); border-radius: 8px;">
+                <div style="font-size: 0.85rem; color: var(--gray-500); margin-bottom: 0.25rem;">Jours fériés posés</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-dark);">{{ stats.ferie }}</div>
+                <div style="font-size: 0.8rem; color: var(--gray-500);">{{ stats.config.jours_feries }} jours fériés 2026</div>
+            </div>
+            
+            <div style="padding: 1rem; background: var(--gray-50); border-radius: 8px;">
+                <div style="font-size: 0.85rem; color: var(--gray-500); margin-bottom: 0.25rem;">Arrêts maladie</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--warning);">{{ stats.maladie }}</div>
+                <div style="font-size: 0.8rem; color: var(--gray-500);">Non décomptés du forfait</div>
+            </div>
+            
+            <div style="padding: 1rem; background: var(--gray-50); border-radius: 8px;">
+                <div style="font-size: 0.85rem; color: var(--gray-500); margin-bottom: 0.25rem;">Autres absences</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-dark);">{{ stats.sans_solde + stats.autre }}</div>
+                <div style="font-size: 0.8rem; color: var(--gray-500);">Sans solde, formation, etc.</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Configuration forfait jour {{ annee }}</h2>
+        <table class="data-table">
+            <tbody>
+                <tr>
+                    <td><strong>Jours ouvrables dans l'année</strong></td>
+                    <td>{{ stats.config.jours_ouvrables }} jours</td>
+                </tr>
+                <tr>
+                    <td><strong>Jours fériés (hors weekends)</strong></td>
+                    <td>{{ stats.config.jours_feries }} jours</td>
+                </tr>
+                <tr>
+                    <td><strong>Congés payés</strong></td>
+                    <td>{{ stats.config.jours_conges_payes }} jours</td>
+                </tr>
+                <tr>
+                    <td><strong>Congés conventionnels</strong></td>
+                    <td>{{ stats.config.jours_conges_conv }} jours</td>
+                </tr>
+                <tr>
+                    <td><strong>Jours à travailler (contrat)</strong></td>
+                    <td><strong>{{ stats.config.jours_contrat }} jours</strong></td>
+                </tr>
+                <tr style="background: var(--gray-50);">
+                    <td><strong>Jours de repos forfait (RTT calculés)</strong></td>
+                    <td><strong>{{ stats.config.jours_repos_forfait }} jours</strong></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="actions">
+        <a href="{{ url_for('forfait_bp.calendrier_forfait_jour') }}" class="btn btn-primary">📅 Calendrier de saisie</a>
+        <a href="{{ url_for('forfait_bp.rapport_forfait_jour_pdf', mois=1, annee=annee) }}" class="btn btn-secondary">📄 Rapport janvier</a>
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour tableau de bord</a>
+    </div>
+    
+    <div class="help-box">
+        <h4>Informations sur le forfait jour</h4>
+        <ul>
+            <li><strong>210 jours à travailler</strong> dans l'année selon votre contrat</li>
+            <li>Les <strong>arrêts maladie</strong> ne sont pas décomptés du forfait (neutre)</li>
+            <li>Vous disposez de <strong>{{ stats.config.jours_repos_forfait }} jours de repos forfait</strong> (RTT) calculés automatiquement</li>
+            <li>Utilisez le <strong>calendrier</strong> pour saisir vos journées chaque mois</li>
+            <li>Générez un <strong>rapport PDF</strong> mensuel à faire signer par le comité de présidence</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

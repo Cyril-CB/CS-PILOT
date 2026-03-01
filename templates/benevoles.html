@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+
+{% block title %}Liste benevoles - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header">
+        <div>
+            <h1>Liste des benevoles</h1>
+            <p class="subtitle">Suivi des benevoles par statut</p>
+        </div>
+    </div>
+
+    {% for groupe in groupes %}
+    <div class="sv-group" data-groupe="{{ groupe.key }}">
+        {# ── En-tete de groupe ── #}
+        <div class="sv-group-head" style="background:{{ groupe.color }};" onclick="toggleGroup(this)">
+            <span class="sv-group-arrow">▾</span>
+            <span class="sv-group-label">{{ groupe.label }}</span>
+            <span class="sv-group-count">{{ groupe.lignes|length }} benevole{{ 's' if groupe.lignes|length != 1 else '' }}</span>
+            {% if not is_responsable %}
+            <button class="sv-group-add" onclick="event.stopPropagation(); promptAdd('{{ groupe.key }}')">+ Ajouter</button>
+            {% endif %}
+        </div>
+
+        {# ── Contenu du groupe (board scrollable) ── #}
+        <div class="sv-group-body">
+            <div class="sv-scroll">
+                <table class="sv-board">
+                    <thead>
+                        <tr>
+                            <th class="sv-col-name">Nom Prenom</th>
+                            <th class="sv-col-person">Responsable</th>
+                            <th class="sv-col-status">Statut</th>
+                            <th class="sv-col-date">Date de debut</th>
+                            <th class="sv-col-text">Email</th>
+                            <th class="sv-col-text">Telephone</th>
+                            <th class="sv-col-text">Adresse</th>
+                            <th class="sv-col-comment">Competences</th>
+                            <th class="sv-col-status">Heures / semaine</th>
+                            {% if not is_responsable %}
+                            <th class="sv-col-actions"></th>
+                            {% endif %}
+                            <th class="sv-col-name-end">Nom Prenom</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for ben in groupe.lignes %}
+                        <tr class="sv-row" data-id="{{ ben.id }}">
+                            {# ── Nom (sticky) ── #}
+                            <td class="sv-col-name sv-cell-name">
+                                <span class="sv-cell-text" onclick="editText(this, {{ ben.id }}, 'nom')" style="padding-left:8px;">{{ ben.nom }}</span>
+                                <span class="sv-left-color" style="background:{{ groupe.color }};"></span>
+                            </td>
+                            {# ── Responsable ── #}
+                            <td class="sv-col-person sv-cell-person" onclick="editPerson(this, {{ ben.id }}, 'responsable_id')">
+                                {% if ben.responsable_id and ben.responsable_id in users_map %}
+                                <span class="sv-avatar" title="{{ users_map[ben.responsable_id].prenom }} {{ users_map[ben.responsable_id].nom }}">{{ users_map[ben.responsable_id].initiales }}</span>
+                                {% else %}
+                                <span class="sv-avatar-empty">+</span>
+                                {% endif %}
+                            </td>
+                            {# ── Statut (= groupe) ── #}
+                            <td class="sv-col-status">
+                                <span class="sv-status-pill" style="background:{{ groupe.color }};" onclick="editStatus(this, {{ ben.id }})">{{ groupe.label }}</span>
+                            </td>
+                            {# ── Date de debut ── #}
+                            <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ ben.id }}, 'date_debut')">
+                                {% if ben.date_debut %}{{ ben.date_debut[8:10] }}/{{ ben.date_debut[5:7] }}/{{ ben.date_debut[0:4] }}{% else %}—{% endif %}
+                            </td>
+                            {# ── Email ── #}
+                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ ben.id }}, 'email')">
+                                {{ ben.email if ben.email else '—' }}
+                            </td>
+                            {# ── Telephone ── #}
+                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ ben.id }}, 'telephone')">
+                                {{ ben.telephone if ben.telephone else '—' }}
+                            </td>
+                            {# ── Adresse ── #}
+                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ ben.id }}, 'adresse')">
+                                {{ ben.adresse if ben.adresse else '—' }}
+                            </td>
+                            {# ── Competences ── #}
+                            <td class="sv-col-comment sv-cell-text-edit" onclick="editTextarea(this, {{ ben.id }}, 'competences')">
+                                {{ ben.competences if ben.competences else '—' }}
+                            </td>
+                            {# ── Heures par semaine ── #}
+                            <td class="sv-col-status">
+                                {% set h_color = '#c4c4c4' %}
+                                {% set h_label = '—' %}
+                                {% for ho in heures_config %}
+                                    {% if ho.key == ben.heures_semaine %}
+                                        {% set h_color = ho.color %}
+                                        {% set h_label = ho.label %}
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="sv-status-pill" style="background:{{ h_color }};" data-heures="{{ ben.heures_semaine or '' }}" onclick="editHeures(this, {{ ben.id }})">{{ h_label }}</span>
+                            </td>
+                            {% if not is_responsable %}
+                            <td class="sv-col-actions">
+                                <button class="sv-del-btn" onclick="deleteBen({{ ben.id }})" title="Supprimer">🗑️</button>
+                            </td>
+                            {% endif %}
+                            <td class="sv-col-name-end">{{ ben.nom }}</td>
+                        </tr>
+                    {% endfor %}
+
+                    {% if not groupe.lignes %}
+                        <tr>
+                            <td colspan="{% if not is_responsable %}11{% else %}10{% endif %}" class="sv-empty">
+                                Aucun benevole dans ce groupe
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+/* ── Config (depuis Jinja) ── */
+var USERS = {};
+{% for u in users %}
+USERS[{{ u.id }}] = {nom: "{{ u.nom }}", prenom: "{{ u.prenom }}", initiales: "{{ users_map[u.id].initiales }}"};
+{% endfor %}
+
+var GROUPES = [
+{% for g in groupes_config %}
+    {key: "{{ g.key }}", label: "{{ g.label }}", color: "{{ g.color }}"}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+
+var HEURES_OPTIONS = [
+{% for h in heures_config %}
+    {key: "{{ h.key }}", label: "{{ h.label }}", color: "{{ h.color }}"}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+
+/* ── Helpers ── */
+function apiCall(url, body) {
+    return fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r) { return r.json(); });
+}
+
+/* ISO YYYY-MM-DD → DD/MM/YYYY */
+function fmtDate(iso) {
+    if (!iso) return '—';
+    var p = iso.split('-');
+    return (p.length === 3) ? p[2]+'/'+p[1]+'/'+p[0] : iso;
+}
+/* DD/MM/YYYY → YYYY-MM-DD */
+function parseDate(disp) {
+    if (!disp || disp === '—') return '';
+    var p = disp.split('/');
+    return (p.length === 3) ? p[2]+'-'+p[1]+'-'+p[0] : disp;
+}
+
+/* ── Collapse / Expand groupes ── */
+function toggleGroup(head) {
+    var body = head.nextElementSibling;
+    var arrow = head.querySelector('.sv-group-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        arrow.textContent = '▾';
+    } else {
+        body.style.display = 'none';
+        arrow.textContent = '▸';
+    }
+}
+
+/* ── Ajouter benevole ── */
+function promptAdd(groupe) {
+    var nom = prompt('Nom et prenom du benevole :');
+    if (!nom || !nom.trim()) return;
+    apiCall('/api/benevoles/ajouter', {nom: nom.trim(), groupe: groupe}).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ── Supprimer benevole ── */
+function deleteBen(id) {
+    if (!confirm('Supprimer ce benevole ?')) return;
+    apiCall('/api/benevoles/' + id + '/supprimer', {}).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ── Edition inline : texte ── */
+function editText(el, id, field) {
+    if (el.querySelector('input')) return;
+    var current = el.textContent.trim();
+    if (current === '—') current = '';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+
+    function save() {
+        var val = input.value.trim();
+        apiCall('/api/benevoles/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            if (r.ok) {
+                el.textContent = val || '—';
+            } else {
+                el.textContent = current || '—';
+            }
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { el.textContent = current || '—'; }
+    });
+}
+
+/* ── Edition inline : textarea (competences) ── */
+function editTextarea(el, id, field) {
+    if (el.querySelector('textarea')) return;
+    var current = el.textContent.trim();
+    if (current === '—') current = '';
+    var ta = document.createElement('textarea');
+    ta.value = current;
+    ta.className = 'sv-inline-input sv-inline-textarea';
+    ta.rows = 3;
+    el.textContent = '';
+    el.appendChild(ta);
+    ta.focus();
+
+    function save() {
+        var val = ta.value.trim();
+        apiCall('/api/benevoles/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            if (r.ok) {
+                el.textContent = val || '—';
+            } else {
+                el.textContent = current || '—';
+            }
+        });
+    }
+    ta.addEventListener('blur', save);
+    ta.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { el.textContent = current || '—'; }
+    });
+}
+
+/* ── Edition inline : date ── */
+function editDate(el, id, field) {
+    if (el.querySelector('input')) return;
+    var display = el.textContent.trim();
+    var isoVal = parseDate(display);
+    var input = document.createElement('input');
+    input.type = 'date';
+    input.value = isoVal;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+
+    function save() {
+        var val = input.value;
+        apiCall('/api/benevoles/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = fmtDate(val);
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { el.textContent = display || '—'; }
+    });
+}
+
+/* ── Edition inline : personne (dropdown) ── */
+function editPerson(el, id, field) {
+    if (el.querySelector('select')) return;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    Object.keys(USERS).forEach(function(uid) {
+        var u = USERS[uid];
+        sel.innerHTML += '<option value="'+uid+'">'+u.prenom+' '+u.nom+'</option>';
+    });
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+
+    function save() {
+        var val = sel.value;
+        apiCall('/api/benevoles/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = '';
+            if (val && USERS[val]) {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar';
+                sp.title = USERS[val].prenom + ' ' + USERS[val].nom;
+                sp.textContent = USERS[val].initiales;
+                el.appendChild(sp);
+            } else {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar-empty';
+                sp.textContent = '+';
+                el.appendChild(sp);
+            }
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', function() { save(); });
+}
+
+/* ── Edition inline : statut (groupe du benevole) ── */
+function editStatus(el, id) {
+    if (el.querySelector('select') || el.tagName === 'SELECT') return;
+    var parent = el.parentElement;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    GROUPES.forEach(function(g) {
+        sel.innerHTML += '<option value="'+g.key+'">'+g.label+'</option>';
+    });
+    parent.textContent = '';
+    parent.appendChild(sel);
+    sel.focus();
+
+    sel.addEventListener('change', function() {
+        var val = sel.value;
+        apiCall('/api/benevoles/' + id + '/modifier', {field: 'groupe', value: val}).then(function(r) {
+            if (r.ok) location.reload();
+        });
+    });
+    sel.addEventListener('blur', function() {
+        if (!sel._changed) location.reload();
+    });
+}
+
+/* ── Edition inline : heures par semaine ── */
+function editHeures(el, id) {
+    if (el.querySelector('select') || el.tagName === 'SELECT') return;
+    var parent = el.parentElement;
+    var currentKey = el.getAttribute('data-heures') || '';
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    HEURES_OPTIONS.forEach(function(h) {
+        var opt = document.createElement('option');
+        opt.value = h.key;
+        opt.textContent = h.label;
+        if (h.key === currentKey) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    parent.textContent = '';
+    parent.appendChild(sel);
+    sel.focus();
+
+    var done = false;
+    function renderPill(key) {
+        var ho = HEURES_OPTIONS.find(function(h){return h.key===key;});
+        parent.textContent = '';
+        var sp = document.createElement('span');
+        sp.className = 'sv-status-pill';
+        sp.style.background = ho ? ho.color : '#c4c4c4';
+        sp.setAttribute('data-heures', key);
+        sp.textContent = ho ? ho.label : '—';
+        sp.onclick = function() { editHeures(sp, id); };
+        parent.appendChild(sp);
+    }
+    sel.addEventListener('change', function() {
+        if (done) return;
+        done = true;
+        var val = sel.value;
+        apiCall('/api/benevoles/' + id + '/modifier', {field: 'heures_semaine', value: val}).then(function(r) {
+            renderPill(val);
+        });
+    });
+    sel.addEventListener('blur', function() {
+        if (!done) renderPill(currentKey);
+    });
+}
+</script>
+{% endblock %}

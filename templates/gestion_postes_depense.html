@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Postes de dépense{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <div class="budget-header">
+        <div>
+            <h1>⚙️ Postes de dépense</h1>
+            <p class="subtitle">Configurez les catégories de dépenses et leurs associations aux types de secteur</p>
+        </div>
+        <a href="{{ url_for('budget_bp.gestion_budgets') }}" class="btn btn-secondary">← Retour aux budgets</a>
+    </div>
+
+    <!-- Postes existants -->
+    {% if postes %}
+    <div class="section" style="padding: 0;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Poste de dépense</th>
+                    <th>Types de secteur associés</th>
+                    <th style="text-align: center;">Statut</th>
+                    <th style="text-align: center;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in postes %}
+                <tr id="row-{{ p.id }}" {% if not p.actif %}style="opacity: 0.5;"{% endif %}>
+                    <td>
+                        <strong>{{ p.nom }}</strong>
+                    </td>
+                    <td>
+                        {% for ts in p.types_secteur %}
+                        <span class="badge badge-info" style="margin: 2px;">{{ types_labels.get(ts, ts) }}</span>
+                        {% endfor %}
+                        {% if not p.types_secteur %}
+                        <span style="color: var(--gray-500); font-style: italic;">Aucun</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: center;">
+                        <form method="POST" style="display: inline;">
+                            <input type="hidden" name="action" value="toggle_actif">
+                            <input type="hidden" name="poste_id" value="{{ p.id }}">
+                            {% if p.actif %}
+                            <button type="submit" class="badge badge-success" style="cursor: pointer; border: none;"
+                                    title="Cliquer pour désactiver">Actif</button>
+                            {% else %}
+                            <button type="submit" class="badge badge-danger" style="cursor: pointer; border: none;"
+                                    title="Cliquer pour activer">Inactif</button>
+                            {% endif %}
+                        </form>
+                    </td>
+                    <td style="text-align: center;">
+                        <button type="button" class="btn-icon" title="Modifier"
+                                onclick="openEditModal({{ p.id }}, '{{ p.nom|e }}', {{ p.types_secteur|tojson }})">✏️</button>
+                        <form method="POST" style="display: inline;"
+                              onsubmit="return confirm('Supprimer ce poste de dépense ?');">
+                            <input type="hidden" name="action" value="supprimer">
+                            <input type="hidden" name="poste_id" value="{{ p.id }}">
+                            <button type="submit" class="btn-icon" title="Supprimer">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- Formulaire d'ajout -->
+    <div class="section">
+        <h2>➕ Ajouter un poste de dépense</h2>
+        <form method="POST">
+            <input type="hidden" name="action" value="ajouter">
+
+            <div class="form-group">
+                <label for="nom_new">Nom du poste *</label>
+                <input type="text" id="nom_new" name="nom" required
+                       placeholder="Ex: Alimentation, Transport, Fournitures...">
+            </div>
+
+            <div class="form-group">
+                <label>Types de secteur concernés *</label>
+                <div class="budget-checkbox-grid">
+                    {% for code, label in types_labels.items() %}
+                    <label class="budget-checkbox-item">
+                        <input type="checkbox" name="types_secteur" value="{{ code }}">
+                        <span>{{ label }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <p class="help-text">Sélectionnez les types de secteur qui utilisent ce poste de dépense</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 Ajouter</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Modale de modification -->
+    <div id="editModal" class="budget-modal" style="display: none;">
+        <div class="budget-modal-content">
+            <h2>✏️ Modifier le poste de dépense</h2>
+            <form method="POST" id="editForm">
+                <input type="hidden" name="action" value="modifier">
+                <input type="hidden" name="poste_id" id="edit_poste_id">
+
+                <div class="form-group">
+                    <label for="edit_nom">Nom du poste *</label>
+                    <input type="text" id="edit_nom" name="nom" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Types de secteur concernés *</label>
+                    <div class="budget-checkbox-grid">
+                        {% for code, label in types_labels.items() %}
+                        <label class="budget-checkbox-item">
+                            <input type="checkbox" name="types_secteur" value="{{ code }}" id="edit_type_{{ code }}">
+                            <span>{{ label }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditModal()">Annuler</button>
+                    <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="help-box">
+        <h4>💡 Postes de dépense</h4>
+        <ul>
+            <li>Chaque poste est associé à un ou plusieurs types de secteur</li>
+            <li>Seuls les postes actifs apparaissent dans les budgets</li>
+            <li>Un poste utilisé dans des lignes budgétaires ne peut pas être supprimé mais peut être désactivé</li>
+            <li>Vous pouvez ajouter des postes personnalisés selon vos besoins</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+function openEditModal(posteId, nom, typesSecteur) {
+    document.getElementById('edit_poste_id').value = posteId;
+    document.getElementById('edit_nom').value = nom;
+
+    // Decocher tout puis cocher les bons
+    var allTypes = {{ types_labels.keys()|list|tojson }};
+    allTypes.forEach(function(code) {
+        var cb = document.getElementById('edit_type_' + code);
+        if (cb) cb.checked = typesSecteur.indexOf(code) !== -1;
+    });
+
+    document.getElementById('editModal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('editModal').style.display = 'none';
+}
+
+// Fermer la modale en cliquant en dehors
+document.getElementById('editModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditModal();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Gestion des utilisateurs{% endblock %}
+
+{% block content %}
+<div class="users-container">
+    <h1>👥 Gestion des utilisateurs</h1>
+    <p class="subtitle">{{ users|length }} utilisateur(s) enregistré(s)</p>
+    
+    <div class="actions" style="margin-bottom: 2rem;">
+        <a href="{{ url_for('admin_bp.creer_user') }}" class="btn btn-primary">➕ Nouvel utilisateur</a>
+        <a href="{{ url_for('admin_bp.gestion_secteurs') }}" class="btn btn-secondary">🏢 Gérer les secteurs</a>
+    </div>
+    
+    <div class="section">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Nom</th>
+                    <th>Prénom</th>
+                    <th>Login</th>
+                    <th>Profil</th>
+                    <th>Secteur</th>
+                    <th>Responsable</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr {% if not user.actif %}style="opacity: 0.5;"{% endif %}>
+                    <td>{{ user.nom }}</td>
+                    <td>{{ user.prenom }}</td>
+                    <td><code>{{ user.login }}</code></td>
+                    <td>
+                        {% if user.profil == 'directeur' %}
+                        🎯 Directeur
+                        {% elif user.profil == 'comptable' %}
+                        💰 Comptable
+                        {% elif user.profil == 'responsable' %}
+                        👨‍💼 Responsable
+                        {% else %}
+                        👤 Salarié
+                        {% endif %}
+                    </td>
+                    <td>{{ user.secteur_nom or '-' }}</td>
+                    <td>{{ user.responsable_nom or '-' }}</td>
+                    <td>
+                        {% if user.actif %}
+                        <span class="badge badge-success">Actif</span>
+                        {% else %}
+                        <span class="badge badge-inactive">Inactif</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('admin_bp.modifier_user', user_id=user.id) }}" class="btn-icon" title="Modifier">✏️</a>
+                        <form method="POST" action="{{ url_for('admin_bp.toggle_user', user_id=user.id) }}" style="display:inline;"
+                              onsubmit="return confirm('Êtes-vous sûr de vouloir {% if user.actif %}désactiver{% else %}activer{% endif %} cet utilisateur ?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn-icon" title="{% if user.actif %}Désactiver{% else %}Activer{% endif %}">
+                                {% if user.actif %}❌{% else %}✅{% endif %}
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="help-box">
+        <h4>ℹ️ À propos des profils</h4>
+        <ul>
+            <li><strong>🎯 Directeur</strong> : Accès lecture seule à toutes les fiches + validation finale. Pas de fiche personnelle.</li>
+            <li><strong>💰 Comptable</strong> : Accès lecture seule à toutes les fiches + sa propre fiche (modification/validation)</li>
+            <li><strong>👨‍💼 Responsable</strong> : Accès aux fiches de son secteur (modification/validation) + sa fiche personnelle</li>
+            <li><strong>👤 Salarié</strong> : Accès uniquement à sa fiche personnelle (modification/validation)</li>
+        </ul>
+        <p><strong>Verrouillage :</strong> Une fiche est définitivement verrouillée après validation du responsable ET du directeur.</p>
+    </div>
+</div>
+{% endblock %}

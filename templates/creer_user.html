@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Créer un utilisateur{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>➕ Créer un nouvel utilisateur</h1>
+    <p class="subtitle">Ajouter un salarié, responsable ou comptable</p>
+    
+    <form method="POST" action="{{ url_for('admin_bp.creer_user') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="nom">Nom *</label>
+                <input type="text" id="nom" name="nom" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="prenom">Prénom *</label>
+                <input type="text" id="prenom" name="prenom" required>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="login">Identifiant de connexion *</label>
+            <input type="text" id="login" name="login" required
+                   placeholder="Ex: jdupont">
+            <p class="help-text">Utilisé pour se connecter à l'application</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Mot de passe initial *</label>
+            <input type="password" id="password" name="password" required
+                   minlength="8" oninput="checkPasswordStrength()">
+            <div id="password-strength" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+            <p class="help-text">Minimum 8 caractères, 1 majuscule, 1 minuscule, 1 chiffre. Caractère spécial recommandé.</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="profil">Profil *</label>
+            <select id="profil" name="profil" required onchange="updateProfileOptions()">
+                <option value="">-- Choisir un profil --</option>
+                <option value="salarie">👤 Salarié</option>
+                <option value="responsable">👨‍💼 Responsable</option>
+                <option value="comptable">💰 Comptable</option>
+                <option value="directeur">🎯 Directeur</option>
+                <option value="prestataire">📋 Prestataire paie</option>
+            </select>
+        </div>
+        
+        <div id="secteur-group" class="form-group" style="display: none;">
+            <label for="secteur_id">Secteur</label>
+            <select id="secteur_id" name="secteur_id">
+                <option value="">-- Aucun secteur --</option>
+                {% for secteur in secteurs %}
+                <option value="{{ secteur.id }}">{{ secteur.nom }}</option>
+                {% endfor %}
+            </select>
+            <p class="help-text">Secteur d'affectation (crèche, accueil, administratif...)</p>
+        </div>
+        
+        <div id="responsable-group" class="form-group" style="display: none;">
+            <label for="responsable_id">Responsable hiérarchique</label>
+            <select id="responsable_id" name="responsable_id">
+                <option value="">-- Aucun responsable --</option>
+                {% for resp in responsables %}
+                <option value="{{ resp.id }}">{{ resp.prenom }} {{ resp.nom }}</option>
+                {% endfor %}
+            </select>
+            <p class="help-text">Le responsable pourra gérer et valider les heures de ce salarié</p>
+        </div>
+        
+        <div id="solde-group" class="form-group" style="display: none;">
+            <label for="solde_initial">Solde initial d'heures supplémentaires</label>
+            <input type="number" id="solde_initial" name="solde_initial" step="0.01" value="0"
+                   placeholder="Ex: 14.5">
+            <p class="help-text">
+                <strong>Pour le déploiement :</strong> Saisissez le solde d'heures que le salarié a déjà accumulé avant la mise en service de l'application.
+                Peut être positif (heures en plus) ou négatif (heures en moins).
+            </p>
+        </div>
+
+        <div id="conges-group" style="display: none;">
+            <hr style="margin: 1.5rem 0; border-color: var(--gray-200);">
+            <h3 style="margin-bottom: 1rem;">Compteurs de congés initiaux</h3>
+
+            <div class="form-group">
+                <label for="date_entree">Date d'entrée du salarié</label>
+                <input type="date" id="date_entree" name="date_entree">
+                <p class="help-text">Utilisée pour le prorata du premier mois d'acquisition des congés</p>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.5rem;">Congés payés (25 jours/an)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="cp_acquis">Acquis</label>
+                    <input type="number" id="cp_acquis" name="cp_acquis" step="0.01" value="0">
+                    <p class="help-text">Jours en cours d'acquisition (période mai-mai)</p>
+                </div>
+                <div class="form-group">
+                    <label for="cp_a_prendre">À prendre</label>
+                    <input type="number" id="cp_a_prendre" name="cp_a_prendre" step="0.01" value="0">
+                    <p class="help-text">Solde de jours disponibles pour le salarié</p>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="cp_pris">Pris</label>
+                    <input type="number" id="cp_pris" name="cp_pris" step="0.01" value="0">
+                    <p class="help-text">Cumul de jours déjà pris</p>
+                </div>
+                <div class="form-group">
+                    <label>Solde</label>
+                    <div class="jours-ouvres-display" style="padding: 0.5rem; font-weight: bold; font-size: 1.1rem;">
+                        <span id="cp_solde_display">0.00</span> jour(s)
+                    </div>
+                    <p class="help-text">Calculé : À prendre - Pris</p>
+                </div>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.5rem;">Congés conventionnels (8 jours/an)</h4>
+            <div class="form-group">
+                <label for="cc_solde">Solde disponible</label>
+                <input type="number" id="cc_solde" name="cc_solde" step="0.01" value="0">
+                <p class="help-text">Jours directement disponibles (1 jour/mois d'octobre à mai)</p>
+            </div>
+        </div>
+
+        <div class="help-box" id="profil-info" style="display: none;">
+            <!-- Sera rempli dynamiquement selon le profil -->
+        </div>
+        
+        <div class="form-actions">
+            <a href="{{ url_for('admin_bp.gestion_users') }}" class="btn btn-secondary">Annuler</a>
+            <button type="submit" class="btn btn-primary">💾 Créer l'utilisateur</button>
+        </div>
+    </form>
+    
+    <script>
+    function updateProfileOptions() {
+        const profil = document.getElementById('profil').value;
+        const secteurGroup = document.getElementById('secteur-group');
+        const responsableGroup = document.getElementById('responsable-group');
+        const soldeGroup = document.getElementById('solde-group');
+        const congesGroup = document.getElementById('conges-group');
+        const profilInfo = document.getElementById('profil-info');
+
+        // Masquer tous les champs par défaut
+        secteurGroup.style.display = 'none';
+        responsableGroup.style.display = 'none';
+        soldeGroup.style.display = 'none';
+        congesGroup.style.display = 'none';
+        profilInfo.style.display = 'none';
+
+        if (profil === 'salarie') {
+            secteurGroup.style.display = 'block';
+            responsableGroup.style.display = 'block';
+            soldeGroup.style.display = 'block';
+            congesGroup.style.display = 'block';
+            profilInfo.style.display = 'block';
+            profilInfo.innerHTML = '<h4>👤 Profil Salarié</h4><p>Accès uniquement à sa propre fiche en modification et validation.</p>';
+        } else if (profil === 'responsable') {
+            secteurGroup.style.display = 'block';
+            soldeGroup.style.display = 'block';
+            congesGroup.style.display = 'block';
+            profilInfo.style.display = 'block';
+            profilInfo.innerHTML = '<h4>👨‍💼 Profil Responsable</h4><p>Accès aux fiches de son secteur (modification/validation) + sa fiche personnelle.</p><p><strong>Important :</strong> Attribuez-lui un secteur pour qu\'il puisse gérer son équipe.</p>';
+        } else if (profil === 'comptable') {
+            congesGroup.style.display = 'block';
+            profilInfo.style.display = 'block';
+            profilInfo.innerHTML = '<h4>💰 Profil Comptable</h4><p>Accès lecture seule à toutes les fiches + sa fiche personnelle (modification/validation).</p>';
+        } else if (profil === 'directeur') {
+            profilInfo.style.display = 'block';
+            profilInfo.innerHTML = '<h4>🎯 Profil Directeur</h4><p>Accès lecture seule à toutes les fiches + validation finale. <strong>Pas de fiche personnelle</strong> (forfait jour).</p>';
+        } else if (profil === 'prestataire') {
+            profilInfo.style.display = 'block';
+            profilInfo.innerHTML = '<h4>📋 Profil Prestataire paie</h4><p>Accès uniquement à la page Préparation Paie. Ce profil n\'apparait pas dans les listes de salariés.</p>';
+        }
+    }
+
+    function updateCpSolde() {
+        var aPrendre = parseFloat(document.getElementById('cp_a_prendre').value) || 0;
+        var pris = parseFloat(document.getElementById('cp_pris').value) || 0;
+        var solde = aPrendre - pris;
+        var display = document.getElementById('cp_solde_display');
+        display.textContent = solde.toFixed(2);
+        display.style.color = solde > 0 ? '#28a745' : (solde < 0 ? '#dc3545' : '#6c757d');
+    }
+
+    document.getElementById('cp_a_prendre').addEventListener('input', updateCpSolde);
+    document.getElementById('cp_pris').addEventListener('input', updateCpSolde);
+
+    function checkPasswordStrength() {
+        var pw = document.getElementById('password').value;
+        var el = document.getElementById('password-strength');
+        var msgs = [];
+        if (pw.length < 8) msgs.push('8 caractères minimum');
+        if (!/[A-Z]/.test(pw)) msgs.push('1 majuscule');
+        if (!/[a-z]/.test(pw)) msgs.push('1 minuscule');
+        if (!/[0-9]/.test(pw)) msgs.push('1 chiffre');
+        var warn = !/[^A-Za-z0-9]/.test(pw);
+        if (msgs.length > 0) {
+            el.innerHTML = '<span style="color:#dc3545;">Manque : ' + msgs.join(', ') + '</span>';
+        } else if (warn) {
+            el.innerHTML = '<span style="color:#f0ad4e;">Valide, mais un caractère spécial est recommandé</span>';
+        } else {
+            el.innerHTML = '<span style="color:#28a745;">Mot de passe robuste</span>';
+        }
+    }
+    </script>
+</div>
+{% endblock %}

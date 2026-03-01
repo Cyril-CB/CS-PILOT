@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}CS-PILOT{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12">
+    <script>
+        (function(){var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();
+    </script>
+</head>
+<body>
+    {% if session.user_id %}
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/">
+                <img src="{{ url_for('static', filename='img/petit-logo.png') }}" alt="" class="nav-brand-icon">
+                <div class="nav-brand-text">
+                    <span class="nav-brand-title">CS-PILOT</span>
+                    <span class="nav-brand-subtitle">La plateforme libre des centres sociaux</span>
+                </div>
+            </a>
+        </div>
+        <div class="nav-links">
+            {% if session.profil == 'directeur' %}
+            <!-- Menu Directeur -->
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📊 Tableau de bord ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('dashboard_direction_bp.dashboard_direction') }}">🏢 <strong>Vue Direction</strong></a>
+                    <a href="{{ url_for('forfait_bp.dashboard_forfait_jour') }}">📅 Forfait jour</a>
+                    <a href="{{ url_for('forfait_bp.calendrier_forfait_jour') }}">📆 Calendrier</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">✅ Validations{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %} ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble validation</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes récup</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">⚙️ Administration ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
+                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
+                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
+                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
+                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
+                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📋 Suivi & Contrôle ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
+                    <a href="{{ url_for('suivi_bp.historique_modifications') }}">📝 Historique modifications</a>
+                    <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">💼 RH & Paie ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salaries</a>
+                    <a href="{{ url_for('absences_bp.absences') }}">🏥 Absences</a>
+                    <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}">🤝 Liste benevoles</a>
+                    <a href="{{ url_for('pesee_alisfa_bp.pesee_alisfa') }}">⚖️ Pesée ALISFA</a>
+                    <a href="{{ url_for('pesee_alisfa_bp.postes_alisfa') }}">📊 Postes ALISFA</a>
+                    <a href="{{ url_for('assistant_rh_bp.assistant_rh') }}">🤖 Assistant RH</a>
+                    <a href="{{ url_for('variables_paie_bp.variables_paie') }}">💰 Variables Paie</a>
+                    <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prepa Paie</a>
+                    <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">💶 Financier ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
+                    <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
+                    <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
+                </div>
+            </div>
+            <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
+            {% elif session.profil == 'comptable' %}
+            <!-- Menu Comptable -->
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📊 Mon espace ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('dashboard_direction_bp.dashboard_direction') }}">🏢 <strong>Vue Direction</strong></a>
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}">📊 Tableau de bord</a>
+                    <a href="{{ url_for('validation_bp.vue_mensuelle') }}">📅 Vue mensuelle</a>
+                    <a href="{{ url_for('validation_bp.vue_calendrier') }}">📆 Vue calendrier</a>
+                    <a href="{{ url_for('saisie_bp.saisie_heures') }}">✏️ Saisir heures</a>
+                    <a href="{{ url_for('planning_bp.planning_theorique') }}">🗓️ Mon planning</a>
+                    <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}">👥 Mon equipe</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">🏖️ Récupérations ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">✅ Validations{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %} ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble validation</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes récup</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">⚙️ Administration ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('admin_bp.gestion_users') }}">👤 Utilisateurs</a>
+                    <a href="{{ url_for('admin_bp.gestion_vacances') }}">🗓️ Vacances scolaires</a>
+                    <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
+                    <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
+                    <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
+                    <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📋 Suivi & Contrôle ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
+                    <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">💼 RH & Paie ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salaries</a>
+                    <a href="{{ url_for('absences_bp.absences') }}">🏥 Absences</a>
+                    <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}">🤝 Liste benevoles</a>
+                    <a href="{{ url_for('pesee_alisfa_bp.pesee_alisfa') }}">⚖️ Pesée ALISFA</a>
+                    <a href="{{ url_for('pesee_alisfa_bp.postes_alisfa') }}">📊 Postes ALISFA</a>
+                    <a href="{{ url_for('assistant_rh_bp.assistant_rh') }}">🤖 Assistant RH</a>
+                    <a href="{{ url_for('variables_paie_bp.variables_paie') }}">💰 Variables Paie</a>
+                    <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prepa Paie</a>
+                    <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">💶 Financier ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
+                    <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
+                    <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
+                </div>
+            </div>
+            <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
+            {% elif session.profil == 'responsable' %}
+            <!-- Menu Responsable -->
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📊 Mon espace ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}">📊 Tableau de bord</a>
+                    <a href="{{ url_for('validation_bp.vue_mensuelle') }}">📅 Vue mensuelle</a>
+                    <a href="{{ url_for('validation_bp.vue_calendrier') }}">📆 Vue calendrier</a>
+                    <a href="{{ url_for('saisie_bp.saisie_heures') }}">✏️ Saisir heures</a>
+                    <a href="{{ url_for('planning_bp.planning_theorique') }}">🗓️ Mon planning</a>
+                    <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}">👥 Mon equipe</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">🏖️ Récupérations ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">✅ Validations{% if pending_count %} <span class="nav-badge">{{ pending_count }}</span>{% endif %} ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble validation</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes récup</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">💶 Financier ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('budget_bp.mon_budget') }}">💰 Mon budget</a>
+                    <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
+                </div>
+            </div>
+            <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}" style="font-weight:600;">🕐 Temps annualisé</a>
+            <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
+            {% elif session.profil == 'prestataire' %}
+            <!-- Menu Prestataire paie -->
+            <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}" style="font-weight:600;">📋 Preparation Paie</a>
+            {% else %}
+            <!-- Menu Salarié standard -->
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">📊 Mon espace ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}">📊 Tableau de bord</a>
+                    <a href="{{ url_for('validation_bp.vue_mensuelle') }}">📅 Vue mensuelle</a>
+                    <a href="{{ url_for('validation_bp.vue_calendrier') }}">📆 Vue calendrier</a>
+                    <a href="{{ url_for('saisie_bp.saisie_heures') }}">✏️ Saisir heures</a>
+                    <a href="{{ url_for('planning_bp.planning_theorique') }}">🗓️ Mon planning</a>
+                    <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}">👥 Mon equipe</a>
+                </div>
+            </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">🏖️ Récupérations ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                </div>
+            </div>
+            {% endif %}
+            {% if session.profil in ['salarie', 'prestataire'] %}
+            <a href="{{ url_for('parametres_bp.parametres') }}" style="font-weight:600;font-size:13px;" title="Mes parametres">&#9881;</a>
+            {% endif %}
+            <span class="user-info">{{ session.prenom }} {{ session.nom }} ({{ session.profil }})</span>
+            <button class="theme-toggle" id="themeToggle" title="Changer le thème" onclick="toggleTheme()">🌙</button>
+            <a href="{{ url_for('auth.logout') }}" class="btn-logout">Déconnexion</a>
+        </div>
+    </nav>
+    {% endif %}
+
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer>
+        <p>CS-PILOT - Version {{ app_version }}</p>
+    </footer>
+    
+    <script>
+    // Gestion du thème sombre
+    function toggleTheme() {
+        var html = document.documentElement;
+        var current = html.getAttribute('data-theme');
+        var next = current === 'dark' ? 'light' : 'dark';
+        if (next === 'light') {
+            html.removeAttribute('data-theme');
+        } else {
+            html.setAttribute('data-theme', 'dark');
+        }
+        localStorage.setItem('theme', next);
+        updateThemeIcon(next);
+    }
+    function updateThemeIcon(theme) {
+        var btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+    // Appliquer l'icône au chargement
+    updateThemeIcon(localStorage.getItem('theme') || 'light');
+
+    // Injection automatique des tokens CSRF dans tous les formulaires POST
+    (function() {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (!meta) return;
+        var token = meta.getAttribute('content');
+        document.querySelectorAll('form').forEach(function(form) {
+            var method = (form.getAttribute('method') || 'GET').toUpperCase();
+            if (method === 'POST' && !form.querySelector('input[name="csrf_token"]')) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'csrf_token';
+                input.value = token;
+                form.appendChild(input);
+            }
+        });
+    })();
+
+    // Injection automatique du header X-CSRFToken dans tous les fetch() POST/PUT/DELETE/PATCH
+    (function() {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        if (!meta) return;
+        var token = meta.getAttribute('content');
+        var _fetch = window.fetch;
+        window.fetch = function(url, opts) {
+            opts = opts || {};
+            var method = (opts.method || 'GET').toUpperCase();
+            if (['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(method) !== -1) {
+                if (opts.headers instanceof Headers) {
+                    if (!opts.headers.has('X-CSRFToken')) {
+                        opts.headers.set('X-CSRFToken', token);
+                    }
+                } else {
+                    opts.headers = Object.assign({}, opts.headers);
+                    if (!opts.headers['X-CSRFToken']) {
+                        opts.headers['X-CSRFToken'] = token;
+                    }
+                }
+            }
+            return _fetch.call(this, url, opts);
+        };
+    })();
+
+    // Gestion des dropdowns
+    document.addEventListener('DOMContentLoaded', function() {
+        const dropdowns = document.querySelectorAll('.nav-dropdown');
+        
+        dropdowns.forEach(dropdown => {
+            const toggle = dropdown.querySelector('.nav-dropdown-toggle');
+            const menu = dropdown.querySelector('.nav-dropdown-menu');
+            
+            toggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Fermer les autres dropdowns
+                dropdowns.forEach(other => {
+                    if (other !== dropdown) {
+                        other.classList.remove('active');
+                    }
+                });
+                
+                // Toggle le dropdown actuel
+                dropdown.classList.toggle('active');
+            });
+        });
+        
+        // Fermer les dropdowns si clic en dehors
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.nav-dropdown')) {
+                dropdowns.forEach(dropdown => {
+                    dropdown.classList.remove('active');
+                });
+            }
+        });
+    });
+    </script>
+</body>
+</html>

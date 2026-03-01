@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Assistant RH — IA{% endblock %}
+{% block content %}
+
+<style>
+    .rh-container { max-width: 860px; margin: 0 auto; padding: 10px 0; display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 500px; }
+    .rh-header { text-align: center; margin-bottom: 16px; flex-shrink: 0; }
+    .rh-header .rh-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .rh-header h2 { font-size: 22px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+    .rh-header .rh-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .rh-chat { flex: 1; overflow-y: auto; padding: 16px; background: var(--white); border: 1px solid var(--gray-200); border-radius: 12px 12px 0 0; box-shadow: var(--shadow-sm); }
+
+    .rh-msg { margin-bottom: 16px; display: flex; gap: 10px; animation: rh-fade 0.3s ease; }
+    @keyframes rh-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .rh-msg-user { flex-direction: row-reverse; }
+    .rh-msg-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+    .rh-msg-user .rh-msg-avatar { background: #ede9fe; }
+    .rh-msg-ai .rh-msg-avatar { background: #dbeafe; }
+
+    .rh-msg-body { max-width: 75%; }
+    .rh-msg-user .rh-msg-body { background: #7c3aed; color: white; border-radius: 12px 12px 0 12px; padding: 10px 14px; font-size: 14px; line-height: 1.6; }
+    .rh-msg-ai .rh-msg-body { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 12px 12px 12px 0; padding: 14px; font-size: 14px; line-height: 1.7; color: var(--gray-800); }
+
+    .rh-msg-ai .rh-msg-body p { margin-bottom: 8px; }
+    .rh-msg-ai .rh-msg-body p:last-child { margin-bottom: 0; }
+
+    .rh-sources { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--gray-200); }
+    .rh-source-tag { display: inline-block; background: #eff6ff; color: #1e40af; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin: 2px 2px; }
+
+    .rh-avocat { margin-top: 10px; padding: 10px 14px; border-radius: 8px; display: flex; align-items: center; gap: 10px; }
+    .rh-avocat-low { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .rh-avocat-mid { background: #fffbeb; border: 1px solid #fcd34d; }
+    .rh-avocat-high { background: #fef2f2; border: 1px solid #fca5a5; }
+    .rh-avocat-pct { font-size: 20px; font-weight: 800; font-family: 'Courier New', monospace; }
+    .rh-avocat-low .rh-avocat-pct { color: #16a34a; }
+    .rh-avocat-mid .rh-avocat-pct { color: #d97706; }
+    .rh-avocat-high .rh-avocat-pct { color: #dc2626; }
+    .rh-avocat-text { font-size: 12px; color: var(--gray-600); }
+    .rh-avocat-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    .rh-input-bar { display: flex; gap: 8px; padding: 12px 16px; background: var(--white); border: 1px solid var(--gray-200); border-top: none; border-radius: 0 0 12px 12px; box-shadow: var(--shadow-sm); flex-shrink: 0; }
+    .rh-input { flex: 1; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; resize: none; font-family: inherit; }
+    .rh-input:focus { border-color: #7c3aed; outline: none; }
+    .rh-send { padding: 10px 20px; background: #7c3aed; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .rh-send:hover { background: #6d28d9; }
+    .rh-send:disabled { background: var(--gray-300); cursor: not-allowed; }
+
+    .rh-config { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-shrink: 0; }
+    .rh-config select { padding: 6px 10px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 13px; }
+    .rh-config select:focus { border-color: #7c3aed; outline: none; }
+
+    .rh-disclaimer { font-size: 11px; color: var(--gray-400); text-align: center; margin-top: 8px; flex-shrink: 0; }
+
+    .rh-typing { display: flex; gap: 4px; padding: 8px 0; }
+    .rh-typing span { width: 6px; height: 6px; background: var(--gray-400); border-radius: 50%; animation: rh-bounce 1.4s infinite; }
+    .rh-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .rh-typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes rh-bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+    .rh-welcome { text-align: center; padding: 40px 20px; color: var(--gray-500); }
+    .rh-welcome-icon { font-size: 48px; margin-bottom: 12px; }
+    .rh-welcome h3 { color: var(--gray-700); margin-bottom: 8px; }
+    .rh-welcome-hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+    .rh-hint { padding: 8px 14px; background: #f5f3ff; border: 1px solid #e9d5ff; border-radius: 8px; font-size: 13px; color: #7c3aed; cursor: pointer; transition: all 0.2s; }
+    .rh-hint:hover { background: #ede9fe; border-color: #c4b5fd; }
+
+    .rh-no-key { text-align: center; padding: 40px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 12px; }
+
+    /* Dark mode overrides */
+    [data-theme="dark"] .rh-source-tag { background: #1e3a5f; color: #93c5fd; }
+    [data-theme="dark"] .rh-avocat-low { background: #064e3b; border-color: #065f46; }
+    [data-theme="dark"] .rh-avocat-mid { background: #78350f; border-color: #92400e; }
+    [data-theme="dark"] .rh-avocat-high { background: #7f1d1d; border-color: #991b1b; }
+    [data-theme="dark"] .rh-avocat-low .rh-avocat-pct { color: #6ee7b7; }
+    [data-theme="dark"] .rh-avocat-mid .rh-avocat-pct { color: #fcd34d; }
+    [data-theme="dark"] .rh-avocat-high .rh-avocat-pct { color: #fca5a5; }
+    [data-theme="dark"] .rh-avocat-text { color: var(--gray-500); }
+    [data-theme="dark"] .rh-avocat-label { color: var(--gray-700); }
+    [data-theme="dark"] .rh-hint { background: #2e1065; border-color: #6d28d9; color: #c4b5fd; }
+    [data-theme="dark"] .rh-hint:hover { background: #4c1d95; border-color: #7c3aed; }
+    [data-theme="dark"] .rh-msg-user .rh-msg-avatar { background: #4c1d95; }
+    [data-theme="dark"] .rh-msg-ai .rh-msg-avatar { background: #1e3a5f; }
+    [data-theme="dark"] .rh-no-key { background: #78350f; border-color: #92400e; }
+    [data-theme="dark"] .rh-no-key p { color: #fcd34d !important; }
+</style>
+
+<div class="rh-container">
+    <div class="rh-header">
+        <div class="rh-label">Intelligence Artificielle</div>
+        <h2>Assistant RH</h2>
+        <div class="rh-sub">Expert CCN ALISFA et droit du travail</div>
+    </div>
+
+    {% if not has_api_key %}
+    <div class="rh-no-key">
+        <div style="font-size:36px;margin-bottom:12px;">🔑</div>
+        <p style="font-weight:700;color:#92400e;margin-bottom:8px;">Aucune cle API configuree</p>
+        <p style="font-size:13px;color:#92400e;">Configurez au moins une cle API pour utiliser l'assistant RH.</p>
+        <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}" style="display:inline-block;margin-top:12px;padding:8px 20px;background:#7c3aed;color:white;border-radius:8px;text-decoration:none;font-weight:700;font-size:13px;">Configurer les cles API</a>
+    </div>
+    {% else %}
+
+    <div class="rh-config">
+        <label style="font-size:12px;font-weight:700;color:var(--gray-500);">Modele :</label>
+        <select id="rhModel">
+            {% for m in available_models %}
+            <option value="{{ m.id }}">{{ m.label }} — {{ m.provider_name }}</option>
+            {% endfor %}
+        </select>
+        <button onclick="rhClear()" style="margin-left:auto;padding:6px 12px;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;color:var(--gray-600);">Nouvelle conversation</button>
+    </div>
+
+    <div class="rh-chat" id="rhChat">
+        <div class="rh-welcome" id="rhWelcome">
+            <div class="rh-welcome-icon">⚖️</div>
+            <h3>Posez vos questions RH</h3>
+            <p style="font-size:13px;">CCN ALISFA, droit du travail, gestion du personnel...</p>
+            <div class="rh-welcome-hints">
+                <div class="rh-hint" onclick="rhAsk(this.textContent)">Quels sont les conges conventionnels ALISFA ?</div>
+                <div class="rh-hint" onclick="rhAsk(this.textContent)">Comment fonctionne la pesee de poste ?</div>
+                <div class="rh-hint" onclick="rhAsk(this.textContent)">Regles des heures supplementaires</div>
+                <div class="rh-hint" onclick="rhAsk(this.textContent)">Procedure de licenciement</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="rh-input-bar">
+        <textarea class="rh-input" id="rhInput" rows="1" placeholder="Posez votre question RH..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();rhSend();}"></textarea>
+        <button class="rh-send" id="rhSendBtn" onclick="rhSend()">Envoyer</button>
+    </div>
+
+    <div class="rh-disclaimer">
+        Cet assistant fournit des informations generales et ne constitue pas un conseil juridique. Consultez un avocat pour toute situation specifique.
+    </div>
+
+    {% endif %}
+</div>
+
+{% if has_api_key %}
+<script>
+let RH = { messages: [] };
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function rhAsk(text) {
+    document.getElementById('rhInput').value = text;
+    rhSend();
+}
+
+function rhClear() {
+    RH.messages = [];
+    const chat = document.getElementById('rhChat');
+    chat.innerHTML = document.getElementById('rhWelcome') ? '' : '';
+    chat.innerHTML = `<div class="rh-welcome" id="rhWelcome">
+        <div class="rh-welcome-icon">⚖️</div>
+        <h3>Posez vos questions RH</h3>
+        <p style="font-size:13px;">CCN ALISFA, droit du travail, gestion du personnel...</p>
+        <div class="rh-welcome-hints">
+            <div class="rh-hint" onclick="rhAsk(this.textContent)">Quels sont les conges conventionnels ALISFA ?</div>
+            <div class="rh-hint" onclick="rhAsk(this.textContent)">Comment fonctionne la pesee de poste ?</div>
+            <div class="rh-hint" onclick="rhAsk(this.textContent)">Regles des heures supplementaires</div>
+            <div class="rh-hint" onclick="rhAsk(this.textContent)">Procedure de licenciement</div>
+        </div>
+    </div>`;
+}
+
+function rhAddMsg(role, content) {
+    const welcome = document.getElementById('rhWelcome');
+    if (welcome) welcome.remove();
+
+    const chat = document.getElementById('rhChat');
+    const div = document.createElement('div');
+    div.className = 'rh-msg rh-msg-' + (role === 'user' ? 'user' : 'ai');
+
+    if (role === 'user') {
+        div.innerHTML = `<div class="rh-msg-avatar">👤</div><div class="rh-msg-body">${esc(content)}</div>`;
+    }
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+}
+
+function rhShowTyping() {
+    const chat = document.getElementById('rhChat');
+    const div = document.createElement('div');
+    div.className = 'rh-msg rh-msg-ai';
+    div.id = 'rhTyping';
+    div.innerHTML = `<div class="rh-msg-avatar">🤖</div><div class="rh-msg-body"><div class="rh-typing"><span></span><span></span><span></span></div></div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function rhAvocatClass(pct) {
+    if (pct <= 30) return 'rh-avocat-low';
+    if (pct <= 60) return 'rh-avocat-mid';
+    return 'rh-avocat-high';
+}
+
+function rhRenderAI(data) {
+    const typing = document.getElementById('rhTyping');
+    if (typing) typing.remove();
+
+    const chat = document.getElementById('rhChat');
+    const div = document.createElement('div');
+    div.className = 'rh-msg rh-msg-ai';
+
+    const pct = data.recommandation_avocat_pct || 0;
+    const reponse = (data.reponse || '').replace(/\n/g, '<br>');
+    const sources = data.sources || [];
+    const motif = data.motif_recommandation || '';
+
+    let sourcesHtml = '';
+    if (sources.length > 0) {
+        sourcesHtml = `<div class="rh-sources"><div style="font-size:11px;font-weight:700;color:var(--gray-500);margin-bottom:4px;">SOURCES</div>${sources.map(s => `<span class="rh-source-tag">${esc(s)}</span>`).join('')}</div>`;
+    }
+
+    div.innerHTML = `
+        <div class="rh-msg-avatar">🤖</div>
+        <div class="rh-msg-body">
+            <div>${reponse}</div>
+            ${sourcesHtml}
+            <div class="rh-avocat ${rhAvocatClass(pct)}">
+                <div>
+                    <div class="rh-avocat-label">Recommandation de consulter un avocat</div>
+                    <div class="rh-avocat-pct">${pct} %</div>
+                </div>
+                <div class="rh-avocat-text">${esc(motif)}</div>
+            </div>
+        </div>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function rhSend() {
+    const input = document.getElementById('rhInput');
+    const btn = document.getElementById('rhSendBtn');
+    const text = input.value.trim();
+    if (!text) return;
+
+    input.value = '';
+    btn.disabled = true;
+
+    rhAddMsg('user', text);
+    RH.messages.push({role: 'user', content: text});
+    rhShowTyping();
+
+    try {
+        const res = await fetch('/api/assistant_rh/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                messages: RH.messages,
+                model: document.getElementById('rhModel').value,
+            }),
+        });
+        const data = await res.json();
+        if (data.success) {
+            RH.messages.push({role: 'assistant', content: data.data.reponse || ''});
+            rhRenderAI(data.data);
+        } else {
+            const typing = document.getElementById('rhTyping');
+            if (typing) typing.remove();
+            rhRenderAI({
+                reponse: 'Erreur : ' + (data.error || 'Erreur inconnue'),
+                sources: [],
+                recommandation_avocat_pct: 0,
+                motif_recommandation: '',
+            });
+        }
+    } catch(e) {
+        const typing = document.getElementById('rhTyping');
+        if (typing) typing.remove();
+        rhRenderAI({
+            reponse: 'Erreur reseau : ' + e.message,
+            sources: [],
+            recommandation_avocat_pct: 0,
+            motif_recommandation: '',
+        });
+    }
+    btn.disabled = false;
+    input.focus();
+}
+</script>
+{% endif %}
+{% endblock %}

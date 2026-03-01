@@ -1,0 +1,765 @@
+{% extends "base.html" %}
+
+{% block title %}Budget - {{ secteur.nom }}{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <!-- En-tete -->
+    <div class="budget-header">
+        <div>
+            <h1>💰 Budget : {{ secteur.nom }}</h1>
+            <p class="subtitle">
+                <span class="badge badge-info">{{ types_labels.get(secteur.type_secteur, 'Non défini') }}</span>
+                {% if is_alp %}
+                <span class="badge badge-warning" style="margin-left: 0.5rem;">Répartition par période</span>
+                {% endif %}
+            </p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <div class="budget-year-nav">
+                <a href="{{ url_for('budget_bp.budget_secteur', secteur_id=secteur.id, annee=annee-1, onglet=onglet) }}"
+                   class="direction-month-btn" title="Année précédente">◀</a>
+                <span class="direction-month-label">{{ annee }}</span>
+                <a href="{{ url_for('budget_bp.budget_secteur', secteur_id=secteur.id, annee=annee+1, onglet=onglet) }}"
+                   class="direction-month-btn" title="Année suivante">▶</a>
+            </div>
+            {% if session.profil in ['directeur', 'comptable'] %}
+            <a href="{{ url_for('budget_bp.gestion_budgets', annee=annee) }}" class="btn btn-secondary">← Retour</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Carte budget global -->
+    <div class="budget-global-card">
+        <div class="budget-global-left">
+            <div class="budget-global-label">Budget global {{ annee }}</div>
+            {% if peut_modifier_global %}
+            <div class="budget-global-input-wrapper">
+                <input type="number" id="montantGlobal" step="0.01" min="0"
+                       value="{{ budget.montant_global }}"
+                       class="budget-global-input"
+                       placeholder="0.00">
+                <span class="budget-global-currency">€</span>
+            </div>
+            <p class="help-text">Modifiable par la direction / le comptable</p>
+            {% else %}
+            <div class="budget-global-value">{{ "{:,.2f}".format(budget.montant_global).replace(",", " ") }} €</div>
+            <p class="help-text">Défini par la direction</p>
+            {% endif %}
+        </div>
+        <div class="budget-global-right">
+            <div class="budget-summary-grid">
+                <div class="budget-summary-item">
+                    <span class="budget-summary-label">Réparti</span>
+                    <span class="budget-summary-value" id="totalReparti">{{ "{:,.2f}".format(budget.total_reparti).replace(",", " ") }} €</span>
+                </div>
+                <div class="budget-summary-item">
+                    <span class="budget-summary-label">Reste à répartir</span>
+                    <span class="budget-summary-value budget-summary-reste" id="resteRepartir"
+                          style="color: {% if budget.reste < 0 %}var(--danger){% elif budget.reste == 0 %}var(--success){% else %}var(--primary){% endif %};">
+                        {{ "{:,.2f}".format(budget.reste).replace(",", " ") }} €
+                    </span>
+                </div>
+                <div class="budget-summary-item">
+                    <span class="budget-summary-label">Dépensé</span>
+                    <span class="budget-summary-value" id="totalDepense" style="color: {% if budget.total_reel > budget.montant_global %}var(--danger){% else %}var(--gray-900){% endif %};">
+                        {{ "{:,.2f}".format(budget.total_reel|default(0)).replace(",", " ") }} €
+                    </span>
+                </div>
+                <div class="budget-summary-item">
+                    <span class="budget-summary-label">Solde réel</span>
+                    <span class="budget-summary-value" id="soldeReel"
+                          style="color: {% if budget.solde_reel|default(0) < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                        {{ "{:,.2f}".format(budget.solde_reel|default(0)).replace(",", " ") }} €
+                    </span>
+                </div>
+            </div>
+            <div class="budget-progress-bar" style="height: 12px; margin-top: 0.75rem;">
+                {% set pct = (budget.total_reparti / budget.montant_global * 100) if budget.montant_global > 0 else 0 %}
+                <div class="budget-progress-fill
+                    {% if pct > 100 %}budget-progress-danger
+                    {% elif pct >= 100 %}budget-progress-success
+                    {% elif pct >= 75 %}budget-progress-ok
+                    {% else %}budget-progress-low{% endif %}"
+                     id="progressBar"
+                     style="width: {{ [pct, 100]|min }}%;">
+                </div>
+            </div>
+            <small style="color: var(--gray-500);" id="pctLabel">{{ "%.1f"|format(pct) }}% réparti</small>
+        </div>
+    </div>
+
+    {% if has_depassement %}
+    <div class="alert alert-error" style="margin-bottom: 1rem;">
+        ⚠️ <strong>Attention :</strong> certains postes de dépense ont un montant réel supérieur au budget prévu. Ajustez la répartition si nécessaire.
+    </div>
+    {% endif %}
+
+    <!-- Onglets (direction/comptable) -->
+    {% if peut_modifier_reel %}
+    <div class="budget-tabs">
+        <a href="{{ url_for('budget_bp.budget_secteur', secteur_id=secteur.id, annee=annee, onglet='parametrage') }}"
+           class="budget-tab {% if onglet == 'parametrage' %}active{% endif %}">
+            📋 Paramétrage
+        </a>
+        <a href="{{ url_for('budget_bp.budget_secteur', secteur_id=secteur.id, annee=annee, onglet='reel') }}"
+           class="budget-tab {% if onglet == 'reel' %}active{% endif %}">
+            📊 Budget réel
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- Tableau de repartition -->
+    {% if postes %}
+
+    {% if onglet == 'reel' and peut_modifier_reel %}
+    {# ================================================================ #}
+    {# ONGLET BUDGET REEL (direction/comptable uniquement)              #}
+    {# ================================================================ #}
+    <div class="section" style="padding: 0; overflow-x: auto;">
+        {% if is_alp %}
+        <!-- REEL ALP : par periode -->
+        <table class="data-table budget-table" id="budgetReelTable">
+            <thead>
+                <tr>
+                    <th style="min-width: 160px;">Poste de dépense</th>
+                    <th class="budget-col-number" style="min-width: 90px;">Prévu</th>
+                    <th class="budget-col-number" style="min-width: 110px;">Dépensé</th>
+                    <th class="budget-col-number" style="min-width: 90px;">Solde</th>
+                    {% for per in periodes %}
+                    <th class="budget-col-number" style="min-width: 95px;">
+                        {{ periodes_labels[per] }}
+                        {% if jours_ouvres.get(per, 0) > 0 %}
+                        <br><small class="budget-jours-label">{{ jours_ouvres[per] }}j</small>
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in postes %}
+                <tr data-poste-id="{{ p.id }}">
+                    <td><strong>{{ p.nom }}</strong></td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(p.total) }}
+                    </td>
+                    <td class="budget-col-number">
+                        <strong class="reel-row-total" id="reelTotal_{{ p.id }}">{{ "{:.2f}".format(p.total_reel) }}</strong> €
+                    </td>
+                    <td class="budget-col-number">
+                        {% set solde = p.total - p.total_reel %}
+                        <span class="reel-row-solde" id="reelSolde_{{ p.id }}"
+                              style="color: {% if solde < 0 %}var(--danger){% else %}var(--success){% endif %}; font-weight: 600;">
+                            {{ "{:.2f}".format(solde) }}
+                        </span>
+                    </td>
+                    {% for per_data in p.periodes %}
+                    <td class="budget-col-number">
+                        <input type="number" step="0.01" min="0"
+                               class="budget-input reel-period-input"
+                               data-poste-id="{{ p.id }}"
+                               data-periode="{{ per_data.periode }}"
+                               data-prevu="{{ per_data.montant }}"
+                               value="{{ per_data.reel }}"
+                               placeholder="0.00">
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td><strong>TOTAL</strong></td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(budget.total_reparti) }}
+                    </td>
+                    <td class="budget-col-number">
+                        <strong id="reelGrandTotal">{{ "{:.2f}".format(budget.total_reel|default(0)) }}</strong> €
+                    </td>
+                    <td class="budget-col-number">
+                        <strong id="reelGrandSolde"
+                                style="color: {% if budget.solde_reel|default(0) < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            {{ "{:.2f}".format(budget.total_reparti - budget.total_reel|default(0)) }}
+                        </strong>
+                    </td>
+                    {% for per in periodes %}
+                    <td class="budget-col-number">
+                        <strong id="reelColTotal_{{ per }}">-</strong> €
+                    </td>
+                    {% endfor %}
+                </tr>
+            </tfoot>
+        </table>
+
+        {% else %}
+        <!-- REEL STANDARD : sans periodes -->
+        <table class="data-table budget-table" id="budgetReelTable">
+            <thead>
+                <tr>
+                    <th>Poste de dépense</th>
+                    <th class="budget-col-number" style="width: 140px;">Prévu</th>
+                    <th class="budget-col-number" style="width: 160px;">Dépensé</th>
+                    <th class="budget-col-number" style="width: 130px;">Solde</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in postes %}
+                <tr data-poste-id="{{ p.id }}">
+                    <td><strong>{{ p.nom }}</strong></td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(p.montant) }} €
+                    </td>
+                    <td class="budget-col-number">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end;">
+                            <input type="number" step="0.01" min="0"
+                                   class="budget-input reel-annual-input"
+                                   data-poste-id="{{ p.id }}"
+                                   data-periode="annuel"
+                                   data-prevu="{{ p.montant }}"
+                                   value="{{ p.reel }}"
+                                   placeholder="0.00">
+                            <span>€</span>
+                        </div>
+                    </td>
+                    <td class="budget-col-number">
+                        <span class="reel-row-solde" id="reelSolde_{{ p.id }}"
+                              style="color: {% if p.solde < 0 %}var(--danger){% else %}var(--success){% endif %}; font-weight: 600;">
+                            {{ "{:.2f}".format(p.solde) }} €
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td><strong>TOTAL</strong></td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(budget.total_reparti) }} €
+                    </td>
+                    <td class="budget-col-number">
+                        <strong id="reelGrandTotal">{{ "{:.2f}".format(budget.total_reel|default(0)) }}</strong> €
+                    </td>
+                    <td class="budget-col-number">
+                        <strong id="reelGrandSolde"
+                                style="color: {% if (budget.total_reparti - budget.total_reel|default(0)) < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            {{ "{:.2f}".format(budget.total_reparti - budget.total_reel|default(0)) }}
+                        </strong> €
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+        {% endif %}
+    </div>
+
+    <div class="budget-actions">
+        <button type="button" id="btnSaveReel" class="btn btn-primary" onclick="saveReel()">
+            💾 Sauvegarder les dépenses réelles
+        </button>
+        <span id="saveReelStatus" class="budget-save-status"></span>
+    </div>
+
+    {% else %}
+    {# ================================================================ #}
+    {# ONGLET PARAMETRAGE (repartition previsionnelle)                  #}
+    {# Visible par tous (responsables + direction/comptable)            #}
+    {# ================================================================ #}
+    <div class="section" style="padding: 0; overflow-x: auto;">
+        {% if is_alp %}
+        <!-- PARAMETRAGE ALP : avec periodes -->
+        <table class="data-table budget-table" id="budgetTable">
+            <thead>
+                <tr>
+                    <th style="min-width: 160px;">Poste de dépense</th>
+                    <th class="budget-col-number" style="min-width: 100px;">Total</th>
+                    {% for per in periodes %}
+                    <th class="budget-col-number" style="min-width: 95px;">
+                        {{ periodes_labels[per] }}
+                        {% if jours_ouvres.get(per, 0) > 0 %}
+                        <br><small class="budget-jours-label">{{ jours_ouvres[per] }}j ouvrés</small>
+                        {% endif %}
+                    </th>
+                    {% endfor %}
+                    <th class="budget-col-number" style="min-width: 90px;">Dépensé</th>
+                    <th class="budget-col-number" style="min-width: 80px;">Solde</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in postes %}
+                <tr data-poste-id="{{ p.id }}" data-total-reel="{{ p.total_reel }}">
+                    <td><strong>{{ p.nom }}</strong></td>
+                    <td class="budget-col-number">
+                        <span class="budget-row-total" id="total_{{ p.id }}">
+                            {{ "{:.2f}".format(p.total) }}
+                        </span> €
+                    </td>
+                    {% for per_data in p.periodes %}
+                    <td class="budget-col-number">
+                        <input type="number" step="0.01" min="0"
+                               class="budget-input budget-period-input"
+                               data-poste-id="{{ p.id }}"
+                               data-periode="{{ per_data.periode }}"
+                               value="{{ per_data.montant }}"
+                               placeholder="0.00">
+                    </td>
+                    {% endfor %}
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(p.total_reel) }}
+                    </td>
+                    <td class="budget-col-number">
+                        <span class="param-solde" id="paramSolde_{{ p.id }}"
+                              style="color: {% if p.solde < 0 %}var(--danger){% else %}var(--success){% endif %}; font-weight: 600;">
+                            {{ "{:.2f}".format(p.solde) }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td><strong>TOTAL</strong></td>
+                    <td class="budget-col-number">
+                        <strong id="grandTotal">{{ "{:.2f}".format(budget.total_reparti) }}</strong> €
+                    </td>
+                    {% for per in periodes %}
+                    <td class="budget-col-number">
+                        <strong id="colTotal_{{ per }}">-</strong> €
+                    </td>
+                    {% endfor %}
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(budget.total_reel|default(0)) }}
+                    </td>
+                    <td class="budget-col-number">
+                        {% set solde_total = budget.total_reparti - budget.total_reel|default(0) %}
+                        <strong style="color: {% if solde_total < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            {{ "{:.2f}".format(solde_total) }}
+                        </strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+
+        {% else %}
+        <!-- PARAMETRAGE STANDARD : sans periodes -->
+        <table class="data-table budget-table" id="budgetTable">
+            <thead>
+                <tr>
+                    <th>Poste de dépense</th>
+                    <th class="budget-col-number" style="width: 180px;">Montant prévu</th>
+                    <th style="width: 150px;">Part du budget</th>
+                    <th class="budget-col-number" style="width: 120px;">Dépensé</th>
+                    <th class="budget-col-number" style="width: 110px;">Solde</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in postes %}
+                <tr data-poste-id="{{ p.id }}" data-total-reel="{{ p.reel }}">
+                    <td><strong>{{ p.nom }}</strong></td>
+                    <td class="budget-col-number">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; justify-content: flex-end;">
+                            <input type="number" step="0.01" min="0"
+                                   class="budget-input budget-annual-input"
+                                   data-poste-id="{{ p.id }}"
+                                   data-periode="annuel"
+                                   value="{{ p.montant }}"
+                                   placeholder="0.00">
+                            <span>€</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="budget-progress-bar" style="height: 8px;">
+                            {% set part = (p.montant / budget.montant_global * 100) if budget.montant_global > 0 else 0 %}
+                            <div class="budget-progress-fill budget-progress-ok budget-row-bar"
+                                 data-poste-id="{{ p.id }}"
+                                 style="width: {{ [part, 100]|min }}%;">
+                            </div>
+                        </div>
+                        <small class="budget-row-pct" data-poste-id="{{ p.id }}" style="color: var(--gray-500);">{{ "%.1f"|format(part) }}%</small>
+                    </td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(p.reel) }} €
+                    </td>
+                    <td class="budget-col-number">
+                        <span class="param-solde" id="paramSolde_{{ p.id }}"
+                              style="color: {% if p.solde < 0 %}var(--danger){% else %}var(--success){% endif %}; font-weight: 600;">
+                            {{ "{:.2f}".format(p.solde) }} €
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td><strong>TOTAL</strong></td>
+                    <td class="budget-col-number">
+                        <strong id="grandTotal">{{ "{:.2f}".format(budget.total_reparti) }}</strong> €
+                    </td>
+                    <td></td>
+                    <td class="budget-col-number" style="color: var(--gray-500);">
+                        {{ "{:.2f}".format(budget.total_reel|default(0)) }} €
+                    </td>
+                    <td class="budget-col-number">
+                        {% set solde_total = budget.total_reparti - budget.total_reel|default(0) %}
+                        <strong style="color: {% if solde_total < 0 %}var(--danger){% else %}var(--success){% endif %};">
+                            {{ "{:.2f}".format(solde_total) }} €
+                        </strong>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- Bouton sauvegarder (parametrage) -->
+    <div class="budget-actions">
+        <button type="button" id="btnSave" class="btn btn-primary" onclick="saveBudget()">
+            💾 Sauvegarder le budget
+        </button>
+        <span id="saveStatus" class="budget-save-status"></span>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="direction-empty">
+        <p>Aucun poste de dépense associé au type "{{ types_labels.get(secteur.type_secteur, 'Non défini') }}".</p>
+        {% if session.profil in ['directeur', 'comptable'] %}
+        <a href="{{ url_for('budget_bp.gestion_postes_depense') }}" class="btn btn-primary" style="margin-top: 1rem;">
+            ⚙️ Configurer les postes de dépense
+        </a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if is_alp %}
+    <div class="help-box">
+        <h4>💡 Répartition par période (Accueil de loisirs)</h4>
+        <ul>
+            <li><strong>Mercredis :</strong> activités périscolaires des mercredis (hors vacances)</li>
+            <li><strong>Vacances :</strong> Hiver, Printemps, Été, Toussaint, Noël</li>
+            <li>Le nombre de jours ouvrés est calculé automatiquement à partir des vacances scolaires et jours fériés</li>
+            <li>Les colonnes <em>Dépensé</em> et <em>Solde</em> reflètent les dépenses réelles saisies par la direction</li>
+            {% if has_depassement %}
+            <li style="color: var(--danger);"><strong>Un solde négatif signale un dépassement : ajustez la répartition</strong></li>
+            {% endif %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    var IS_ALP = {{ 'true' if is_alp else 'false' }};
+    var SECTEUR_ID = {{ secteur.id }};
+    var ANNEE = {{ annee }};
+    var PERIODES = {{ periodes|tojson }};
+    var PEUT_MODIFIER_GLOBAL = {{ 'true' if peut_modifier_global else 'false' }};
+    var ONGLET = {{ onglet|tojson }};
+
+    function formatMontant(val) {
+        return val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    function getMontantGlobal() {
+        if (PEUT_MODIFIER_GLOBAL) {
+            var el = document.getElementById('montantGlobal');
+            return el ? (parseFloat(el.value) || 0) : {{ budget.montant_global }};
+        }
+        return {{ budget.montant_global }};
+    }
+
+    // ============================================================
+    // ONGLET PARAMETRAGE : recalcul des totaux previsionnels
+    // ============================================================
+    function recalculate() {
+        var montantGlobal = getMontantGlobal();
+        var grandTotal = 0;
+
+        if (IS_ALP) {
+            var colTotals = {};
+            PERIODES.forEach(function(per) { colTotals[per] = 0; });
+
+            document.querySelectorAll('#budgetTable tbody tr').forEach(function(row) {
+                var posteId = row.dataset.posteId;
+                var totalReel = parseFloat(row.dataset.totalReel) || 0;
+                var rowTotal = 0;
+
+                row.querySelectorAll('.budget-period-input').forEach(function(input) {
+                    var val = parseFloat(input.value) || 0;
+                    var periode = input.dataset.periode;
+                    rowTotal += val;
+                    colTotals[periode] += val;
+                });
+
+                var totalEl = document.getElementById('total_' + posteId);
+                if (totalEl) totalEl.textContent = rowTotal.toFixed(2);
+
+                // Mettre a jour le solde de la ligne
+                var soldeEl = document.getElementById('paramSolde_' + posteId);
+                if (soldeEl) {
+                    var solde = rowTotal - totalReel;
+                    soldeEl.textContent = solde.toFixed(2);
+                    soldeEl.style.color = solde < -0.01 ? 'var(--danger)' : 'var(--success)';
+                }
+
+                grandTotal += rowTotal;
+            });
+
+            PERIODES.forEach(function(per) {
+                var el = document.getElementById('colTotal_' + per);
+                if (el) el.textContent = colTotals[per].toFixed(2);
+            });
+        } else {
+            document.querySelectorAll('#budgetTable tbody tr').forEach(function(row) {
+                var posteId = row.dataset.posteId;
+                var totalReel = parseFloat(row.dataset.totalReel) || 0;
+                var input = row.querySelector('.budget-annual-input');
+                var val = parseFloat(input.value) || 0;
+                grandTotal += val;
+
+                var pct = montantGlobal > 0 ? (val / montantGlobal * 100) : 0;
+                var bar = document.querySelector('.budget-row-bar[data-poste-id="' + posteId + '"]');
+                var pctLabel = document.querySelector('.budget-row-pct[data-poste-id="' + posteId + '"]');
+                if (bar) bar.style.width = Math.min(pct, 100) + '%';
+                if (pctLabel) pctLabel.textContent = pct.toFixed(1) + '%';
+
+                // Mettre a jour le solde de la ligne
+                var soldeEl = document.getElementById('paramSolde_' + posteId);
+                if (soldeEl) {
+                    var solde = val - totalReel;
+                    soldeEl.textContent = solde.toFixed(2) + ' €';
+                    soldeEl.style.color = solde < -0.01 ? 'var(--danger)' : 'var(--success)';
+                }
+            });
+        }
+
+        var grandTotalEl = document.getElementById('grandTotal');
+        if (grandTotalEl) grandTotalEl.textContent = grandTotal.toFixed(2);
+
+        var reste = montantGlobal - grandTotal;
+        var pct = montantGlobal > 0 ? (grandTotal / montantGlobal * 100) : 0;
+
+        var totalRepartiEl = document.getElementById('totalReparti');
+        var resteEl = document.getElementById('resteRepartir');
+        var progressEl = document.getElementById('progressBar');
+        var pctEl = document.getElementById('pctLabel');
+
+        if (totalRepartiEl) totalRepartiEl.textContent = formatMontant(grandTotal) + ' €';
+        if (resteEl) {
+            resteEl.textContent = formatMontant(reste) + ' €';
+            resteEl.style.color = reste < -0.01 ? 'var(--danger)' : reste < 0.01 ? 'var(--success)' : 'var(--primary)';
+        }
+        if (progressEl) {
+            progressEl.style.width = Math.min(pct, 100) + '%';
+            progressEl.className = 'budget-progress-fill ' +
+                (pct > 100 ? 'budget-progress-danger' :
+                 pct >= 100 ? 'budget-progress-success' :
+                 pct >= 75 ? 'budget-progress-ok' : 'budget-progress-low');
+        }
+        if (pctEl) pctEl.textContent = pct.toFixed(1) + '% réparti';
+    }
+
+    // ============================================================
+    // ONGLET REEL : recalcul des totaux de depenses reelles
+    // ============================================================
+    function recalculateReel() {
+        var grandTotalReel = 0;
+        var totalPrevu = {{ budget.total_reparti }};
+
+        if (IS_ALP) {
+            var colTotals = {};
+            PERIODES.forEach(function(per) { colTotals[per] = 0; });
+
+            document.querySelectorAll('#budgetReelTable tbody tr').forEach(function(row) {
+                var posteId = row.dataset.posteId;
+                var rowTotalReel = 0;
+                var rowTotalPrevu = 0;
+
+                row.querySelectorAll('.reel-period-input').forEach(function(input) {
+                    var val = parseFloat(input.value) || 0;
+                    var prevu = parseFloat(input.dataset.prevu) || 0;
+                    var periode = input.dataset.periode;
+                    rowTotalReel += val;
+                    rowTotalPrevu += prevu;
+                    colTotals[periode] += val;
+                });
+
+                var totalEl = document.getElementById('reelTotal_' + posteId);
+                if (totalEl) totalEl.textContent = rowTotalReel.toFixed(2);
+
+                var soldeEl = document.getElementById('reelSolde_' + posteId);
+                if (soldeEl) {
+                    var solde = rowTotalPrevu - rowTotalReel;
+                    soldeEl.textContent = solde.toFixed(2);
+                    soldeEl.style.color = solde < -0.01 ? 'var(--danger)' : 'var(--success)';
+                }
+
+                grandTotalReel += rowTotalReel;
+            });
+
+            PERIODES.forEach(function(per) {
+                var el = document.getElementById('reelColTotal_' + per);
+                if (el) el.textContent = colTotals[per].toFixed(2);
+            });
+        } else {
+            document.querySelectorAll('.reel-annual-input').forEach(function(input) {
+                var val = parseFloat(input.value) || 0;
+                var prevu = parseFloat(input.dataset.prevu) || 0;
+                var posteId = input.dataset.posteId;
+                grandTotalReel += val;
+
+                var soldeEl = document.getElementById('reelSolde_' + posteId);
+                if (soldeEl) {
+                    var solde = prevu - val;
+                    soldeEl.textContent = solde.toFixed(2) + ' €';
+                    soldeEl.style.color = solde < -0.01 ? 'var(--danger)' : 'var(--success)';
+                }
+            });
+        }
+
+        var grandTotalEl = document.getElementById('reelGrandTotal');
+        if (grandTotalEl) grandTotalEl.textContent = grandTotalReel.toFixed(2);
+
+        var grandSoldeEl = document.getElementById('reelGrandSolde');
+        if (grandSoldeEl) {
+            var grandSolde = totalPrevu - grandTotalReel;
+            grandSoldeEl.textContent = grandSolde.toFixed(2);
+            grandSoldeEl.style.color = grandSolde < -0.01 ? 'var(--danger)' : 'var(--success)';
+        }
+
+        // Mettre a jour les cartes resume
+        var totalDepenseEl = document.getElementById('totalDepense');
+        var soldeReelEl = document.getElementById('soldeReel');
+        if (totalDepenseEl) {
+            totalDepenseEl.textContent = formatMontant(grandTotalReel) + ' €';
+            var mg = getMontantGlobal();
+            totalDepenseEl.style.color = grandTotalReel > mg ? 'var(--danger)' : 'var(--gray-900)';
+        }
+        if (soldeReelEl) {
+            var soldeGlobal = getMontantGlobal() - grandTotalReel;
+            soldeReelEl.textContent = formatMontant(soldeGlobal) + ' €';
+            soldeReelEl.style.color = soldeGlobal < -0.01 ? 'var(--danger)' : 'var(--success)';
+        }
+    }
+
+    // Attacher les evenements selon l'onglet
+    if (ONGLET === 'reel') {
+        document.querySelectorAll('.reel-period-input, .reel-annual-input').forEach(function(input) {
+            input.addEventListener('input', recalculateReel);
+        });
+        recalculateReel();
+    } else {
+        document.querySelectorAll('.budget-input').forEach(function(input) {
+            input.addEventListener('input', recalculate);
+        });
+        var globalInput = document.getElementById('montantGlobal');
+        if (globalInput) {
+            globalInput.addEventListener('input', recalculate);
+        }
+        recalculate();
+    }
+
+    // ============================================================
+    // SAUVEGARDE PARAMETRAGE
+    // ============================================================
+    window.saveBudget = function() {
+        var montantGlobal = getMontantGlobal();
+        var lignes = [];
+
+        document.querySelectorAll('#budgetTable .budget-input').forEach(function(input) {
+            var val = parseFloat(input.value) || 0;
+            if (val > 0 || input.dataset.periode) {
+                lignes.push({
+                    poste_depense_id: parseInt(input.dataset.posteId),
+                    periode: input.dataset.periode,
+                    montant: val
+                });
+            }
+        });
+
+        var statusEl = document.getElementById('saveStatus');
+        var btnEl = document.getElementById('btnSave');
+        statusEl.textContent = 'Sauvegarde en cours...';
+        statusEl.className = 'budget-save-status';
+        btnEl.disabled = true;
+
+        fetch('{{ url_for("budget_bp.api_budget_save") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                secteur_id: SECTEUR_ID,
+                annee: ANNEE,
+                montant_global: PEUT_MODIFIER_GLOBAL ? montantGlobal : null,
+                lignes: lignes
+            })
+        })
+        .then(function(resp) { return resp.json().then(function(data) { return {ok: resp.ok, data: data}; }); })
+        .then(function(result) {
+            btnEl.disabled = false;
+            if (result.ok && result.data.success) {
+                statusEl.textContent = '✓ ' + result.data.message;
+                statusEl.className = 'budget-save-status budget-save-success';
+                // Recalculer les soldes apres sauvegarde
+                recalculate();
+            } else {
+                statusEl.textContent = '✗ ' + (result.data.error || 'Erreur inconnue');
+                statusEl.className = 'budget-save-status budget-save-error';
+            }
+            setTimeout(function() { statusEl.textContent = ''; }, 5000);
+        })
+        .catch(function(err) {
+            btnEl.disabled = false;
+            statusEl.textContent = '✗ Erreur réseau';
+            statusEl.className = 'budget-save-status budget-save-error';
+        });
+    };
+
+    // ============================================================
+    // SAUVEGARDE REEL
+    // ============================================================
+    window.saveReel = function() {
+        var lignes = [];
+        var selector = IS_ALP ? '.reel-period-input' : '.reel-annual-input';
+
+        document.querySelectorAll(selector).forEach(function(input) {
+            lignes.push({
+                poste_depense_id: parseInt(input.dataset.posteId),
+                periode: input.dataset.periode,
+                montant: parseFloat(input.value) || 0
+            });
+        });
+
+        var statusEl = document.getElementById('saveReelStatus');
+        var btnEl = document.getElementById('btnSaveReel');
+        statusEl.textContent = 'Sauvegarde en cours...';
+        statusEl.className = 'budget-save-status';
+        btnEl.disabled = true;
+
+        fetch('{{ url_for("budget_bp.api_budget_save_reel") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                secteur_id: SECTEUR_ID,
+                annee: ANNEE,
+                lignes: lignes
+            })
+        })
+        .then(function(resp) { return resp.json().then(function(data) { return {ok: resp.ok, data: data}; }); })
+        .then(function(result) {
+            btnEl.disabled = false;
+            if (result.ok && result.data.success) {
+                statusEl.textContent = '✓ ' + result.data.message;
+                statusEl.className = 'budget-save-status budget-save-success';
+            } else {
+                statusEl.textContent = '✗ ' + (result.data.error || 'Erreur inconnue');
+                statusEl.className = 'budget-save-status budget-save-error';
+            }
+            setTimeout(function() { statusEl.textContent = ''; }, 5000);
+        })
+        .catch(function(err) {
+            btnEl.disabled = false;
+            statusEl.textContent = '✗ Erreur réseau';
+            statusEl.className = 'budget-save-status budget-save-error';
+        });
+    };
+})();
+</script>
+{% endblock %}

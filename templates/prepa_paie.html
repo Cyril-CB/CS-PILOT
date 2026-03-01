@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block title %}Preparation paie - {{ nom_mois }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="prepa-paie-page">
+    <h1>Preparation de paie</h1>
+    <p class="subtitle">Synthese mensuelle pour le traitement de la paie</p>
+
+    <!-- Navigation mois -->
+    <div class="month-nav" style="display: flex; align-items: center; justify-content: center; gap: 1.5rem; margin: 1.5rem 0;">
+        <a href="{{ url_for('prepa_paie_bp.prepa_paie', mois=prev_mois, annee=prev_annee) }}" class="btn btn-secondary">&larr; Precedent</a>
+        <h2 style="margin: 0; min-width: 220px; text-align: center;">{{ nom_mois }} {{ annee }}</h2>
+        <a href="{{ url_for('prepa_paie_bp.prepa_paie', mois=next_mois, annee=next_annee) }}" class="btn btn-secondary">Suivant &rarr;</a>
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-bottom: 1rem;">
+        <a href="{{ url_for('prepa_paie_bp.export_excel', mois=mois, annee=annee) }}" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+            Export Excel
+        </a>
+    </div>
+
+    {% if grille %}
+    <form method="POST" action="{{ url_for('prepa_paie_bp.enregistrer_statut') }}">
+        <input type="hidden" name="mois" value="{{ mois }}">
+        <input type="hidden" name="annee" value="{{ annee }}">
+
+        <div style="overflow-x: auto;">
+            <table class="data-table prepa-paie-table">
+                <thead>
+                    <tr>
+                        <th>Traite</th>
+                        <th>Nom Prenom</th>
+                        <th>Secteur</th>
+                        <th style="min-width: 280px;">Contrat</th>
+                        <th>Forfait</th>
+                        <th>Nbr. Jours</th>
+                        <th>Mutuelle</th>
+                        <th>Enfants</th>
+                        <th>H. reelles</th>
+                        <th>H. supps</th>
+                        <th>Transport</th>
+                        <th>Acompte</th>
+                        <th>Saisie/Salaire</th>
+                        <th>Pret/Avance</th>
+                        <th>Autres regul.</th>
+                        <th style="min-width: 150px;">Commentaire</th>
+                        <th style="min-width: 300px;">Absences du mois</th>
+                        <th style="white-space: nowrap;">Nom Prenom</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in grille %}
+                    <input type="hidden" name="user_ids" value="{{ row.user_id }}">
+                    <tr class="{% if row.traite %}row-traite{% elif loop.index is odd %}row-odd{% else %}row-even{% endif %} row-separator">
+                        <td style="text-align: center;">
+                            <input type="checkbox" name="traite_{{ row.user_id }}" value="1"
+                                   {% if row.traite %}checked{% endif %}
+                                   style="width: 18px; height: 18px; cursor: pointer;">
+                        </td>
+                        <td style="white-space: nowrap;">
+                            <strong>{{ row.nom }}</strong> {{ row.prenom }}
+                        </td>
+                        <td style="font-size: 0.85rem;">{{ row.secteur }}</td>
+                        <td>
+                            {% for c in row.contrats %}
+                            <div style="margin-bottom: 4px; font-size: 0.85rem;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
+                                <span class="badge badge-info">{{ c.type_contrat }}</span>
+                                {{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}
+                                {% if c.fichier_path %}
+                                <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm" style="padding: 1px 6px; font-size: 0.75rem; margin-left: 4px;">PDF</a>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                        <td style="font-size: 0.85rem;">
+                            {% for c in row.contrats %}
+                            <div{% if not loop.first %} style="border-top: 1px solid var(--gray-200); padding-top: 4px; margin-top: 4px;"{% endif %}>{{ c.forfait or '-' }}</div>
+                            {% endfor %}
+                        </td>
+                        <td style="text-align: center; font-size: 0.85rem;">
+                            {% for c in row.contrats %}
+                            <div{% if not loop.first %} style="border-top: 1px solid var(--gray-200); padding-top: 4px; margin-top: 4px;"{% endif %}>{{ c.nbr_jours if c.nbr_jours else '-' }}</div>
+                            {% endfor %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% if row.mutuelle %}
+                            <span class="badge badge-success">Oui</span>
+                            {% else %}
+                            <span style="color: var(--gray-400);">Non</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align: center;">{{ row.nb_enfants }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.heures_reelles) if row.heures_reelles else '' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.heures_supps) if row.heures_supps else '' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.transport|float) if row.transport else '-' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.acompte|float) if row.acompte else '-' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.saisie_salaire|float) if row.saisie_salaire else '-' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.pret_avance|float) if row.pret_avance else '-' }}</td>
+                        <td style="text-align: right;">{{ "%.2f"|format(row.autres_regularisation|float) if row.autres_regularisation else '-' }}</td>
+                        <td style="font-size: 0.85rem;">{{ row.commentaire or '' }}</td>
+                        <td>
+                            {% if row.absences %}
+                            {% for ab in row.absences %}
+                            <div style="font-size: 0.82rem; margin-bottom: 4px;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
+                                <strong>{{ ab.motif }}</strong><br>
+                                {{ ab.date_debut }} &rarr; {{ ab.date_fin }}
+                                {% if ab.date_reprise %}<br>Reprise : {{ ab.date_reprise }}{% endif %}
+                                {% if ab.justificatif_path %}
+                                <a href="{{ url_for('absences_bp.telecharger_justificatif', absence_id=ab.id) }}" class="btn btn-sm" style="padding: 1px 6px; font-size: 0.75rem; margin-left: 4px;">PDF</a>
+                                {% endif %}
+                                {% if ab.commentaire %}<br><em style="color: var(--gray-500);">{{ ab.commentaire }}</em>{% endif %}
+                            </div>
+                            {% endfor %}
+                            {% else %}
+                            <span style="color: var(--gray-400); font-size: 0.85rem;">Aucune</span>
+                            {% endif %}
+                        </td>
+                        <td style="white-space: nowrap;">
+                            <strong>{{ row.nom }}</strong> {{ row.prenom }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="actions" style="margin-top: 1.5rem; text-align: center;">
+            <button type="submit" class="btn btn-primary" style="padding: 0.75rem 2rem; font-size: 1rem;">
+                Enregistrer les statuts - {{ nom_mois }} {{ annee }}
+            </button>
+        </div>
+    </form>
+
+    {% else %}
+    <div class="no-data" style="margin-top: 2rem;">
+        <p>Aucun salarie avec un contrat actif pour {{ nom_mois }} {{ annee }}.</p>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* ── Base ── */
+.prepa-paie-table {
+    border-collapse: collapse;
+}
+.prepa-paie-table td,
+.prepa-paie-table th {
+    padding: 6px 8px;
+    vertical-align: top;
+    border-right: 1px solid var(--gray-200, #e0e0e0);
+}
+.prepa-paie-table th:last-child,
+.prepa-paie-table td:last-child {
+    border-right: none;
+}
+.prepa-paie-table thead th {
+    font-size: 0.82rem;
+    padding: 8px 8px;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 2px solid var(--gray-300, #bbb);
+}
+
+/* ── Row alternation ── */
+.prepa-paie-table tr.row-separator td {
+    border-bottom: 2px solid var(--gray-300, #bbb) !important;
+}
+.prepa-paie-table tr.row-odd td {
+    background: var(--white, #fff);
+}
+.prepa-paie-table tr.row-even td {
+    background: var(--gray-50, #f8f9fa);
+}
+.prepa-paie-table tr.row-traite td {
+    background: #e8f5e9 !important;
+}
+
+/* ── Badge ── */
+.badge-info {
+    background: var(--primary, #1976d2);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+/* ── Dark mode ── */
+[data-theme="dark"] .prepa-paie-table td,
+[data-theme="dark"] .prepa-paie-table th {
+    border-right-color: var(--gray-600, #444);
+}
+[data-theme="dark"] .prepa-paie-table thead th {
+    border-bottom-color: var(--gray-500, #555);
+}
+[data-theme="dark"] .prepa-paie-table tr.row-odd td {
+    background: var(--gray-800, #1e1e1e);
+}
+[data-theme="dark"] .prepa-paie-table tr.row-even td {
+    background: var(--gray-700, #2a2a2a);
+}
+[data-theme="dark"] .prepa-paie-table tr.row-separator td {
+    border-bottom-color: var(--gray-600, #555);
+}
+[data-theme="dark"] .prepa-paie-table tr.row-traite td {
+    background: #1b3a1b !important;
+}
+</style>
+{% endblock %}

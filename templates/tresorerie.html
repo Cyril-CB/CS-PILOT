@@ -1,0 +1,1237 @@
+{% extends "base.html" %}
+{% block title %}Trésorerie - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+/* === TRESORERIE MODULE === */
+.treso-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+}
+.treso-header h2 { margin: 0; color: var(--gray-900); }
+.treso-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.treso-actions .btn {
+    padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-secondary { background: var(--gray-200); color: var(--gray-700); }
+.btn-secondary:hover { background: var(--gray-300); }
+.btn-success { background: var(--success); color: white; }
+.btn-danger-sm { background: var(--danger); color: white; padding: 4px 8px; font-size: 11px; border-radius: 4px; border: none; cursor: pointer; }
+
+/* === KPI CARDS === */
+.treso-kpi {
+    display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.kpi-card {
+    flex: 1; min-width: 200px; padding: 16px 20px; border-radius: 10px;
+    background: var(--white); box-shadow: var(--shadow-md); border-left: 4px solid;
+}
+.kpi-card-solde { border-left-color: var(--primary); }
+.kpi-card-encaiss { border-left-color: var(--success); }
+.kpi-card-decaiss { border-left-color: var(--danger); }
+.kpi-label { font-size: 12px; color: var(--gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-value { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.kpi-sub { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+
+/* === CHART === */
+.treso-chart-container {
+    background: var(--white); border-radius: 10px; padding: 16px;
+    box-shadow: var(--shadow-md); margin-bottom: 20px; position: relative;
+    height: 280px;
+}
+
+/* Filtres */
+.treso-filters {
+    display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap;
+    background: var(--gray-50); padding: 12px 16px; border-radius: 8px;
+}
+.treso-filters label { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+.treso-filters select, .treso-filters input[type="number"] {
+    padding: 6px 10px; border: 1px solid var(--gray-300); border-radius: 6px;
+    font-size: 13px; background: var(--white); color: var(--gray-900);
+}
+
+/* Table de projection */
+.treso-wrapper {
+    overflow-x: auto; border-radius: 8px;
+    box-shadow: var(--shadow-md); background: var(--white);
+    max-height: 70vh; overflow-y: auto;
+    position: relative;
+}
+/* Barre de defilement en haut */
+.treso-scroll-top {
+    overflow-x: auto; overflow-y: hidden; height: 16px;
+    border-radius: 8px 8px 0 0; background: var(--gray-50);
+}
+.treso-scroll-top-inner { height: 1px; }
+
+.treso-table {
+    width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap;
+}
+.treso-table th, .treso-table td {
+    padding: 6px 10px; border: 1px solid var(--gray-200); text-align: right;
+}
+.treso-table th {
+    background: var(--gray-100); color: var(--gray-700);
+    font-weight: 600; position: sticky; top: 0; z-index: 2;
+}
+/* Sticky thead rows */
+.treso-table thead tr:nth-child(1) th { top: 0; z-index: 4; }
+.treso-table thead tr:nth-child(2) th { top: 29px; z-index: 4; }
+/* Sticky solde row (first tbody row) */
+.treso-table tbody tr.row-solde td {
+    position: sticky; top: 58px; z-index: 3;
+    background: var(--white);
+}
+/* Sticky separator after solde */
+.treso-table tbody tr.row-solde-sep td {
+    position: sticky; top: 84px; z-index: 3;
+}
+
+.treso-table th.col-label, .treso-table td.col-label {
+    text-align: left; min-width: 220px; max-width: 280px;
+    overflow: hidden; text-overflow: ellipsis;
+    position: sticky; left: 0; z-index: 1; background: var(--white);
+}
+.treso-table th.col-label { z-index: 5; background: var(--gray-100); }
+.treso-table tbody tr.row-solde td.col-label { z-index: 5; }
+
+.treso-table th.col-type, .treso-table td.col-type {
+    text-align: center; min-width: 50px;
+    position: sticky; left: 220px; z-index: 1; background: var(--white);
+}
+.treso-table th.col-type { z-index: 5; background: var(--gray-100); }
+.treso-table tbody tr.row-solde td.col-type { z-index: 5; }
+
+/* Solde tresorerie */
+.row-solde td { font-weight: 700; font-size: 13px; }
+.row-solde td.col-label { font-size: 13px; }
+.solde-positif { color: var(--success); }
+.solde-negatif { color: var(--danger); }
+
+/* Sous-totaux */
+.row-subtotal td {
+    font-weight: 700; background: var(--gray-50) !important;
+    border-top: 2px solid var(--gray-300);
+}
+.row-subtotal td.col-label { background: var(--gray-50) !important; }
+.row-subtotal td.col-type { background: var(--gray-50) !important; }
+
+/* Total net */
+.row-total td {
+    font-weight: 700; background: var(--gray-100) !important;
+    border-top: 2px solid var(--gray-700); font-size: 13px;
+}
+.row-total td.col-label { background: var(--gray-100) !important; }
+.row-total td.col-type { background: var(--gray-100) !important; }
+
+/* Lignes de compte */
+.row-compte td { background: var(--white); }
+.row-compte:hover td { background: var(--gray-50) !important; }
+.row-compte td.col-label { font-weight: 500; }
+
+/* Valeurs */
+.val-positif { color: var(--success); }
+.val-negatif { color: var(--danger); }
+.val-zero { color: var(--gray-300); }
+.val-budget { font-style: italic; background: #fffbeb !important; }
+.val-projection { font-style: italic; background: #eff6ff !important; color: #3b82f6; }
+.val-vide { color: var(--gray-300); }
+
+/* Mois futur (projection) */
+.col-projection { background: #f0f9ff !important; }
+
+/* Mois en-tete annee */
+.th-annee {
+    background: var(--primary) !important; color: white !important;
+    text-align: center; font-size: 13px;
+}
+
+/* Mois courant */
+.col-courant { background: #f0fdf4 !important; }
+.th-courant { background: var(--success) !important; color: white !important; }
+
+/* Encadre comptes d'attente */
+.treso-attente {
+    margin-top: 20px; padding: 16px; border: 2px dashed var(--warning);
+    border-radius: 8px; background: #fffbeb;
+}
+[data-theme="dark"] .treso-attente { background: #422006; border-color: #b45309; }
+.treso-attente h3 {
+    margin: 0 0 12px 0; color: #b45309; font-size: 14px;
+    display: flex; align-items: center; gap: 6px;
+}
+
+/* Modal */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center;
+}
+.modal-overlay.active { display: flex; }
+.modal-content {
+    background: var(--white); border-radius: 12px; padding: 24px;
+    max-width: 520px; width: 90%; box-shadow: var(--shadow-lg);
+    max-height: 80vh; overflow-y: auto;
+}
+.modal-content h3 { margin: 0 0 16px 0; color: var(--gray-900); }
+.modal-content .form-group { margin-bottom: 14px; }
+.modal-content label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; color: var(--gray-700); }
+.modal-content input[type="file"],
+.modal-content input[type="text"],
+.modal-content input[type="number"],
+.modal-content select {
+    width: 100%; padding: 8px 12px; border: 1px solid var(--gray-300);
+    border-radius: 6px; font-size: 13px; background: var(--white); color: var(--gray-900);
+    box-sizing: border-box;
+}
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* Historique imports */
+.treso-imports { margin-top: 24px; }
+.treso-imports h3 { margin: 0 0 12px 0; color: var(--gray-900); font-size: 15px; }
+.import-list { font-size: 12px; }
+.import-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid var(--gray-200);
+    background: var(--white); gap: 12px;
+}
+.import-item:first-child { border-radius: 8px 8px 0 0; }
+.import-item:last-child { border-radius: 0 0 8px 8px; border-bottom: none; }
+.import-meta { color: var(--gray-500); }
+.import-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600;
+}
+.import-badge.historique { background: #dbeafe; color: #1e40af; }
+.import-badge.banque { background: #d1fae5; color: #065f46; }
+
+/* Editable cells */
+.editable-cell {
+    cursor: pointer; position: relative;
+}
+.editable-cell:hover { background: #fef3c7 !important; }
+.editable-cell input {
+    width: 80px; padding: 2px 4px; border: 1px solid var(--primary);
+    border-radius: 3px; font-size: 12px; text-align: right;
+    background: white; color: var(--gray-900);
+}
+
+/* Info solde initial */
+.solde-initial-box {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--gray-50); padding: 6px 12px; border-radius: 6px;
+    font-size: 13px; color: var(--gray-700); cursor: pointer;
+    border: 1px solid var(--gray-200);
+}
+.solde-initial-box:hover { border-color: var(--primary); }
+.solde-initial-box strong { color: var(--gray-900); }
+
+/* === EPARGNE SECTION === */
+.epargne-section {
+    margin-bottom: 20px; padding: 16px 20px; border-radius: 10px;
+    background: var(--white); box-shadow: var(--shadow-md);
+    border-left: 4px solid #8b5cf6;
+}
+.epargne-header {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 12px;
+}
+.epargne-header h3 {
+    margin: 0; font-size: 15px; color: var(--gray-900);
+    display: flex; align-items: center; gap: 8px;
+}
+.epargne-header h3 .epargne-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; background: #ede9fe; border-radius: 6px;
+    color: #7c3aed; font-size: 14px; font-weight: 700;
+}
+.epargne-solde-display {
+    font-size: 22px; font-weight: 700; color: #7c3aed;
+    cursor: pointer; padding: 4px 12px; border-radius: 6px;
+    border: 1px solid transparent;
+}
+.epargne-solde-display:hover { border-color: #8b5cf6; background: #f5f3ff; }
+.epargne-actions { display: flex; gap: 8px; }
+.btn-placement {
+    background: #7c3aed; color: white; padding: 7px 14px; border-radius: 6px;
+    border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-placement:hover { background: #6d28d9; }
+.btn-retrait {
+    background: #f59e0b; color: white; padding: 7px 14px; border-radius: 6px;
+    border: none; cursor: pointer; font-size: 12px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-retrait:hover { background: #d97706; }
+.epargne-mouvements {
+    max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
+}
+.epargne-mouvements.open { max-height: 500px; overflow-y: auto; }
+.epargne-toggle {
+    font-size: 12px; color: var(--gray-500); cursor: pointer;
+    border: none; background: none; padding: 4px 0; text-decoration: underline;
+}
+.epargne-toggle:hover { color: var(--primary); }
+.mvt-list { margin-top: 8px; }
+.mvt-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; border-bottom: 1px solid var(--gray-100);
+    font-size: 12px; gap: 8px;
+}
+.mvt-item:last-child { border-bottom: none; }
+.mvt-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+}
+.mvt-badge.placement { background: #ede9fe; color: #6d28d9; }
+.mvt-badge.retrait { background: #fef3c7; color: #92400e; }
+.mvt-montant { font-weight: 700; }
+.mvt-montant.placement { color: #7c3aed; }
+.mvt-montant.retrait { color: #f59e0b; }
+.mvt-delete {
+    background: none; border: none; color: var(--gray-400); cursor: pointer;
+    font-size: 14px; padding: 2px 4px; border-radius: 4px;
+}
+.mvt-delete:hover { color: var(--danger); background: #fef2f2; }
+[data-theme="dark"] .epargne-section { background: var(--white); }
+[data-theme="dark"] .epargne-solde-display:hover { background: #2e1065; border-color: #7c3aed; }
+[data-theme="dark"] .epargne-header h3 .epargne-icon { background: #2e1065; }
+
+/* Dark theme overrides */
+[data-theme="dark"] .treso-table td.col-label,
+[data-theme="dark"] .treso-table td.col-type { background: var(--white); }
+[data-theme="dark"] .row-subtotal td.col-label,
+[data-theme="dark"] .row-subtotal td.col-type,
+[data-theme="dark"] .row-subtotal td { background: var(--gray-200) !important; }
+[data-theme="dark"] .row-total td.col-label,
+[data-theme="dark"] .row-total td.col-type,
+[data-theme="dark"] .row-total td { background: var(--gray-200) !important; }
+[data-theme="dark"] .val-budget { background: #422006 !important; }
+[data-theme="dark"] .val-projection { background: #1e3a5f !important; color: #60a5fa; }
+[data-theme="dark"] .col-projection { background: #1e3a5f !important; }
+[data-theme="dark"] .col-courant { background: #14532d !important; }
+[data-theme="dark"] .th-courant { background: #065f46 !important; }
+[data-theme="dark"] .kpi-card { background: var(--white); }
+[data-theme="dark"] .treso-chart-container { background: var(--white); }
+[data-theme="dark"] .row-solde td { background: var(--white); }
+[data-theme="dark"] .row-solde td.col-label,
+[data-theme="dark"] .row-solde td.col-type { background: var(--white); }
+</style>
+
+<div class="treso-header">
+    <h2>Projection de Trésorerie</h2>
+    <div class="treso-actions">
+        <div class="solde-initial-box" onclick="ouvrirModalSolde()" title="Cliquer pour modifier le solde initial global">
+            Solde initial (avant {{ projection.noms_mois_complet[projection.solde_ref_mois] }} {{ projection.solde_ref_annee }}) :
+            <strong id="soldeInitialDisplay">{{ '{:,.2f}'.format(projection.solde_initial_global).replace(',', ' ') }} &euro;</strong>
+        </div>
+        <button class="btn btn-primary" onclick="ouvrirModalImport()">Importer FEC</button>
+        <a href="{{ url_for('tresorerie_bp.gestion_comptes') }}" class="btn btn-secondary">Gérer les comptes</a>
+    </div>
+</div>
+
+<!-- ============ EPARGNE ============ -->
+{% set ep_idx = namespace(val=-1) %}
+{% for i in range(projection.periodes|length) %}
+    {% if projection.periodes[i][0] == now.year and projection.periodes[i][1] == now.month %}
+        {% set ep_idx.val = i %}
+    {% endif %}
+{% endfor %}
+<div class="epargne-section">
+    <div class="epargne-header">
+        <h3>
+            <span class="epargne-icon">E</span>
+            Comptes d'Epargne
+        </h3>
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div>
+                <span style="font-size:12px;color:var(--gray-500);">Solde actuel :</span>
+                <span class="epargne-solde-display" onclick="ouvrirModalEpargneSolde()" title="Cliquer pour modifier le solde initial d'épargne">
+                    {% if ep_idx.val >= 0 %}
+                        {{ '{:,.0f}'.format(projection.epargne_solde_cumule[ep_idx.val]).replace(',', ' ') }} &euro;
+                    {% else %}
+                        {{ '{:,.0f}'.format(projection.epargne_solde_initial).replace(',', ' ') }} &euro;
+                    {% endif %}
+                </span>
+            </div>
+            <div class="epargne-actions">
+                <button class="btn-placement" onclick="ouvrirModalEpargneMvt('placement')">Placement</button>
+                <button class="btn-retrait" onclick="ouvrirModalEpargneMvt('retrait')">Retrait</button>
+            </div>
+        </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;color:var(--gray-400);">
+            Solde initial enregistré : {{ '{:,.0f}'.format(projection.epargne_solde_initial).replace(',', ' ') }} &euro;
+            {% if projection.epargne_mouvements %} | {{ projection.epargne_mouvements|length }} mouvement{{ 's' if projection.epargne_mouvements|length > 1 }}{% endif %}
+        </span>
+        {% if projection.epargne_mouvements %}
+        <button class="epargne-toggle" onclick="toggleEpargneMvts()">Voir les mouvements</button>
+        {% endif %}
+    </div>
+    <div class="epargne-mouvements" id="epargneMvtsList">
+        <div class="mvt-list">
+            {% for mvt in projection.epargne_mouvements %}
+            <div class="mvt-item">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="mvt-badge {{ mvt.type_mouvement }}">{{ mvt.type_mouvement }}</span>
+                    <span>{{ projection.noms_mois_complet[mvt.mois] }} {{ mvt.annee }}</span>
+                    {% if mvt.commentaire %}<span style="color:var(--gray-400);">- {{ mvt.commentaire }}</span>{% endif %}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="mvt-montant {{ mvt.type_mouvement }}">
+                        {{ '+' if mvt.type_mouvement == 'placement' else '-' }}{{ '{:,.0f}'.format(mvt.montant).replace(',', ' ') }} &euro;
+                    </span>
+                    <button class="mvt-delete" onclick="supprimerMvtEpargne({{ mvt.id }})" title="Supprimer">&times;</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- ============ KPI CARDS ============ -->
+{% set mois_courant_idx = namespace(val=-1) %}
+{% for i in range(projection.periodes|length) %}
+    {% if projection.periodes[i][0] == now.year and projection.periodes[i][1] == now.month %}
+        {% set mois_courant_idx.val = i %}
+    {% endif %}
+{% endfor %}
+
+<div class="treso-kpi">
+    <div class="kpi-card kpi-card-solde">
+        <div class="kpi-label">Trésorerie disponible</div>
+        <div class="kpi-value" style="color: {% if mois_courant_idx.val >= 0 %}{{ 'var(--success)' if projection.solde_cumule[mois_courant_idx.val] >= 0 else 'var(--danger)' }}{% else %}var(--gray-500){% endif %}">
+            {% if mois_courant_idx.val >= 0 %}
+                {{ '{:,.0f}'.format(projection.solde_cumule[mois_courant_idx.val]).replace(',', ' ') }} &euro;
+            {% else %}
+                -
+            {% endif %}
+        </div>
+        <div class="kpi-sub">Solde fin {{ projection.noms_mois_complet[now.month] }} {{ now.year }}</div>
+    </div>
+    <div class="kpi-card kpi-card-encaiss">
+        <div class="kpi-label">Encaissements du mois</div>
+        <div class="kpi-value" style="color: var(--success);">
+            {% if mois_courant_idx.val >= 0 %}
+                +{{ '{:,.0f}'.format(projection.sous_total_produits[mois_courant_idx.val]).replace(',', ' ') }} &euro;
+            {% else %}
+                -
+            {% endif %}
+        </div>
+        <div class="kpi-sub">{% if mois_courant_idx.val >= 0 and projection.dernier_reel and (now.year, now.month) <= projection.dernier_reel %}Réel{% else %}Prévisionnel{% endif %} {{ projection.noms_mois_complet[now.month] }} {{ now.year }}</div>
+    </div>
+    <div class="kpi-card kpi-card-decaiss">
+        <div class="kpi-label">Décaissements du mois</div>
+        <div class="kpi-value" style="color: var(--danger);">
+            {% if mois_courant_idx.val >= 0 %}
+                {{ '{:,.0f}'.format(projection.sous_total_charges[mois_courant_idx.val]).replace(',', ' ') }} &euro;
+            {% else %}
+                -
+            {% endif %}
+        </div>
+        <div class="kpi-sub">{% if mois_courant_idx.val >= 0 and projection.dernier_reel and (now.year, now.month) <= projection.dernier_reel %}Réel{% else %}Prévisionnel{% endif %} {{ projection.noms_mois_complet[now.month] }} {{ now.year }}</div>
+    </div>
+</div>
+
+<!-- ============ CHART ============ -->
+<div class="treso-chart-container">
+    <canvas id="tresoChart"></canvas>
+</div>
+
+<!-- Filtres -->
+<form class="treso-filters" method="GET" action="{{ url_for('tresorerie_bp.tresorerie') }}">
+    <label>Début :</label>
+    <select name="mois">
+        {% for i in range(1, 13) %}
+        <option value="{{ i }}" {{ 'selected' if i == mois_debut }}>{{ projection.noms_mois_complet[i] }}</option>
+        {% endfor %}
+    </select>
+    <select name="annee">
+        {% for a in range(annee - 3, annee + 3) %}
+        <option value="{{ a }}" {{ 'selected' if a == annee }}>{{ a }}</option>
+        {% endfor %}
+    </select>
+    <label>Nombre de mois :</label>
+    <select name="nb_mois">
+        {% for n in [6, 12, 18, 24, 36] %}
+        <option value="{{ n }}" {{ 'selected' if n == nb_mois }}>{{ n }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Actualiser</button>
+</form>
+
+<!-- Legende -->
+<div style="display:flex;gap:16px;margin-bottom:10px;font-size:11px;color:var(--gray-500);flex-wrap:wrap;">
+    <span>Données réelles</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:#eff6ff;border:1px solid #3b82f6;border-radius:2px;vertical-align:middle;margin-right:3px;"></span> Projection auto (N-1)</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:#fffbeb;border:1px solid #f59e0b;border-radius:2px;vertical-align:middle;margin-right:3px;"></span> Ajustement manuel</span>
+    <span><span style="display:inline-block;width:12px;height:12px;background:#f0fdf4;border:1px solid var(--success);border-radius:2px;vertical-align:middle;margin-right:3px;"></span> Mois courant</span>
+</div>
+
+<!-- Barre de defilement en haut -->
+<div class="treso-scroll-top" id="scrollTop">
+    <div class="treso-scroll-top-inner" id="scrollTopInner"></div>
+</div>
+
+<!-- Table de projection -->
+<div class="treso-wrapper" id="tresoWrapper">
+<table class="treso-table" id="tresoTable">
+    <thead>
+        <!-- Ligne annees -->
+        <tr>
+            <th class="col-label" rowspan="2">Compte</th>
+            <th class="col-type" rowspan="2">Type</th>
+            {% set ns = namespace(current_year=0) %}
+            {% for (a, m) in projection.periodes %}
+                {% if a != ns.current_year %}
+                    {% set count = namespace(n=0) %}
+                    {% for (a2, m2) in projection.periodes %}
+                        {% if a2 == a %}{% set count.n = count.n + 1 %}{% endif %}
+                    {% endfor %}
+                    <th class="th-annee" colspan="{{ count.n }}">{{ a }}</th>
+                    {% set ns.current_year = a %}
+                {% endif %}
+            {% endfor %}
+        </tr>
+        <!-- Ligne mois -->
+        <tr>
+            {% for (a, m) in projection.periodes %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_projection = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <th class="{{ 'th-courant' if is_courant }}" title="{{ projection.noms_mois_complet[m] }} {{ a }}">
+                    {{ projection.noms_mois[m] }}
+                </th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        <!-- Solde de trésorerie (sticky) -->
+        <tr class="row-solde">
+            <td class="col-label">Solde de Trésorerie</td>
+            <td class="col-type"></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set val = projection.solde_cumule[i] %}
+                {% set a = projection.periodes[i][0] %}
+                {% set m = projection.periodes[i][1] %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="{{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} {{ 'solde-positif' if val >= 0 else 'solde-negatif' }}">
+                    {{ '{:,.0f}'.format(val).replace(',', ' ') }}
+                </td>
+            {% endfor %}
+        </tr>
+
+        <!-- Separateur -->
+        <tr class="row-solde-sep"><td colspan="{{ projection.periodes|length + 2 }}" style="padding:2px;background:var(--gray-200);"></td></tr>
+
+        <!-- Comptes produits (entrees) -->
+        {% for ligne in projection.comptes_produits %}
+        <tr class="row-compte">
+            <td class="col-label" title="{{ ligne.compte_num }} - {{ ligne.libelle }}">
+                <span style="color:var(--gray-500);font-size:10px;">{{ ligne.compte_num }}</span>
+                {{ ligne.libelle }}
+            </td>
+            <td class="col-type"><span style="color:var(--success);font-size:10px;font-weight:700;">+</span></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set v = ligne.valeurs[i] %}
+                {% set a = v.annee %}
+                {% set m = v.mois %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="editable-cell {{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} {{ 'val-budget' if v.is_budget }} {{ 'val-projection' if v.is_projection }} {{ 'val-zero' if v.valeur == 0 }} {{ 'val-vide' if v.is_vide }}"
+                    data-compte="{{ ligne.compte_num }}" data-annee="{{ a }}" data-mois="{{ m }}"
+                    ondblclick="editCell(this)">
+                    {% if v.valeur is not none %}
+                        {{ '{:,.0f}'.format(v.valeur).replace(',', ' ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <!-- Sous-total produits -->
+        <tr class="row-subtotal">
+            <td class="col-label">Sous-total Recettes</td>
+            <td class="col-type"></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set val = projection.sous_total_produits[i] %}
+                {% set a = projection.periodes[i][0] %}
+                {% set m = projection.periodes[i][1] %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="{{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} val-positif">
+                    {{ '{:,.0f}'.format(val).replace(',', ' ') }}
+                </td>
+            {% endfor %}
+        </tr>
+
+        <!-- Separateur -->
+        <tr><td colspan="{{ projection.periodes|length + 2 }}" style="padding:1px;"></td></tr>
+
+        <!-- Comptes charges (sorties) -->
+        {% for ligne in projection.comptes_charges %}
+        <tr class="row-compte">
+            <td class="col-label" title="{{ ligne.compte_num }} - {{ ligne.libelle }}">
+                <span style="color:var(--gray-500);font-size:10px;">{{ ligne.compte_num }}</span>
+                {{ ligne.libelle }}
+            </td>
+            <td class="col-type"><span style="color:var(--danger);font-size:10px;font-weight:700;">-</span></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set v = ligne.valeurs[i] %}
+                {% set a = v.annee %}
+                {% set m = v.mois %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="editable-cell {{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} {{ 'val-budget' if v.is_budget }} {{ 'val-projection' if v.is_projection }} {{ 'val-zero' if v.valeur == 0 }} {{ 'val-vide' if v.is_vide }}"
+                    data-compte="{{ ligne.compte_num }}" data-annee="{{ a }}" data-mois="{{ m }}"
+                    ondblclick="editCell(this)">
+                    {% if v.valeur is not none %}
+                        {{ '{:,.0f}'.format(v.valeur).replace(',', ' ') }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+        {% endfor %}
+
+        <!-- Sous-total charges -->
+        <tr class="row-subtotal">
+            <td class="col-label">Sous-total Dépenses</td>
+            <td class="col-type"></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set val = projection.sous_total_charges[i] %}
+                {% set a = projection.periodes[i][0] %}
+                {% set m = projection.periodes[i][1] %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="{{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} val-negatif">
+                    {{ '{:,.0f}'.format(val).replace(',', ' ') }}
+                </td>
+            {% endfor %}
+        </tr>
+
+        <!-- Total net -->
+        <tr class="row-total">
+            <td class="col-label">Flux net du mois</td>
+            <td class="col-type"></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set val = projection.total_net[i] %}
+                {% set a = projection.periodes[i][0] %}
+                {% set m = projection.periodes[i][1] %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                {% set is_proj = projection.dernier_reel and (a, m) > projection.dernier_reel %}
+                <td class="{{ 'col-courant' if is_courant }}{{ ' col-projection' if is_proj }} {{ 'val-positif' if val >= 0 else 'val-negatif' }}">
+                    {{ '{:,.0f}'.format(val).replace(',', ' ') }}
+                </td>
+            {% endfor %}
+        </tr>
+
+        <!-- Impact epargne -->
+        {% set has_epargne = projection.epargne_impact_mois|sum != 0 %}
+        {% if has_epargne %}
+        <tr class="row-compte" style="background:#f5f3ff;">
+            <td class="col-label" style="background:#f5f3ff;color:#7c3aed;font-weight:600;">Mvts Epargne</td>
+            <td class="col-type" style="background:#f5f3ff;"><span style="color:#7c3aed;font-size:10px;font-weight:700;">E</span></td>
+            {% for i in range(projection.periodes|length) %}
+                {% set val = projection.epargne_impact_mois[i] %}
+                {% set a = projection.periodes[i][0] %}
+                {% set m = projection.periodes[i][1] %}
+                {% set is_courant = (a == now.year and m == now.month) %}
+                <td class="{{ 'col-courant' if is_courant }}" style="{% if val > 0 %}color:var(--success);{% elif val < 0 %}color:#7c3aed;{% else %}color:var(--gray-300);{% endif %}">
+                    {% if val != 0 %}{{ '{:,.0f}'.format(val).replace(',', ' ') }}{% else %}-{% endif %}
+                </td>
+            {% endfor %}
+        </tr>
+        {% endif %}
+    </tbody>
+</table>
+</div>
+
+<!-- Comptes d'attente -->
+{% if projection.comptes_attente %}
+<div class="treso-attente">
+    <h3>Comptes d'attente (471xxx) - non inclus dans la projection</h3>
+    <div class="treso-wrapper" style="box-shadow:none;max-height:none;">
+    <table class="treso-table">
+        <thead>
+            <tr>
+                <th class="col-label">Compte</th>
+                <th class="col-type"></th>
+                {% for (a, m) in projection.periodes %}
+                    <th>{{ projection.noms_mois[m] }} {{ a % 100 }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for ligne in projection.comptes_attente %}
+            <tr class="row-compte">
+                <td class="col-label" title="{{ ligne.compte_num }}">
+                    <span style="color:var(--gray-500);font-size:10px;">{{ ligne.compte_num }}</span>
+                    {{ ligne.libelle }}
+                </td>
+                <td class="col-type">~</td>
+                {% for i in range(projection.periodes|length) %}
+                    {% set v = ligne.valeurs[i] %}
+                    <td class="{{ 'val-zero' if v.valeur == 0 }} {{ 'val-vide' if v.is_vide }}">
+                        {% if v.valeur is not none %}
+                            {{ '{:,.0f}'.format(v.valeur).replace(',', ' ') }}
+                        {% else %}-{% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            <tr class="row-subtotal">
+                <td class="col-label">Total attente</td>
+                <td class="col-type"></td>
+                {% for i in range(projection.periodes|length) %}
+                    {% set val = projection.total_attente[i] %}
+                    <td class="{{ 'val-positif' if val > 0 }}{{ 'val-negatif' if val < 0 }}">
+                        {{ '{:,.0f}'.format(val).replace(',', ' ') }}
+                    </td>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- Historique des imports -->
+{% if projection.imports %}
+<div class="treso-imports">
+    <h3>Derniers imports</h3>
+    <div class="import-list">
+        {% for imp in projection.imports %}
+        <div class="import-item">
+            <div>
+                <span class="import-badge {{ imp.type_import }}">{{ imp.type_import|capitalize }}</span>
+                <strong>{{ imp.fichier_nom }}</strong>
+                - {{ imp.nb_ecritures }} écritures, {{ imp.nb_comptes }} comptes
+                {% if imp.annee %}({{ imp.annee }}{% if imp.mois_debut %}, mois {{ imp.mois_debut }}-{{ imp.mois_fin }}{% endif %}){% endif %}
+            </div>
+            <div class="import-meta">
+                {{ imp.created_at[:16] if imp.created_at else '' }}
+                {% if imp.prenom %} par {{ imp.prenom }} {{ imp.nom }}{% endif %}
+                <button class="btn-danger-sm" onclick="supprimerImport({{ imp.id }})" title="Supprimer cet import">Suppr.</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal Import FEC -->
+<div class="modal-overlay" id="modalImport">
+    <div class="modal-content">
+        <h3>Importer un fichier FEC</h3>
+        <div class="form-group">
+            <label>Type d'import</label>
+            <select id="importType">
+                <option value="historique">Historique complet (FEC annuel)</option>
+                <option value="banque">Mise à jour banque (FEC mensuel)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Fichier FEC (.txt tabulé)</label>
+            <input type="file" id="importFile" accept=".txt,.csv,.tsv">
+        </div>
+        <p style="font-size:12px;color:var(--gray-500);margin:8px 0;">
+            Colonnes attendues : JournalCode, JournalLib, EcritureNum, EcritureDate (YYYYMMDD),
+            CompteNum, CompteLib, CompAuxNum, CompAuxLib, PieceRef, EcritureLib, Debit, Credit.<br>
+            Les comptes 512xxx, 531xxx et 580xxx (virements internes) sont automatiquement exclus.
+        </p>
+        <div id="importResult" style="display:none; padding:10px; border-radius:6px; margin-top:8px; font-size:13px;"></div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="fermerModal('modalImport')">Annuler</button>
+            <button class="btn btn-primary" onclick="lancerImport()" id="btnImport">Importer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solde Initial -->
+<div class="modal-overlay" id="modalSolde">
+    <div class="modal-content">
+        <h3>Solde initial de trésorerie</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">
+            Saisissez le solde de trésorerie (CC + CM + Caisse) au début de votre historique.<br>
+            Ce solde correspond au solde bancaire <strong>avant</strong> le premier mois importé
+            ({{ projection.noms_mois_complet[projection.solde_ref_mois] }} {{ projection.solde_ref_annee }}).<br>
+            Il sera conservé en mémoire et propagé automatiquement.
+        </p>
+        <div class="form-group">
+            <label>Montant (&euro;)</label>
+            <input type="number" id="soldeInitialInput" step="0.01" value="{{ projection.solde_initial_global }}">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="fermerModal('modalSolde')">Annuler</button>
+            <button class="btn btn-primary" onclick="sauverSoldeInitial()">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Solde Epargne -->
+<div class="modal-overlay" id="modalEpargneSolde">
+    <div class="modal-content">
+        <h3>Solde initial d'épargne</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin-bottom:12px;">
+            Saisissez le solde total de vos comptes d'épargne au début de votre suivi.
+        </p>
+        <div class="form-group">
+            <label>Montant (&euro;)</label>
+            <input type="number" id="epargneSoldeInput" step="0.01" value="{{ projection.epargne_solde_initial }}">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="fermerModal('modalEpargneSolde')">Annuler</button>
+            <button class="btn btn-primary" onclick="sauverEpargneSolde()">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Mouvement Epargne -->
+<div class="modal-overlay" id="modalEpargneMvt">
+    <div class="modal-content">
+        <h3 id="modalEpargneMvtTitle">Placement d'épargne</h3>
+        <p id="modalEpargneMvtDesc" style="font-size:13px;color:var(--gray-500);margin-bottom:12px;"></p>
+        <div class="form-group">
+            <label>Mois</label>
+            <select id="epargneMvtMois">
+                {% for i in range(1, 13) %}
+                <option value="{{ i }}" {{ 'selected' if i == now.month }}>{{ projection.noms_mois_complet[i] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Année</label>
+            <input type="number" id="epargneMvtAnnee" value="{{ now.year }}">
+        </div>
+        <div class="form-group">
+            <label>Montant (&euro;)</label>
+            <input type="number" id="epargneMvtMontant" step="0.01" min="0.01" placeholder="Ex: 10000">
+        </div>
+        <div class="form-group">
+            <label>Commentaire (optionnel)</label>
+            <input type="text" id="epargneMvtComment" placeholder="Ex: Placement Livret A">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="fermerModal('modalEpargneMvt')">Annuler</button>
+            <button class="btn btn-primary" onclick="sauverEpargneMvt()" id="btnEpargneMvt">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+<script>
+var ANNEE_DEBUT = {{ annee }};
+var MOIS_DEBUT = {{ mois_debut }};
+
+// === Sync scrollbars (top <-> table wrapper) ===
+(function() {
+    var scrollTop = document.getElementById('scrollTop');
+    var wrapper = document.getElementById('tresoWrapper');
+    var inner = document.getElementById('scrollTopInner');
+    if (!scrollTop || !wrapper || !inner) return;
+
+    function syncWidth() {
+        var table = document.getElementById('tresoTable');
+        if (table) inner.style.width = table.scrollWidth + 'px';
+    }
+    syncWidth();
+    window.addEventListener('resize', syncWidth);
+
+    var syncing = false;
+    scrollTop.addEventListener('scroll', function() {
+        if (syncing) return;
+        syncing = true;
+        wrapper.scrollLeft = scrollTop.scrollLeft;
+        syncing = false;
+    });
+    wrapper.addEventListener('scroll', function() {
+        if (syncing) return;
+        syncing = true;
+        scrollTop.scrollLeft = wrapper.scrollLeft;
+        syncing = false;
+    });
+})();
+
+// === Chart ===
+(function() {
+    var periodes = {{ projection.periodes|tojson }};
+    var solde = {{ projection.solde_cumule|tojson }};
+    var produits = {{ projection.sous_total_produits|tojson }};
+    var charges = {{ projection.sous_total_charges|tojson }};
+    var dernierReel = {{ projection.dernier_reel|tojson }};
+    var nomsMois = {{ projection.noms_mois|tojson }};
+
+    // Determine real vs projection split
+    var labels = [];
+    var soldeLine = [];
+    var soldeProj = [];
+    var produitsBar = [];
+    var chargesBar = [];
+
+    for (var i = 0; i < periodes.length; i++) {
+        var a = periodes[i][0], m = periodes[i][1];
+        labels.push(nomsMois[m] + ' ' + a);
+        var isProj = dernierReel && (a > dernierReel[0] || (a === dernierReel[0] && m > dernierReel[1]));
+
+        if (!isProj) {
+            soldeLine.push(solde[i]);
+            soldeProj.push(null);
+        } else {
+            // Connect projection to last real point
+            if (soldeLine.length > 0 && soldeLine[soldeLine.length - 1] !== null && (soldeProj.length === 0 || soldeProj[soldeProj.length - 1] === null)) {
+                soldeProj[soldeProj.length - 1] = soldeLine[soldeLine.length - 1];
+            }
+            soldeLine.push(null);
+            soldeProj.push(solde[i]);
+        }
+        produitsBar.push(produits[i]);
+        chargesBar.push(Math.abs(charges[i]));
+    }
+
+    var ctx = document.getElementById('tresoChart');
+    if (ctx && typeof Chart !== 'undefined') {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        type: 'line',
+                        label: 'Solde (réel)',
+                        data: soldeLine,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37,99,235,0.1)',
+                        borderWidth: 2.5,
+                        pointRadius: 3,
+                        pointBackgroundColor: '#2563eb',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        order: 0,
+                        spanGaps: false
+                    },
+                    {
+                        type: 'line',
+                        label: 'Solde (projection)',
+                        data: soldeProj,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37,99,235,0.05)',
+                        borderWidth: 2,
+                        borderDash: [6, 4],
+                        pointRadius: 3,
+                        pointStyle: 'circle',
+                        pointBackgroundColor: '#93c5fd',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y',
+                        order: 0,
+                        spanGaps: false
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Produits',
+                        data: produitsBar,
+                        backgroundColor: 'rgba(34,197,94,0.6)',
+                        borderColor: 'rgba(34,197,94,0.9)',
+                        borderWidth: 1,
+                        yAxisID: 'y1',
+                        order: 1
+                    },
+                    {
+                        type: 'bar',
+                        label: 'Charges',
+                        data: chargesBar,
+                        backgroundColor: 'rgba(239,68,68,0.5)',
+                        borderColor: 'rgba(239,68,68,0.8)',
+                        borderWidth: 1,
+                        yAxisID: 'y1',
+                        order: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 14, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                var v = ctx.parsed.y;
+                                if (v === null) return '';
+                                return ctx.dataset.label + ': ' + v.toLocaleString('fr-FR') + ' \u20ac';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10 }, maxRotation: 45 } },
+                    y: {
+                        position: 'left',
+                        title: { display: true, text: 'Solde (\u20ac)', font: { size: 11 } },
+                        ticks: { callback: function(v) { return (v/1000).toFixed(0) + 'k'; }, font: { size: 10 } },
+                        grid: { color: 'rgba(0,0,0,0.06)' }
+                    },
+                    y1: {
+                        position: 'right',
+                        title: { display: true, text: 'Flux (\u20ac)', font: { size: 11 } },
+                        ticks: { callback: function(v) { return (v/1000).toFixed(0) + 'k'; }, font: { size: 10 } },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+    }
+})();
+
+// === Modals ===
+function ouvrirModalImport() {
+    document.getElementById('modalImport').classList.add('active');
+    document.getElementById('importResult').style.display = 'none';
+}
+function ouvrirModalSolde() {
+    document.getElementById('modalSolde').classList.add('active');
+}
+function fermerModal(id) {
+    document.getElementById(id).classList.remove('active');
+}
+
+// Fermer modal au clic sur l'overlay
+document.querySelectorAll('.modal-overlay').forEach(function(m) {
+    m.addEventListener('click', function(e) {
+        if (e.target === m) m.classList.remove('active');
+    });
+});
+
+// Import FEC
+function lancerImport() {
+    var fileInput = document.getElementById('importFile');
+    var typeImport = document.getElementById('importType').value;
+    var resultDiv = document.getElementById('importResult');
+    var btn = document.getElementById('btnImport');
+
+    if (!fileInput.files.length) {
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#fef2f2';
+        resultDiv.style.color = '#991b1b';
+        resultDiv.textContent = 'Veuillez sélectionner un fichier.';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Import en cours...';
+
+    var formData = new FormData();
+    formData.append('fichier', fileInput.files[0]);
+    formData.append('type_import', typeImport);
+
+    fetch('{{ url_for("tresorerie_bp.api_import_fec") }}', {
+        method: 'POST',
+        body: formData
+    })
+    .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+    .then(function(res) {
+        resultDiv.style.display = 'block';
+        if (res.ok && res.data.success) {
+            resultDiv.style.background = '#f0fdf4';
+            resultDiv.style.color = '#166534';
+            resultDiv.innerHTML = '<strong>Import réussi !</strong><br>'
+                + res.data.nb_ecritures + ' écritures importées, '
+                + res.data.nb_comptes + ' comptes détectés'
+                + (res.data.annee ? ' (' + res.data.annee + ')' : '');
+            setTimeout(function() { location.reload(); }, 1500);
+        } else {
+            resultDiv.style.background = '#fef2f2';
+            resultDiv.style.color = '#991b1b';
+            resultDiv.textContent = res.data.error || 'Erreur inconnue';
+        }
+    })
+    .catch(function(e) {
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#fef2f2';
+        resultDiv.style.color = '#991b1b';
+        resultDiv.textContent = 'Erreur réseau: ' + e.message;
+    })
+    .finally(function() {
+        btn.disabled = false;
+        btn.textContent = 'Importer';
+    });
+}
+
+// Solde initial (global)
+function sauverSoldeInitial() {
+    var montant = document.getElementById('soldeInitialInput').value;
+    fetch('{{ url_for("tresorerie_bp.api_solde_initial") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({montant: montant})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) {
+            fermerModal('modalSolde');
+            location.reload();
+        } else {
+            alert(d.error || 'Erreur');
+        }
+    });
+}
+
+// Edition inline Budget N (double-clic sur cellule)
+function editCell(td) {
+    if (td.querySelector('input')) return;
+    var compteNum = td.dataset.compte;
+    var annee = parseInt(td.dataset.annee);
+    var mois = parseInt(td.dataset.mois);
+    var currentText = td.textContent.trim();
+    var currentVal = currentText === '-' ? '' : currentText.replace(/\s/g, '').replace(',', '.');
+
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.value = currentVal;
+    td.textContent = '';
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    function save() {
+        var val = input.value.trim();
+        var payload = {
+            compte_num: compteNum,
+            annee: annee,
+            mois: mois,
+            montant: val === '' ? null : val
+        };
+        fetch('{{ url_for("tresorerie_bp.api_budget_n") }}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.success) location.reload();
+            else { td.textContent = currentText; alert(d.error || 'Erreur'); }
+        })
+        .catch(function() { td.textContent = currentText; });
+    }
+
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); save(); }
+        if (e.key === 'Escape') { td.textContent = currentText; }
+    });
+}
+
+// === EPARGNE ===
+var epargneCurrentType = 'placement';
+
+function ouvrirModalEpargneSolde() {
+    document.getElementById('modalEpargneSolde').classList.add('active');
+}
+
+function ouvrirModalEpargneMvt(type) {
+    epargneCurrentType = type;
+    var title = document.getElementById('modalEpargneMvtTitle');
+    var desc = document.getElementById('modalEpargneMvtDesc');
+    if (type === 'placement') {
+        title.textContent = 'Placement d\'épargne';
+        desc.textContent = 'Le montant sera déduit de la trésorerie courante et ajouté à l\'épargne.';
+    } else {
+        title.textContent = 'Retrait d\'épargne';
+        desc.textContent = 'Le montant sera déduit de l\'épargne et ajouté à la trésorerie courante.';
+    }
+    document.getElementById('epargneMvtMontant').value = '';
+    document.getElementById('epargneMvtComment').value = '';
+    document.getElementById('modalEpargneMvt').classList.add('active');
+}
+
+function toggleEpargneMvts() {
+    var list = document.getElementById('epargneMvtsList');
+    list.classList.toggle('open');
+}
+
+function sauverEpargneSolde() {
+    var montant = document.getElementById('epargneSoldeInput').value;
+    fetch('{{ url_for("tresorerie_bp.api_epargne_solde") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({montant: montant})
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) { fermerModal('modalEpargneSolde'); location.reload(); }
+        else { alert(d.error || 'Erreur'); }
+    });
+}
+
+function sauverEpargneMvt() {
+    var mois = document.getElementById('epargneMvtMois').value;
+    var annee = document.getElementById('epargneMvtAnnee').value;
+    var montant = document.getElementById('epargneMvtMontant').value;
+    var commentaire = document.getElementById('epargneMvtComment').value;
+
+    if (!montant || parseFloat(montant) <= 0) {
+        alert('Veuillez saisir un montant positif.');
+        return;
+    }
+
+    fetch('{{ url_for("tresorerie_bp.api_epargne_mouvement") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            type_mouvement: epargneCurrentType,
+            annee: parseInt(annee),
+            mois: parseInt(mois),
+            montant: parseFloat(montant),
+            commentaire: commentaire
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) { fermerModal('modalEpargneMvt'); location.reload(); }
+        else { alert(d.error || 'Erreur'); }
+    });
+}
+
+function supprimerMvtEpargne(id) {
+    if (!confirm('Supprimer ce mouvement d\'épargne ?')) return;
+    fetch('/api/tresorerie/epargne/mouvement/' + id + '/supprimer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) location.reload();
+        else alert(d.error || 'Erreur');
+    });
+}
+
+// Suppression import
+function supprimerImport(importId) {
+    if (!confirm('Supprimer cet import et toutes ses données ?')) return;
+    fetch('/api/tresorerie/imports/' + importId + '/supprimer', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.success) location.reload();
+        else alert(d.error || 'Erreur');
+    });
+}
+</script>
+{% endblock %}

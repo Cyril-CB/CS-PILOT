@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Configuration Email{% endblock %}
+{% block content %}
+
+<style>
+    .em-container { max-width: 900px; margin: 0 auto; padding: 10px 0; }
+    .em-header { text-align: center; margin-bottom: 24px; }
+    .em-header .em-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .em-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+    .em-header .em-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .em-card { background: var(--white); border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); transition: all 0.2s; }
+    .em-card:hover { box-shadow: var(--shadow-md); }
+    .em-card h3 { font-size: 17px; font-weight: 800; color: var(--gray-900); display: flex; align-items: center; gap: 10px; margin: 0 0 14px; }
+
+    .em-info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 13px; color: #1e40af; line-height: 1.7; }
+
+    .em-form-group { margin-bottom: 14px; }
+    .em-form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 4px; }
+    .em-form-group .em-hint { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+    .em-input { width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    .em-input:focus { border-color: #7c3aed; outline: none; }
+
+    .em-row { display: flex; gap: 16px; }
+    .em-row .em-form-group { flex: 1; }
+
+    .em-btn { padding: 8px 20px; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+    .em-btn-primary { background: #7c3aed; color: white; }
+    .em-btn-primary:hover { background: #6d28d9; }
+    .em-btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+    .em-btn-success { background: #059669; color: white; }
+    .em-btn-success:hover { background: #047857; }
+    .em-btn-outline { background: #f5f3ff; color: #7c3aed; border: 1px solid #c4b5fd; }
+    .em-btn-outline:hover { background: #ede9fe; }
+    .em-btn-danger { background: #ef4444; color: white; }
+    .em-btn-danger:hover { background: #dc2626; }
+
+    .em-btn-row { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+
+    .em-status { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 700; }
+    .em-status-ok { background: #dcfce7; color: #166534; }
+    .em-status-off { background: #fef3c7; color: #92400e; }
+    .em-status-none { background: #fee2e2; color: #991b1b; }
+
+    .em-toggle { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .em-switch { position: relative; display: inline-block; width: 48px; height: 26px; }
+    .em-switch input { opacity: 0; width: 0; height: 0; }
+    .em-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #d1d5db; border-radius: 26px; transition: 0.3s; }
+    .em-slider:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.3s; }
+    .em-switch input:checked + .em-slider { background: #059669; }
+    .em-switch input:checked + .em-slider:before { transform: translateX(22px); }
+
+    .em-result { display: none; margin-top: 10px; font-size: 13px; padding: 10px 14px; border-radius: 8px; }
+    .em-result-ok { background: #f0fdf4; color: #166534; border-left: 3px solid #22c55e; }
+    .em-result-err { background: #fef2f2; color: #991b1b; border-left: 3px solid #ef4444; }
+
+    .em-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: em-spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes em-spin { to { transform: rotate(360deg); } }
+
+    .em-notif-list { list-style: none; padding: 0; margin: 0; }
+    .em-notif-list li { padding: 10px 14px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: flex-start; gap: 10px; }
+    .em-notif-list li:last-child { border-bottom: none; }
+    .em-notif-icon { font-size: 18px; flex-shrink: 0; }
+    .em-notif-text { flex: 1; }
+    .em-notif-text strong { display: block; font-size: 13px; color: var(--gray-900); }
+    .em-notif-text span { font-size: 12px; color: var(--gray-500); }
+    .em-notif-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+    .em-badge-auto { background: #dbeafe; color: #1e40af; }
+    .em-badge-manual { background: #fef3c7; color: #92400e; }
+</style>
+
+<div class="em-container">
+    <div class="em-header">
+        <div class="em-label">Administration</div>
+        <h2>Configuration des notifications email</h2>
+        <div class="em-sub">Configurez le service d'envoi d'emails pour les notifications de l'application</div>
+    </div>
+
+    <!-- Statut actuel -->
+    <div class="em-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <h3>Statut du service email</h3>
+            {% if config.enabled == 'true' and config.sender %}
+            <span class="em-status em-status-ok">Actif</span>
+            {% elif config.sender %}
+            <span class="em-status em-status-off">Configure mais desactive</span>
+            {% else %}
+            <span class="em-status em-status-none">Non configure</span>
+            {% endif %}
+        </div>
+
+        {% if config.sender %}
+        <div class="em-toggle">
+            <label class="em-switch">
+                <input type="checkbox" id="emailToggle" {{ 'checked' if config.enabled == 'true' else '' }}
+                       onchange="toggleEmail(this.checked)">
+                <span class="em-slider"></span>
+            </label>
+            <span style="font-size:13px;color:var(--gray-600);">Activer l'envoi d'emails</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Info Gmail -->
+    <div class="em-info">
+        <strong>Configuration Gmail :</strong><br>
+        Pour utiliser Gmail comme service d'envoi, vous devez creer un <strong>mot de passe d'application</strong> dans votre compte Google.<br>
+        Le mot de passe habituel de votre compte Gmail ne fonctionnera pas.<br><br>
+        <strong>Etapes :</strong><br>
+        1. Connectez-vous a votre compte Google sur <code>myaccount.google.com</code><br>
+        2. Allez dans <strong>Securite</strong> &gt; <strong>Verification en 2 etapes</strong> (doit etre activee)<br>
+        3. En bas de la page, cliquez sur <strong>Mots de passe des applications</strong><br>
+        4. Creez un mot de passe pour "CS-PILOT" et copiez le code a 16 caracteres<br>
+        5. Utilisez ce code ci-dessous comme mot de passe SMTP
+    </div>
+
+    <!-- Formulaire de configuration -->
+    <div class="em-card">
+        <h3>Configuration SMTP</h3>
+        <form method="POST" action="{{ url_for('notifications_bp.configuration_email') }}">
+            <div class="em-form-group">
+                <label>Nom de l'expediteur</label>
+                <input type="text" name="sender_name" class="em-input"
+                       value="{{ config.sender_name or 'CS-PILOT' }}"
+                       placeholder="CS-PILOT">
+                <div class="em-hint">Le nom qui apparaitra comme expediteur dans les emails</div>
+            </div>
+
+            <div class="em-form-group">
+                <label>Adresse email (expediteur)</label>
+                <input type="email" name="sender" class="em-input"
+                       value="{{ config.sender or '' }}"
+                       placeholder="exemple@gmail.com" required>
+            </div>
+
+            <div class="em-form-group">
+                <label>Mot de passe d'application</label>
+                <input type="password" name="password" class="em-input"
+                       placeholder="{{ config.password_display or 'Mot de passe d\'application Google' }}" required>
+                <div class="em-hint">Mot de passe d'application Google (16 caracteres, sans espaces)</div>
+            </div>
+
+            <div class="em-row">
+                <div class="em-form-group">
+                    <label>Serveur SMTP</label>
+                    <input type="text" name="smtp_server" class="em-input"
+                           value="{{ config.smtp_server or 'smtp.gmail.com' }}"
+                           placeholder="smtp.gmail.com">
+                </div>
+                <div class="em-form-group">
+                    <label>Port SMTP</label>
+                    <input type="number" name="smtp_port" class="em-input"
+                           value="{{ config.smtp_port or '587' }}"
+                           placeholder="587">
+                </div>
+            </div>
+
+            <div class="em-btn-row">
+                <button type="submit" class="em-btn em-btn-primary">Enregistrer la configuration</button>
+                {% if config.sender %}
+                <button type="button" class="em-btn em-btn-success" onclick="testEmail()" id="testBtn">
+                    Envoyer un email de test
+                </button>
+                {% endif %}
+            </div>
+        </form>
+
+        <div class="em-result em-result-ok" id="testSuccess"></div>
+        <div class="em-result em-result-err" id="testError"></div>
+    </div>
+
+    <!-- Types de notifications -->
+    <div class="em-card">
+        <h3>Notifications disponibles</h3>
+        <p style="font-size:13px;color:var(--gray-500);margin:0 0 14px;">
+            Les notifications sont envoyees apres une action utilisateur (pas de tache automatique).
+        </p>
+        <ul class="em-notif-list">
+            <li>
+                <span class="em-notif-icon">&#128233;</span>
+                <div class="em-notif-text">
+                    <strong>Nouvelle demande de recuperation</strong>
+                    <span>Le responsable est notifie lorsqu'un salarie depose une demande</span>
+                </div>
+                <span class="em-notif-badge em-badge-auto">Automatique</span>
+            </li>
+            <li>
+                <span class="em-notif-icon">&#128233;</span>
+                <div class="em-notif-text">
+                    <strong>Validation responsable (demande recup)</strong>
+                    <span>La direction est notifiee lorsque le responsable valide une demande</span>
+                </div>
+                <span class="em-notif-badge em-badge-auto">Automatique</span>
+            </li>
+            <li>
+                <span class="em-notif-icon">&#128233;</span>
+                <div class="em-notif-text">
+                    <strong>Decision sur demande de recuperation</strong>
+                    <span>Le salarie est notifie lorsque sa demande est validee ou refusee</span>
+                </div>
+                <span class="em-notif-badge em-badge-auto">Automatique</span>
+            </li>
+            <li>
+                <span class="em-notif-icon">&#128276;</span>
+                <div class="em-notif-text">
+                    <strong>Relance validation fiches d'heures</strong>
+                    <span>Le directeur peut relancer les responsables pour les fiches non validees</span>
+                </div>
+                <span class="em-notif-badge em-badge-manual">Bouton</span>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<script>
+async function toggleEmail(enabled) {
+    try {
+        const res = await fetch('/api/email/toggle', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({enabled: enabled}),
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        }
+    } catch(e) {
+        alert('Erreur : ' + e.message);
+    }
+}
+
+async function testEmail() {
+    const btn = document.getElementById('testBtn');
+    const succEl = document.getElementById('testSuccess');
+    const errEl = document.getElementById('testError');
+
+    succEl.style.display = 'none';
+    errEl.style.display = 'none';
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="em-spinner"></span>Envoi en cours...';
+
+    try {
+        const res = await fetch('/api/email/test', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+        });
+        const data = await res.json();
+        if (data.success) {
+            succEl.textContent = data.message;
+            succEl.style.display = 'block';
+        } else {
+            errEl.textContent = data.error || 'Erreur inconnue';
+            errEl.style.display = 'block';
+        }
+    } catch(e) {
+        errEl.textContent = 'Erreur reseau : ' + e.message;
+        errEl.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Envoyer un email de test';
+}
+</script>
+{% endblock %}

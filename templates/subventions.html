@@ -1,0 +1,659 @@
+{% extends "base.html" %}
+
+{% block title %}Subventions - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header">
+        <div>
+            <h1>Gestion des subventions</h1>
+            <p class="subtitle">Suivi des dossiers de subventions par statut</p>
+        </div>
+    </div>
+
+    {% for groupe in groupes %}
+    <div class="sv-group" data-groupe="{{ groupe.key }}">
+        {# ── En-tête de groupe ── #}
+        <div class="sv-group-head" style="background:{{ groupe.color }};" onclick="toggleGroup(this)">
+            <span class="sv-group-arrow">▾</span>
+            <span class="sv-group-label">{{ groupe.label }}</span>
+            <span class="sv-group-count">{{ groupe.lignes|length }} élément{{ 's' if groupe.lignes|length != 1 else '' }}</span>
+            {% if not is_responsable %}
+            <button class="sv-group-add" onclick="event.stopPropagation(); promptAdd('{{ groupe.key }}')">+ Ajouter</button>
+            {% endif %}
+        </div>
+
+        {# ── Contenu du groupe (board scrollable) ── #}
+        <div class="sv-group-body">
+            <div class="sv-scroll">
+                <table class="sv-board">
+                    <thead>
+                        <tr>
+                            <th class="sv-col-name">Subvention</th>
+                            <th class="sv-col-person">Assigné 1</th>
+                            <th class="sv-col-person">Assigné 2</th>
+                            <th class="sv-col-status">Statut</th>
+                            <th class="sv-col-date">Échéance</th>
+                            <th class="sv-col-amount">Montant demandé</th>
+                            <th class="sv-col-amount">Montant accordé</th>
+                            <th class="sv-col-date">Date notification</th>
+                            <th class="sv-col-file">Justificatif</th>
+                            <th class="sv-col-select">Analytique</th>
+                            <th class="sv-col-text">Contact email</th>
+                            <th class="sv-col-text">Compte comptable</th>
+                            {% if not is_responsable %}
+                            <th class="sv-col-actions"></th>
+                            {% endif %}
+                            <th class="sv-col-name-end">Subvention</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for sub in groupe.lignes %}
+                        <tr class="sv-row" data-id="{{ sub.id }}">
+                            {# ── Nom (sticky) ── #}
+                            <td class="sv-col-name sv-cell-name">
+                                <span class="sv-expand-btn" onclick="toggleSubElements({{ sub.id }}, this)" title="Sous-éléments">▸</span>
+                                <span class="sv-cell-text" onclick="editText(this, {{ sub.id }}, 'nom')">{{ sub.nom }}</span>
+                                <span class="sv-left-color" style="background:{{ groupe.color }};"></span>
+                            </td>
+                            {# ── Assigné 1 ── #}
+                            <td class="sv-col-person sv-cell-person" onclick="editPerson(this, {{ sub.id }}, 'assignee_1_id')">
+                                {% if sub.assignee_1_id and sub.assignee_1_id in users_map %}
+                                <span class="sv-avatar" title="{{ users_map[sub.assignee_1_id].prenom }} {{ users_map[sub.assignee_1_id].nom }}">{{ users_map[sub.assignee_1_id].initiales }}</span>
+                                {% else %}
+                                <span class="sv-avatar-empty">+</span>
+                                {% endif %}
+                            </td>
+                            {# ── Assigné 2 ── #}
+                            <td class="sv-col-person sv-cell-person" onclick="editPerson(this, {{ sub.id }}, 'assignee_2_id')">
+                                {% if sub.assignee_2_id and sub.assignee_2_id in users_map %}
+                                <span class="sv-avatar" title="{{ users_map[sub.assignee_2_id].prenom }} {{ users_map[sub.assignee_2_id].nom }}">{{ users_map[sub.assignee_2_id].initiales }}</span>
+                                {% else %}
+                                <span class="sv-avatar-empty">+</span>
+                                {% endif %}
+                            </td>
+                            {# ── Statut (= groupe) ── #}
+                            <td class="sv-col-status">
+                                <span class="sv-status-pill" style="background:{{ groupe.color }};" onclick="editStatus(this, {{ sub.id }})">{{ groupe.label }}</span>
+                            </td>
+                            {# ── Date échéance ── #}
+                            <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ sub.id }}, 'date_echeance')">
+                                {% if sub.date_echeance %}{{ sub.date_echeance[8:10] }}/{{ sub.date_echeance[5:7] }}/{{ sub.date_echeance[0:4] }}{% else %}—{% endif %}
+                            </td>
+                            {# ── Montant demandé ── #}
+                            <td class="sv-col-amount sv-cell-amount" onclick="editAmount(this, {{ sub.id }}, 'montant_demande')">
+                                {{ '{:,.0f}'.format(sub.montant_demande).replace(',', ' ') if sub.montant_demande else '—' }} {{ '€' if sub.montant_demande else '' }}
+                            </td>
+                            {# ── Montant accordé ── #}
+                            <td class="sv-col-amount sv-cell-amount" onclick="editAmount(this, {{ sub.id }}, 'montant_accorde')">
+                                {{ '{:,.0f}'.format(sub.montant_accorde).replace(',', ' ') if sub.montant_accorde else '—' }} {{ '€' if sub.montant_accorde else '' }}
+                            </td>
+                            {# ── Date notification ── #}
+                            <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ sub.id }}, 'date_notification')">
+                                {% if sub.date_notification %}{{ sub.date_notification[8:10] }}/{{ sub.date_notification[5:7] }}/{{ sub.date_notification[0:4] }}{% else %}—{% endif %}
+                            </td>
+                            {# ── Justificatif ── #}
+                            <td class="sv-col-file">
+                                {% if sub.justificatif_path %}
+                                <a href="{{ url_for('subventions_bp.telecharger_justificatif', sub_id=sub.id) }}" class="sv-file-link" title="{{ sub.justificatif_nom }}">📄 PDF</a>
+                                {% endif %}
+                                <label class="sv-file-upload" title="Charger un PDF">
+                                    📎
+                                    <input type="file" accept=".pdf" onchange="uploadFile(this, {{ sub.id }})" hidden>
+                                </label>
+                            </td>
+                            {# ── Analytique ── #}
+                            <td class="sv-col-select" onclick="editAnalytique(this, {{ sub.id }})">
+                                {% if sub.analytique_id %}
+                                    {% for a in analytiques %}{% if a.id == sub.analytique_id %}{{ a.nom }}{% endif %}{% endfor %}
+                                {% else %}
+                                    <span class="sv-placeholder">Choisir…</span>
+                                {% endif %}
+                            </td>
+                            {# ── Contact email ── #}
+                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ sub.id }}, 'contact_email')">
+                                {{ sub.contact_email if sub.contact_email else '—' }}
+                            </td>
+                            {# ── Compte comptable ── #}
+                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ sub.id }}, 'compte_comptable')">
+                                {{ sub.compte_comptable if sub.compte_comptable else '—' }}
+                            </td>
+                            {% if not is_responsable %}
+                            <td class="sv-col-actions">
+                                <button class="sv-del-btn" onclick="deleteSub({{ sub.id }})" title="Supprimer">🗑️</button>
+                            </td>
+                            {% endif %}
+                            <td class="sv-col-name-end">{{ sub.nom }}</td>
+                        </tr>
+                        {# ── Sous-éléments (masqués par défaut) ── #}
+                        <tr class="sv-sub-row" id="se-row-{{ sub.id }}" style="display:none;">
+                            <td class="sv-sub-spacer"><span class="sv-left-color" style="background:{{ groupe.color }};"></span></td>
+                            <td colspan="{% if not is_responsable %}13{% else %}12{% endif %}" class="sv-sub-td">
+                                <table class="sv-sub-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width:220px;">Sous-élément</th>
+                                            <th style="width:120px;">Assigné</th>
+                                            <th style="width:140px;">Statut</th>
+                                            <th style="width:130px;">Échéance</th>
+                                            <th style="width:40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="se-body-{{ sub.id }}">
+                                    {% for se in sous_elements.get(sub.id, []) %}
+                                        <tr data-se-id="{{ se.id }}">
+                                            <td>
+                                                <span class="sv-cell-text" onclick="editSEText(this, {{ se.id }}, 'nom')">{{ se.nom }}</span>
+                                            </td>
+                                            <td class="sv-cell-person" onclick="editSEPerson(this, {{ se.id }})">
+                                                {% if se.assignee_id and se.assignee_id in users_map %}
+                                                <span class="sv-avatar sv-avatar-sm" title="{{ users_map[se.assignee_id].prenom }} {{ users_map[se.assignee_id].nom }}">{{ users_map[se.assignee_id].initiales }}</span>
+                                                {% else %}
+                                                <span class="sv-avatar-empty sv-avatar-sm">+</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% set ns = namespace(color='#c4c4c4', label='Non commencé') %}
+                                                {% for st in statuts_config %}
+                                                    {% if st.key == se.statut %}
+                                                        {% set ns.color = st.color %}
+                                                        {% set ns.label = st.label %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                                <span class="sv-se-status" style="background:{{ ns.color }};" data-statut="{{ se.statut }}" onclick="editSEStatus(this, {{ se.id }})">{{ ns.label }}</span>
+                                            </td>
+                                            <td class="sv-cell-date" onclick="editSEDate(this, {{ se.id }})">
+                                                {% if se.date_echeance %}{{ se.date_echeance[8:10] }}/{{ se.date_echeance[5:7] }}/{{ se.date_echeance[0:4] }}{% else %}—{% endif %}
+                                            </td>
+                                            <td>
+                                                <button class="sv-del-btn-sm" onclick="deleteSE({{ se.id }}, {{ sub.id }})" title="Supprimer">✕</button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                    </tbody>
+                                </table>
+                                <button class="sv-add-se-btn" onclick="addSubElement({{ sub.id }})">+ Ajouter un sous-élément</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+
+                    {% if not groupe.lignes %}
+                        <tr>
+                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-empty">
+                                Aucune subvention dans ce groupe
+                            </td>
+                        </tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+/* ── Config (depuis Jinja) ── */
+var USERS = {};
+{% for u in users %}
+USERS[{{ u.id }}] = {nom: "{{ u.nom }}", prenom: "{{ u.prenom }}", initiales: "{{ users_map[u.id].initiales }}"};
+{% endfor %}
+
+var ANALYTIQUES = {};
+{% for a in analytiques %}
+ANALYTIQUES[{{ a.id }}] = "{{ a.nom }}";
+{% endfor %}
+
+var GROUPES = [
+{% for g in groupes_config %}
+    {key: "{{ g.key }}", label: "{{ g.label }}", color: "{{ g.color }}"}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+
+var STATUTS_SE = [
+{% for s in statuts_config %}
+    {key: "{{ s.key }}", label: "{{ s.label }}", color: "{{ s.color }}"}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+
+/* ── Helpers ── */
+function apiCall(url, body) {
+    return fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r) { return r.json(); });
+}
+
+function apiUpload(url, formData) {
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    var headers = {};
+    if (meta) headers['X-CSRFToken'] = meta.getAttribute('content');
+    return fetch(url, {method: 'POST', headers: headers, body: formData}).then(function(r){return r.json();});
+}
+
+function getInitiales(prenom, nom) {
+    var p = (prenom||'').trim(), n = (nom||'').trim();
+    var pi = p.length >= 2 ? p[0].toUpperCase()+p[1].toLowerCase() : p.slice(0,1).toUpperCase();
+    var ni = n.length >= 2 ? n[0].toUpperCase()+n[1].toLowerCase() : n.slice(0,1).toUpperCase();
+    return pi+'.'+ni;
+}
+
+/* ISO YYYY-MM-DD → DD/MM/YYYY */
+function fmtDate(iso) {
+    if (!iso) return '—';
+    var p = iso.split('-');
+    return (p.length === 3) ? p[2]+'/'+p[1]+'/'+p[0] : iso;
+}
+/* DD/MM/YYYY → YYYY-MM-DD */
+function parseDate(disp) {
+    if (!disp || disp === '—') return '';
+    var p = disp.split('/');
+    return (p.length === 3) ? p[2]+'-'+p[1]+'-'+p[0] : disp;
+}
+
+/* ── Collapse / Expand groupes ── */
+function toggleGroup(head) {
+    var body = head.nextElementSibling;
+    var arrow = head.querySelector('.sv-group-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        arrow.textContent = '▾';
+    } else {
+        body.style.display = 'none';
+        arrow.textContent = '▸';
+    }
+}
+
+/* ── Expand sous-éléments ── */
+function toggleSubElements(subId, btn) {
+    var row = document.getElementById('se-row-' + subId);
+    if (row.style.display === 'none') {
+        row.style.display = '';
+        btn.textContent = '▾';
+        btn.classList.add('sv-expand-open');
+    } else {
+        row.style.display = 'none';
+        btn.textContent = '▸';
+        btn.classList.remove('sv-expand-open');
+    }
+}
+
+/* ── Ajouter subvention ── */
+function promptAdd(groupe) {
+    var nom = prompt('Nom de la subvention :');
+    if (!nom || !nom.trim()) return;
+    apiCall('/api/subventions/ajouter', {nom: nom.trim(), groupe: groupe}).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ── Supprimer subvention ── */
+function deleteSub(id) {
+    if (!confirm('Supprimer cette subvention et tous ses sous-éléments ?')) return;
+    apiCall('/api/subventions/' + id + '/supprimer', {}).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ── Edition inline : texte ── */
+function editText(el, id, field) {
+    if (el.querySelector('input')) return;
+    var current = el.textContent.trim();
+    if (current === '—') current = '';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+
+    function save() {
+        var val = input.value.trim();
+        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            if (r.ok) {
+                el.textContent = val || '—';
+            } else {
+                el.textContent = current || '—';
+            }
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { el.textContent = current || '—'; }
+    });
+}
+
+/* ── Edition inline : date ── */
+function editDate(el, id, field) {
+    if (el.querySelector('input')) return;
+    var display = el.textContent.trim();
+    var isoVal = parseDate(display);
+    var input = document.createElement('input');
+    input.type = 'date';
+    input.value = isoVal;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+
+    function save() {
+        var val = input.value;
+        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = fmtDate(val);
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { el.textContent = display || '—'; }
+    });
+}
+
+/* ── Edition inline : montant ── */
+function editAmount(el, id, field) {
+    if (el.querySelector('input')) return;
+    var text = el.textContent.trim().replace(/[^\d.,\-]/g, '').replace(/\s/g, '');
+    if (text === '—' || text === '') text = '';
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.value = text.replace(',', '.') || '';
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+
+    function save() {
+        var val = parseFloat(input.value) || 0;
+        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            if (val) {
+                el.textContent = val.toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' €';
+            } else {
+                el.textContent = '—';
+            }
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { el.textContent = text ? (parseFloat(text).toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' €') : '—'; }
+    });
+}
+
+/* ── Edition inline : personne (dropdown) ── */
+function editPerson(el, id, field) {
+    if (el.querySelector('select')) return;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    Object.keys(USERS).forEach(function(uid) {
+        var u = USERS[uid];
+        sel.innerHTML += '<option value="'+uid+'">'+u.prenom+' '+u.nom+'</option>';
+    });
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+
+    var saved = false;
+    function save() {
+        if (saved) return;
+        saved = true;
+        var val = sel.value;
+        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = '';
+            if (val && USERS[val]) {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar';
+                sp.title = USERS[val].prenom + ' ' + USERS[val].nom;
+                sp.textContent = USERS[val].initiales;
+                el.appendChild(sp);
+            } else {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar-empty';
+                sp.textContent = '+';
+                el.appendChild(sp);
+            }
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', save);
+}
+
+/* ── Edition inline : statut (groupe de la subvention) ── */
+function editStatus(el, id) {
+    if (el.querySelector('select') || el.tagName === 'SELECT') return;
+    var parent = el.parentElement;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    GROUPES.forEach(function(g) {
+        sel.innerHTML += '<option value="'+g.key+'">'+g.label+'</option>';
+    });
+    parent.textContent = '';
+    parent.appendChild(sel);
+    sel.focus();
+
+    sel.addEventListener('change', function() {
+        var val = sel.value;
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'groupe', value: val}).then(function(r) {
+            if (r.ok) location.reload();
+        });
+    });
+    sel.addEventListener('blur', function() {
+        if (!sel._changed) location.reload();
+    });
+}
+
+/* ── Edition inline : analytique ── */
+function editAnalytique(el, id) {
+    if (el.querySelector('select')) return;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    Object.keys(ANALYTIQUES).forEach(function(aid) {
+        sel.innerHTML += '<option value="'+aid+'">'+ANALYTIQUES[aid]+'</option>';
+    });
+    sel.innerHTML += '<option value="__new__">+ Nouveau projet…</option>';
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+
+    var busy = false;
+    function restorePlaceholder() {
+        el.textContent = '';
+        var sp = document.createElement('span');
+        sp.className = 'sv-placeholder';
+        sp.textContent = 'Choisir…';
+        el.appendChild(sp);
+    }
+    function save() {
+        if (busy) return;
+        busy = true;
+        var val = sel.value;
+        if (val === '__new__') {
+            if (sel.parentNode) sel.parentNode.removeChild(sel);
+            var nom = prompt('Nom du nouveau projet analytique :');
+            if (!nom || !nom.trim()) { restorePlaceholder(); return; }
+            apiCall('/api/subventions/analytiques/ajouter', {nom: nom.trim()}).then(function(r) {
+                if (r.ok) {
+                    ANALYTIQUES[r.id] = nom.trim();
+                    apiCall('/api/subventions/' + id + '/modifier', {field: 'analytique_id', value: r.id}).then(function() {
+                        el.textContent = nom.trim();
+                    });
+                }
+            });
+            return;
+        }
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'analytique_id', value: val}).then(function(r) {
+            if (val) {
+                el.textContent = ANALYTIQUES[val] || '';
+            } else {
+                restorePlaceholder();
+            }
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', save);
+}
+
+/* ── Upload justificatif ── */
+function uploadFile(input, id) {
+    if (!input.files.length) return;
+    var fd = new FormData();
+    fd.append('fichier', input.files[0]);
+    apiUpload('/api/subventions/' + id + '/justificatif', fd).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ══════════════════════════════════════════
+   Sous-éléments
+   ══════════════════════════════════════════ */
+
+function addSubElement(subId) {
+    var nom = prompt('Nom du sous-élément :');
+    if (!nom || !nom.trim()) return;
+    apiCall('/api/subventions/' + subId + '/sous-elements/ajouter', {nom: nom.trim()}).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+function deleteSE(seId, subId) {
+    if (!confirm('Supprimer ce sous-élément ?')) return;
+    apiCall('/api/subventions/sous-elements/' + seId + '/supprimer', {}).then(function(r) {
+        if (r.ok) {
+            var row = document.querySelector('[data-se-id="'+seId+'"]');
+            if (row) row.remove();
+        }
+    });
+}
+
+function editSEText(el, seId, field) {
+    if (el.querySelector('input')) return;
+    var current = el.textContent.trim();
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = current;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+    function save() {
+        var val = input.value.trim();
+        apiCall('/api/subventions/sous-elements/' + seId + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = val || current;
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { el.textContent = current; }
+    });
+}
+
+function editSEPerson(el, seId) {
+    if (el.querySelector('select')) return;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    Object.keys(USERS).forEach(function(uid) {
+        var u = USERS[uid];
+        sel.innerHTML += '<option value="'+uid+'">'+u.prenom+' '+u.nom+'</option>';
+    });
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+    var saved = false;
+    function save() {
+        if (saved) return;
+        saved = true;
+        var val = sel.value;
+        apiCall('/api/subventions/sous-elements/' + seId + '/modifier', {field: 'assignee_id', value: val}).then(function(r) {
+            el.textContent = '';
+            if (val && USERS[val]) {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar sv-avatar-sm';
+                sp.title = USERS[val].prenom + ' ' + USERS[val].nom;
+                sp.textContent = USERS[val].initiales;
+                el.appendChild(sp);
+            } else {
+                var sp = document.createElement('span');
+                sp.className = 'sv-avatar-empty sv-avatar-sm';
+                sp.textContent = '+';
+                el.appendChild(sp);
+            }
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', save);
+}
+
+function editSEStatus(el, seId) {
+    if (el.parentElement.querySelector('select')) return;
+    var parent = el.parentElement;
+    var currentKey = el.getAttribute('data-statut') || 'non_commence';
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    STATUTS_SE.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s.key;
+        opt.textContent = s.label;
+        if (s.key === currentKey) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    parent.textContent = '';
+    parent.appendChild(sel);
+    sel.focus();
+    var saved = false;
+    function save() {
+        if (saved) return;
+        saved = true;
+        var val = sel.value;
+        apiCall('/api/subventions/sous-elements/' + seId + '/modifier', {field: 'statut', value: val}).then(function(r) {
+            var st = STATUTS_SE.find(function(s){return s.key===val;}) || STATUTS_SE[0];
+            parent.textContent = '';
+            var sp = document.createElement('span');
+            sp.className = 'sv-se-status';
+            sp.style.background = st.color;
+            sp.setAttribute('data-statut', val);
+            sp.textContent = st.label;
+            sp.onclick = function() { editSEStatus(sp, seId); };
+            parent.appendChild(sp);
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', save);
+}
+
+function editSEDate(el, seId) {
+    if (el.querySelector('input')) return;
+    var display = el.textContent.trim();
+    var isoVal = parseDate(display);
+    var input = document.createElement('input');
+    input.type = 'date';
+    input.value = isoVal;
+    input.className = 'sv-inline-input';
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    function save() {
+        var val = input.value;
+        apiCall('/api/subventions/sous-elements/' + seId + '/modifier', {field: 'date_echeance', value: val}).then(function(r) {
+            el.textContent = fmtDate(val);
+        });
+    }
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { el.textContent = display || '—'; }
+    });
+}
+</script>
+{% endblock %}

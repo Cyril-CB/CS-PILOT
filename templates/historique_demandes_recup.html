@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des demandes de récupération{% endblock %}
+
+{% block content %}
+<div class="historique">
+    <h1>Historique des demandes de récupération</h1>
+    <p class="subtitle">Toutes les demandes validées et refusées</p>
+    
+    <div class="actions" style="margin-bottom: 2rem; margin-top: 0;">
+        <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="btn btn-primary">Demandes en attente</a>
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour</a>
+    </div>
+    
+    {% if demandes %}
+    <div class="stats-grid" style="margin-bottom: 2rem;">
+        <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-content">
+                <h3>Total demandes</h3>
+                <p class="stat-value">{{ stats.total }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✓</div>
+            <div class="stat-content">
+                <h3>Validées</h3>
+                <p class="stat-value" style="color: var(--success);">{{ stats.validees }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✗</div>
+            <div class="stat-content">
+                <h3>Refusées</h3>
+                <p class="stat-value" style="color: var(--danger);">{{ stats.refusees }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⏱</div>
+            <div class="stat-content">
+                <h3>Total validé</h3>
+                <p class="stat-value">{{ "%.1f"|format(stats.total_jours_valides) }} j</p>
+                <span style="color: var(--gray-500); font-size: 0.85rem;">{{ "%.1f"|format(stats.total_heures_valides) }}h</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="section">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Demandeur</th>
+                    <th>Date demande</th>
+                    <th>Période</th>
+                    <th>Durée</th>
+                    <th>Statut</th>
+                    <th>Validations</th>
+                    <th>Détails</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in demandes %}
+                <tr>
+                    <td>
+                        <strong>{{ d.demandeur_nom }}</strong><br>
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">{{ d.secteur_nom or 'Sans secteur' }}</span>
+                    </td>
+                    <td>{{ d.date_demande[:10] }}</td>
+                    <td>
+                        Du {{ d.date_debut }}<br>
+                        au {{ d.date_fin }}
+                    </td>
+                    <td>
+                        <strong>{{ "%.1f"|format(d.nb_jours) }} jour(s)</strong><br>
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">{{ "%.2f"|format(d.nb_heures) }}h</span>
+                    </td>
+                    <td>
+                        {% if d.statut == 'validee' %}
+                        <span class="badge badge-success">Validée</span>
+                        {% elif d.statut == 'refusee' %}
+                        <span class="badge badge-danger">Refusée</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.85rem;">
+                        {% if d.validation_responsable %}
+                        <div style="color: var(--success);">✓ {{ d.validation_responsable }}</div>
+                        <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_responsable[:10] if d.date_validation_responsable else '' }}</div>
+                        {% endif %}
+                        
+                        {% if d.validation_direction %}
+                        <div style="color: var(--success); margin-top: 0.25rem;">✓ {{ d.validation_direction }}</div>
+                        <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_direction[:10] if d.date_validation_direction else '' }}</div>
+                        {% endif %}
+                        
+                        {% if d.statut == 'refusee' %}
+                        <div style="color: var(--danger); margin-top: 0.5rem;">
+                            <strong>Refusé par :</strong> {{ d.refuse_par_nom or 'Inconnu' }}<br>
+                            <span style="font-size: 0.8rem;">{{ d.date_refus[:10] if d.date_refus else '' }}</span>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if d.motif_demande %}
+                        <div><strong>Motif demande :</strong><br>{{ d.motif_demande }}</div>
+                        {% endif %}
+                        {% if d.motif_refus %}
+                        <div style="color: var(--danger); margin-top: 0.5rem;">
+                            <strong>Motif refus :</strong><br>{{ d.motif_refus }}
+                        </div>
+                        {% endif %}
+                        {% if not d.motif_demande and not d.motif_refus %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-data">
+        <p>Aucune demande dans l'historique</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

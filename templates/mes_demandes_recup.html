@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Mes demandes de récupération{% endblock %}
+
+{% block content %}
+<div class="vue-ensemble">
+    <h1>Mes demandes de récupération</h1>
+    <p class="subtitle">Historique complet de vos demandes</p>
+    
+    <div class="actions" style="margin-bottom: 2rem; margin-top: 0;">
+        <a href="{{ url_for('recup_bp.demande_recup') }}" class="btn btn-primary">+ Nouvelle demande</a>
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
+    </div>
+    
+    {% if demandes %}
+    <div class="section">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date demande</th>
+                    <th>Période</th>
+                    <th>Durée</th>
+                    <th>Statut</th>
+                    <th>Validations</th>
+                    <th>Motif</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in demandes %}
+                <tr>
+                    <td>{{ d.date_demande[:10] }}</td>
+                    <td>
+                        Du {{ d.date_debut }} au {{ d.date_fin }}
+                    </td>
+                    <td>
+                        <strong>{{ "%.1f"|format(d.nb_jours) }} jour(s)</strong><br>
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">{{ "%.2f"|format(d.nb_heures) }}h</span>
+                    </td>
+                    <td>
+                        {% if d.statut == 'en_attente_responsable' %}
+                        <span class="badge" style="background: #fef3c7; color: #92400e;">En attente responsable</span>
+                        {% elif d.statut == 'en_attente_direction' %}
+                        <span class="badge" style="background: #dbeafe; color: #1e40af;">En attente direction</span>
+                        {% elif d.statut == 'validee' %}
+                        <span class="badge badge-success">Validée</span>
+                        {% elif d.statut == 'refusee' %}
+                        <span class="badge badge-danger">Refusée</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.85rem;">
+                        {% if d.validation_responsable %}
+                        <div style="color: var(--success);">✓ {{ d.validation_responsable }}</div>
+                        <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_responsable[:10] if d.date_validation_responsable else '' }}</div>
+                        {% else %}
+                        <div style="color: var(--gray-400);">⏳ Responsable</div>
+                        {% endif %}
+                        
+                        {% if d.validation_direction %}
+                        <div style="color: var(--success); margin-top: 0.25rem;">✓ {{ d.validation_direction }}</div>
+                        <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_direction[:10] if d.date_validation_direction else '' }}</div>
+                        {% elif d.statut not in ['en_attente_responsable', 'refusee'] %}
+                        <div style="color: var(--gray-400); margin-top: 0.25rem;">⏳ Direction</div>
+                        {% endif %}
+                        
+                        {% if d.statut == 'refusee' and d.motif_refus %}
+                        <div style="color: var(--danger); margin-top: 0.5rem;">
+                            <strong>Refus :</strong> {{ d.motif_refus }}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.motif_demande or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-data">
+        <p>Aucune demande de récupération</p>
+        <a href="{{ url_for('recup_bp.demande_recup') }}" class="btn btn-primary" style="margin-top: 1rem;">Créer ma première demande</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

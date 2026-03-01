@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Calendrier Forfait Jour{% endblock %}
+
+{% block content %}
+<div class="vue-mensuelle">
+    <div class="month-header">
+        <h1>Calendrier Forfait Jour - {{ nom_mois }} {{ annee }}</h1>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('forfait_bp.calendrier_forfait_jour', mois=mois_precedent, annee=annee_precedente) }}" class="btn btn-secondary">← Mois précédent</a>
+            <a href="{{ url_for('forfait_bp.calendrier_forfait_jour') }}" class="btn btn-secondary">Aujourd'hui</a>
+            <a href="{{ url_for('forfait_bp.calendrier_forfait_jour', mois=mois_suivant, annee=annee_suivante) }}" class="btn btn-secondary">Mois suivant →</a>
+        </div>
+    </div>
+    
+    <div style="margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-travaille"></div>
+            <span style="font-size: 0.9rem;">Travaillé</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-conge_paye"></div>
+            <span style="font-size: 0.9rem;">Congé payé</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-conge_conv"></div>
+            <span style="font-size: 0.9rem;">Congé conv.</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-repos_forfait"></div>
+            <span style="font-size: 0.9rem;">Repos forfait</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-ferie"></div>
+            <span style="font-size: 0.9rem;">Jour férié</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-maladie"></div>
+            <span style="font-size: 0.9rem;">Maladie</span>
+        </div>
+    </div>
+    
+    <div class="section">
+        <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--gray-300);">
+            {% set jours_semaine = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] %}
+            {% for jour in jours_semaine %}
+            <div style="background: var(--gray-100); padding: 0.75rem; text-align: center; font-weight: 600; font-size: 0.85rem; color: var(--gray-700);">
+                {{ jour }}
+            </div>
+            {% endfor %}
+            
+            {% set premier_jour = jours[0].jour_semaine if jours else 0 %}
+            {% for i in range(premier_jour) %}
+            <div style="background: var(--gray-50); min-height: 100px;"></div>
+            {% endfor %}
+            
+            {% for j in jours %}
+            {% set classe_jour = 'cal-day-default' %}
+            {% set texte_type = '' %}
+            {% if j.presence %}
+                {% if j.presence.type == 'travaille' %}
+                    {% set classe_jour = 'cal-day-travaille' %}
+                    {% set texte_type = '✓ Travaillé' %}
+                {% elif j.presence.type == 'conge_paye' %}
+                    {% set classe_jour = 'cal-day-conge_paye' %}
+                    {% set texte_type = 'CP' %}
+                {% elif j.presence.type == 'conge_conv' %}
+                    {% set classe_jour = 'cal-day-conge_conv' %}
+                    {% set texte_type = 'CC' %}
+                {% elif j.presence.type == 'repos_forfait' %}
+                    {% set classe_jour = 'cal-day-repos_forfait' %}
+                    {% set texte_type = 'RTT' %}
+                {% elif j.presence.type == 'ferie' %}
+                    {% set classe_jour = 'cal-day-ferie' %}
+                    {% set texte_type = 'Férié' %}
+                {% elif j.presence.type == 'maladie' %}
+                    {% set classe_jour = 'cal-day-maladie' %}
+                    {% set texte_type = 'Maladie' %}
+                {% elif j.presence.type == 'sans_solde' %}
+                    {% set classe_jour = 'cal-day-sans_solde' %}
+                    {% set texte_type = 'Sans solde' %}
+                {% elif j.presence.type == 'autre' %}
+                    {% set classe_jour = 'cal-day-autre' %}
+                    {% set texte_type = 'Autre' %}
+                {% endif %}
+            {% elif j.ferie %}
+                {% set classe_jour = 'cal-day-ferie' %}
+                {% set texte_type = '🎉 ' + j.ferie %}
+            {% elif j.jour_semaine >= 5 %}
+                {% set classe_jour = 'cal-day-weekend' %}
+            {% endif %}
+
+            <div class="cal-day {{ classe_jour }}" style="{% if j.jour_semaine >= 5 %}opacity: 0.6;{% endif %}"
+                 onclick="ouvrirModal('{{ j.date }}', {{ j.jour }}, '{{ j.presence.type if j.presence else '' }}', '{{ j.presence.commentaire if j.presence else '' }}')">
+                <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem;">{{ j.jour }}</div>
+                {% if texte_type %}
+                <div style="font-size: 0.8rem; font-weight: 600; color: var(--gray-700);">{{ texte_type }}</div>
+                {% endif %}
+                {% if j.presence and j.presence.commentaire %}
+                <div style="font-size: 0.75rem; color: var(--gray-500); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    {{ j.presence.commentaire }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <div class="actions">
+        <a href="{{ url_for('forfait_bp.rapport_forfait_jour_pdf', mois=mois, annee=annee) }}" class="btn btn-primary">📄 Rapport PDF du mois</a>
+        <a href="{{ url_for('forfait_bp.dashboard_forfait_jour', annee=annee) }}" class="btn btn-secondary">← Retour dashboard</a>
+    </div>
+</div>
+
+<!-- Modal de saisie -->
+<div id="modalSaisie" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: var(--white); padding: 2rem; border-radius: 12px; max-width: 500px; width: 90%;">
+        <h3 id="modalTitre" style="margin-bottom: 1.5rem;">Journée du <span id="modalJour"></span></h3>
+        
+        <form method="POST" action="{{ url_for('forfait_bp.calendrier_forfait_jour') }}" id="formSaisie">
+            <input type="hidden" name="date" id="inputDate">
+            
+            <div class="form-group">
+                <label for="type_journee">Type de journée *</label>
+                <select id="type_journee" name="type_journee" required>
+                    <option value="">-- Choisir --</option>
+                    <option value="travaille">✓ Travaillé</option>
+                    <option value="conge_paye">🏖️ Congé payé</option>
+                    <option value="conge_conv">🏖️ Congé conventionnel</option>
+                    <option value="repos_forfait">🏠 Repos forfait jour (RTT)</option>
+                    <option value="ferie">🎉 Jour férié</option>
+                    <option value="maladie">🤒 Arrêt maladie</option>
+                    <option value="sans_solde">💰 Sans solde</option>
+                    <option value="autre">❓ Autre</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="commentaire">Commentaire (optionnel)</label>
+                <textarea id="commentaire" name="commentaire" rows="2" placeholder="Précisions éventuelles..."></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <button type="button" onclick="fermerModal()" class="btn btn-secondary">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function ouvrirModal(date, jour, typeActuel, commentaireActuel) {
+    document.getElementById('inputDate').value = date;
+    document.getElementById('modalJour').textContent = jour;
+    document.getElementById('type_journee').value = typeActuel || '';
+    document.getElementById('commentaire').value = commentaireActuel || '';
+    document.getElementById('modalSaisie').style.display = 'flex';
+}
+
+function fermerModal() {
+    document.getElementById('modalSaisie').style.display = 'none';
+}
+
+// Fermer au clic en dehors du modal
+document.getElementById('modalSaisie').addEventListener('click', function(e) {
+    if (e.target === this) {
+        fermerModal();
+    }
+});
+
+// Fermer avec Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        fermerModal();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Vue d'ensemble validation - {{ nom_mois }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="vue-ensemble">
+    <div class="month-header">
+        <a href="{{ url_for('validation_bp.vue_ensemble_validation', mois=mois_precedent, annee=annee_precedente) }}" 
+           class="btn btn-secondary">← {{ mois_precedent }}/{{ annee_precedente }}</a>
+        
+        <h1>📋 État des validations - {{ nom_mois }} {{ annee }}</h1>
+        
+        <a href="{{ url_for('validation_bp.vue_ensemble_validation', mois=mois_suivant, annee=annee_suivante) }}" 
+           class="btn btn-secondary">{{ mois_suivant }}/{{ annee_suivante }} →</a>
+    </div>
+    
+    <!-- Statistiques rapides -->
+    {% set total_users = users_validation|length %}
+    {% set valides_completement = users_validation|selectattr('validation')|selectattr('validation.bloque')|list|length %}
+    {% set valides_responsable = users_validation|selectattr('validation')|selectattr('validation.validation_responsable')|list|length %}
+    {% set valides_salarie = users_validation|selectattr('validation')|selectattr('validation.validation_salarie')|list|length %}
+    {% set en_attente = total_users - valides_completement %}
+    
+    <div class="stats-grid" style="margin-bottom: 2rem;">
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-content">
+                <h3>Total salariés</h3>
+                <p class="stat-value">{{ total_users }}</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-content">
+                <h3>Validés (complet)</h3>
+                <p class="stat-value" style="color: #28a745;">{{ valides_completement }}</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">⏳</div>
+            <div class="stat-content">
+                <h3>En attente</h3>
+                <p class="stat-value" style="color: #ffc107;">{{ en_attente }}</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <h3>Taux validation</h3>
+                <p class="stat-value">{{ "%.0f"|format((valides_completement / total_users * 100) if total_users > 0 else 0) }}%</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tableau des validations -->
+    <div class="section">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Salarié</th>
+                    <th>Secteur</th>
+                    <th>Responsable</th>
+                    <th>✏️ Salarié</th>
+                    <th>✅ Responsable</th>
+                    <th>🎯 Directeur</th>
+                    <th>Statut global</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in users_validation %}
+                {% set u = item.user %}
+                {% set v = item.validation %}
+                <tr class="{% if v and v.bloque %}row-validated{% elif v %}row-partial{% else %}row-pending{% endif %}">
+                    <td><strong>{{ u.prenom }} {{ u.nom }}</strong></td>
+                    <td>{{ u.secteur_nom or '-' }}</td>
+                    <td>{{ u.responsable_nom or '-' }}</td>
+                    
+                    <!-- Validation salarié -->
+                    <td style="text-align: center;">
+                        {% if v and v.validation_salarie %}
+                        <span title="Validé le {{ v.date_salarie }}">✅</span>
+                        {% else %}
+                        <span style="opacity: 0.3;">⬜</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Validation responsable -->
+                    <td style="text-align: center;">
+                        {% if v and v.validation_responsable %}
+                        <span title="{{ v.validation_responsable }} - {{ v.date_responsable }}">✅</span>
+                        {% else %}
+                        <span style="opacity: 0.3;">⬜</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Validation directeur -->
+                    <td style="text-align: center;">
+                        {% if v and v.validation_directeur %}
+                        <span title="{{ v.validation_directeur }} - {{ v.date_directeur }}">✅</span>
+                        {% else %}
+                        <span style="opacity: 0.3;">⬜</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Statut global -->
+                    <td>
+                        {% if v and v.bloque %}
+                        <span class="badge badge-success">🔒 Verrouillé</span>
+                        {% elif v and v.validation_responsable %}
+                        <span class="badge" style="background: #ffc107; color: #000;">⏳ Attente directeur</span>
+                        {% elif v %}
+                        <span class="badge" style="background: #17a2b8; color: white;">⏳ Attente responsable</span>
+                        {% else %}
+                        <span class="badge" style="background: #dc3545; color: white;">❌ Non validé</span>
+                        {% endif %}
+                    </td>
+                    
+                    <!-- Actions -->
+                    <td>
+                        <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=u.id, mois=mois, annee=annee) }}" 
+                           class="btn-icon" title="Voir la fiche">👁️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="actions" style="margin-top: 2rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
+        {% if session.profil == 'directeur' and en_attente > 0 %}
+        <button class="btn" id="relanceBtn" onclick="relancerResponsables()"
+                style="background:#7c3aed;color:white;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
+            &#128233; Relancer les responsables par email
+        </button>
+        <span id="relanceResult" style="font-size:13px;"></span>
+        {% endif %}
+    </div>
+    
+    <!-- Légende -->
+    <div class="help-box">
+        <h4>📖 Légende des statuts</h4>
+        <ul>
+            <li><strong>🔒 Verrouillé</strong> : Validé par responsable ET directeur - Fiche définitivement verrouillée</li>
+            <li><strong>⏳ Attente directeur</strong> : Validé par le responsable, en attente de validation directeur</li>
+            <li><strong>⏳ Attente responsable</strong> : Salarié validé (optionnel), en attente du responsable</li>
+            <li><strong>❌ Non validé</strong> : Aucune validation effectuée pour ce mois</li>
+        </ul>
+        <p><strong>Rappel :</strong> Une fiche est définitivement verrouillée après validation du responsable ET du directeur.</p>
+    </div>
+</div>
+
+<style>
+.vue-ensemble {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.month-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.month-header h1 {
+    color: #667eea;
+    margin: 0;
+}
+
+.row-validated {
+    background: #d4edda !important;
+}
+
+.row-partial {
+    background: #fff3cd !important;
+}
+
+.row-pending {
+    background: #f8d7da !important;
+    opacity: 0.7;
+}
+
+.data-table tbody tr:hover {
+    opacity: 1 !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+</style>
+
+{% if session.profil == 'directeur' %}
+<script>
+async function relancerResponsables() {
+    if (!confirm('Envoyer un email de relance a tous les responsables ayant des fiches non validees pour {{ nom_mois }} {{ annee }} ?')) return;
+
+    var btn = document.getElementById('relanceBtn');
+    var result = document.getElementById('relanceResult');
+
+    btn.disabled = true;
+    btn.textContent = 'Envoi en cours...';
+    result.textContent = '';
+
+    try {
+        var res = await fetch('/api/email/relance_validation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({mois: {{ mois }}, annee: {{ annee }}}),
+        });
+        var data = await res.json();
+        if (data.success) {
+            result.style.color = '#059669';
+            result.textContent = data.message;
+        } else {
+            result.style.color = '#dc2626';
+            result.textContent = data.error || 'Erreur inconnue';
+        }
+    } catch(e) {
+        result.style.color = '#dc2626';
+        result.textContent = 'Erreur reseau : ' + e.message;
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '&#128233; Relancer les responsables par email';
+}
+</script>
+{% endif %}
+{% endblock %}

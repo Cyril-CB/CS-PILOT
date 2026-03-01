@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Mes parametres{% endblock %}
+{% block content %}
+
+<style>
+    .pm-container { max-width: 600px; margin: 0 auto; padding: 10px 0; }
+    .pm-header { text-align: center; margin-bottom: 24px; }
+    .pm-header .pm-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .pm-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+
+    .pm-card { background: var(--white); border-radius: 12px; padding: 24px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+    .pm-card h3 { font-size: 16px; font-weight: 700; color: var(--gray-900); margin: 0 0 16px; display: flex; align-items: center; gap: 8px; }
+
+    .pm-form-group { margin-bottom: 16px; }
+    .pm-form-group label { display: block; font-size: 13px; font-weight: 700; color: var(--gray-700); margin-bottom: 4px; }
+    .pm-form-group .pm-hint { font-size: 12px; color: var(--gray-400); margin-top: 4px; line-height: 1.5; }
+    .pm-input { width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    .pm-input:focus { border-color: #7c3aed; outline: none; }
+
+    .pm-checkbox { display: flex; align-items: flex-start; gap: 10px; padding: 14px; background: #f9fafb; border-radius: 8px; border: 1px solid var(--gray-200); cursor: pointer; }
+    .pm-checkbox input[type="checkbox"] { margin-top: 2px; width: 18px; height: 18px; accent-color: #7c3aed; flex-shrink: 0; cursor: pointer; }
+    .pm-checkbox-text { flex: 1; }
+    .pm-checkbox-text strong { display: block; font-size: 14px; color: var(--gray-900); }
+    .pm-checkbox-text span { font-size: 12px; color: var(--gray-500); line-height: 1.5; }
+
+    .pm-btn { padding: 10px 24px; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    .pm-btn-primary { background: #7c3aed; color: white; }
+    .pm-btn-primary:hover { background: #6d28d9; }
+
+    .pm-btn-row { margin-top: 20px; }
+</style>
+
+<div class="pm-container">
+    <div class="pm-header">
+        <div class="pm-label">Mon compte</div>
+        <h2>Mes parametres</h2>
+    </div>
+
+    <form method="POST" action="{{ url_for('parametres_bp.parametres') }}">
+        <div class="pm-card">
+            <h3>&#128231; Adresse email</h3>
+            <div class="pm-form-group">
+                <label>Email</label>
+                <input type="email" name="email" class="pm-input"
+                       value="{{ user.email or '' }}"
+                       placeholder="mon.email@exemple.com">
+                <div class="pm-hint">
+                    Cette adresse sera utilisee pour recevoir les notifications de l'application
+                    (decisions sur vos demandes de recuperation, etc.).
+                </div>
+            </div>
+        </div>
+
+        <div class="pm-card">
+            <h3>&#128276; Notifications par email</h3>
+            <label class="pm-checkbox">
+                <input type="checkbox" name="email_notifications_enabled" value="1"
+                       {{ 'checked' if user.email_notifications_enabled else '' }}>
+                <div class="pm-checkbox-text">
+                    <strong>J'accepte de recevoir des notifications par email</strong>
+                    <span>
+                        En cochant cette case, vous autorisez l'application a vous envoyer
+                        des emails de notification (decisions sur vos demandes de recuperation,
+                        informations importantes). Vous pouvez modifier ce choix a tout moment.
+                    </span>
+                </div>
+            </label>
+        </div>
+
+        <div class="pm-btn-row">
+            <button type="submit" class="pm-btn pm-btn-primary">Enregistrer mes parametres</button>
+        </div>
+    </form>
+</div>
+
+{% endblock %}

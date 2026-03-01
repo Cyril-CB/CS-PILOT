@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Saisie des heures{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>✏️ Saisie des heures réelles</h1>
+    {% if user_cible and user_cible.id != session.user_id %}
+    <p class="subtitle">Fiche de : <strong>{{ user_cible.prenom }} {{ user_cible.nom }}</strong></p>
+    {% else %}
+    <p class="subtitle">Enregistrez vos heures supplémentaires ou récupérations</p>
+    {% endif %}
+    
+    <form method="POST" action="{{ url_for('saisie_bp.saisie_heures') }}" id="formSaisie">
+        <input type="hidden" name="user_id" value="{{ user_id_cible }}">
+        <input type="hidden" name="next" value="{{ next_page }}">
+        <div class="form-group">
+            <label for="date">Date *</label>
+            <input type="date" id="date" name="date" value="{{ date_defaut }}" required>
+        </div>
+        
+        <div class="form-group" style="background: #e7f3ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
+            <label style="display: flex; align-items: center; flex-wrap: wrap;">
+                <input type="checkbox" id="declaration_conforme" name="declaration_conforme" value="1"
+                       onchange="toggleDeclaration()"
+                       {% if heures_existantes and heures_existantes.declaration_conforme %}checked{% endif %}>
+                <strong>✅ Je certifie avoir travaillé mes heures habituelles ce jour</strong>
+                <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Cochez cette case si vous avez travaillé exactement selon votre planning théorique, sans écart. Aucune saisie d'heure n'est nécessaire — le système enregistre automatiquement vos horaires prévus. C'est le cas le plus courant.</span></span>
+            </label>
+        </div>
+        
+        <div class="form-group">
+            <label style="display: flex; align-items: center; flex-wrap: wrap;">
+                <input type="checkbox" id="recup_journee" name="recup_journee" value="1"
+                       onchange="toggleRecupJournee()"
+                       {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}checked{% endif %}>
+                <strong>🏖️ Récupération journée complète</strong>
+                <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Cochez cette case si vous posez une journée entière de récupération. Cela remplace la saisie des heures pour ce jour. Votre solde de récupération sera débité d'une journée selon votre planning théorique.</span></span>
+            </label>
+        </div>
+        
+        <div id="saisie-heures-detail" {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}style="opacity: 0.5;"{% endif %}>
+            <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
+                <span style="font-size: 0.9rem; font-weight: 600; color: var(--gray-700);">Horaires réels</span>
+                <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Saisissez vos heures réelles de travail, pas vos heures théoriques. Un écart supérieur à 3 heures par rapport à votre planning déclenchera une anomalie visible par la direction — ce n'est pas bloquant mais sera examiné.</span></span>
+            </div>
+            <div class="time-grid">
+                <div class="time-section">
+                    <h3>🌅 Matin</h3>
+                    <div class="form-group">
+                        <label for="heure_debut_matin">Heure d'arrivée</label>
+                        <input type="time" id="heure_debut_matin" name="heure_debut_matin" 
+                               value="{{ heures_existantes.heure_debut_matin or '' if heures_existantes else '' }}"
+                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                    </div>
+                    <div class="form-group">
+                        <label for="heure_fin_matin">Heure de départ</label>
+                        <input type="time" id="heure_fin_matin" name="heure_fin_matin" 
+                               value="{{ heures_existantes.heure_fin_matin or '' if heures_existantes else '' }}"
+                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                    </div>
+                </div>
+                
+                <div class="time-section">
+                    <h3>🌆 Après-midi</h3>
+                    <div class="form-group">
+                        <label for="heure_debut_aprem">Heure d'arrivée</label>
+                        <input type="time" id="heure_debut_aprem" name="heure_debut_aprem" 
+                               value="{{ heures_existantes.heure_debut_aprem or '' if heures_existantes else '' }}"
+                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                    </div>
+                    <div class="form-group">
+                        <label for="heure_fin_aprem">Heure de départ</label>
+                        <input type="time" id="heure_fin_aprem" name="heure_fin_aprem" 
+                               value="{{ heures_existantes.heure_fin_aprem or '' if heures_existantes else '' }}"
+                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--gray-50); border-radius: 8px; margin-bottom: 1rem;">
+            <span style="font-size: 1.2rem;">⏱️</span>
+            <span style="font-size: 0.85rem; color: var(--gray-500);">Solde de récupération</span>
+            <span style="font-weight: 700; color: {% if solde_recup > 0 %}#28a745{% elif solde_recup < 0 %}#dc3545{% else %}var(--gray-500){% endif %};">
+                {% if solde_recup > 0 %}+{% endif %}{{ "%.2f"|format(solde_recup) }}h
+            </span>
+            <span class="ctx-help" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Ce solde représente la différence cumulée entre vos heures réellement travaillées et votre planning théorique. Un solde positif signifie que vous avez des heures à récupérer. Un solde négatif signifie que vous avez utilisé plus de récupérations que vous n'en avez acquis — cela est autorisé mais signalé.</span></span>
+        </div>
+
+        <div class="form-group">
+            <label for="commentaire">Commentaire (optionnel)</label>
+            <textarea id="commentaire" name="commentaire" rows="3" 
+                      placeholder="Ex: Heures supplémentaires pour réunion tardive, récupération posée...">{{ heures_existantes.commentaire or '' if heures_existantes else '' }}</textarea>
+        </div>
+        
+        {% if mois_verrouille %}
+        <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: #fee2e2; border-radius: 8px; border-left: 4px solid var(--danger); margin-bottom: 1rem;">
+            <span style="font-size: 1.1rem;">🔒</span>
+            <span style="flex: 1; font-size: 0.9rem; color: #991b1b; font-weight: 500;">Mois verrouillé — modification impossible</span>
+            <span class="ctx-help" onclick="toggleCtxHelp(event, this)" style="background: var(--danger);">?<span class="ctx-help-bubble">Ce mois a été validé et verrouillé par la direction. Toute modification est impossible sauf demande de déverrouillage auprès de votre directeur, qui devra en indiquer le motif.</span></span>
+        </div>
+        {% endif %}
+
+        <div class="form-actions">
+            {% if next_page == 'calendrier' %}
+            <a href="{{ url_for('validation_bp.vue_calendrier', user_id=user_id_cible, mois=date_defaut.split('-')[1]|int, annee=date_defaut.split('-')[0]|int) }}" class="btn btn-secondary">Annuler</a>
+            {% elif next_page == 'mensuelle' %}
+            <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=user_id_cible, mois=date_defaut.split('-')[1]|int, annee=date_defaut.split('-')[0]|int) }}" class="btn btn-secondary">Annuler</a>
+            {% else %}
+            <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Annuler</a>
+            {% endif %}
+            <button type="submit" class="btn btn-primary" {% if mois_verrouille %}disabled{% endif %}>💾 Enregistrer</button>
+        </div>
+    </form>
+    
+    <div class="help-box">
+        <h4>💡 Principe de saisie</h4>
+        <ul>
+            <li><strong>Pas de saisie nécessaire</strong> si vous avez suivi votre planning théorique</li>
+            <li><strong>Saisissez uniquement les jours avec écart</strong> : heures supplémentaires ou récupération</li>
+            <li><strong>Récupération journée complète</strong> : cochez simplement la case</li>
+            <li><strong>Récupération partielle</strong> : saisissez les heures travaillées (laissez vide la période en récup)</li>
+            <li>En fin de mois, validez votre feuille de temps</li>
+        </ul>
+    </div>
+
+    <script>
+    /* Aide contextuelle : toggle au clic, ferme au clic extérieur */
+    function toggleCtxHelp(e, el) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Fermer les autres tooltips ouverts
+        document.querySelectorAll('.ctx-help.active').forEach(function(h) {
+            if (h !== el) h.classList.remove('active');
+        });
+        el.classList.toggle('active');
+    }
+    document.addEventListener('click', function() {
+        document.querySelectorAll('.ctx-help.active').forEach(function(h) {
+            h.classList.remove('active');
+        });
+    });
+
+    function toggleDeclaration() {
+        const declarationCheckbox = document.getElementById('declaration_conforme');
+        const recupCheckbox = document.getElementById('recup_journee');
+        const detailHeures = document.getElementById('saisie-heures-detail');
+        const inputs = detailHeures.querySelectorAll('input[type="time"], textarea');
+        
+        if (declarationCheckbox.checked) {
+            // Désactiver la récupération et les champs d'heures
+            recupCheckbox.disabled = true;
+            recupCheckbox.checked = false;
+            detailHeures.style.opacity = '0.3';
+            inputs.forEach(input => {
+                input.disabled = true;
+                input.value = '';
+            });
+        } else {
+            // Réactiver la récupération et les champs d'heures
+            recupCheckbox.disabled = false;
+            detailHeures.style.opacity = '1';
+            inputs.forEach(input => {
+                input.disabled = false;
+            });
+        }
+    }
+    
+    function toggleRecupJournee() {
+        const checkbox = document.getElementById('recup_journee');
+        const declarationCheckbox = document.getElementById('declaration_conforme');
+        const detailHeures = document.getElementById('saisie-heures-detail');
+        const inputs = detailHeures.querySelectorAll('input[type="time"]');
+        
+        if (checkbox.checked) {
+            // Désactiver la déclaration conforme et les champs d'heures
+            declarationCheckbox.disabled = true;
+            declarationCheckbox.checked = false;
+            detailHeures.style.opacity = '0.5';
+            inputs.forEach(input => {
+                input.disabled = true;
+                input.value = '';
+            });
+        } else {
+            // Réactiver la déclaration conforme et les champs d'heures
+            declarationCheckbox.disabled = false;
+            detailHeures.style.opacity = '1';
+            inputs.forEach(input => {
+                input.disabled = false;
+            });
+        }
+    }
+    
+    // Recharger la page quand on change la date pour charger les données de cette date
+    document.getElementById('date').addEventListener('change', function() {
+        const dateSelectionnee = this.value;
+        if (dateSelectionnee) {
+            var url = "{{ url_for('saisie_bp.saisie_heures') }}?date=" + dateSelectionnee + "&user_id={{ user_id_cible }}";
+            {% if next_page %}
+            url += "&next={{ next_page }}";
+            {% endif %}
+            window.location.href = url;
+        }
+    });
+    </script>
+</div>
+{% endblock %}

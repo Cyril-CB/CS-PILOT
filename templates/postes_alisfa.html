@@ -1,0 +1,541 @@
+{% extends "base.html" %}
+{% block title %}Postes ALISFA — Classification{% endblock %}
+{% block content %}
+
+<style>
+    .pos-container { max-width: 1000px; margin: 0 auto; padding: 10px 0; }
+    .pos-header { text-align: center; margin-bottom: 24px; }
+    .pos-header .pos-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .pos-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+    .pos-header .pos-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    /* Tabs */
+    .pos-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 20px; }
+    .pos-tab { padding: 12px 24px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; font-size: 14px; color: var(--gray-500); transition: all 0.2s; background: none; border-top: none; border-left: none; border-right: none; }
+    .pos-tab:hover { color: var(--gray-700); }
+    .pos-tab.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+    .pos-tab-panel { display: none; }
+    .pos-tab-panel.active { display: block; }
+
+    /* Cards */
+    .pos-card { background: var(--white); border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+    .pos-stitle { font-size: 15px; font-weight: 800; color: var(--gray-900); margin-bottom: 14px; }
+
+    /* Form */
+    .pos-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+    .pos-form-row.full { grid-template-columns: 1fr; }
+    .pos-form-group label { display: block; font-size: 11px; font-weight: 700; color: var(--gray-500); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .pos-form-group input, .pos-form-group select { width: 100%; padding: 8px 10px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+    .pos-form-group select { background: var(--white); }
+
+    /* Criteria grid */
+    .pos-criteres { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .pos-critere-item { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 10px 12px; }
+    .pos-critere-item label { margin-bottom: 6px; }
+    .pos-critere-item select { font-size: 13px; }
+    .pos-critere-pts { font-size: 12px; font-weight: 700; color: #7c3aed; margin-top: 4px; }
+    .pos-critere-bornes { font-size: 10px; color: var(--gray-400); margin-top: 2px; }
+
+    /* Buttons */
+    .pos-btn { padding: 10px 24px; border: none; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+    .pos-btn-primary { background: #7c3aed; color: white; }
+    .pos-btn-primary:hover { background: #6d28d9; }
+    .pos-btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+    .pos-btn-danger { background: var(--danger); color: white; }
+    .pos-btn-danger:hover { opacity: 0.9; }
+    .pos-btn-sm { padding: 6px 14px; font-size: 12px; }
+    .pos-btn-outline { background: var(--white); color: #7c3aed; border: 2px solid #7c3aed; }
+    .pos-btn-outline:hover { background: #faf5ff; }
+
+    /* Total banner */
+    .pos-total-banner { background: linear-gradient(135deg, #7c3aed, #a855f7); border-radius: 10px; padding: 16px 20px; color: white; display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+    .pos-total-value { font-size: 32px; font-weight: 800; font-family: 'Courier New', monospace; }
+    .pos-total-label { font-size: 12px; opacity: 0.85; }
+
+    /* Postes list */
+    .pos-list-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .pos-list-table th { text-align: left; padding: 10px 12px; background: var(--gray-50); border-bottom: 2px solid var(--gray-200); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-500); }
+    .pos-list-table td { padding: 10px 12px; border-bottom: 1px solid var(--gray-100); }
+    .pos-list-table tr:hover { background: #faf5ff; cursor: pointer; }
+    .pos-list-table tr.selected { background: #ede9fe; }
+    .pos-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .pos-badge-famille { background: #ede9fe; color: #7c3aed; }
+    .pos-badge-pts { background: #7c3aed; color: white; font-weight: 800; }
+
+    /* Vue salaries */
+    .pos-vue-container { position: relative; min-height: 400px; }
+    .pos-scale { position: relative; margin: 0 auto; max-width: 700px; }
+    .pos-scale-bar { position: absolute; left: 50%; width: 4px; background: linear-gradient(to bottom, #7c3aed, #e9d5ff); border-radius: 2px; transform: translateX(-50%); }
+    .pos-employee-card { position: absolute; background: var(--white); border: 2px solid var(--gray-200); border-radius: 10px; padding: 10px 16px; box-shadow: var(--shadow-sm); transition: all 0.3s; width: 220px; }
+    .pos-employee-card:hover { box-shadow: var(--shadow-md); border-color: #7c3aed; z-index: 10; }
+    .pos-employee-card.left { right: calc(50% + 20px); text-align: right; }
+    .pos-employee-card.right { left: calc(50% + 20px); }
+    .pos-employee-name { font-weight: 700; font-size: 14px; color: var(--gray-900); }
+    .pos-employee-detail { font-size: 11px; color: var(--gray-500); margin-top: 2px; }
+    .pos-employee-pesee { font-size: 18px; font-weight: 800; color: #7c3aed; font-family: 'Courier New', monospace; }
+    .pos-scale-tick { position: absolute; left: 50%; transform: translateX(-50%); font-size: 10px; color: var(--gray-400); font-weight: 600; width: 50px; text-align: center; }
+    .pos-no-data { text-align: center; padding: 60px 20px; color: var(--gray-400); font-size: 14px; }
+    .pos-connector { position: absolute; left: 50%; width: 16px; height: 2px; background: var(--gray-300); }
+    .pos-connector.left { transform: translateX(-100%); }
+
+    @media (max-width: 700px) {
+        .pos-form-row { grid-template-columns: 1fr; }
+        .pos-criteres { grid-template-columns: 1fr; }
+        .pos-employee-card { width: 140px; padding: 6px 10px; }
+        .pos-employee-card .pos-employee-name { font-size: 12px; }
+    }
+
+    [data-theme="dark"] .pos-card { background: var(--gray-800); border-color: var(--gray-600); }
+    [data-theme="dark"] .pos-critere-item { background: var(--gray-700); border-color: var(--gray-600); }
+    [data-theme="dark"] .pos-list-table th { background: var(--gray-700); }
+    [data-theme="dark"] .pos-list-table tr:hover { background: var(--gray-700); }
+    [data-theme="dark"] .pos-employee-card { background: var(--gray-800); border-color: var(--gray-600); }
+</style>
+
+<div class="pos-container">
+    <div class="pos-header">
+        <div class="pos-label">Classification CCN ALISFA</div>
+        <h2>Gestion des postes</h2>
+        <div class="pos-sub">Postes de l'association et classification par criteres</div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="pos-tabs">
+        <button class="pos-tab active" data-tab="postes" onclick="posShowTab('postes')">Postes</button>
+        <button class="pos-tab" data-tab="vue" onclick="posShowTab('vue')">Vue salaries</button>
+    </div>
+
+    <!-- ═══ TAB 1 : Postes ═══ -->
+    <div id="posTabPostes" class="pos-tab-panel active">
+
+        <!-- Selection / Nouveau -->
+        <div class="pos-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                <div class="pos-form-group" style="flex:1;min-width:250px;">
+                    <label for="posPosteSelect">Selectionner un poste</label>
+                    <select id="posPosteSelect" onchange="posSelectPoste(this.value)">
+                        <option value="">-- Choisir un poste --</option>
+                        {% for p in postes %}
+                        <option value="{{ p.id }}">{{ p.intitule }} ({{ p.famille_metier }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button class="pos-btn pos-btn-primary" onclick="posNouveauPoste()">+ Nouveau poste</button>
+            </div>
+        </div>
+
+        <!-- Formulaire poste -->
+        <div id="posFormSection" style="display:none;">
+            <div class="pos-card">
+                <div class="pos-stitle" id="posFormTitle">Nouveau poste</div>
+
+                <div class="pos-form-row">
+                    <div class="pos-form-group">
+                        <label for="posIntitule">Intitule du poste *</label>
+                        <input type="text" id="posIntitule" placeholder="Ex: Animateur reference famille">
+                    </div>
+                    <div class="pos-form-group">
+                        <label for="posFamille">Famille de metier *</label>
+                        <select id="posFamille" onchange="posUpdateEmploisReperes()">
+                            <option value="">-- Choisir --</option>
+                            {% for f in familles %}
+                            <option value="{{ f }}">{{ f }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="pos-form-row full">
+                    <div class="pos-form-group">
+                        <label for="posEmploi">Emploi repere</label>
+                        <select id="posEmploi" onchange="posUpdateBornes()">
+                            <option value="">-- Choisir une famille d'abord --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Critères -->
+                <div class="pos-stitle" style="margin-top:16px;">Criteres de classification</div>
+                <div id="posBornesInfo" class="pos-critere-bornes" style="margin-bottom:8px;font-size:12px;color:var(--gray-500);display:none;">
+                    Les niveaux sont bornes selon l'emploi repere selectionne (min/max CCN ALISFA).
+                </div>
+                <div class="pos-criteres" id="posCriteresGrid">
+                    <!-- Rempli par JS -->
+                </div>
+
+                <!-- Total -->
+                <div class="pos-total-banner">
+                    <div>
+                        <div class="pos-total-label">Total pesee</div>
+                        <div class="pos-total-value" id="posTotalPoints">0</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div class="pos-total-label">+ SSC (Salaire Socle Conventionnel)</div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;">
+                    <button class="pos-btn pos-btn-primary" id="posSaveBtn" onclick="posSave()">Enregistrer</button>
+                    <button class="pos-btn pos-btn-danger pos-btn-sm" id="posDeleteBtn" onclick="posDelete()" style="display:none;">Supprimer</button>
+                    <button class="pos-btn pos-btn-outline pos-btn-sm" onclick="posCancel()">Annuler</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Liste des postes -->
+        <div class="pos-card">
+            <div class="pos-stitle">Postes de l'association</div>
+            {% if postes %}
+            <table class="pos-list-table">
+                <thead>
+                    <tr>
+                        <th>Intitule</th>
+                        <th>Famille</th>
+                        <th>Emploi repere</th>
+                        <th style="text-align:right;">Pesee</th>
+                    </tr>
+                </thead>
+                <tbody id="posListBody">
+                    {% for p in postes %}
+                    <tr onclick="posSelectPoste({{ p.id }})" data-id="{{ p.id }}">
+                        <td><strong>{{ p.intitule }}</strong></td>
+                        <td><span class="pos-badge pos-badge-famille">{{ p.famille_metier }}</span></td>
+                        <td>{{ p.emploi_repere or '-' }}</td>
+                        <td style="text-align:right;"><span class="pos-badge pos-badge-pts">{{ p.total_points }} pts</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="pos-no-data">Aucun poste cree. Cliquez sur "Nouveau poste" pour commencer.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- ═══ TAB 2 : Vue salaries ═══ -->
+    <div id="posTabVue" class="pos-tab-panel">
+        <div class="pos-card">
+            <div class="pos-stitle">Repartition des salaries par pesee</div>
+            <div class="pos-vue-container" id="posVueContainer">
+                <!-- Rempli par JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// Postes ALISFA — Vanilla JS
+// ════════════════════════════════════════════════════════════════
+
+const POS = {
+    editId: null,
+    criteres: {{ criteres|tojson }},
+    emploisReperes: {{ emplois_reperes|tojson }},
+    critereFields: {{ critere_fields|tojson }},
+    salaries: {{ salaries|tojson }},
+    currentBornes: null,
+};
+
+// ── Tabs ──
+function posShowTab(id) {
+    document.querySelectorAll('.pos-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.tab === id)
+    );
+    document.querySelectorAll('.pos-tab-panel').forEach(p => p.classList.remove('active'));
+    if (id === 'postes') {
+        document.getElementById('posTabPostes').classList.add('active');
+    } else {
+        document.getElementById('posTabVue').classList.add('active');
+        posRenderVueSalaries();
+    }
+}
+
+// ── Critères grid ──
+function posRenderCriteres(niveaux) {
+    const grid = document.getElementById('posCriteresGrid');
+    grid.innerHTML = POS.criteres.map((c, i) => {
+        const field = POS.critereFields[i];
+        const currentNiv = (niveaux && niveaux[field]) || 1;
+        const bornes = POS.currentBornes ? POS.currentBornes[i] : null;
+        const minN = bornes ? bornes[0] : 1;
+        const maxN = bornes ? bornes[1] : c.niveaux.length;
+
+        const options = c.niveaux.map(n => {
+            const inRange = n.niveau >= minN && n.niveau <= maxN;
+            const ptsLabel = typeof n.points === 'number' ? n.points + ' pts' : 'SSC';
+            const sel = n.niveau === currentNiv ? 'selected' : '';
+            return `<option value="${n.niveau}" ${sel} ${inRange ? '' : 'disabled'}>${n.niveau} - ${ptsLabel} — ${n.label.substring(0, 60)}${n.label.length > 60 ? '...' : ''}</option>`;
+        }).join('');
+
+        const pts = posGetPoints(i, currentNiv);
+        const bornesLabel = bornes ? `Bornes CCN : ${minN} - ${maxN}` : '';
+
+        return `
+        <div class="pos-critere-item">
+            <label>${c.nom}</label>
+            <select id="posCrit_${field}" onchange="posRecalcTotal()">
+                ${options}
+            </select>
+            <div class="pos-critere-pts" id="posPts_${field}">${pts}</div>
+            ${bornesLabel ? `<div class="pos-critere-bornes">${bornesLabel}</div>` : ''}
+        </div>`;
+    }).join('');
+    posRecalcTotal();
+}
+
+function posGetPoints(critereIdx, niveau) {
+    const c = POS.criteres[critereIdx];
+    const n = c.niveaux.find(x => x.niveau === niveau);
+    if (!n) return 'SSC';
+    return typeof n.points === 'number' ? n.points + ' pts' : 'SSC';
+}
+
+function posGetPointsNum(critereIdx, niveau) {
+    const c = POS.criteres[critereIdx];
+    const n = c.niveaux.find(x => x.niveau === niveau);
+    if (!n) return 0;
+    return typeof n.points === 'number' ? n.points : 0;
+}
+
+function posRecalcTotal() {
+    let total = 0;
+    POS.critereFields.forEach((field, i) => {
+        const sel = document.getElementById('posCrit_' + field);
+        if (sel) {
+            const niv = parseInt(sel.value);
+            const pts = posGetPointsNum(i, niv);
+            total += pts;
+            const ptsEl = document.getElementById('posPts_' + field);
+            if (ptsEl) ptsEl.textContent = posGetPoints(i, niv);
+        }
+    });
+    document.getElementById('posTotalPoints').textContent = total;
+}
+
+// ── Emplois repères ──
+function posUpdateEmploisReperes() {
+    const famille = document.getElementById('posFamille').value;
+    const sel = document.getElementById('posEmploi');
+    sel.innerHTML = '<option value="">-- Choisir --</option>';
+
+    if (famille && POS.emploisReperes[famille]) {
+        POS.emploisReperes[famille].forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = e.nom;
+            opt.textContent = e.nom;
+            sel.appendChild(opt);
+        });
+    }
+    POS.currentBornes = null;
+    document.getElementById('posBornesInfo').style.display = 'none';
+    posRenderCriteres(null);
+}
+
+function posUpdateBornes() {
+    const famille = document.getElementById('posFamille').value;
+    const emploi = document.getElementById('posEmploi').value;
+
+    POS.currentBornes = null;
+    if (famille && emploi && POS.emploisReperes[famille]) {
+        const er = POS.emploisReperes[famille].find(e => e.nom === emploi);
+        if (er) {
+            POS.currentBornes = er.bornes;
+        }
+    }
+
+    document.getElementById('posBornesInfo').style.display = POS.currentBornes ? 'block' : 'none';
+
+    // Recalculate with bornes - clamp current values
+    const niveaux = {};
+    POS.critereFields.forEach((field, i) => {
+        const sel = document.getElementById('posCrit_' + field);
+        let val = sel ? parseInt(sel.value) : 1;
+        if (POS.currentBornes) {
+            val = Math.max(POS.currentBornes[i][0], Math.min(POS.currentBornes[i][1], val));
+        }
+        niveaux[field] = val;
+    });
+    posRenderCriteres(niveaux);
+}
+
+// ── CRUD ──
+function posNouveauPoste() {
+    POS.editId = null;
+    document.getElementById('posFormTitle').textContent = 'Nouveau poste';
+    document.getElementById('posDeleteBtn').style.display = 'none';
+    document.getElementById('posIntitule').value = '';
+    document.getElementById('posFamille').value = '';
+    document.getElementById('posEmploi').innerHTML = '<option value="">-- Choisir une famille d\'abord --</option>';
+    POS.currentBornes = null;
+    document.getElementById('posBornesInfo').style.display = 'none';
+    posRenderCriteres(null);
+    document.getElementById('posFormSection').style.display = 'block';
+    document.getElementById('posFormSection').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+async function posSelectPoste(id) {
+    if (!id) { document.getElementById('posFormSection').style.display = 'none'; return; }
+
+    try {
+        const res = await fetch('/api/pesee_alisfa/poste/' + id);
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+
+        POS.editId = data.id;
+        document.getElementById('posFormTitle').textContent = 'Modifier le poste';
+        document.getElementById('posDeleteBtn').style.display = '';
+        document.getElementById('posIntitule').value = data.intitule || '';
+        document.getElementById('posFamille').value = data.famille_metier || '';
+        document.getElementById('posPosteSelect').value = id;
+
+        // Populate emplois reperes for this famille
+        posUpdateEmploisReperes();
+        document.getElementById('posEmploi').value = data.emploi_repere || '';
+        posUpdateBornes();
+
+        // Set niveaux
+        const niveaux = {};
+        POS.critereFields.forEach(f => { niveaux[f] = data[f] || 1; });
+        posRenderCriteres(niveaux);
+
+        document.getElementById('posFormSection').style.display = 'block';
+        document.getElementById('posFormSection').scrollIntoView({behavior: 'smooth', block: 'start'});
+
+        // Highlight row
+        document.querySelectorAll('.pos-list-table tr').forEach(r => r.classList.remove('selected'));
+        const row = document.querySelector('.pos-list-table tr[data-id="' + id + '"]');
+        if (row) row.classList.add('selected');
+
+    } catch(e) { alert('Erreur: ' + e.message); }
+}
+
+async function posSave() {
+    const intitule = document.getElementById('posIntitule').value.trim();
+    const famille = document.getElementById('posFamille').value;
+    const emploi = document.getElementById('posEmploi').value;
+
+    if (!intitule || !famille) { alert('Intitule et famille de metier requis.'); return; }
+
+    const body = { intitule, famille_metier: famille, emploi_repere: emploi };
+    POS.critereFields.forEach(f => {
+        const sel = document.getElementById('posCrit_' + f);
+        body[f] = sel ? parseInt(sel.value) : 1;
+    });
+
+    const url = POS.editId ? '/api/pesee_alisfa/poste/' + POS.editId : '/api/pesee_alisfa/poste';
+    const method = POS.editId ? 'PUT' : 'POST';
+
+    try {
+        const res = await fetch(url, {
+            method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+        location.reload();
+    } catch(e) { alert('Erreur: ' + e.message); }
+}
+
+async function posDelete() {
+    if (!POS.editId) return;
+    if (!confirm('Supprimer ce poste ?')) return;
+
+    try {
+        const res = await fetch('/api/pesee_alisfa/poste/' + POS.editId, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.error) { alert(data.error); return; }
+        location.reload();
+    } catch(e) { alert('Erreur: ' + e.message); }
+}
+
+function posCancel() {
+    POS.editId = null;
+    document.getElementById('posFormSection').style.display = 'none';
+    document.getElementById('posPosteSelect').value = '';
+    document.querySelectorAll('.pos-list-table tr').forEach(r => r.classList.remove('selected'));
+}
+
+// ── Vue salariés ──
+function posRenderVueSalaries() {
+    const container = document.getElementById('posVueContainer');
+    const salaries = POS.salaries.filter(s => s.pesee !== null && s.pesee !== undefined);
+
+    if (salaries.length === 0) {
+        container.innerHTML = '<div class="pos-no-data">Aucun salarie n\'a de pesee renseignee.<br>Renseignez la pesee dans Infos salaries pour voir la repartition.</div>';
+        return;
+    }
+
+    // Sort descending
+    salaries.sort((a, b) => (b.pesee || 0) - (a.pesee || 0));
+
+    const maxPesee = Math.max(...salaries.map(s => s.pesee || 0));
+    const minPesee = Math.min(...salaries.map(s => s.pesee || 0));
+    const range = Math.max(maxPesee - minPesee, 1);
+
+    const CARD_HEIGHT = 56;
+    const PADDING_TOP = 40;
+    const PADDING_BOTTOM = 40;
+    const MIN_GAP = 65;
+
+    // Calculate positions with minimum gap
+    const positions = [];
+    salaries.forEach((s, i) => {
+        const naturalY = PADDING_TOP + ((maxPesee - (s.pesee || 0)) / range) * 400;
+        if (i === 0) {
+            positions.push(naturalY);
+        } else {
+            const minY = positions[i - 1] + MIN_GAP;
+            positions.push(Math.max(naturalY, minY));
+        }
+    });
+
+    const totalHeight = (positions.length > 0 ? positions[positions.length - 1] : 0) + CARD_HEIGHT + PADDING_BOTTOM;
+
+    // Scale ticks
+    const ticks = [];
+    const step = range <= 50 ? 10 : range <= 200 ? 50 : 100;
+    for (let v = Math.floor(minPesee / step) * step; v <= maxPesee + step; v += step) {
+        if (v < 0) continue;
+        const y = PADDING_TOP + ((maxPesee - v) / range) * 400;
+        ticks.push({ value: v, y: Math.max(y, 0) });
+    }
+
+    let html = `<div class="pos-scale" style="height:${totalHeight}px;">`;
+    html += `<div class="pos-scale-bar" style="top:${PADDING_TOP}px;height:${totalHeight - PADDING_TOP - PADDING_BOTTOM}px;"></div>`;
+
+    // Ticks
+    ticks.forEach(t => {
+        html += `<div class="pos-scale-tick" style="top:${t.y - 6}px;">${t.value}</div>`;
+    });
+
+    // Employee cards
+    salaries.forEach((s, i) => {
+        const y = positions[i];
+        const side = i % 2 === 0 ? 'left' : 'right';
+        const connectorSide = side === 'left' ? 'left' : '';
+        html += `
+        <div class="pos-connector ${connectorSide}" style="top:${y + 18}px;"></div>
+        <div class="pos-employee-card ${side}" style="top:${y}px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div class="pos-employee-name">${esc(s.nom)} ${esc(s.prenom)}</div>
+                    <div class="pos-employee-detail">${esc(s.profil)} ${s.secteur_nom ? '- ' + esc(s.secteur_nom) : ''}</div>
+                </div>
+                <div class="pos-employee-pesee">${s.pesee}</div>
+            </div>
+        </div>`;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', function() {
+    posRenderCriteres(null);
+});
+</script>
+{% endblock %}

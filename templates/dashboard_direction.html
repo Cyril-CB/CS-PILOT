@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord Direction{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="direction-header">
+        <div>
+            <h1>Tableau de bord Direction</h1>
+            <p class="subtitle">{{ today.strftime('%A %d %B %Y')|capitalize }} - Vue d'ensemble</p>
+        </div>
+    </div>
+
+    {# ── KPI principaux ── #}
+    <div class="stats-grid stats-grid-4">
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-content">
+                <h3>Effectif actif</h3>
+                <p class="stat-value">{{ total_salaries }}</p>
+                <p class="stat-detail">CDI:{{ contrats_dict.get('CDI', 0) }}  CDD:{{ contrats_dict.get('CDD', 0) }}  CEE:{{ contrats_dict.get('CEE', 0) }}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-warning' if absences_en_cours|length > 0 }}">
+            <div class="stat-icon">🏥</div>
+            <div class="stat-content">
+                <h3>Absences aujourd'hui</h3>
+                <p class="stat-value">{{ absences_en_cours|length }}</p>
+                <p class="stat-detail">{{ absences_par_secteur|length }} secteur{{ 's' if absences_par_secteur|length > 1 }} concerne{{ 's' if absences_par_secteur|length > 1 }}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-accent' if demandes_recup|length > 0 }}">
+            <div class="stat-icon">📋</div>
+            <div class="stat-content">
+                <h3>Demandes en attente</h3>
+                <p class="stat-value">{{ demandes_recup|length }}</p>
+                <p class="stat-detail">Recuperation a valider</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-danger' if nb_anomalies > 0 }}">
+            <div class="stat-icon">⚠️</div>
+            <div class="stat-content">
+                <h3>Anomalies</h3>
+                <p class="stat-value">{{ nb_anomalies }}</p>
+                <p class="stat-detail">Non traitee{{ 's' if nb_anomalies > 1 }}</p>
+            </div>
+        </div>
+    </div>
+
+    {# ── Ligne 2 : Absences en cours + Graphique motifs ── #}
+    <div class="direction-row">
+        <div class="direction-col direction-col-main">
+            <div class="section">
+                <h2>🏥 Absences en cours par secteur</h2>
+                {% if absences_en_cours|length > 0 %}
+                    {% for secteur, liste in absences_par_secteur.items() %}
+                    <div class="direction-secteur-block">
+                        <h4 class="direction-secteur-title">
+                            {{ secteur }}
+                            <span class="badge badge-warning">{{ liste|length }}</span>
+                        </h4>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Salarie</th>
+                                    <th>Motif</th>
+                                    <th>Du</th>
+                                    <th>Au</th>
+                                    <th>Jours</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ab in liste %}
+                                <tr>
+                                    <td><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
+                                    <td>
+                                        <span class="badge {% if ab.motif == 'Arret maladie' or ab.motif == 'Arrêt maladie' %}badge-danger{% elif 'Conge' in ab.motif or 'Congé' in ab.motif %}badge-info{% else %}badge-warning{% endif %}">
+                                            {{ ab.motif }}
+                                        </span>
+                                    </td>
+                                    <td>{{ ab.date_debut }}</td>
+                                    <td>{{ ab.date_fin }}</td>
+                                    <td><strong>{{ ab.jours_ouvres }}</strong></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="direction-empty">
+                        <p>Aucune absence en cours aujourd'hui</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="direction-col direction-col-side">
+            {# Repartition des absences par motif #}
+            <div class="section">
+                <h2>📊 Repartition absences</h2>
+                {% if repartition_motifs|length > 0 %}
+                    {% set total_absences = absences_en_cours|length %}
+                    {% set colors = ['#2563eb', '#f97316', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b', '#6366f1', '#06b6d4'] %}
+                    <div class="direction-chart">
+                        {% for motif in repartition_motifs %}
+                        <div class="direction-chart-row">
+                            <div class="direction-chart-label">{{ motif.motif }}</div>
+                            <div class="direction-chart-bar-container">
+                                <div class="direction-chart-bar"
+                                     style="width: {{ (motif.nb / total_absences * 100)|round }}%; background: {{ colors[loop.index0 % colors|length] }};">
+                                </div>
+                            </div>
+                            <div class="direction-chart-value">{{ motif.nb }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="direction-empty">
+                        <p>Aucune absence en cours</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            {# Stats mois en cours #}
+            <div class="section">
+                <h2>📅 Absences en {{ nom_mois }}</h2>
+                <div class="direction-mini-stats">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ absences_mois.nb }}</span>
+                        <span class="direction-mini-label">absence{{ 's' if absences_mois.nb > 1 }}</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ "%.0f"|format(absences_mois.total_jours) }}</span>
+                        <span class="direction-mini-label">jours ouvres cumules</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ── Ligne 3 : Validations mensuelles ── #}
+    <div class="section">
+        <div class="direction-validation-header">
+            <h2>✅ Validations mensuelles</h2>
+            <div class="direction-month-nav">
+                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction', val_mois=val_mois_prec, val_annee=val_annee_prec) }}"
+                   class="direction-month-btn" title="Mois precedent">◀</a>
+                <span class="direction-month-label">{{ nom_mois_validation }} {{ annee_validation }}</span>
+                {% if peut_avancer %}
+                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction', val_mois=val_mois_suiv, val_annee=val_annee_suiv) }}"
+                   class="direction-month-btn" title="Mois suivant">▶</a>
+                {% else %}
+                <span class="direction-month-btn direction-month-btn-disabled">▶</span>
+                {% endif %}
+                {% if not est_mois_courant %}
+                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction') }}"
+                   class="btn btn-sm btn-secondary" style="margin-left: 0.5rem;">Mois en cours</a>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Barre de progression globale #}
+        {% if nb_total_a_valider > 0 %}
+        <div class="direction-progress-section">
+            <div class="direction-progress-header">
+                <span>Progression globale</span>
+                <span><strong>{{ nb_complet }}</strong> / {{ nb_total_a_valider }} fiches completees</span>
+            </div>
+            <div class="direction-progress-bar-bg">
+                <div class="direction-progress-bar direction-progress-complete"
+                     style="width: {{ (nb_complet / nb_total_a_valider * 100)|round }}%;"
+                     title="Completees : {{ nb_complet }}"></div>
+                <div class="direction-progress-bar direction-progress-encours"
+                     style="width: {{ (nb_en_cours / nb_total_a_valider * 100)|round }}%;"
+                     title="En cours : {{ nb_en_cours }}"></div>
+            </div>
+            <div class="direction-progress-legend">
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--success);"></span> Completees ({{ nb_complet }})</span>
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--warning);"></span> En cours ({{ nb_en_cours }})</span>
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--gray-300);"></span> Non commencees ({{ nb_non_commence }})</span>
+            </div>
+        </div>
+
+        {# Detail par secteur #}
+        <div class="direction-validation-grid">
+            {% for secteur, stats in validation_par_secteur.items() %}
+            <div class="direction-validation-card">
+                <h4>{{ secteur }}</h4>
+                <div class="direction-progress-bar-bg direction-progress-bar-sm">
+                    {% if stats.total > 0 %}
+                    <div class="direction-progress-bar direction-progress-complete"
+                         style="width: {{ (stats.complet / stats.total * 100)|round }}%;"></div>
+                    <div class="direction-progress-bar direction-progress-encours"
+                         style="width: {{ (stats.en_cours / stats.total * 100)|round }}%;"></div>
+                    {% endif %}
+                </div>
+                <div class="direction-validation-stats">
+                    <span class="badge badge-success">{{ stats.complet }} ok</span>
+                    <span class="badge badge-warning">{{ stats.en_cours }} en cours</span>
+                    <span class="badge badge-info">{{ stats.non_commence }} restant{{ 's' if stats.non_commence > 1 }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="direction-empty">
+            <p>Aucun salarie a valider</p>
+        </div>
+        {% endif %}
+
+        {# Fiches en attente (collapsible) #}
+        {% if fiches_en_attente|length > 0 %}
+        <details class="direction-details">
+            <summary>Voir les {{ fiches_en_attente|length }} fiche{{ 's' if fiches_en_attente|length > 1 }} non completee{{ 's' if fiches_en_attente|length > 1 }}</summary>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Salarie</th>
+                        <th>Secteur</th>
+                        <th>Etapes manquantes</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in fiches_en_attente %}
+                    <tr>
+                        <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
+                        <td>{{ f.secteur }}</td>
+                        <td>
+                            {% for e in f.etapes_manquantes %}
+                            <span class="badge badge-warning">{{ e }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=f.user_id, mois=mois_validation, annee=annee_validation) }}" class="btn btn-sm btn-primary">Voir</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+    </div>
+
+    {# ── Ligne 4 : Demandes recup + Anomalies + Activite ── #}
+    <div class="direction-row direction-row-3">
+        {# Demandes de recuperation en attente #}
+        <div class="section">
+            <h2>🏖️ Demandes de recuperation</h2>
+            {% if demandes_recup|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Demandeur</th>
+                        <th>Periode</th>
+                        <th>Jours</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in demandes_recup %}
+                    <tr>
+                        <td>
+                            <strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong>
+                            <br><small style="color: var(--gray-500);">{{ d.secteur_nom or '' }}</small>
+                        </td>
+                        <td>{{ d.date_debut }} → {{ d.date_fin }}</td>
+                        <td><strong>{{ d.nb_jours }}</strong> j ({{ "%.1f"|format(d.nb_heures) }}h)</td>
+                        <td>
+                            {% if d.statut == 'en_attente_responsable' %}
+                            <span class="badge badge-warning">Attente responsable</span>
+                            {% elif d.statut == 'en_attente_direction' %}
+                            <span class="badge badge-info">Attente direction</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="btn btn-sm btn-primary">Traiter</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="direction-empty">
+                <p>Aucune demande en attente</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {# Anomalies #}
+        <div class="section">
+            <h2>⚠️ Anomalies recentes</h2>
+            {% if anomalies_non_traitees|length > 0 %}
+            <div class="direction-anomalies-list">
+                {% for a in anomalies_non_traitees %}
+                <div class="direction-anomaly-item direction-anomaly-{{ a.gravite }}">
+                    <div class="direction-anomaly-header">
+                        <span class="badge {% if a.gravite == 'critique' %}badge-danger{% elif a.gravite == 'alerte' %}badge-warning{% else %}badge-info{% endif %}">
+                            {{ a.gravite|upper }}
+                        </span>
+                        <small>{{ a.date_modification }}</small>
+                    </div>
+                    <p><strong>{{ a.salarie_nom }} {{ a.salarie_prenom }}</strong></p>
+                    <p class="direction-anomaly-desc">{{ a.description or a.type_anomalie }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% if nb_anomalies > 10 %}
+            <div style="margin-top: 1rem; text-align: center;">
+                <a href="{{ url_for('suivi_bp.suivi_anomalies') }}" class="btn btn-sm btn-secondary">Voir toutes les anomalies ({{ nb_anomalies }})</a>
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="direction-empty direction-empty-ok">
+                <p>Aucune anomalie en attente</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {# Top conges cumules #}
+        <div class="section">
+            <h2>🏖️ Top conges cumules</h2>
+            {% if top_conges|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Salarie</th>
+                        <th>Secteur</th>
+                        <th>CP solde</th>
+                        <th>CC solde</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tc in top_conges %}
+                    <tr>
+                        <td><strong>{{ tc.nom }} {{ tc.prenom }}</strong></td>
+                        <td style="font-size: 0.85rem;">{{ tc.secteur_nom }}</td>
+                        <td>
+                            <span style="color: {% if (tc.cp_a_prendre - tc.cp_pris) > 10 %}#f97316{% elif (tc.cp_a_prendre - tc.cp_pris) > 0 %}#28a745{% else %}#6c757d{% endif %};">
+                                {{ "%.1f"|format(tc.cp_a_prendre - tc.cp_pris) }} j
+                            </span>
+                        </td>
+                        <td>
+                            <span style="color: {% if tc.cc_solde > 4 %}#f97316{% elif tc.cc_solde > 0 %}#28a745{% else %}#6c757d{% endif %};">
+                                {{ "%.1f"|format(tc.cc_solde) }} j
+                            </span>
+                        </td>
+                        <td>
+                            <strong style="color: {% if tc.total_conges > 15 %}#dc3545{% elif tc.total_conges > 10 %}#f97316{% else %}#28a745{% endif %};">
+                                {{ "%.1f"|format(tc.total_conges) }} j
+                            </strong>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="direction-empty">
+                <p>Aucun solde de conges</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ── Acces rapides ── #}
+    <div class="section">
+        <h2>🔗 Acces rapides</h2>
+        <div class="direction-quick-links">
+            <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">✅</span>
+                <span>Vue ensemble validation</span>
+            </a>
+            <a href="{{ url_for('absences_bp.absences') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🏥</span>
+                <span>Gestion absences</span>
+            </a>
+            <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🏖️</span>
+                <span>Validation recup</span>
+            </a>
+            <a href="{{ url_for('suivi_bp.suivi_anomalies') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">⚠️</span>
+                <span>Suivi anomalies</span>
+            </a>
+            <a href="{{ url_for('admin_bp.gestion_users') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">👥</span>
+                <span>Gestion utilisateurs</span>
+            </a>
+            <a href="{{ url_for('suivi_bp.historique_modifications') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📋</span>
+                <span>Historique modifications</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

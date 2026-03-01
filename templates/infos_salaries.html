@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Infos salaries{% endblock %}
+
+{% block content %}
+<div class="infos-salaries-page">
+    <h1>Infos salaries</h1>
+    <p class="subtitle">Fiche de renseignement, contrats et documents</p>
+
+    <!-- Selection du salarie -->
+    <div class="section" style="margin-bottom: 1.5rem;">
+        <form method="GET" action="{{ url_for('infos_salaries_bp.infos_salaries') }}">
+            <div class="form-group" style="display: flex; align-items: center; gap: 1rem;">
+                <label for="user_id" style="white-space: nowrap; margin: 0; font-weight: 600;">Selectionner un salarie :</label>
+                <select id="user_id" name="user_id" onchange="this.form.submit()" style="min-width: 300px;">
+                    <option value="">-- Choisir un salarie --</option>
+                    {% for s in salaries %}
+                    <option value="{{ s.id }}" {% if selected_id == s.id %}selected{% endif %}>
+                        {{ s.nom }} {{ s.prenom }} ({{ s.profil }}) - {{ s.secteur_nom }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+    </div>
+
+    {% if salarie %}
+    <!-- Fiche du salarie -->
+    <div class="section" style="margin-bottom: 1.5rem; padding: 1.5rem; border-radius: 8px; background: var(--gray-50, #f8f9fa);">
+        <h2 style="margin-top: 0;">{{ salarie.nom }} {{ salarie.prenom }}</h2>
+        <div style="display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <div><strong>Profil :</strong> {{ salarie.profil }}</div>
+            <div><strong>Secteur :</strong> {{ salarie.secteur_nom or '-' }}</div>
+            <div><strong>Login :</strong> {{ salarie.login }}</div>
+            <div><strong>Statut :</strong>
+                {% if salarie.actif %}<span class="badge badge-success">Actif</span>
+                {% else %}<span class="badge badge-warning">Inactif</span>{% endif %}
+            </div>
+        </div>
+
+        <!-- Email -->
+        <form method="POST" action="{{ url_for('infos_salaries_bp.modifier_email') }}" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <label for="email" style="font-weight: 600; margin: 0;">Email :</label>
+            <input type="email" id="email" name="email" value="{{ salarie.email or '' }}"
+                   placeholder="adresse@email.com" style="width: 300px; padding: 6px 10px;">
+            <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
+        </form>
+
+        <!-- Pesee (CDI/CDD) -->
+        {% set has_cdi_cdd = contrats|selectattr('type_contrat', 'in', ['CDI', 'CDD'])|list|length > 0 %}
+        {% if has_cdi_cdd %}
+        <form method="POST" action="{{ url_for('infos_salaries_bp.modifier_pesee') }}" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-top: 0.75rem;">
+            <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <label for="pesee" style="font-weight: 600; margin: 0;">Pesee ALISFA :</label>
+            <input type="number" id="pesee" name="pesee" value="{{ salarie.pesee if salarie.pesee is not none else '' }}"
+                   placeholder="Points" style="width: 120px; padding: 6px 10px;" min="0">
+            <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
+            {% if salarie.pesee is not none %}
+            <span style="font-size: 0.85rem; color: var(--gray-500);">{{ salarie.pesee }} pts + SSC</span>
+            {% endif %}
+        </form>
+        {% endif %}
+    </div>
+
+    <!-- Contrats -->
+    <div class="section" style="margin-bottom: 1.5rem;">
+        <h2>Contrats</h2>
+
+        <!-- Formulaire ajout contrat -->
+        <form method="POST" action="{{ url_for('infos_salaries_bp.ajouter_contrat') }}" enctype="multipart/form-data"
+              style="background: var(--gray-50, #f8f9fa); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="type_contrat">Type *</label>
+                    <select name="type_contrat" id="type_contrat" required>
+                        {% for tc in types_contrat %}
+                        <option value="{{ tc }}">{{ tc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="date_debut_contrat">Date debut *</label>
+                    <input type="date" name="date_debut" id="date_debut_contrat" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="date_fin_contrat">Date fin</label>
+                    <input type="date" name="date_fin" id="date_fin_contrat">
+                </div>
+                <div class="form-group cee-field" style="margin-bottom: 0; display: none;">
+                    <label for="forfait_contrat">Forfait</label>
+                    <input type="text" name="forfait" id="forfait_contrat" placeholder="Ex: Journalier" style="width: 120px;">
+                </div>
+                <div class="form-group cee-field" style="margin-bottom: 0; display: none;">
+                    <label for="nbr_jours_contrat">Nbr. Jours</label>
+                    <input type="number" name="nbr_jours" id="nbr_jours_contrat" step="0.5" min="0" placeholder="0" style="width: 80px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="fichier_contrat">PDF du contrat</label>
+                    <input type="file" name="fichier_contrat" id="fichier_contrat" accept=".pdf">
+                </div>
+                <button type="submit" class="btn btn-primary">Ajouter le contrat</button>
+            </div>
+        </form>
+
+        <!-- Liste des contrats -->
+        {% if contrats %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Date debut</th>
+                    <th>Date fin</th>
+                    <th>Forfait</th>
+                    <th>Nbr. Jours</th>
+                    <th>Fichier</th>
+                    <th>Saisi par</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in contrats %}
+                <tr>
+                    <td><span class="badge badge-info">{{ c.type_contrat }}</span></td>
+                    <td>{{ c.date_debut }}</td>
+                    <td>{{ c.date_fin or '-' }}</td>
+                    <td>{{ c.forfait or '-' }}</td>
+                    <td>{{ c.nbr_jours if c.nbr_jours else '-' }}</td>
+                    <td>
+                        {% if c.fichier_path %}
+                        <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm">Telecharger</a>
+                        {% else %}
+                        <span style="color: var(--gray-400);">Aucun PDF</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.85rem;">{{ c.saisi_par_nom }} {{ c.saisi_par_prenom }}<br>
+                        <span style="color: var(--gray-500);">{{ c.created_at[:10] if c.created_at else '' }}</span>
+                    </td>
+                    <td>
+                        <form method="POST" action="{{ url_for('infos_salaries_bp.supprimer_contrat', contrat_id=c.id) }}"
+                              onsubmit="return confirm('Supprimer ce contrat ?');" style="display: inline;">
+                            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: var(--gray-500); font-style: italic;">Aucun contrat enregistre.</p>
+        {% endif %}
+    </div>
+
+    <!-- Documents -->
+    <div class="section">
+        <h2>Documents</h2>
+        <div class="documents-grid">
+            {% for type_code, type_label in types_document %}
+            <div class="document-card" style="background: var(--gray-50, #f8f9fa); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                <h3 style="margin-top: 0; font-size: 1rem;">{{ type_label }}</h3>
+
+                {% set doc = docs_par_type.get(type_code) %}
+
+                {% if doc %}
+                <!-- Document existant -->
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+                    <span class="badge badge-success">Fichier present</span>
+                    <span style="font-size: 0.85rem; color: var(--gray-600);">{{ doc.fichier_nom }}</span>
+                    {% if doc.description %}
+                    <span style="font-size: 0.85rem; font-style: italic;">- {{ doc.description }}</span>
+                    {% endif %}
+                </div>
+                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                    <a href="{{ url_for('infos_salaries_bp.telecharger_document', doc_id=doc.id) }}" class="btn btn-sm">Telecharger</a>
+                    <form method="POST" action="{{ url_for('infos_salaries_bp.supprimer_document', doc_id=doc.id) }}"
+                          onsubmit="return confirm('Supprimer ce document ?');" style="display: inline;">
+                        <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                    </form>
+                </div>
+                <hr style="margin: 0.75rem 0; border-color: var(--gray-200);">
+                <p style="font-size: 0.85rem; margin-bottom: 0.5rem; color: var(--gray-500);">Remplacer le document :</p>
+                {% endif %}
+
+                <!-- Formulaire upload -->
+                <form method="POST" action="{{ url_for('infos_salaries_bp.ajouter_document') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="user_id" value="{{ salarie.id }}">
+                    <input type="hidden" name="type_document" value="{{ type_code }}">
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end;">
+                        {% if type_code in ('AUTRE-1', 'AUTRE-2') %}
+                        <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 150px;">
+                            <label>Description</label>
+                            <input type="text" name="description" placeholder="Description du document..."
+                                   value="{{ doc.description if doc else '' }}" style="width: 100%;">
+                        </div>
+                        {% endif %}
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label>Fichier
+                                {% if type_code in ('CARTE-ID-RECTO', 'CARTE-ID-VERSO', 'CARTE-VITALE') %}
+                                (PDF ou image)
+                                {% else %}
+                                (PDF)
+                                {% endif %}
+                            </label>
+                            <input type="file" name="fichier_document" required
+                                   {% if type_code in ('CARTE-ID-RECTO', 'CARTE-ID-VERSO', 'CARTE-VITALE') %}
+                                   accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp"
+                                   {% else %}
+                                   accept=".pdf"
+                                   {% endif %}>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            {% if doc %}Remplacer{% else %}Envoyer{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% elif selected_id %}
+    <div class="no-data">
+        <p>Salarie introuvable.</p>
+    </div>
+    {% else %}
+    <div class="no-data" style="margin-top: 2rem;">
+        <p>Selectionnez un salarie pour afficher sa fiche de renseignement.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var typeSelect = document.getElementById('type_contrat');
+    if (typeSelect) {
+        function toggleCeeFields() {
+            var isCee = typeSelect.value === 'CEE';
+            var fields = document.querySelectorAll('.cee-field');
+            fields.forEach(function(f) { f.style.display = isCee ? '' : 'none'; });
+        }
+        typeSelect.addEventListener('change', toggleCeeFields);
+        toggleCeeFields();
+    }
+});
+</script>
+
+<style>
+.documents-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 1rem;
+}
+.document-card {
+    border: 1px solid var(--gray-200, #e0e0e0);
+}
+[data-theme="dark"] .document-card,
+[data-theme="dark"] .infos-salaries-page .section[style*="f8f9fa"] {
+    background: var(--gray-800, #1e1e1e) !important;
+    border-color: var(--gray-600, #555) !important;
+}
+.badge-info {
+    background: var(--primary, #1976d2);
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+}
+</style>
+{% endblock %}

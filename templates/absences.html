@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Saisie des absences{% endblock %}
+
+{% block content %}
+<div class="absences-page">
+    <h1>Saisie des arrêts et congés</h1>
+    <p class="subtitle">Enregistrement des absences (arrêts maladie, congés, etc.)</p>
+
+    <!-- Formulaire de saisie -->
+    <div class="section absences-form-section">
+        <h2>Nouvelle absence</h2>
+        <form method="POST" action="{{ url_for('absences_bp.absences') }}" enctype="multipart/form-data" id="absenceForm">
+            <div class="absences-form-grid">
+                <div class="form-group">
+                    <label for="user_id">Salarié *</label>
+                    <select id="user_id" name="user_id" required>
+                        <option value="">-- Sélectionner un salarié --</option>
+                        {% for s in salaries %}
+                        <option value="{{ s.id }}">{{ s.nom }} {{ s.prenom }} ({{ s.profil }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="motif">Motif d'absence *</label>
+                    <select id="motif" name="motif" required>
+                        <option value="">-- Sélectionner un motif --</option>
+                        {% for m in motifs %}
+                        <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="date_debut">Date de début *</label>
+                    <input type="date" id="date_debut" name="date_debut" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="date_fin">Date de fin *</label>
+                    <input type="date" id="date_fin" name="date_fin" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="date_reprise">Date de reprise (facultatif)</label>
+                    <input type="date" id="date_reprise" name="date_reprise">
+                </div>
+
+                <div class="form-group">
+                    <label>Total jours ouvrés</label>
+                    <div class="jours-ouvres-display" id="joursOuvresDisplay">
+                        <span id="joursOuvresValue">-</span> jour(s) ouvré(s)
+                    </div>
+                    <p class="help-text">Calculé automatiquement (weekends et jours fériés déduits)</p>
+                </div>
+            </div>
+
+            <!-- Affichage des compteurs conges du salarie selectionne -->
+            <div id="compteurs-conges" style="display: none; grid-column: 1 / -1;">
+                <div style="background: var(--gray-50, #f8f9fa); border: 1px solid var(--gray-200, #e9ecef); border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                    <h4 style="margin: 0 0 0.5rem;">Soldes congés du salarié</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                        <div>
+                            <strong>Congés payés :</strong>
+                            <span id="info-cp-solde">-</span> j disponibles
+                            <br><small style="color: #888;">Acquis : <span id="info-cp-acquis">-</span> | À prendre : <span id="info-cp-a-prendre">-</span> | Pris : <span id="info-cp-pris">-</span></small>
+                        </div>
+                        <div>
+                            <strong>Congés conventionnels :</strong>
+                            <span id="info-cc-solde">-</span> j disponibles
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="commentaire">Commentaire</label>
+                <textarea id="commentaire" name="commentaire" rows="2" placeholder="Informations complémentaires..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="justificatif">Justificatif (PDF ou image, facultatif)</label>
+                <input type="file" id="justificatif" name="justificatif" accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp">
+                <p class="help-text">Formats acceptés : PDF, JPG, PNG, GIF, BMP</p>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Enregistrer l'absence</button>
+                <a href="{{ url_for('absences_bp.ouvrir_dossier') }}" class="btn btn-secondary" title="Afficher le chemin du dossier documents">Ouvrir dossier documents</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Recherche par salarié -->
+    <div class="section" style="margin-top: 2rem;">
+        <h2>Historique des absences</h2>
+        <form method="GET" action="{{ url_for('absences_bp.absences') }}" class="absences-search-form">
+            <div class="form-group" style="display: inline-block; min-width: 300px;">
+                <select name="search_user_id" onchange="this.form.submit()">
+                    <option value="">-- Tous les salariés (20 derniers) --</option>
+                    {% for s in salaries %}
+                    <option value="{{ s.id }}" {% if search_user_id == s.id %}selected{% endif %}>{{ s.nom }} {{ s.prenom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% if search_user_id %}
+            <a href="{{ url_for('absences_bp.absences') }}" class="btn btn-secondary" style="margin-left: 0.5rem;">Réinitialiser</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <!-- Liste des absences -->
+    {% if absences_list %}
+    <div class="section">
+        <table class="data-table absences-table">
+            <thead>
+                <tr>
+                    <th>Salarié</th>
+                    <th>Motif</th>
+                    <th>Du</th>
+                    <th>Au</th>
+                    <th>Reprise</th>
+                    <th>Jours ouvrés</th>
+                    <th>Commentaire</th>
+                    <th>Justificatif</th>
+                    <th>Saisi par</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in absences_list %}
+                <tr>
+                    <td><strong>{{ a.salarie_nom }} {{ a.salarie_prenom }}</strong></td>
+                    <td>
+                        <span class="badge-absence badge-absence-{{ a.motif | replace(' ', '-') | replace('é', 'e') | replace('è', 'e') | replace('ê', 'e') | lower }}">
+                            {{ a.motif }}
+                        </span>
+                    </td>
+                    <td>{{ a.date_debut }}</td>
+                    <td>{{ a.date_fin }}</td>
+                    <td>{{ a.date_reprise or '-' }}</td>
+                    <td><strong>{{ a.jours_ouvres }}</strong></td>
+                    <td>{{ a.commentaire or '-' }}</td>
+                    <td>
+                        {% if a.justificatif_path %}
+                        <a href="{{ url_for('absences_bp.telecharger_justificatif', absence_id=a.id) }}" class="btn btn-sm" title="Télécharger le justificatif">Télécharger</a>
+                        {% else %}
+                        <span style="color: var(--gray-400);">-</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 0.85rem;">{{ a.saisi_par_nom }} {{ a.saisi_par_prenom }}<br><span style="color: var(--gray-500);">{{ a.created_at[:10] if a.created_at else '' }}</span></td>
+                    <td>
+                        <form method="POST" action="{{ url_for('absences_bp.supprimer_absence', absence_id=a.id) }}" onsubmit="return confirm('Supprimer cette absence ? Les jours seront retirés du calendrier.');">
+                            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="no-data" style="margin-top: 1rem;">
+        <p>{% if search_user_id %}Aucune absence enregistrée pour ce salarié.{% else %}Aucune absence enregistrée.{% endif %}</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Calcul automatique des jours ouvres
+function calculerJoursOuvres() {
+    var dateDebut = document.getElementById('date_debut').value;
+    var dateFin = document.getElementById('date_fin').value;
+    var display = document.getElementById('joursOuvresValue');
+
+    if (!dateDebut || !dateFin) {
+        display.textContent = '-';
+        return;
+    }
+
+    if (dateDebut > dateFin) {
+        display.textContent = '0';
+        display.style.color = 'var(--danger)';
+        return;
+    }
+
+    // Appel API pour calculer en tenant compte des jours feries
+    fetch('{{ url_for("absences_bp.api_jours_ouvres") }}?date_debut=' + dateDebut + '&date_fin=' + dateFin)
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            display.textContent = data.jours_ouvres;
+            display.style.color = data.jours_ouvres > 0 ? 'var(--primary)' : 'var(--danger)';
+        })
+        .catch(function() {
+            display.textContent = '?';
+        });
+}
+
+document.getElementById('date_debut').addEventListener('change', calculerJoursOuvres);
+document.getElementById('date_fin').addEventListener('change', calculerJoursOuvres);
+
+// Affichage des compteurs conges
+function chargerCompteursConges() {
+    var userId = document.getElementById('user_id').value;
+    var motif = document.getElementById('motif').value;
+    var compteursDiv = document.getElementById('compteurs-conges');
+
+    if (!userId || (motif !== 'Congé payé' && motif !== 'Congé conventionnel')) {
+        compteursDiv.style.display = 'none';
+        return;
+    }
+
+    fetch('{{ url_for("absences_bp.api_compteurs_conges") }}?user_id=' + userId)
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.error) {
+                compteursDiv.style.display = 'none';
+                return;
+            }
+            document.getElementById('info-cp-acquis').textContent = data.cp_acquis.toFixed(2);
+            document.getElementById('info-cp-a-prendre').textContent = data.cp_a_prendre.toFixed(2);
+            document.getElementById('info-cp-pris').textContent = data.cp_pris.toFixed(2);
+            var cpSolde = document.getElementById('info-cp-solde');
+            cpSolde.textContent = data.cp_solde.toFixed(2);
+            cpSolde.style.color = data.cp_solde > 0 ? '#28a745' : (data.cp_solde < 0 ? '#dc3545' : '#6c757d');
+            var ccSolde = document.getElementById('info-cc-solde');
+            ccSolde.textContent = data.cc_solde.toFixed(2);
+            ccSolde.style.color = data.cc_solde > 0 ? '#28a745' : (data.cc_solde < 0 ? '#dc3545' : '#6c757d');
+            compteursDiv.style.display = 'block';
+        })
+        .catch(function() {
+            compteursDiv.style.display = 'none';
+        });
+}
+
+document.getElementById('user_id').addEventListener('change', chargerCompteursConges);
+document.getElementById('motif').addEventListener('change', chargerCompteursConges);
+</script>
+{% endblock %}

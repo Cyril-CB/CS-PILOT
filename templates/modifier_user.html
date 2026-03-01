@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier un utilisateur{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>✏️ Modifier l'utilisateur</h1>
+    <p class="subtitle">{{ user.prenom }} {{ user.nom }} ({{ user.login }})</p>
+    
+    <form method="POST" action="{{ url_for('admin_bp.modifier_user', user_id=user.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="form-group">
+                <label for="nom">Nom *</label>
+                <input type="text" id="nom" name="nom" value="{{ user.nom }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="prenom">Prénom *</label>
+                <input type="text" id="prenom" name="prenom" value="{{ user.prenom }}" required>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="login">Identifiant de connexion *</label>
+            <input type="text" id="login" name="login" value="{{ user.login }}" required autocomplete="off">
+        </div>
+        
+        <div class="form-group">
+            <label for="nouveau_password">Nouveau mot de passe (optionnel)</label>
+            <input type="password" id="nouveau_password" name="nouveau_password" autocomplete="new-password"
+                   minlength="8" oninput="checkPasswordStrength()">
+            <div id="password-strength" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+            <p class="help-text">Laissez vide pour conserver le mot de passe actuel. Si rempli : 8 caractères min, 1 majuscule, 1 minuscule, 1 chiffre.</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="profil">Profil *</label>
+            <select id="profil" name="profil" required onchange="updateProfileOptions()">
+                <option value="salarie" {% if user.profil == 'salarie' %}selected{% endif %}>👤 Salarié</option>
+                <option value="responsable" {% if user.profil == 'responsable' %}selected{% endif %}>👨‍💼 Responsable</option>
+                <option value="comptable" {% if user.profil == 'comptable' %}selected{% endif %}>💰 Comptable</option>
+                <option value="directeur" {% if user.profil == 'directeur' %}selected{% endif %}>🎯 Directeur</option>
+                <option value="prestataire" {% if user.profil == 'prestataire' %}selected{% endif %}>📋 Prestataire paie</option>
+            </select>
+        </div>
+        
+        <div id="secteur-group" class="form-group">
+            <label for="secteur_id">Secteur</label>
+            <select id="secteur_id" name="secteur_id">
+                <option value="">-- Aucun secteur --</option>
+                {% for secteur in secteurs %}
+                <option value="{{ secteur.id }}" {% if user.secteur_id == secteur.id %}selected{% endif %}>
+                    {{ secteur.nom }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="responsable-group" class="form-group">
+            <label for="responsable_id">Responsable hiérarchique</label>
+            <select id="responsable_id" name="responsable_id">
+                <option value="">-- Aucun responsable --</option>
+                {% for resp in responsables %}
+                <option value="{{ resp.id }}" {% if user.responsable_id == resp.id %}selected{% endif %}>
+                    {{ resp.prenom }} {{ resp.nom }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div id="solde-group" class="form-group">
+            <label for="solde_initial">Solde initial d'heures supplémentaires</label>
+            <input type="number" id="solde_initial" name="solde_initial" step="0.01"
+                   value="{{ user.solde_initial if user.solde_initial else 0 }}"
+                   placeholder="Ex: 14.5">
+            <p class="help-text">
+                Solde d'heures accumulé avant la mise en service de l'application.
+                Peut être positif (heures en plus) ou négatif (heures en moins).
+            </p>
+        </div>
+
+        <div id="conges-group">
+            <hr style="margin: 1.5rem 0; border-color: var(--gray-200);">
+            <h3 style="margin-bottom: 1rem;">Compteurs de congés</h3>
+
+            <div class="form-group">
+                <label for="date_entree">Date d'entrée du salarié</label>
+                <input type="date" id="date_entree" name="date_entree"
+                       value="{{ user.date_entree or '' }}">
+                <p class="help-text">Utilisée pour le prorata du premier mois d'acquisition des congés</p>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.5rem;">Congés payés (25 jours/an)</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="cp_acquis">Acquis</label>
+                    <input type="number" id="cp_acquis" name="cp_acquis" step="0.01"
+                           value="{{ user.cp_acquis if user.cp_acquis else 0 }}">
+                    <p class="help-text">Jours en cours d'acquisition (période mai-mai)</p>
+                </div>
+                <div class="form-group">
+                    <label for="cp_a_prendre">À prendre</label>
+                    <input type="number" id="cp_a_prendre" name="cp_a_prendre" step="0.01"
+                           value="{{ user.cp_a_prendre if user.cp_a_prendre else 0 }}">
+                    <p class="help-text">Solde de jours disponibles pour le salarié</p>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="cp_pris">Pris</label>
+                    <input type="number" id="cp_pris" name="cp_pris" step="0.01"
+                           value="{{ user.cp_pris if user.cp_pris else 0 }}">
+                    <p class="help-text">Cumul de jours déjà pris</p>
+                </div>
+                <div class="form-group">
+                    <label>Solde</label>
+                    <div class="jours-ouvres-display" style="padding: 0.5rem; font-weight: bold; font-size: 1.1rem;">
+                        <span id="cp_solde_display">{{ "%.2f"|format((user.cp_a_prendre or 0) - (user.cp_pris or 0)) }}</span> jour(s)
+                    </div>
+                    <p class="help-text">Calculé : À prendre - Pris</p>
+                </div>
+            </div>
+
+            <h4 style="margin: 1rem 0 0.5rem;">Congés conventionnels (8 jours/an)</h4>
+            <div class="form-group">
+                <label for="cc_solde">Solde disponible</label>
+                <input type="number" id="cc_solde" name="cc_solde" step="0.01"
+                       value="{{ user.cc_solde if user.cc_solde else 0 }}">
+                <p class="help-text">Jours directement disponibles (1 jour/mois d'octobre à mai)</p>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('admin_bp.gestion_users') }}" class="btn btn-secondary">Annuler</a>
+            <button type="submit" class="btn btn-primary">💾 Enregistrer les modifications</button>
+        </div>
+    </form>
+    
+    <script>
+    function updateProfileOptions() {
+        const profil = document.getElementById('profil').value;
+        const secteurGroup = document.getElementById('secteur-group');
+        const responsableGroup = document.getElementById('responsable-group');
+        const soldeGroup = document.getElementById('solde-group');
+        const congesGroup = document.getElementById('conges-group');
+
+        if (profil === 'salarie') {
+            secteurGroup.style.display = 'block';
+            responsableGroup.style.display = 'block';
+            soldeGroup.style.display = 'block';
+            congesGroup.style.display = 'block';
+        } else if (profil === 'responsable') {
+            secteurGroup.style.display = 'block';
+            responsableGroup.style.display = 'none';
+            soldeGroup.style.display = 'block';
+            congesGroup.style.display = 'block';
+        } else if (profil === 'comptable') {
+            secteurGroup.style.display = 'none';
+            responsableGroup.style.display = 'none';
+            soldeGroup.style.display = 'none';
+            congesGroup.style.display = 'block';
+        } else if (profil === 'directeur' || profil === 'prestataire') {
+            secteurGroup.style.display = 'none';
+            responsableGroup.style.display = 'none';
+            soldeGroup.style.display = 'none';
+            congesGroup.style.display = 'none';
+        }
+    }
+
+    function updateCpSolde() {
+        var aPrendre = parseFloat(document.getElementById('cp_a_prendre').value) || 0;
+        var pris = parseFloat(document.getElementById('cp_pris').value) || 0;
+        var solde = aPrendre - pris;
+        var display = document.getElementById('cp_solde_display');
+        display.textContent = solde.toFixed(2);
+        display.style.color = solde > 0 ? '#28a745' : (solde < 0 ? '#dc3545' : '#6c757d');
+    }
+
+    document.getElementById('cp_a_prendre').addEventListener('input', updateCpSolde);
+    document.getElementById('cp_pris').addEventListener('input', updateCpSolde);
+
+    function checkPasswordStrength() {
+        var pw = document.getElementById('nouveau_password').value;
+        var el = document.getElementById('password-strength');
+        if (!pw) { el.innerHTML = ''; return; }
+        var msgs = [];
+        if (pw.length < 8) msgs.push('8 caractères minimum');
+        if (!/[A-Z]/.test(pw)) msgs.push('1 majuscule');
+        if (!/[a-z]/.test(pw)) msgs.push('1 minuscule');
+        if (!/[0-9]/.test(pw)) msgs.push('1 chiffre');
+        var warn = !/[^A-Za-z0-9]/.test(pw);
+        if (msgs.length > 0) {
+            el.innerHTML = '<span style="color:#dc3545;">Manque : ' + msgs.join(', ') + '</span>';
+        } else if (warn) {
+            el.innerHTML = '<span style="color:#f0ad4e;">Valide, mais un caractère spécial est recommandé</span>';
+        } else {
+            el.innerHTML = '<span style="color:#28a745;">Mot de passe robuste</span>';
+        }
+    }
+
+    // Initialiser l'affichage au chargement
+    updateProfileOptions();
+    updateCpSolde();
+    </script>
+</div>
+{% endblock %}

@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+
+{% block title %}Vue calendrier - {{ nom_mois }} {{ annee }}{% endblock %}
+
+{% block content %}
+<div class="vue-mensuelle">
+    <!-- Selecteur d'utilisateur -->
+    {% if users_accessibles|length > 0 %}
+    <div class="user-selector" style="background: var(--gray-50); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <label for="user_select" style="margin-right: 1rem; font-weight: 500;">
+            {% if session.profil == 'responsable' %}
+            👨‍💼 Fiche de mon equipe :
+            {% else %}
+            👤 Fiche a afficher :
+            {% endif %}
+        </label>
+        <select id="user_select" onchange="changerUtilisateur()" style="padding: 0.5rem; border: 2px solid #667eea; border-radius: 5px; font-size: 1rem;">
+            {% for u in users_accessibles %}
+            <option value="{{ u.id }}" {% if u.id == user_id_a_afficher %}selected{% endif %}>
+                {{ u.prenom }} {{ u.nom }}
+                {% if u.profil == 'responsable' %}(Responsable){% elif u.profil == 'comptable' %}(Comptable){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+    <script>
+    function changerUtilisateur() {
+        const userId = document.getElementById('user_select').value;
+        window.location.href = "{{ url_for('validation_bp.vue_calendrier') }}?user_id=" + userId + "&mois={{ mois }}&annee={{ annee }}";
+    }
+    </script>
+    {% endif %}
+
+    <div class="month-header">
+        <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary">← {{ mois_precedent }}/{{ annee_precedente }}</a>
+
+        <h1>📅 {{ nom_mois }} {{ annee }}
+        {% if user_affiche.id != session.user_id %}
+        <br><small style="font-size: 0.6em; color: var(--gray-500);">{{ user_affiche.prenom }} {{ user_affiche.nom }}</small>
+        {% endif %}
+        </h1>
+
+        <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary">{{ mois_suivant }}/{{ annee_suivante }} →</a>
+    </div>
+
+    <!-- Basculer entre les vues -->
+    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; justify-content: center;">
+        <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois, annee=annee, user_id=user_id_a_afficher) }}"
+           class="btn btn-secondary" style="font-size: 0.85rem;">📋 Vue tableau</a>
+        <span class="btn btn-primary" style="font-size: 0.85rem; cursor: default;">📅 Vue calendrier</span>
+    </div>
+
+    <!-- Recapitulatif du mois -->
+    <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card">
+            <div class="stat-icon">📊</div>
+            <div class="stat-content">
+                <h3>Heures theoriques</h3>
+                <p class="stat-value">{{ "%.2f"|format(total_heures_theoriques) }}h</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-content">
+                <h3>Heures reelles</h3>
+                <p class="stat-value">{{ "%.2f"|format(total_heures_reelles) }}h</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">
+                {% if solde_mois > 0 %}➕{% elif solde_mois < 0 %}➖{% else %}➡️{% endif %}
+            </div>
+            <div class="stat-content">
+                <h3>Solde du mois</h3>
+                <p class="stat-value" style="color: {% if solde_mois > 0 %}#28a745{% elif solde_mois < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {% if solde_mois > 0 %}+{% endif %}{{ "%.2f"|format(solde_mois) }}h
+                </p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">💼</div>
+            <div class="stat-content">
+                <h3>Solde cumule</h3>
+                <p class="stat-value" style="color: {% if solde_cumule > 0 %}#28a745{% elif solde_cumule < 0 %}#dc3545{% else %}#6c757d{% endif %};">
+                    {% if solde_cumule > 0 %}+{% endif %}{{ "%.2f"|format(solde_cumule) }}h
+                </p>
+            </div>
+        </div>
+    </div>
+
+    {% if validation and validation.bloque %}
+    <div class="help-box cal-box-locked">
+        <h4>🔒 Fiche verrouillee</h4>
+        <p>Cette fiche a ete validee par le responsable et le directeur. <strong>Aucune modification n'est possible.</strong></p>
+    </div>
+    {% endif %}
+
+    {% if nb_jours_non_declares > 0 %}
+    <div class="help-box cal-box-danger">
+        <h4>⚠️ {{ nb_jours_non_declares }} jour(s) non declare(s)</h4>
+        <p>Cliquez sur un jour rouge pour le saisir ou le declarer.</p>
+    </div>
+    {% endif %}
+
+    <!-- Legende -->
+    <div class="cal-legende">
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #d1fae5; border: 1px solid #6ee7b7;"></div>
+            <span>Declare conforme</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #dbeafe; border: 1px solid #93c5fd;"></div>
+            <span>Saisi (heures modifiees)</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #fef3c7; border: 1px solid #fcd34d;"></div>
+            <span>Recup journee</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #ede9fe; border: 1px solid #c4b5fd;"></div>
+            <span>Absence (arret/conge)</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #fee2e2; border: 1px solid #fca5a5;"></div>
+            <span>Non declare</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #fce7f3; border: 1px solid #f9a8d4;"></div>
+            <span>Jour ferie</span>
+        </div>
+        <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #f1f5f9; border: 1px solid #cbd5e1;"></div>
+            <span>Weekend / Non travaille</span>
+        </div>
+    </div>
+
+    <!-- Grille calendrier -->
+    <div class="section" style="padding: 1rem;">
+        <div class="cal-grid">
+            <!-- En-tetes jours de la semaine -->
+            <div class="cal-header-cell">Lun</div>
+            <div class="cal-header-cell">Mar</div>
+            <div class="cal-header-cell">Mer</div>
+            <div class="cal-header-cell">Jeu</div>
+            <div class="cal-header-cell">Ven</div>
+            <div class="cal-header-cell cal-header-weekend">Sam</div>
+            <div class="cal-header-cell cal-header-weekend">Dim</div>
+
+            <!-- Cases vides avant le 1er jour -->
+            {% for i in range(premier_jour_semaine) %}
+            <div class="cal-cell cal-cell-empty"></div>
+            {% endfor %}
+
+            <!-- Jours du mois -->
+            {% for j in jours_calendrier %}
+            {% set d = j.donnees %}
+            {% set cls = 'cal-cell' %}
+
+            {% if j.est_dimanche %}
+                {% set cls = cls + ' cal-cell-dimanche' %}
+            {% elif j.est_ferie %}
+                {% set cls = cls + ' cal-cell-ferie' %}
+            {% elif j.est_weekend and not d %}
+                {% set cls = cls + ' cal-cell-weekend' %}
+            {% elif d and d.non_declare %}
+                {% set cls = cls + ' cal-cell-non-declare' %}
+            {% elif d and d.type_saisie == 'absence' %}
+                {% set cls = cls + ' cal-cell-absence' %}
+            {% elif d and d.type_saisie == 'recup_journee' %}
+                {% set cls = cls + ' cal-cell-recup' %}
+            {% elif d and d.est_declare %}
+                {% set cls = cls + ' cal-cell-declare' %}
+            {% elif d and d.est_saisi %}
+                {% set cls = cls + ' cal-cell-saisi' %}
+            {% else %}
+                {% set cls = cls + ' cal-cell-vide' %}
+            {% endif %}
+
+            <div class="{{ cls }}"
+                 {% if d and peut_modifier and not j.est_dimanche %}
+                 onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
+                 style="cursor: pointer;"
+                 title="Cliquer pour {% if d.est_saisi %}modifier{% else %}saisir{% endif %}"
+                 {% elif j.est_ferie %}
+                 title="{{ j.libelle_ferie }}"
+                 {% endif %}>
+
+                <div class="cal-cell-numero">{{ j.jour }}</div>
+
+                {% if j.est_ferie %}
+                <div class="cal-cell-badge cal-badge-ferie">{{ j.libelle_ferie }}</div>
+                {% endif %}
+
+                {% if j.est_dimanche %}
+                    {# Rien a afficher pour les dimanches #}
+                {% elif d %}
+                    {% if d.type_saisie == 'absence' %}
+                    <div class="cal-cell-badge cal-badge-absence">🏥 Absence</div>
+                    <div class="cal-cell-info">
+                        <span class="cal-cell-heures">{{ "%.1f"|format(d.heures_reelles) }}h</span>
+                    </div>
+                    {% elif d.type_saisie == 'recup_journee' %}
+                    <div class="cal-cell-badge cal-badge-recup">🏖️ Recup</div>
+                    {% elif d.est_declare %}
+                    <div class="cal-cell-info">
+                        <span class="cal-cell-heures">{{ "%.1f"|format(d.heures_reelles) }}h</span>
+                        <span class="cal-cell-status">✅</span>
+                    </div>
+                    {% elif d.est_saisi %}
+                    <div class="cal-cell-info">
+                        <span class="cal-cell-heures">{{ "%.1f"|format(d.heures_reelles) }}h</span>
+                        {% if d.ecart > 0 %}
+                        <span class="cal-cell-ecart cal-ecart-pos">+{{ "%.1f"|format(d.ecart) }}</span>
+                        {% elif d.ecart < 0 %}
+                        <span class="cal-cell-ecart cal-ecart-neg">{{ "%.1f"|format(d.ecart) }}</span>
+                        {% endif %}
+                    </div>
+                    {% elif d.non_declare %}
+                    <div class="cal-cell-badge cal-badge-alerte">⚠️</div>
+                    {% else %}
+                    <div class="cal-cell-info">
+                        <span class="cal-cell-heures cal-heures-theo">{{ "%.1f"|format(d.heures_theoriques) }}h</span>
+                    </div>
+                    {% endif %}
+
+                    {% if d.type_periode == 'vacances' and not d.est_samedi %}
+                    <div class="cal-cell-periode">vac.</div>
+                    {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
+
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            {% if validation and validation.bloque %}
+            <a href="{{ url_for('exports_bp.export_pdf_mensuel', user_id=user_id_a_afficher, mois=mois, annee=annee) }}"
+               class="btn" style="background: #dc3545; color: white;">
+                📄 Telecharger PDF
+            </a>
+            {% if session.profil == 'directeur' %}
+            <button onclick="deverrouillerFiche()" class="btn" style="background: #ffc107; color: #000;">
+                🔓 Deverrouiller
+            </button>
+            {% endif %}
+            {% endif %}
+
+            {% if validation %}
+            <div class="validation-status" style="text-align: right;">
+                {% if validation.bloque %}
+                <span class="badge" style="background: #28a745; color: white; padding: 0.5rem 1rem; font-size: 1rem;">
+                    🔒 Fiche verrouillee
+                </span>
+                {% else %}
+                <div style="font-size: 0.85rem; color: #666;">
+                    {% if validation.validation_salarie %}✅ Salarie valide<br>{% endif %}
+                    {% if validation.validation_responsable %}✅ Responsable valide<br>{% endif %}
+                    {% if validation.validation_directeur %}✅ Directeur valide{% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if not mois_est_termine %}
+            <div class="help-box cal-box-warning">
+                <h4>⏳ Mois en cours</h4>
+                <p>La validation sera possible a partir du 1er jour du mois suivant.</p>
+            </div>
+            {% elif peut_valider_mois and not (validation and validation.bloque) %}
+            <form method="POST" action="{{ url_for('validation_bp.valider_mois') }}" onsubmit="return confirm('Etes-vous sur de vouloir valider ce mois ?');">
+                <input type="hidden" name="user_id" value="{{ user_id_a_afficher }}">
+                <input type="hidden" name="mois" value="{{ mois }}">
+                <input type="hidden" name="annee" value="{{ annee }}">
+                <button type="submit" class="btn btn-primary">
+                    {% if session.profil == 'directeur' %}
+                    ✅ Valider (Directeur)
+                    {% elif session.profil == 'responsable' %}
+                    ✅ Valider (Responsable)
+                    {% else %}
+                    ✅ Valider le mois
+                    {% endif %}
+                </button>
+            </form>
+            {% elif validation and validation.bloque %}
+            <button class="btn" style="background: #28a745; color: white;" disabled>✅ Valide et verrouille</button>
+            {% elif nb_jours_non_declares > 0 %}
+            <div class="help-box cal-box-danger" style="margin: 0;">
+                <p><strong>{{ nb_jours_non_declares }} jour(s)</strong> a declarer avant validation.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function deverrouillerFiche() {
+    const motif = prompt("⚠️ ATTENTION : Vous etes sur le point de deverrouiller cette fiche.\n\nToutes les validations seront supprimees et la fiche redeviendra modifiable.\n\nMotif obligatoire (sera enregistre dans l'historique) :");
+
+    if (motif === null) return;
+    if (!motif || motif.trim() === '') {
+        alert('Le motif est obligatoire pour deverrouiller.');
+        return;
+    }
+    if (!confirm('Etes-vous absolument sur de vouloir deverrouiller cette fiche ?\n\nMotif : ' + motif)) return;
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '{{ url_for("validation_bp.deverrouiller_mois") }}';
+
+    const fields = {
+        'user_id': '{{ user_id_a_afficher }}',
+        'mois': '{{ mois }}',
+        'annee': '{{ annee }}',
+        'motif': motif
+    };
+
+    for (const key in fields) {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = fields[key];
+        form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+}
+</script>
+
+<style>
+/* Grille calendrier */
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    background: var(--gray-200);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cal-header-cell {
+    background: var(--gray-100);
+    padding: 0.6rem 0.25rem;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.8rem;
+    color: var(--gray-700);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cal-header-weekend {
+    color: var(--gray-500);
+}
+
+/* Cellules du calendrier */
+.cal-cell {
+    background: var(--white);
+    min-height: 90px;
+    padding: 0.4rem;
+    position: relative;
+    transition: box-shadow 0.15s;
+}
+
+.cal-cell:hover:not(.cal-cell-empty):not(.cal-cell-dimanche) {
+    box-shadow: inset 0 0 0 2px var(--primary-light);
+    z-index: 1;
+}
+
+.cal-cell-empty {
+    background: var(--gray-50);
+}
+
+.cal-cell-dimanche {
+    background: var(--gray-50);
+    opacity: 0.5;
+}
+
+.cal-cell-weekend {
+    background: #f8fafc;
+}
+
+.cal-cell-ferie {
+    background: #fce7f3;
+}
+
+.cal-cell-declare {
+    background: #d1fae5;
+}
+
+.cal-cell-saisi {
+    background: #dbeafe;
+}
+
+.cal-cell-recup {
+    background: #fef3c7;
+}
+
+.cal-cell-absence {
+    background: #ede9fe;
+}
+
+.cal-cell-non-declare {
+    background: #fee2e2;
+    animation: pulse-red 2s infinite;
+}
+
+.cal-cell-vide {
+    background: var(--white);
+}
+
+@keyframes pulse-red {
+    0%, 100% { background: #fee2e2; }
+    50% { background: #fecaca; }
+}
+
+/* Numero du jour */
+.cal-cell-numero {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--gray-900);
+    margin-bottom: 0.15rem;
+}
+
+.cal-cell-dimanche .cal-cell-numero,
+.cal-cell-weekend .cal-cell-numero {
+    color: var(--gray-500);
+}
+
+/* Infos dans la cellule */
+.cal-cell-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.cal-cell-heures {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.cal-heures-theo {
+    color: var(--gray-500);
+    font-weight: 400;
+}
+
+.cal-cell-status {
+    font-size: 0.75rem;
+}
+
+.cal-cell-ecart {
+    font-size: 0.75rem;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0 4px;
+    display: inline-block;
+    width: fit-content;
+}
+
+.cal-ecart-pos {
+    color: #065f46;
+    background: #d1fae5;
+}
+
+.cal-ecart-neg {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
+/* Badges */
+.cal-cell-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-top: 0.15rem;
+    display: inline-block;
+}
+
+.cal-badge-recup {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.cal-badge-absence {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.cal-badge-ferie {
+    background: #fce7f3;
+    color: #9d174d;
+    font-size: 0.65rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.cal-badge-alerte {
+    font-size: 1rem;
+}
+
+.cal-cell-periode {
+    font-size: 0.65rem;
+    color: var(--gray-500);
+    position: absolute;
+    bottom: 2px;
+    right: 4px;
+    font-style: italic;
+}
+
+/* Legende */
+.cal-legende {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--gray-50);
+    border-radius: 8px;
+}
+
+.cal-legende-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--gray-700);
+}
+
+/* Help-box variants */
+.cal-box-locked {
+    background: #d4edda;
+    border-left-color: #28a745;
+    margin-bottom: 1rem;
+}
+.cal-box-danger {
+    background: #fee2e2;
+    border-left-color: #dc2626;
+    margin-bottom: 1rem;
+}
+.cal-box-warning {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    margin: 0;
+}
+
+/* Dark theme */
+[data-theme="dark"] .cal-box-locked {
+    background: #064e3b;
+    border-left-color: #10b981;
+    color: #d1fae5;
+}
+[data-theme="dark"] .cal-box-locked h4,
+[data-theme="dark"] .cal-box-locked p,
+[data-theme="dark"] .cal-box-locked strong {
+    color: #d1fae5;
+}
+[data-theme="dark"] .cal-box-danger {
+    background: #7f1d1d;
+    border-left-color: #ef4444;
+    color: #fecaca;
+}
+[data-theme="dark"] .cal-box-danger h4,
+[data-theme="dark"] .cal-box-danger p,
+[data-theme="dark"] .cal-box-danger strong {
+    color: #fecaca;
+}
+[data-theme="dark"] .cal-box-warning {
+    background: #78350f;
+    border-left-color: #f59e0b;
+    color: #fef3c7;
+}
+[data-theme="dark"] .cal-box-warning h4,
+[data-theme="dark"] .cal-box-warning p {
+    color: #fef3c7;
+}
+
+[data-theme="dark"] .cal-cell-absence { background: #4c1d95; }
+[data-theme="dark"] .cal-cell-declare { background: #064e3b; }
+[data-theme="dark"] .cal-cell-saisi { background: #1e3a5f; }
+[data-theme="dark"] .cal-cell-recup { background: #78350f; }
+[data-theme="dark"] .cal-cell-non-declare { background: #7f1d1d; }
+[data-theme="dark"] .cal-cell-ferie { background: #831843; }
+[data-theme="dark"] .cal-cell-weekend { background: var(--gray-50); }
+[data-theme="dark"] .cal-ecart-pos { background: #064e3b; color: #6ee7b7; }
+[data-theme="dark"] .cal-ecart-neg { background: #7f1d1d; color: #fca5a5; }
+[data-theme="dark"] .cal-badge-absence { background: #4c1d95; color: #c4b5fd; }
+[data-theme="dark"] .cal-badge-recup { background: #78350f; color: #fcd34d; }
+[data-theme="dark"] .cal-badge-ferie { background: #831843; color: #f9a8d4; }
+
+@keyframes pulse-red-dark {
+    0%, 100% { background: #7f1d1d; }
+    50% { background: #991b1b; }
+}
+[data-theme="dark"] .cal-cell-non-declare {
+    animation: pulse-red-dark 2s infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .cal-cell {
+        min-height: 60px;
+        padding: 0.25rem;
+    }
+    .cal-cell-numero {
+        font-size: 0.85rem;
+    }
+    .cal-cell-heures {
+        font-size: 0.7rem;
+    }
+    .cal-cell-badge {
+        font-size: 0.6rem;
+    }
+    .cal-header-cell {
+        font-size: 0.7rem;
+        padding: 0.4rem 0.15rem;
+    }
+}
+</style>
+{% endblock %}

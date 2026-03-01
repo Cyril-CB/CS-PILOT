@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Suivi des anomalies{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>⚠️ Suivi des anomalies</h1>
+    <p class="subtitle">Détection automatique des modifications suspectes</p>
+    
+    <!-- Statistiques -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="stat-card" style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 1rem; border-radius: 8px; border-left: 4px solid #dc2626;">
+            <div style="font-size: 2rem; font-weight: 700; color: #dc2626;">{{ stats.critiques or 0 }}</div>
+            <div style="color: #991b1b; font-weight: 600;">🔴 Critiques</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%); padding: 1rem; border-radius: 8px; border-left: 4px solid #f97316;">
+            <div style="font-size: 2rem; font-weight: 700; color: #ea580c;">{{ stats.alertes or 0 }}</div>
+            <div style="color: #9a3412; font-weight: 600;">🟠 Alertes</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); padding: 1rem; border-radius: 8px; border-left: 4px solid #f59e0b;">
+            <div style="font-size: 2rem; font-weight: 700; color: #d97706;">{{ stats.suspects or 0 }}</div>
+            <div style="color: #92400e; font-weight: 600;">🟡 Suspects</div>
+        </div>
+        <div class="stat-card" style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 1rem; border-radius: 8px; border-left: 4px solid #2563eb;">
+            <div style="font-size: 2rem; font-weight: 700; color: #1e40af;">{{ stats.non_traitees or 0 }}</div>
+            <div style="color: #1e3a8a; font-weight: 600;">📋 Non traitées</div>
+        </div>
+    </div>
+    
+    <!-- Filtres -->
+    <div class="section">
+        <h2>Filtres</h2>
+        <form method="GET" action="{{ url_for('suivi_bp.suivi_anomalies') }}" style="display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="margin: 0;">
+                <label for="gravite">Gravité</label>
+                <select name="gravite" id="gravite">
+                    <option value="toutes" {% if gravite_filtre == 'toutes' %}selected{% endif %}>Toutes</option>
+                    <option value="critique" {% if gravite_filtre == 'critique' %}selected{% endif %}>🔴 Critiques</option>
+                    <option value="alerte" {% if gravite_filtre == 'alerte' %}selected{% endif %}>🟠 Alertes</option>
+                    <option value="suspect" {% if gravite_filtre == 'suspect' %}selected{% endif %}>🟡 Suspects</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin: 0;">
+                <label>
+                    <input type="checkbox" name="traitees" value="1" {% if afficher_traitees %}checked{% endif %}>
+                    Afficher les anomalies traitées
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary">🔍 Filtrer</button>
+        </form>
+    </div>
+    
+    <!-- Liste des anomalies -->
+    <div class="section">
+        <h2>Anomalies détectées ({{ anomalies|length }})</h2>
+        
+        {% if not anomalies %}
+        <div class="no-data">
+            <p>✅ Aucune anomalie détectée</p>
+        </div>
+        {% else %}
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Gravité</th>
+                        <th>Salarié</th>
+                        <th>Jour concerné</th>
+                        <th>Type</th>
+                        <th>Description</th>
+                        <th>Détails</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for anom in anomalies %}
+                    <tr style="{% if not anom.traitee %}background: #fef3c7;{% endif %}">
+                        <td style="white-space: nowrap;">{{ anom.date_modification[:16] }}</td>
+                        <td>
+                            {% if anom.gravite == 'critique' %}
+                            <span style="background: #dc2626; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">🔴 CRITIQUE</span>
+                            {% elif anom.gravite == 'alerte' %}
+                            <span style="background: #f97316; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">🟠 ALERTE</span>
+                            {% elif anom.gravite == 'suspect' %}
+                            <span style="background: #f59e0b; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">🟡 SUSPECT</span>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ anom.nom_salarie }}</strong></td>
+                        <td>{{ anom.date_concernee }}</td>
+                        <td style="font-size: 0.85rem;">
+                            {% if anom.type_anomalie == 'recup_validee_modifiee' %}
+                            Récup validée modifiée
+                            {% elif anom.type_anomalie == 'gros_changement_heures' %}
+                            Gros changement heures
+                            {% elif anom.type_anomalie == 'modification_apres_validation' %}
+                            Modif. après validation
+                            {% else %}
+                            {{ anom.type_anomalie }}
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 0.9rem;">{{ anom.description }}</td>
+                        <td style="text-align: center;">
+                            <button class="btn-icon" onclick="toggleDetails('details-{{ anom.id }}')" title="Voir détails">
+                                📋
+                            </button>
+                        </td>
+                        <td>
+                            {% if not anom.traitee %}
+                            <form method="POST" action="{{ url_for('suivi_bp.suivi_anomalies') }}" style="display: inline;">
+                                <input type="hidden" name="anomalie_id" value="{{ anom.id }}">
+                                <input type="hidden" name="action" value="traiter">
+                                <button type="submit" class="btn btn-primary" style="padding: 0.25rem 0.75rem; font-size: 0.85rem;">
+                                    ✓ Traiter
+                                </button>
+                            </form>
+                            {% else %}
+                            <span style="color: #10b981; font-weight: 600;">✓ Traitée</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr id="details-{{ anom.id }}" style="display: none;">
+                        <td colspan="8" style="background: #f8fafc; padding: 1rem;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div>
+                                    <h4 style="color: #dc2626; margin-bottom: 0.5rem;">Ancienne valeur</h4>
+                                    {% if anom.ancienne_valeur_obj %}
+                                    <ul style="font-size: 0.9rem; color: #64748b;">
+                                        <li><strong>Type :</strong> {{ anom.ancienne_valeur_obj.type_saisie }}</li>
+                                        {% if anom.ancienne_valeur_obj.heure_debut_matin %}
+                                        <li><strong>Matin :</strong> {{ anom.ancienne_valeur_obj.heure_debut_matin }} - {{ anom.ancienne_valeur_obj.heure_fin_matin }}</li>
+                                        {% endif %}
+                                        {% if anom.ancienne_valeur_obj.heure_debut_aprem %}
+                                        <li><strong>Après-midi :</strong> {{ anom.ancienne_valeur_obj.heure_debut_aprem }} - {{ anom.ancienne_valeur_obj.heure_fin_aprem }}</li>
+                                        {% endif %}
+                                        {% if anom.ancienne_valeur_obj.commentaire %}
+                                        <li><strong>Commentaire :</strong> {{ anom.ancienne_valeur_obj.commentaire }}</li>
+                                        {% endif %}
+                                    </ul>
+                                    {% else %}
+                                    <p style="color: #94a3b8;">Aucune valeur précédente</p>
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <h4 style="color: #10b981; margin-bottom: 0.5rem;">Nouvelle valeur</h4>
+                                    {% if anom.nouvelle_valeur_obj %}
+                                    <ul style="font-size: 0.9rem; color: #64748b;">
+                                        <li><strong>Type :</strong> {{ anom.nouvelle_valeur_obj.type_saisie }}</li>
+                                        {% if anom.nouvelle_valeur_obj.heure_debut_matin %}
+                                        <li><strong>Matin :</strong> {{ anom.nouvelle_valeur_obj.heure_debut_matin }} - {{ anom.nouvelle_valeur_obj.heure_fin_matin }}</li>
+                                        {% endif %}
+                                        {% if anom.nouvelle_valeur_obj.heure_debut_aprem %}
+                                        <li><strong>Après-midi :</strong> {{ anom.nouvelle_valeur_obj.heure_debut_aprem }} - {{ anom.nouvelle_valeur_obj.heure_fin_aprem }}</li>
+                                        {% endif %}
+                                        {% if anom.nouvelle_valeur_obj.commentaire %}
+                                        <li><strong>Commentaire :</strong> {{ anom.nouvelle_valeur_obj.commentaire }}</li>
+                                        {% endif %}
+                                    </ul>
+                                    {% else %}
+                                    <p style="color: #94a3b8;">Aucune nouvelle valeur</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Aide -->
+    <div class="help-box">
+        <h4>📖 Types d'anomalies</h4>
+        <ul>
+            <li><strong>🔴 Récup validée modifiée :</strong> Une récupération validée par la direction a été modifiée ou supprimée</li>
+            <li><strong>🟠 Gros changement heures :</strong> Modification avec écart de plus de 3 heures</li>
+            <li><strong>🟡 Modif. après validation :</strong> Modification d'un jour après validation du mois par le responsable</li>
+        </ul>
+        <p><strong>Actions :</strong> Cliquez sur "📋" pour voir les détails de la modification. Marquez comme "Traitée" après vérification.</p>
+    </div>
+</div>
+
+<script>
+function toggleDetails(id) {
+    const row = document.getElementById(id);
+    if (row.style.display === 'none') {
+        row.style.display = 'table-row';
+    } else {
+        row.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

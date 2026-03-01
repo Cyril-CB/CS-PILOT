@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+{% block title %}Gestion des clés API{% endblock %}
+{% block content %}
+
+<style>
+    .ak-container { max-width: 900px; margin: 0 auto; padding: 10px 0; }
+    .ak-header { text-align: center; margin-bottom: 24px; }
+    .ak-header .ak-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: #7c3aed; margin-bottom: 4px; }
+    .ak-header h2 { font-size: 24px; font-weight: 800; color: var(--gray-900); margin-bottom: 0; }
+    .ak-header .ak-sub { font-size: 13px; color: var(--gray-500); margin-top: 4px; }
+
+    .ak-card { background: var(--white); border-radius: 12px; padding: 20px; border: 1px solid var(--gray-200); margin-bottom: 16px; box-shadow: var(--shadow-sm); transition: all 0.2s; }
+    .ak-card:hover { box-shadow: var(--shadow-md); }
+
+    .ak-provider-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .ak-provider-name { font-size: 17px; font-weight: 800; color: var(--gray-900); display: flex; align-items: center; gap: 10px; }
+    .ak-provider-badge { padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: 700; }
+    .ak-badge-ok { background: #dcfce7; color: #166534; }
+    .ak-badge-missing { background: #fef3c7; color: #92400e; }
+
+    .ak-models { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+    .ak-model-tag { padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #f3f4f6; color: var(--gray-700); border: 1px solid var(--gray-200); }
+    .ak-model-tag.ak-gratuit { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+
+    .ak-key-form { margin-top: 12px; }
+    .ak-key-input { width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; box-sizing: border-box; }
+    .ak-key-input:focus { border-color: #7c3aed; outline: none; }
+
+    .ak-btn { padding: 8px 20px; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+    .ak-btn-primary { background: #7c3aed; color: white; }
+    .ak-btn-primary:hover { background: #6d28d9; }
+    .ak-btn-primary:disabled { background: var(--gray-300); cursor: not-allowed; }
+    .ak-btn-danger { background: #ef4444; color: white; }
+    .ak-btn-danger:hover { background: #dc2626; }
+    .ak-btn-outline { background: #f5f3ff; color: #7c3aed; border: 1px solid #c4b5fd; }
+    .ak-btn-outline:hover { background: #ede9fe; }
+
+    .ak-btn-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+
+    .ak-error { display: none; margin-top: 8px; font-size: 12px; color: #dc2626; background: #fef2f2; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #ef4444; }
+    .ak-success { display: none; margin-top: 8px; font-size: 12px; color: #166534; background: #f0fdf4; padding: 8px 12px; border-radius: 6px; border-left: 3px solid #22c55e; }
+
+    .ak-info { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 16px; margin-bottom: 16px; font-size: 13px; color: #1e40af; line-height: 1.6; }
+
+    .ak-icon-openai { color: #10a37f; }
+    .ak-icon-groq { color: #f55036; }
+    .ak-icon-anthropic { color: #d97706; }
+
+    .ak-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: ak-spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes ak-spin { to { transform: rotate(360deg); } }
+</style>
+
+<div class="ak-container">
+    <div class="ak-header">
+        <div class="ak-label">Administration</div>
+        <h2>Gestion des cles API</h2>
+        <div class="ak-sub">Configurez les cles API pour les services d'intelligence artificielle utilises par l'application</div>
+    </div>
+
+    <div class="ak-info">
+        Les cles API sont chiffrees avant d'etre stockees en base de donnees. Elles ne sont jamais transmises au navigateur.<br>
+        Seuls les profils <strong>directeur</strong> et <strong>comptable</strong> ont acces a cette page.<br>
+        Le modele IA utilise sur la page Pesee ALISFA dependra des cles configurees ici.
+    </div>
+
+    <!-- OpenAI (ChatGPT) -->
+    <div class="ak-card" id="akCard_openai">
+        <div class="ak-provider-head">
+            <div class="ak-provider-name">
+                <span class="ak-icon-openai">&#x1F916;</span> OpenAI (ChatGPT)
+            </div>
+            <span class="ak-provider-badge {{ 'ak-badge-ok' if providers_status.openai.has_key else 'ak-badge-missing' }}" id="akBadge_openai">
+                {{ 'Configuree' if providers_status.openai.has_key else 'Non configuree' }}
+            </span>
+        </div>
+        <div class="ak-models">
+            {% for m in providers_status.openai.models %}
+            <span class="ak-model-tag {{ 'ak-gratuit' if 'gratuit' in m.label else '' }}">{{ m.label }}</span>
+            {% endfor %}
+        </div>
+        {% if providers_status.openai.has_key %}
+        <div class="ak-btn-row">
+            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('openai')">Modifier la cle</button>
+            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('openai')">Supprimer</button>
+        </div>
+        <div id="akEditBox_openai" style="display:none;" class="ak-key-form">
+            <input type="password" id="akInput_openai" class="ak-key-input" placeholder="sk-..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% else %}
+        <div class="ak-key-form">
+            <input type="password" id="akInput_openai" class="ak-key-input" placeholder="sk-..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% endif %}
+        <div class="ak-error" id="akError_openai"></div>
+        <div class="ak-success" id="akSuccess_openai"></div>
+    </div>
+
+    <!-- Groq -->
+    <div class="ak-card" id="akCard_groq">
+        <div class="ak-provider-head">
+            <div class="ak-provider-name">
+                <span class="ak-icon-groq">&#x26A1;</span> Groq
+            </div>
+            <span class="ak-provider-badge {{ 'ak-badge-ok' if providers_status.groq.has_key else 'ak-badge-missing' }}" id="akBadge_groq">
+                {{ 'Configuree' if providers_status.groq.has_key else 'Non configuree' }}
+            </span>
+        </div>
+        <div class="ak-models">
+            {% for m in providers_status.groq.models %}
+            <span class="ak-model-tag ak-gratuit">{{ m.label }}</span>
+            {% endfor %}
+        </div>
+        {% if providers_status.groq.has_key %}
+        <div class="ak-btn-row">
+            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('groq')">Modifier la cle</button>
+            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('groq')">Supprimer</button>
+        </div>
+        <div id="akEditBox_groq" style="display:none;" class="ak-key-form">
+            <input type="password" id="akInput_groq" class="ak-key-input" placeholder="gsk_..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% else %}
+        <div class="ak-key-form">
+            <input type="password" id="akInput_groq" class="ak-key-input" placeholder="gsk_..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% endif %}
+        <div class="ak-error" id="akError_groq"></div>
+        <div class="ak-success" id="akSuccess_groq"></div>
+    </div>
+
+    <!-- Anthropic (Claude) -->
+    <div class="ak-card" id="akCard_anthropic">
+        <div class="ak-provider-head">
+            <div class="ak-provider-name">
+                <span class="ak-icon-anthropic">&#x1F9E0;</span> Anthropic (Claude)
+            </div>
+            <span class="ak-provider-badge {{ 'ak-badge-ok' if providers_status.anthropic.has_key else 'ak-badge-missing' }}" id="akBadge_anthropic">
+                {{ 'Configuree' if providers_status.anthropic.has_key else 'Non configuree' }}
+            </span>
+        </div>
+        <div class="ak-models">
+            {% for m in providers_status.anthropic.models %}
+            <span class="ak-model-tag">{{ m.label }}</span>
+            {% endfor %}
+        </div>
+        {% if providers_status.anthropic.has_key %}
+        <div class="ak-btn-row">
+            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('anthropic')">Modifier la cle</button>
+            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('anthropic')">Supprimer</button>
+        </div>
+        <div id="akEditBox_anthropic" style="display:none;" class="ak-key-form">
+            <input type="password" id="akInput_anthropic" class="ak-key-input" placeholder="sk-ant-..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% else %}
+        <div class="ak-key-form">
+            <input type="password" id="akInput_anthropic" class="ak-key-input" placeholder="sk-ant-..." />
+            <div class="ak-btn-row">
+                <button class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
+            </div>
+        </div>
+        {% endif %}
+        <div class="ak-error" id="akError_anthropic"></div>
+        <div class="ak-success" id="akSuccess_anthropic"></div>
+    </div>
+</div>
+
+<script>
+function akToggleEdit(provider) {
+    const box = document.getElementById('akEditBox_' + provider);
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+}
+
+async function akSaveKey(provider) {
+    const input = document.getElementById('akInput_' + provider);
+    const errEl = document.getElementById('akError_' + provider);
+    const succEl = document.getElementById('akSuccess_' + provider);
+    const btn = document.getElementById('akSaveBtn_' + provider);
+    const key = input.value.trim();
+
+    errEl.style.display = 'none';
+    succEl.style.display = 'none';
+
+    if (!key) {
+        errEl.textContent = 'Veuillez saisir une cle API';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ak-spinner"></span>Verification...';
+
+    try {
+        const res = await fetch('/api/api_keys/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({provider: provider, api_key: key}),
+        });
+        const data = await res.json();
+        if (data.success) {
+            succEl.textContent = 'Cle API verifiee et enregistree avec succes !';
+            succEl.style.display = 'block';
+            input.value = '';
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            errEl.textContent = data.error || 'Erreur inconnue';
+            errEl.style.display = 'block';
+        }
+    } catch(e) {
+        errEl.textContent = 'Erreur reseau : ' + e.message;
+        errEl.style.display = 'block';
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Enregistrer et verifier';
+}
+
+async function akDeleteKey(provider) {
+    if (!confirm('Supprimer cette cle API ? Les fonctionnalites IA utilisant ce fournisseur ne seront plus disponibles.')) return;
+
+    try {
+        const res = await fetch('/api/api_keys/delete', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({provider: provider}),
+        });
+        const data = await res.json();
+        if (data.success) {
+            location.reload();
+        }
+    } catch(e) {
+        alert('Erreur : ' + e.message);
+    }
+}
+</script>
+{% endblock %}

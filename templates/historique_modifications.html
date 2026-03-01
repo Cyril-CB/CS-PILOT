@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Historique des modifications{% endblock %}
+
+{% block content %}
+<div class="historique">
+    <h1>🔍 Historique des modifications</h1>
+    <p class="subtitle">Traçabilité complète de toutes les modifications (200 dernières)</p>
+    
+    <!-- Filtres -->
+    <div class="section" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+        <form method="GET" action="{{ url_for('suivi_bp.historique_modifications') }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 1rem; align-items: end;">
+                <div class="form-group" style="margin: 0;">
+                    <label for="user_id">Salarié</label>
+                    <select id="user_id" name="user_id">
+                        <option value="">-- Tous les salariés --</option>
+                        {% for u in users %}
+                        <option value="{{ u.id }}" {% if user_id_filtre == u.id %}selected{% endif %}>
+                            {{ u.prenom }} {{ u.nom }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-group" style="margin: 0;">
+                    <label for="date_debut">Date début</label>
+                    <input type="date" id="date_debut" name="date_debut" value="{{ date_debut or '' }}">
+                </div>
+                
+                <div class="form-group" style="margin: 0;">
+                    <label for="date_fin">Date fin</label>
+                    <input type="date" id="date_fin" name="date_fin" value="{{ date_fin or '' }}">
+                </div>
+                
+                <div>
+                    <button type="submit" class="btn btn-primary">🔍 Filtrer</button>
+                    <a href="{{ url_for('suivi_bp.historique_modifications') }}" class="btn btn-secondary">↻ Réinitialiser</a>
+                </div>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Statistiques rapides -->
+    <div class="stats-grid" style="margin-bottom: 2rem; grid-template-columns: 1fr 1fr 1fr;">
+        {% set nb_total = modifications|length %}
+        {% set nb_creations = modifications|selectattr('action', 'equalto', 'creation')|list|length %}
+        {% set nb_modifications = modifications|selectattr('action', 'equalto', 'modification')|list|length %}
+        
+        <div class="stat-card">
+            <div class="stat-icon">📝</div>
+            <div class="stat-content">
+                <h3>Total modifications</h3>
+                <p class="stat-value">{{ nb_total }}</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">➕</div>
+            <div class="stat-content">
+                <h3>Créations</h3>
+                <p class="stat-value" style="color: #28a745;">{{ nb_creations }}</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon">✏️</div>
+            <div class="stat-content">
+                <h3>Modifications</h3>
+                <p class="stat-value" style="color: #ffc107;">{{ nb_modifications }}</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tableau de l'historique -->
+    <div class="section">
+        {% if modifications %}
+        <table class="data-table" style="font-size: 0.85rem;">
+            <thead>
+                <tr>
+                    <th>Date/Heure modif</th>
+                    <th>Salarié concerné</th>
+                    <th>Date concernée</th>
+                    <th>Modifié par</th>
+                    <th>Action</th>
+                    <th>Détails</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in modifications %}
+                <tr>
+                    <td style="white-space: nowrap;">
+                        <strong>{{ m.date_modification.split(' ')[0] }}</strong><br>
+                        <small style="color: #888;">{{ m.date_modification.split(' ')[1] }}</small>
+                    </td>
+                    <td><strong>{{ m.nom_modifie }}</strong></td>
+                    <td>{{ m.date_concernee }}</td>
+                    <td>
+                        {{ m.nom_modificateur }}
+                        {% if m.user_id_modifie == m.modifie_par %}
+                        <span style="color: #28a745;" title="Modification par le salarié lui-même">✓</span>
+                        {% else %}
+                        <span style="color: #ffc107;" title="Modification par un tiers">⚠️</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if m.action == 'creation' %}
+                        <span class="badge badge-success">➕ Création</span>
+                        {% else %}
+                        <span class="badge" style="background: #ffc107; color: #000;">✏️ Modification</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <button class="btn-icon" onclick="toggleDetails({{ m.id }})" title="Voir détails">👁️</button>
+                    </td>
+                </tr>
+                <tr id="details-{{ m.id }}" style="display: none; background: #f8f9fa;">
+                    <td colspan="6" style="padding: 1rem;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                            {% if m.anciennes_valeurs_obj %}
+                            <div>
+                                <h4 style="color: #dc3545; margin-bottom: 0.5rem;">❌ Anciennes valeurs</h4>
+                                <table style="width: 100%; font-size: 0.9rem;">
+                                    <tr><td><strong>Matin :</strong></td><td>{{ m.anciennes_valeurs_obj.heure_debut_matin or '-' }} → {{ m.anciennes_valeurs_obj.heure_fin_matin or '-' }}</td></tr>
+                                    <tr><td><strong>Après-midi :</strong></td><td>{{ m.anciennes_valeurs_obj.heure_debut_aprem or '-' }} → {{ m.anciennes_valeurs_obj.heure_fin_aprem or '-' }}</td></tr>
+                                    <tr><td><strong>Type :</strong></td><td>{{ m.anciennes_valeurs_obj.type_saisie }}</td></tr>
+                                    <tr><td><strong>Commentaire :</strong></td><td>{{ m.anciennes_valeurs_obj.commentaire or '-' }}</td></tr>
+                                </table>
+                            </div>
+                            {% else %}
+                            <div>
+                                <h4 style="color: #6c757d; margin-bottom: 0.5rem;">Nouvelle saisie</h4>
+                                <p style="color: #888;">Aucune donnée précédente</p>
+                            </div>
+                            {% endif %}
+                            
+                            <div>
+                                <h4 style="color: #28a745; margin-bottom: 0.5rem;">✅ Nouvelles valeurs</h4>
+                                <table style="width: 100%; font-size: 0.9rem;">
+                                    <tr><td><strong>Matin :</strong></td><td>{{ m.nouvelles_valeurs_obj.heure_debut_matin or '-' }} → {{ m.nouvelles_valeurs_obj.heure_fin_matin or '-' }}</td></tr>
+                                    <tr><td><strong>Après-midi :</strong></td><td>{{ m.nouvelles_valeurs_obj.heure_debut_aprem or '-' }} → {{ m.nouvelles_valeurs_obj.heure_fin_aprem or '-' }}</td></tr>
+                                    <tr><td><strong>Type :</strong></td><td>{{ m.nouvelles_valeurs_obj.type_saisie }}</td></tr>
+                                    <tr><td><strong>Commentaire :</strong></td><td>{{ m.nouvelles_valeurs_obj.commentaire or '-' }}</td></tr>
+                                </table>
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucune modification trouvée avec ces critères</p>
+        {% endif %}
+    </div>
+    
+    <div class="actions" style="margin-top: 2rem;">
+        <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
+    </div>
+    
+    <div class="help-box">
+        <h4>ℹ️ À propos de l'historique</h4>
+        <ul>
+            <li><strong>✓ Vert</strong> : Modification par le salarié lui-même</li>
+            <li><strong>⚠️ Jaune</strong> : Modification par un tiers (responsable ou directeur)</li>
+            <li><strong>➕ Création</strong> : Première saisie pour cette date</li>
+            <li><strong>✏️ Modification</strong> : Modification d'une saisie existante</li>
+        </ul>
+        <p><strong>Confidentialité :</strong> Cette page n'est accessible qu'au directeur. Les salariés et responsables ne savent pas que leurs modifications sont tracées.</p>
+        <p><strong>Conservation :</strong> Affichage limité aux 200 dernières modifications. Toutes les modifications restent en base de données.</p>
+    </div>
+</div>
+
+<script>
+function toggleDetails(id) {
+    const row = document.getElementById('details-' + id);
+    if (row.style.display === 'none') {
+        row.style.display = 'table-row';
+    } else {
+        row.style.display = 'none';
+    }
+}
+</script>
+
+<style>
+.historique {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.data-table tbody tr:hover {
+    background: #f8f9fa;
+}
+</style>
+{% endblock %}
