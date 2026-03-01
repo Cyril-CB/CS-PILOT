@@ -2904,3 +2904,108 @@ a.btn-icon:-webkit-any-link {
         display: none;
     }
 }
+
+/* ═══════════════════════════════════════════════════════
+   MODULE FACTURES - Modales et page factures
+   ═══════════════════════════════════════════════════════ */
+
+.factures-page {
+    max-width: 1400px;
+    margin: 0 auto;
+    animation: fadeInUp var(--transition-slow) both;
+}
+
+/* ── Modale générique ── */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.modal-content {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 0;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.modal-content .form-group {
+    padding: 0 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.modal-content .actions {
+    padding: 0 1.5rem 1.5rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--gray-200);
+    margin-bottom: 1.25rem;
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--gray-500);
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.modal-close:hover {
+    color: var(--gray-900);
+}
+
+/* Dark theme modales */
+[data-theme="dark"] .modal-content {
+    background: var(--white);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .modal-header {
+    border-bottom-color: var(--gray-300);
+}
+
+[data-theme="dark"] .modal-close {
+    color: var(--gray-500);
+}
+
+[data-theme="dark"] .modal-close:hover {
+    color: var(--gray-900);
+}

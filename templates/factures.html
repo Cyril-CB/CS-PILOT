@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Factures - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+            <h1>Factures</h1>
+            <p class="subtitle">Import et gestion des factures fournisseurs</p>
+        </div>
+        <button class="btn btn-primary" onclick="document.getElementById('modalImport').style.display='flex'">Importer des factures</button>
+    </div>
+
+    {# ── Tableau des factures ── #}
+    <div class="section">
+        <table class="table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Fournisseur</th>
+                    <th>N° Facture</th>
+                    <th>Date</th>
+                    <th>Montant TTC</th>
+                    <th>Secteur</th>
+                    <th>Approbation</th>
+                    <th>Statut</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in factures %}
+                <tr>
+                    <td><strong>{{ f.fournisseur_nom or 'Inconnu' }}</strong></td>
+                    <td>{{ f.numero_facture or '—' }}</td>
+                    <td>{% if f.date_facture %}{{ f.date_facture[8:10] }}/{{ f.date_facture[5:7] }}/{{ f.date_facture[0:4] }}{% else %}—{% endif %}</td>
+                    <td>{% if f.montant_ttc %}{{ '{:,.2f}'.format(f.montant_ttc).replace(',', ' ') }} €{% else %}—{% endif %}</td>
+                    <td>
+                        {% if f.assigned_direction %}
+                        <span class="badge" style="background:#dc2626;color:#fff;">Direction</span>
+                        {% elif f.secteur_nom %}
+                        <span class="badge" style="background:#2563eb;color:#fff;">{{ f.secteur_nom }}</span>
+                        {% else %}
+                        <span class="badge" style="background:#9ca3af;color:#fff;">Non assigné</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if f.approbation == 'approuvee' %}
+                        <span class="badge" style="background:#10b981;color:#fff;">Approuvée</span>
+                        {% else %}
+                        <span class="badge" style="background:#f59e0b;color:#fff;">En attente</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if f.statut == 'traitee' %}
+                        <span class="badge" style="background:#10b981;color:#fff;">Traitée</span>
+                        {% else %}
+                        <span class="badge" style="background:#ef4444;color:#fff;">A traiter</span>
+                        {% endif %}
+                    </td>
+                    <td style="white-space:nowrap;">
+                        <button class="btn btn-sm btn-secondary" onclick="openAssigner({{ f.id }}, '{{ (f.fournisseur_nom or '')|e }}', '{{ (f.numero_facture or '')|e }}', '{{ f.montant_ttc or 0 }}')">Assigner</button>
+                        <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}" class="btn btn-sm btn-secondary">Détail</a>
+                        <form method="POST" action="{{ url_for('factures_bp.supprimer_facture', facture_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette facture et son fichier ?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not factures %}
+                <tr><td colspan="8" style="text-align:center; padding:2rem; color:#888;">Aucune facture importée.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{# ── Modal Import ── #}
+<div id="modalImport" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>Importer des factures</h3>
+            <button class="modal-close" onclick="document.getElementById('modalImport').style.display='none'">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('factures_bp.importer_facture') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if has_api_key %}
+            <div class="form-group">
+                <label>Modèle IA (pré-traitement)</label>
+                <select name="model">
+                    <option value="">-- Sans IA (import simple) --</option>
+                    {% for m in available_models %}
+                    <option value="{{ m.id }}">{{ m.label }} ({{ m.provider_name }})</option>
+                    {% endfor %}
+                </select>
+                <p class="help-text">L'IA extrait automatiquement le fournisseur, la date, le montant et le numéro.</p>
+            </div>
+            {% else %}
+            <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:0.75rem; margin-bottom:1rem;">
+                <strong>Aucune clé API configurée.</strong> Les factures seront importées sans pré-traitement IA.
+                <br><a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">Configurer les clés API</a>
+            </div>
+            {% endif %}
+            <div class="form-group">
+                <label>Fichiers PDF *</label>
+                <input type="file" name="fichiers" accept=".pdf" multiple required>
+                <p class="help-text">Sélectionnez un ou plusieurs fichiers PDF de factures.</p>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Importer</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalImport').style.display='none'">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{# ── Modal Assigner ── #}
+<div id="modalAssigner" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:450px;">
+        <div class="modal-header">
+            <h3>Assigner la facture</h3>
+            <button class="modal-close" onclick="document.getElementById('modalAssigner').style.display='none'">&times;</button>
+        </div>
+        <div style="background:var(--gray-50, #f8f9fa); border-radius:8px; padding:1rem; margin-bottom:1rem;">
+            <p><strong>Fournisseur :</strong> <span id="assignFournisseur"></span></p>
+            <p><strong>N° Facture :</strong> <span id="assignNumero"></span></p>
+            <p><strong>Montant TTC :</strong> <span id="assignMontant"></span> €</p>
+        </div>
+        <form method="POST" id="assignForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label>Assigner à un secteur</label>
+                <select name="secteur_id" id="assignSecteur">
+                    <option value="">-- Choisir un secteur --</option>
+                    {% for s in secteurs %}
+                    <option value="{{ s.id }}">{{ s.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="actions" style="flex-direction:column; gap:0.5rem;">
+                <button type="submit" class="btn btn-primary" style="width:100%;">Assigner au secteur</button>
+                <button type="button" class="btn btn-danger" style="width:100%;" onclick="assignerDirection()">Assigner à la direction</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openAssigner(id, fournisseur, numero, montant) {
+    document.getElementById('assignForm').action = '/factures/' + id + '/assigner';
+    document.getElementById('assignFournisseur').textContent = fournisseur || 'Inconnu';
+    document.getElementById('assignNumero').textContent = numero || '—';
+    document.getElementById('assignMontant').textContent = parseFloat(montant || 0).toFixed(2);
+    document.getElementById('assignSecteur').value = '';
+    document.getElementById('modalAssigner').dataset.factureId = id;
+    document.getElementById('modalAssigner').style.display = 'flex';
+}
+
+function assignerDirection() {
+    var id = document.getElementById('modalAssigner').dataset.factureId;
+    fetch('/factures/' + id + '/assigner', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({direction: true})
+    }).then(function(r) { return r.json(); }).then(function() {
+        window.location.reload();
+    });
+}
+</script>
+{% endblock %}

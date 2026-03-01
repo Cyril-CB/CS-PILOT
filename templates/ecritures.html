@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Écritures comptables - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+        <div>
+            <h1>Écritures comptables</h1>
+            <p class="subtitle">Écritures générées par l'IA à partir des factures</p>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center;">
+            {% if nb_a_traiter > 0 %}
+            <button class="btn btn-primary" onclick="document.getElementById('modalGenerer').style.display='flex'">
+                Générer les écritures ({{ nb_a_traiter }} facture{{ 's' if nb_a_traiter > 1 }})
+            </button>
+            {% else %}
+            <span style="color:#888; font-size:0.9em;">Aucune facture à traiter</span>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ── Formulaire de validation groupée ── #}
+    <form method="POST" action="{{ url_for('ecritures_bp.valider_ecritures') }}" id="validationForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div id="validationBar" style="display:none; background:#dc2626; color:#fff; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; display:none; align-items:center; justify-content:space-between;">
+            <span><strong id="selectedCount">0</strong> écriture(s) sélectionnée(s)</span>
+            <button type="submit" class="btn" style="background:#fff; color:#dc2626; font-weight:700;" onclick="return confirm('Valider les écritures sélectionnées ?')">
+                Valider (<span id="selectedCountBtn">0</span>)
+            </button>
+        </div>
+
+        <div class="section">
+            <table class="table" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th style="width:30px;">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+                        </th>
+                        <th>Date</th>
+                        <th>Compte</th>
+                        <th>Libellé</th>
+                        <th>N° Facture</th>
+                        <th style="text-align:right;">Débit</th>
+                        <th style="text-align:right;">Crédit</th>
+                        <th>Analytique</th>
+                        <th>Statut</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in ecritures %}
+                    <tr>
+                        <td>
+                            {% if e.statut == 'brouillon' %}
+                            <input type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="ecriture-cb" onchange="updateSelection()">
+                            {% endif %}
+                        </td>
+                        <td>{% if e.date_ecriture %}{{ e.date_ecriture[8:10] }}/{{ e.date_ecriture[5:7] }}/{{ e.date_ecriture[0:4] }}{% else %}—{% endif %}</td>
+                        <td><code>{{ e.compte }}</code></td>
+                        <td style="font-size:0.9em;">{{ e.libelle }}</td>
+                        <td>{{ e.numero_facture or '—' }}</td>
+                        <td style="text-align:right;">{% if e.debit %}{{ '{:,.2f}'.format(e.debit).replace(',', ' ') }}{% endif %}</td>
+                        <td style="text-align:right;">{% if e.credit %}{{ '{:,.2f}'.format(e.credit).replace(',', ' ') }}{% endif %}</td>
+                        <td>{{ e.code_analytique or '—' }}</td>
+                        <td>
+                            {% if e.statut == 'brouillon' %}
+                            <span class="badge" style="background:#f59e0b;color:#fff;">Brouillon</span>
+                            {% elif e.statut == 'validee' %}
+                            <span class="badge" style="background:#10b981;color:#fff;">Validée</span>
+                            {% else %}
+                            <span class="badge" style="background:#6366f1;color:#fff;">Exportée</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-secondary" onclick='openEditEcriture({{ e|tojson }})'>Éditer</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not ecritures %}
+                    <tr><td colspan="10" style="text-align:center; padding:2rem; color:#888;">Aucune écriture comptable.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+</div>
+
+{# ── Modal Générer ── #}
+<div id="modalGenerer" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:450px;">
+        <div class="modal-header">
+            <h3>Générer les écritures</h3>
+            <button class="modal-close" onclick="document.getElementById('modalGenerer').style.display='none'">&times;</button>
+        </div>
+        <form method="POST" action="{{ url_for('ecritures_bp.generer_ecritures') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <p style="margin-bottom:1rem;">
+                <strong>{{ nb_a_traiter }}</strong> facture{{ 's' if nb_a_traiter > 1 }} à traiter.
+                L'IA va analyser les factures et les règles comptables pour générer les écritures.
+            </p>
+            {% if has_api_key %}
+            <div class="form-group">
+                <label>Modèle IA *</label>
+                <select name="model" required>
+                    <option value="">-- Choisir --</option>
+                    {% for m in available_models %}
+                    <option value="{{ m.id }}">{{ m.label }} ({{ m.provider_name }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Générer</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalGenerer').style.display='none'">Annuler</button>
+            </div>
+            {% else %}
+            <div style="background:#fef3c7; border:1px solid #f59e0b; border-radius:8px; padding:0.75rem;">
+                <strong>Aucune clé API configurée.</strong>
+                <br><a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">Configurer les clés API</a>
+            </div>
+            {% endif %}
+        </form>
+    </div>
+</div>
+
+{# ── Modal Éditer ── #}
+<div id="modalEditEcriture" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>Modifier l'écriture</h3>
+            <button class="modal-close" onclick="document.getElementById('modalEditEcriture').style.display='none'">&times;</button>
+        </div>
+        <form method="POST" id="editEcritureForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label>Compte *</label>
+                <input type="text" name="compte" id="eeCompte" required>
+            </div>
+            <div class="form-group">
+                <label>Libellé *</label>
+                <input type="text" name="libelle" id="eeLibelle" required style="text-transform:uppercase;">
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="form-group">
+                    <label>Débit</label>
+                    <input type="number" name="debit" id="eeDebit" step="0.01" min="0">
+                </div>
+                <div class="form-group">
+                    <label>Crédit</label>
+                    <input type="number" name="credit" id="eeCredit" step="0.01" min="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Code analytique</label>
+                <input type="text" name="code_analytique" id="eeAnalytique">
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Enregistrer</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditEcriture').style.display='none'">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleSelectAll(master) {
+    document.querySelectorAll('.ecriture-cb').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
+    updateSelection();
+}
+
+function updateSelection() {
+    var checked = document.querySelectorAll('.ecriture-cb:checked').length;
+    var bar = document.getElementById('validationBar');
+    if (checked > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('selectedCount').textContent = checked;
+        document.getElementById('selectedCountBtn').textContent = checked;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function openEditEcriture(e) {
+    document.getElementById('editEcritureForm').action = '/ecritures/' + e.id + '/modifier';
+    document.getElementById('eeCompte').value = e.compte || '';
+    document.getElementById('eeLibelle').value = e.libelle || '';
+    document.getElementById('eeDebit').value = e.debit || 0;
+    document.getElementById('eeCredit').value = e.credit || 0;
+    document.getElementById('eeAnalytique').value = e.code_analytique || '';
+    document.getElementById('modalEditEcriture').style.display = 'flex';
+}
+</script>
+{% endblock %}

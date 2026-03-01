@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Exportation écritures - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="margin-bottom:1.5rem;">
+        <h1>Exportation des écritures</h1>
+        <p class="subtitle">Sélectionnez les écritures validées à exporter en fichier tabulé (.txt)</p>
+    </div>
+
+    <form method="POST" action="{{ url_for('exportation_bp.exporter') }}" id="exportForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div id="exportBar" style="display:none; background:#2563eb; color:#fff; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; align-items:center; justify-content:space-between;">
+            <span><strong id="expSelectedCount">0</strong> écriture(s) sélectionnée(s)</span>
+            <button type="submit" class="btn" style="background:#fff; color:#2563eb; font-weight:700;">
+                Exporter (<span id="expSelectedCountBtn">0</span>)
+            </button>
+        </div>
+
+        <div class="section">
+            <table class="table" style="width:100%;">
+                <thead>
+                    <tr>
+                        <th style="width:30px;">
+                            <input type="checkbox" id="expSelectAll" onchange="expToggleAll(this)">
+                        </th>
+                        <th>Date</th>
+                        <th>Compte</th>
+                        <th>Analytique</th>
+                        <th>Libellé</th>
+                        <th>N° Facture</th>
+                        <th style="text-align:right;">Débit</th>
+                        <th style="text-align:right;">Crédit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in ecritures %}
+                    <tr>
+                        <td><input type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="exp-cb" onchange="expUpdateSelection()"></td>
+                        <td>{% if e.date_ecriture %}{{ e.date_ecriture[8:10] }}/{{ e.date_ecriture[5:7] }}/{{ e.date_ecriture[0:4] }}{% else %}—{% endif %}</td>
+                        <td><code>{{ e.compte }}</code></td>
+                        <td>{{ e.code_analytique or '—' }}</td>
+                        <td style="font-size:0.9em;">{{ e.libelle }}</td>
+                        <td>{{ e.numero_facture or '—' }}</td>
+                        <td style="text-align:right;">{% if e.debit %}{{ '{:,.2f}'.format(e.debit).replace(',', ' ') }}{% endif %}</td>
+                        <td style="text-align:right;">{% if e.credit %}{{ '{:,.2f}'.format(e.credit).replace(',', ' ') }}{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not ecritures %}
+                    <tr><td colspan="8" style="text-align:center; padding:2rem; color:#888;">Aucune écriture validée à exporter.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </form>
+</div>
+
+<script>
+function expToggleAll(master) {
+    document.querySelectorAll('.exp-cb').forEach(function(cb) {
+        cb.checked = master.checked;
+    });
+    expUpdateSelection();
+}
+
+function expUpdateSelection() {
+    var checked = document.querySelectorAll('.exp-cb:checked').length;
+    var bar = document.getElementById('exportBar');
+    if (checked > 0) {
+        bar.style.display = 'flex';
+        document.getElementById('expSelectedCount').textContent = checked;
+        document.getElementById('expSelectedCountBtn').textContent = checked;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

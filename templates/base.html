@@ -82,6 +82,16 @@
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
                 </div>
             </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">🧾 Factures ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('factures_bp.liste_factures') }}">📄 Factures</a>
+                    <a href="{{ url_for('fournisseurs_bp.liste_fournisseurs') }}">🏢 Fournisseurs</a>
+                    <a href="{{ url_for('regles_comptables_bp.liste_regles') }}">📐 Règles comptables</a>
+                    <a href="{{ url_for('ecritures_bp.liste_ecritures') }}">📝 Écritures</a>
+                    <a href="{{ url_for('exportation_bp.liste_exportation') }}">📤 Exportation</a>
+                </div>
+            </div>
             <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
             {% elif session.profil == 'comptable' %}
             <!-- Menu Comptable -->
@@ -152,6 +162,16 @@
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
                 </div>
             </div>
+            <div class="nav-dropdown">
+                <a href="#" class="nav-dropdown-toggle">🧾 Factures ▾</a>
+                <div class="nav-dropdown-menu">
+                    <a href="{{ url_for('factures_bp.liste_factures') }}">📄 Factures</a>
+                    <a href="{{ url_for('fournisseurs_bp.liste_fournisseurs') }}">🏢 Fournisseurs</a>
+                    <a href="{{ url_for('regles_comptables_bp.liste_regles') }}">📐 Règles comptables</a>
+                    <a href="{{ url_for('ecritures_bp.liste_ecritures') }}">📝 Écritures</a>
+                    <a href="{{ url_for('exportation_bp.liste_exportation') }}">📤 Exportation</a>
+                </div>
+            </div>
             <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
             {% elif session.profil == 'responsable' %}
             <!-- Menu Responsable -->
@@ -188,6 +208,7 @@
                 </div>
             </div>
             <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}" style="font-weight:600;">🕐 Temps annualisé</a>
+            <a href="{{ url_for('factures_bp.approbation_factures') }}" style="font-weight:600;">🧾 Approbation factures</a>
             <a href="{{ url_for('salles_bp.salles') }}" style="font-weight:600;">🏠 Salles</a>
             {% elif session.profil == 'prestataire' %}
             <!-- Menu Prestataire paie -->
