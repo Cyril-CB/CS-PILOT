@@ -20,6 +20,7 @@ from database import get_db
 from utils import login_required, get_setting
 from blueprints.pesee_alisfa import call_ai, _extract_json_from_response
 from blueprints.api_keys import get_available_models
+from email_service import is_email_configured, envoyer_email
 
 factures_bp = Blueprint('factures_bp', __name__)
 
@@ -475,3 +476,90 @@ def approbation_factures():
 
     conn.close()
     return render_template('approbation_factures.html', factures=factures)
+
+
+@factures_bp.route('/factures/relancer', methods=['POST'])
+@login_required
+def relancer_secteurs():
+    """Envoie un email de relance aux responsables/direction ayant des factures en attente."""
+    if session.get('profil') not in PROFILS_GESTION:
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('factures_bp.liste_factures'))
+
+    if not is_email_configured():
+        flash('Les notifications email ne sont pas configurées.', 'error')
+        return redirect(url_for('factures_bp.liste_factures'))
+
+    conn = get_db()
+
+    # Factures en attente assignées à un secteur
+    factures_secteurs = conn.execute('''
+        SELECT f.secteur_id, s.nom as secteur_nom, COUNT(*) as nb
+        FROM factures f
+        JOIN secteurs s ON f.secteur_id = s.id
+        WHERE f.approbation = 'en_attente' AND f.secteur_id IS NOT NULL
+        GROUP BY f.secteur_id
+    ''').fetchall()
+
+    # Factures en attente assignées à la direction
+    nb_direction = conn.execute('''
+        SELECT COUNT(*) as nb FROM factures
+        WHERE approbation = 'en_attente' AND assigned_direction = 1
+    ''').fetchone()['nb']
+
+    nb_envoyes = 0
+    nb_erreurs = 0
+
+    # Relancer les responsables de chaque secteur
+    for row in factures_secteurs:
+        responsables = conn.execute('''
+            SELECT prenom, email FROM users
+            WHERE secteur_id = ? AND profil = 'responsable' AND email IS NOT NULL AND email != ''
+        ''', (row['secteur_id'],)).fetchall()
+
+        nb = row['nb']
+        sujet = f"Factures en attente de validation"
+        contenu = f"""
+            <p>Vous avez <strong>{nb} facture{'s' if nb > 1 else ''}</strong>
+            en attente de validation pour le secteur <strong>{row['secteur_nom']}</strong>.</p>
+            <p>Merci de vous connecter à CS-PILOT pour les consulter et les approuver.</p>
+        """
+
+        for resp in responsables:
+            ok, _ = envoyer_email(resp['email'], sujet, contenu, resp['prenom'])
+            if ok:
+                nb_envoyes += 1
+            else:
+                nb_erreurs += 1
+
+    # Relancer la direction si factures assignées
+    if nb_direction > 0:
+        directeurs = conn.execute('''
+            SELECT prenom, email FROM users
+            WHERE profil = 'directeur' AND email IS NOT NULL AND email != ''
+        ''').fetchall()
+
+        sujet = f"Factures en attente de validation"
+        contenu = f"""
+            <p>Vous avez <strong>{nb_direction} facture{'s' if nb_direction > 1 else ''}</strong>
+            assignée{'s' if nb_direction > 1 else ''} à la direction en attente de validation.</p>
+            <p>Merci de vous connecter à CS-PILOT pour les consulter et les approuver.</p>
+        """
+
+        for d in directeurs:
+            ok, _ = envoyer_email(d['email'], sujet, contenu, d['prenom'])
+            if ok:
+                nb_envoyes += 1
+            else:
+                nb_erreurs += 1
+
+    conn.close()
+
+    if nb_envoyes:
+        flash(f'{nb_envoyes} relance{"s" if nb_envoyes > 1 else ""} envoyée{"s" if nb_envoyes > 1 else ""} avec succès.', 'success')
+    elif nb_erreurs:
+        flash('Erreur lors de l\'envoi des relances.', 'error')
+    else:
+        flash('Aucune facture en attente de validation à relancer.', 'info')
+
+    return redirect(url_for('factures_bp.liste_factures'))
