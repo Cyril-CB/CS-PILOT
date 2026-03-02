@@ -47,6 +47,8 @@ def test_pages_comptables_utilisent_des_icones_pour_actions(admin_client, db, sa
     _seed_compta_rows(db, sample_users["directeur_id"])
 
     factures_html = admin_client.get("/factures").get_data(as_text=True)
+    assert 'title="Assigner"' in factures_html
+    assert ">Assigner<" not in factures_html
     assert 'title="Détail"' in factures_html
     assert ">Détail<" not in factures_html
     assert 'title="Supprimer"' in factures_html
