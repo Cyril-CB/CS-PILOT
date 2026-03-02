@@ -64,7 +64,7 @@
                         {% endif %}
                     </td>
                     <td style="white-space:nowrap;">
-                        <button class="btn btn-sm btn-secondary" onclick="openAssigner({{ f.id }}, '{{ (f.fournisseur_nom or '')|e }}', '{{ (f.numero_facture or '')|e }}', '{{ f.montant_ttc or 0 }}')">Assigner</button>
+                        <button type="button" class="btn-icon" title="Assigner" aria-label="Assigner" onclick="openAssigner({{ f.id }}, '{{ (f.fournisseur_nom or '')|e }}', '{{ (f.numero_facture or '')|e }}', '{{ f.montant_ttc or 0 }}')">📌</button>
                         <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}" class="btn-icon" title="Détail" aria-label="Détail">👁️</a>
                         <form method="POST" action="{{ url_for('factures_bp.supprimer_facture', facture_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette facture et son fichier ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
