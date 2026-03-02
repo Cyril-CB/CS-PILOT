@@ -7,7 +7,7 @@ Versions actuellement prises en charge par les mises à jour de sécurité.
 | Version | Prise en charge |
 | ------- | ----------------|
 | 1.0.x | :white_check_mark: |
-| >1.0 | :x: |
+| Autres versions | :x: |
 
 ## Signaler une vulnérabilité
 
