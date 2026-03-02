@@ -69,6 +69,10 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 - Protection contre le path traversal sur les sauvegardes
 - Validation stricte des noms de fichiers
 
+## Documentation
+
+- **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
+
 ## Installation
 
 ### Prerequis
