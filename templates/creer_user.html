@@ -166,9 +166,11 @@
             profilInfo.style.display = 'block';
             profilInfo.innerHTML = '<h4>👨‍💼 Profil Responsable</h4><p>Accès aux fiches de son secteur (modification/validation) + sa fiche personnelle.</p><p><strong>Important :</strong> Attribuez-lui un secteur pour qu\'il puisse gérer son équipe.</p>';
         } else if (profil === 'comptable') {
+            secteurGroup.style.display = 'block';
+            responsableGroup.style.display = 'block';
             congesGroup.style.display = 'block';
             profilInfo.style.display = 'block';
-            profilInfo.innerHTML = '<h4>💰 Profil Comptable</h4><p>Accès lecture seule à toutes les fiches + sa fiche personnelle (modification/validation).</p>';
+            profilInfo.innerHTML = '<h4>💰 Profil Comptable</h4><p>Accès lecture seule à toutes les fiches + sa fiche personnelle (modification/validation).</p><p>Peut être rattaché à un secteur (optionnel) et doit pouvoir avoir un responsable hiérarchique.</p>';
         } else if (profil === 'directeur') {
             profilInfo.style.display = 'block';
             profilInfo.innerHTML = '<h4>🎯 Profil Directeur</h4><p>Accès lecture seule à toutes les fiches + validation finale. <strong>Pas de fiche personnelle</strong> (forfait jour).</p>';

@@ -35,11 +35,11 @@
                     <td>{{ f.nb_factures }}</td>
                     <td>{{ f.email_contact or '—' }}</td>
                     <td>
-                        <button class="btn btn-sm btn-secondary" onclick="openEdit({{ f.id }}, '{{ f.nom|e }}', '{{ (f.alias1 or '')|e }}', '{{ (f.alias2 or '')|e }}', '{{ (f.code_comptable or '')|e }}', '{{ (f.email_contact or '')|e }}')">Éditer</button>
+                        <button class="btn-icon" onclick="openEdit({{ f.id }}, '{{ f.nom|e }}', '{{ (f.alias1 or '')|e }}', '{{ (f.alias2 or '')|e }}', '{{ (f.code_comptable or '')|e }}', '{{ (f.email_contact or '')|e }}')" title="Éditer" aria-label="Éditer">✏️</button>
                         {% if f.nb_factures == 0 %}
                         <form method="POST" action="{{ url_for('fournisseurs_bp.supprimer_fournisseur', fournisseur_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer ce fournisseur ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                            <button type="submit" class="btn-icon" title="Supprimer" aria-label="Supprimer">🗑️</button>
                         </form>
                         {% endif %}
                     </td>

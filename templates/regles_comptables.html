@@ -53,10 +53,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-secondary" onclick='openEditRegle({{ r|tojson }})'>Éditer</button>
+                        <button class="btn-icon" onclick='openEditRegle({{ r|tojson }})' title="Éditer" aria-label="Éditer">✏️</button>
                         <form method="POST" action="{{ url_for('regles_comptables_bp.supprimer_regle', regle_id=r.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette règle ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                            <button type="submit" class="btn-icon" title="Supprimer" aria-label="Supprimer">🗑️</button>
                         </form>
                     </td>
                 </tr>
