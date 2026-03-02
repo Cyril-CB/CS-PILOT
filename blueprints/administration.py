@@ -28,7 +28,7 @@ def administration():
 
     statut_migrations = get_statut_complet()
     version_db = statut_migrations.get('version_actuelle', '0000')
-    version_app = f"2.8.{version_db}"
+    version_app = f"1.0.{version_db}"
 
     # Informations sur la base de donnees
     db_info = _get_db_info()
