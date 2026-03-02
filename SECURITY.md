@@ -11,5 +11,4 @@ Versions actuellement prises en charge par les mises à jour de sécurité.
 
 ## Signaler une vulnérabilité
 
-Signalez tout problème ici : https://github.com/Cyril-CB/CS-PILOT/issues
-Ou par mail : cyril.borand@gmail.com
+Signalez tout problème de sécurité ou technique ici : https://github.com/Cyril-CB/CS-PILOT/issues avec le bouton "New issue".
