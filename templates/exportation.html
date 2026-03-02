@@ -80,7 +80,7 @@
                         <a href="{{ url_for('exportation_bp.telecharger_archive', archive_id=a.id) }}" class="btn btn-sm btn-primary">Télécharger</a>
                         <form method="POST" action="{{ url_for('exportation_bp.supprimer_archive', archive_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette archive ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
+                            <button type="submit" class="btn-icon" title="Supprimer" aria-label="Supprimer">🗑️</button>
                         </form>
                     </td>
                 </tr>
