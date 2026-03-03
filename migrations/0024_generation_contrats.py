@@ -91,7 +91,12 @@ def upgrade(conn):
         ''')
     else:
         # Ajouter les colonnes manquantes si la table existait sans elles
-        for col, typedef in [('fichier_path', 'TEXT'), ('fichier_nom', 'TEXT')]:
+        for col, typedef in [
+            ('fichier_path', 'TEXT'),
+            ('fichier_nom', 'TEXT'),
+            ('type_contrat', 'TEXT'),
+            ('created_by', 'INTEGER'),
+        ]:
             try:
                 cursor.execute(f"SELECT {col} FROM contrats_generes LIMIT 1")  # noqa: S608
             except Exception:
