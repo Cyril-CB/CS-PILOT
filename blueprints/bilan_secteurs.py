@@ -255,6 +255,12 @@ def api_supprimer_annee(annee):
         conn.close()
 
 
+def _get_libelles_pcg(conn):
+    """Recupere un dict {compte_num: libelle} depuis le plan comptable general."""
+    rows = conn.execute('SELECT compte_num, libelle FROM plan_comptable_general').fetchall()
+    return {r['compte_num']: r['libelle'] for r in rows}
+
+
 # ── Donnees du bilan (API JSON) ──────────────────────────────────────────────
 
 @bilan_secteurs_bp.route('/api/bilan/donnees')
@@ -313,16 +319,20 @@ def api_bilan_donnees():
         produits = {}
         detail_comptes = {}  # {compte_num: [{'mois': 1, 'libelle': '...', 'montant': 100}, ...]}
 
+        # Utiliser le plan comptable general pour les libelles de comptes
+        pcg = _get_libelles_pcg(conn)
+
         for d in all_donnees:
             compte = d['compte_num']
             premier = compte[0]
             categorie = compte[:2]  # 60, 61, 62, 70, 71, etc.
 
             montant = d['montant']
+            libelle_compte = pcg.get(compte) or d['libelle'] or compte
 
             # Detail par compte
             if compte not in detail_comptes:
-                detail_comptes[compte] = {'libelle': d['libelle'] or compte, 'operations': []}
+                detail_comptes[compte] = {'libelle': libelle_compte, 'operations': []}
             detail_comptes[compte]['operations'].append({
                 'annee': annee,
                 'mois': d['mois'],
@@ -336,7 +346,7 @@ def api_bilan_donnees():
                     charges[categorie] = {'comptes': {}, 'total': 0}
                 if compte not in charges[categorie]['comptes']:
                     charges[categorie]['comptes'][compte] = {
-                        'libelle': d['libelle'] or compte, 'total': 0}
+                        'libelle': libelle_compte, 'total': 0}
                 charges[categorie]['comptes'][compte]['total'] += montant
                 charges[categorie]['total'] += montant
             elif premier == '7':
@@ -344,7 +354,7 @@ def api_bilan_donnees():
                     produits[categorie] = {'comptes': {}, 'total': 0}
                 if compte not in produits[categorie]['comptes']:
                     produits[categorie]['comptes'][compte] = {
-                        'libelle': d['libelle'] or compte, 'total': 0}
+                        'libelle': libelle_compte, 'total': 0}
                 produits[categorie]['comptes'][compte]['total'] += montant
                 produits[categorie]['total'] += montant
 
@@ -569,18 +579,22 @@ def api_export_pdf():
         charges = {}
         produits = {}
 
+        # Utiliser le plan comptable general pour les libelles de comptes
+        pcg = _get_libelles_pcg(conn)
+
         for d in all_donnees:
             compte = d['compte_num']
             premier = compte[0]
             categorie = compte[:2]
             montant = d['montant']
+            libelle_compte = pcg.get(compte) or d['libelle'] or compte
 
             if premier == '6':
                 if categorie not in charges:
                     charges[categorie] = {'comptes': {}, 'total': 0}
                 if compte not in charges[categorie]['comptes']:
                     charges[categorie]['comptes'][compte] = {
-                        'libelle': d['libelle'] or compte, 'total': 0}
+                        'libelle': libelle_compte, 'total': 0}
                 charges[categorie]['comptes'][compte]['total'] += montant
                 charges[categorie]['total'] += montant
             elif premier == '7':
@@ -588,7 +602,7 @@ def api_export_pdf():
                     produits[categorie] = {'comptes': {}, 'total': 0}
                 if compte not in produits[categorie]['comptes']:
                     produits[categorie]['comptes'][compte] = {
-                        'libelle': d['libelle'] or compte, 'total': 0}
+                        'libelle': libelle_compte, 'total': 0}
                 produits[categorie]['comptes'][compte]['total'] += montant
                 produits[categorie]['total'] += montant
 

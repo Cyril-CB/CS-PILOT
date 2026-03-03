@@ -968,6 +968,17 @@ def init_db():
         )
     ''')
 
+    # Plan comptable general (comptes saisis ou importes)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS plan_comptable_general (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL UNIQUE,
+            libelle TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Plan comptable analytique (comptes saisis ou importes)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comptabilite_comptes (

@@ -396,6 +396,7 @@ class TestTablesCreees:
         'bilan_fec_imports',
         'bilan_fec_donnees',
         'bilan_taux_logistique',
+        'plan_comptable_general',
     ]
 
     def test_tables_comptabilite_analytique(self, app, db):
@@ -408,3 +409,145 @@ class TestTablesCreees:
 
             for table in self.NOUVELLES_TABLES:
                 assert table in noms_tables, f"Table manquante : {table}"
+
+
+class TestPlanComptableGeneral:
+    """Tests pour la page Plan comptable général."""
+
+    def test_page_accessible_directeur(self, admin_client):
+        """Le directeur peut accéder au plan comptable général."""
+        resp = admin_client.get('/plan-comptable-general')
+        assert resp.status_code == 200
+        assert 'Plan comptable' in resp.get_data(as_text=True)
+
+    def test_page_inaccessible_salarie(self, auth_client):
+        """Un salarié ne peut pas accéder au plan comptable général."""
+        resp = auth_client.get('/plan-comptable-general', follow_redirects=True)
+        assert 'Accès non autorisé' in resp.get_data(as_text=True)
+
+    def test_ajout_compte(self, admin_client, db):
+        """On peut ajouter un compte au plan comptable général."""
+        resp = admin_client.post('/api/plan-general/comptes',
+                                 json={'compte_num': '601000', 'libelle': 'Achats MP'},
+                                 content_type='application/json')
+        data = resp.get_json()
+        assert data['success'] is True
+
+        row = db.execute("SELECT * FROM plan_comptable_general WHERE compte_num = '601000'").fetchone()
+        assert row is not None
+        assert row['libelle'] == 'Achats MP'
+
+    def test_ajout_compte_doublon(self, admin_client, db):
+        """Un doublon de numéro de compte retourne 409."""
+        admin_client.post('/api/plan-general/comptes',
+                          json={'compte_num': '601000', 'libelle': 'Achats MP'},
+                          content_type='application/json')
+        resp = admin_client.post('/api/plan-general/comptes',
+                                 json={'compte_num': '601000', 'libelle': 'Doublon'},
+                                 content_type='application/json')
+        assert resp.status_code == 409
+
+    def test_ajout_compte_champs_requis(self, admin_client):
+        """L'ajout sans numéro ou libellé retourne 400."""
+        resp = admin_client.post('/api/plan-general/comptes',
+                                 json={'compte_num': '', 'libelle': ''},
+                                 content_type='application/json')
+        assert resp.status_code == 400
+
+    def test_suppression_compte(self, admin_client, db):
+        """On peut supprimer un compte du plan comptable général."""
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('999999', 'Test')")
+        db.commit()
+        row = db.execute("SELECT id FROM plan_comptable_general WHERE compte_num = '999999'").fetchone()
+
+        resp = admin_client.delete(f'/api/plan-general/comptes/{row["id"]}')
+        data = resp.get_json()
+        assert data['success'] is True
+
+        row = db.execute("SELECT id FROM plan_comptable_general WHERE compte_num = '999999'").fetchone()
+        assert row is None
+
+    def test_import_txt(self, admin_client, db):
+        """L'import TXT tabulé crée des comptes."""
+        content = "601000\tAchats matières\n602000\tAchats stockés\n"
+        data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'plan.txt')}
+        resp = admin_client.post('/api/plan-general/import-txt',
+                                 data=data, content_type='multipart/form-data')
+        result = resp.get_json()
+        assert result['success'] is True
+        assert result['nb_importes'] == 2
+
+        rows = db.execute("SELECT COUNT(*) as nb FROM plan_comptable_general").fetchone()
+        assert rows['nb'] == 2
+
+    def test_import_txt_mise_a_jour(self, admin_client, db):
+        """L'import TXT met à jour les comptes existants."""
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('601000', 'Ancien')")
+        db.commit()
+
+        content = "601000\tNouveau libellé\n"
+        data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'plan.txt')}
+        resp = admin_client.post('/api/plan-general/import-txt',
+                                 data=data, content_type='multipart/form-data')
+        result = resp.get_json()
+        assert result['nb_doublons'] == 1
+
+        row = db.execute("SELECT libelle FROM plan_comptable_general WHERE compte_num = '601000'").fetchone()
+        assert row['libelle'] == 'Nouveau libellé'
+
+    def test_menu_plan_general_directeur(self, admin_client):
+        """Le directeur voit le lien Plan comptable général dans la sidebar."""
+        resp = admin_client.get('/', follow_redirects=True)
+        html = resp.get_data(as_text=True)
+        assert 'Plan comptable' in html
+
+    def test_utilise_data_table(self, admin_client, db):
+        """Le tableau du plan comptable général utilise la classe data-table."""
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('601000', 'Test')")
+        db.commit()
+        html = admin_client.get('/plan-comptable-general').get_data(as_text=True)
+        assert 'class="data-table"' in html
+
+
+class TestBilanLabelsFromPCG:
+    """Vérifie que le bilan utilise les libellés du plan comptable général."""
+
+    def test_bilan_donnees_utilise_pcg(self, admin_client, db, sample_users):
+        """L'API bilan utilise le libellé du PCG plutôt que celui de l'opération."""
+        secteur_id = sample_users['secteur_id']
+        # Plan comptable analytique
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats analytique', ?)",
+                   (secteur_id,))
+        # Plan comptable général avec le bon libellé
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('601000', 'Achats matières premières')")
+        # Données FEC avec un libellé d'opération
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, ?)",
+                   (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2025&secteur_id={secteur_id}')
+        data = resp.get_json()
+        # Le libellé du compte doit venir du PCG, pas de l'opération
+        assert '60' in data['charges']
+        assert '601000' in data['charges']['60']['comptes']
+        assert data['charges']['60']['comptes']['601000']['libelle'] == 'Achats matières premières'
+
+    def test_bilan_donnees_fallback_operation(self, admin_client, db, sample_users):
+        """Sans PCG, le bilan utilise le libellé de l'opération comme fallback."""
+        secteur_id = sample_users['secteur_id']
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+                   (secteur_id,))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, ?)",
+                   (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2025&secteur_id={secteur_id}')
+        data = resp.get_json()
+        # Sans PCG, on doit avoir le libellé de l'opération
+        assert data['charges']['60']['comptes']['601000']['libelle'] == 'Facture XYZ'
