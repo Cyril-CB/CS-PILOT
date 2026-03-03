@@ -230,7 +230,8 @@ def generer_contrat():
             continue
         lieu = conn.execute('SELECT nom, adresse FROM lieux_travail WHERE id = ?', (lid_int,)).fetchone()
         if lieu:
-            lieux_noms.append(lieu['nom'])
+            adresse = (lieu['adresse'] or '').strip()
+            lieux_noms.append(f"{lieu['nom']} – {adresse}" if adresse else lieu['nom'])
 
     # Salaire socle
     salaire_socle_val = request.form.get('salaire_socle', '').strip()
@@ -287,6 +288,7 @@ def generer_contrat():
         '!SOCLE!': '' if is_cee else salaire_socle_val,
         '!PESEE!': '' if is_cee else pesee_total,
         '!ANCIENNETE!': '' if is_cee else request.form.get('anciennete', '').strip(),
+        '!BRUTM!': '' if is_cee else request.form.get('brut_mensuel', '').strip(),
         '!FORFAIT!': forfait_val if is_cee else '',
         '!JOURS!': request.form.get('jours', '').strip() if is_cee else '',
     }
