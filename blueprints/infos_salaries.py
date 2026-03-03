@@ -200,6 +200,35 @@ def modifier_email():
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
 
+@infos_salaries_bp.route('/infos_salaries/infos_personnelles', methods=['POST'])
+@login_required
+def modifier_infos_personnelles():
+    """Modifier l'adresse, la date de naissance et le numero de securite sociale."""
+    if not _peut_gerer():
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    user_id = request.form.get('user_id', type=int)
+    adresse = request.form.get('adresse', '').strip() or None
+    date_naissance = request.form.get('date_naissance', '').strip() or None
+    numero_secu = request.form.get('numero_secu', '').strip() or None
+
+    if not user_id:
+        flash("Salarie invalide.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    conn = get_db()
+    conn.execute(
+        'UPDATE users SET adresse = ?, date_naissance = ?, numero_secu = ? WHERE id = ?',
+        (adresse, date_naissance, numero_secu, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+    flash("Informations personnelles mises a jour.", 'success')
+    return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+
 @infos_salaries_bp.route('/infos_salaries/pesee', methods=['POST'])
 @login_required
 def modifier_pesee():

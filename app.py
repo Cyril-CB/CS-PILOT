@@ -110,6 +110,7 @@ from blueprints.fournisseurs import fournisseurs_bp
 from blueprints.regles_comptables import regles_comptables_bp
 from blueprints.ecritures import ecritures_bp
 from blueprints.exportation import exportation_bp
+from blueprints.generation_contrats import generation_contrats_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -145,6 +146,7 @@ app.register_blueprint(fournisseurs_bp)
 app.register_blueprint(regles_comptables_bp)
 app.register_blueprint(ecritures_bp)
 app.register_blueprint(exportation_bp)
+app.register_blueprint(generation_contrats_bp)
 
 
 # ==================== Context Processors ====================

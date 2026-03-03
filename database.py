@@ -42,6 +42,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0021', 'Ajout epargne tresorerie'),
     ('0022', 'Module comptable factures'),
     ('0023', 'Archivage exportations ecritures'),
+    ('0024', 'Ajout module generation contrats'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -88,6 +89,9 @@ def init_db():
             pesee INTEGER,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
+            adresse TEXT,
+            date_naissance TEXT,
+            numero_secu TEXT,
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
             FOREIGN KEY (responsable_id) REFERENCES users(id)
         )
@@ -896,6 +900,58 @@ def init_db():
             nb_ecritures INTEGER DEFAULT 0,
             created_by INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des modeles de contrats (DOCX) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS modeles_contrats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            fichier_path TEXT NOT NULL,
+            fichier_nom TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des lieux de travail =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS lieux_travail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            adresse TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des forfaits CEE =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS forfaits_cee (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            montant REAL NOT NULL,
+            condition TEXT,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des contrats generes (dernier contrat par salarie) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_generes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            fichier_path TEXT NOT NULL,
+            fichier_nom TEXT NOT NULL,
+            type_contrat TEXT,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (created_by) REFERENCES users(id)
         )
     ''')
