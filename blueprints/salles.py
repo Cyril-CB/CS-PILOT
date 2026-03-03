@@ -27,7 +27,7 @@ def _get_dates_exclues(conn, date_debut_str, date_fin_str, exclure_vacances, exc
     if exclure_vacances:
         periodes = conn.execute('''
             SELECT date_debut, date_fin FROM periodes_vacances
-            WHERE date_fin >= ? AND date_debut <= ?
+            WHERE date_fin >= %s AND date_debut <= %s
         ''', (date_debut_str, date_fin_str)).fetchall()
         for p in periodes:
             d = max(datetime.strptime(p['date_debut'], '%Y-%m-%d'),
@@ -41,7 +41,7 @@ def _get_dates_exclues(conn, date_debut_str, date_fin_str, exclure_vacances, exc
     if exclure_feries:
         rows = conn.execute('''
             SELECT date FROM jours_feries
-            WHERE date >= ? AND date <= ?
+            WHERE date >= %s AND date <= %s
         ''', (date_debut_str, date_fin_str)).fetchall()
         for r in rows:
             dates_exclues.add(r['date'])
@@ -76,8 +76,8 @@ def _generer_reservations_recurrence(conn, recurrence):
             # Verifier qu'il n'y a pas de conflit
             conflit = conn.execute('''
                 SELECT id FROM reservations_salles
-                WHERE salle_id = ? AND date = ?
-                AND heure_debut < ? AND heure_fin > ?
+                WHERE salle_id = %s AND date = %s
+                AND heure_debut < %s AND heure_fin > %s
             ''', (recurrence['salle_id'], date_str,
                   recurrence['heure_fin'], recurrence['heure_debut'])).fetchone()
             if not conflit:
@@ -89,7 +89,7 @@ def _generer_reservations_recurrence(conn, recurrence):
             INSERT INTO reservations_salles
             (salle_id, titre, description, date, heure_debut, heure_fin,
              recurrence_id, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (recurrence['salle_id'], recurrence['titre'],
               recurrence['description'], date_str,
               recurrence['heure_debut'], recurrence['heure_fin'],
@@ -104,12 +104,12 @@ def _verifier_conflit(conn, salle_id, date, heure_debut, heure_fin, exclure_id=N
         SELECT r.*, u.prenom, u.nom as nom_user
         FROM reservations_salles r
         LEFT JOIN users u ON r.created_by = u.id
-        WHERE r.salle_id = ? AND r.date = ?
-        AND r.heure_debut < ? AND r.heure_fin > ?
+        WHERE r.salle_id = %s AND r.date = %s
+        AND r.heure_debut < %s AND r.heure_fin > %s
     '''
     params = [salle_id, date, heure_fin, heure_debut]
     if exclure_id:
-        query += ' AND r.id != ?'
+        query += ' AND r.id != %s'
         params.append(exclure_id)
     return conn.execute(query, params).fetchone()
 
@@ -136,7 +136,7 @@ def salles():
             FROM reservations_salles r
             JOIN salles s ON r.salle_id = s.id
             LEFT JOIN users u ON r.created_by = u.id
-            WHERE r.date = ?
+            WHERE r.date = %s
             ORDER BY r.heure_debut, s.nom
         ''', (date_sel,)).fetchall()
 
@@ -174,7 +174,7 @@ def calendrier_salle(salle_id):
     """Vue calendrier mensuel pour une salle."""
     conn = get_db()
     try:
-        salle = conn.execute('SELECT * FROM salles WHERE id = ?', (salle_id,)).fetchone()
+        salle = conn.execute('SELECT * FROM salles WHERE id = %s', (salle_id,)).fetchone()
         if not salle:
             flash('Salle introuvable.', 'error')
             return redirect(url_for('salles_bp.salles'))
@@ -201,7 +201,7 @@ def calendrier_salle(salle_id):
             SELECT r.*, u.prenom, u.nom as nom_user
             FROM reservations_salles r
             LEFT JOIN users u ON r.created_by = u.id
-            WHERE r.salle_id = ? AND r.date >= ? AND r.date <= ?
+            WHERE r.salle_id = %s AND r.date >= %s AND r.date <= %s
             ORDER BY r.date, r.heure_debut
         ''', (salle_id, date_debut_str, date_fin_str)).fetchall()
 
@@ -287,7 +287,7 @@ def ajouter_salle():
     try:
         conn.execute('''
             INSERT INTO salles (nom, capacite, description, couleur)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
         ''', (nom, int(capacite) if capacite else None, description, couleur))
         conn.commit()
         flash(f'Salle "{nom}" ajoutee.', 'success')
@@ -317,8 +317,8 @@ def modifier_salle(salle_id):
     conn = get_db()
     try:
         conn.execute('''
-            UPDATE salles SET nom = ?, capacite = ?, description = ?, couleur = ?
-            WHERE id = ?
+            UPDATE salles SET nom = %s, capacite = %s, description = %s, couleur = %s
+            WHERE id = %s
         ''', (nom, int(capacite) if capacite else None, description, couleur, salle_id))
         conn.commit()
         flash(f'Salle "{nom}" modifiee.', 'success')
@@ -338,7 +338,7 @@ def supprimer_salle(salle_id):
 
     conn = get_db()
     try:
-        conn.execute('UPDATE salles SET active = 0 WHERE id = ?', (salle_id,))
+        conn.execute('UPDATE salles SET active = 0 WHERE id = %s', (salle_id,))
         conn.commit()
         flash('Salle desactivee.', 'success')
     finally:
@@ -380,7 +380,7 @@ def reserver():
         conn.execute('''
             INSERT INTO reservations_salles
             (salle_id, titre, description, date, heure_debut, heure_fin, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
         ''', (salle_id, titre, description, date, heure_debut, heure_fin,
               session.get('user_id')))
         conn.commit()
@@ -397,7 +397,7 @@ def supprimer_reservation(resa_id):
     """Supprimer une reservation ponctuelle."""
     conn = get_db()
     try:
-        resa = conn.execute('SELECT * FROM reservations_salles WHERE id = ?', (resa_id,)).fetchone()
+        resa = conn.execute('SELECT * FROM reservations_salles WHERE id = %s', (resa_id,)).fetchone()
         if not resa:
             flash('Reservation introuvable.', 'error')
             return redirect(url_for('salles_bp.salles'))
@@ -408,7 +408,7 @@ def supprimer_reservation(resa_id):
             return redirect(url_for('salles_bp.salles'))
 
         date = resa['date']
-        conn.execute('DELETE FROM reservations_salles WHERE id = ?', (resa_id,))
+        conn.execute('DELETE FROM reservations_salles WHERE id = %s', (resa_id,))
         conn.commit()
         flash('Reservation supprimee.', 'success')
     finally:
@@ -457,14 +457,15 @@ def creer_recurrence():
             INSERT INTO recurrences_salles
             (salle_id, titre, description, jour_semaine, heure_debut, heure_fin,
              date_debut, date_fin, exclure_vacances, exclure_feries, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         ''', (salle_id, titre, description, jour_semaine, heure_debut, heure_fin,
               date_debut, date_fin, exclure_vacances, exclure_feries,
               session.get('user_id')))
 
         recurrence_id = cursor.lastrowid
         recurrence = conn.execute(
-            'SELECT * FROM recurrences_salles WHERE id = ?', (recurrence_id,)
+            'SELECT * FROM recurrences_salles WHERE id = %s', (recurrence_id,)
         ).fetchone()
 
         nb = _generer_reservations_recurrence(conn, recurrence)
@@ -492,10 +493,10 @@ def supprimer_recurrence(rec_id):
         # Supprimer les reservations futures liees
         conn.execute('''
             DELETE FROM reservations_salles
-            WHERE recurrence_id = ? AND date >= ?
+            WHERE recurrence_id = %s AND date >= %s
         ''', (rec_id, today))
         # Desactiver la recurrence
-        conn.execute('UPDATE recurrences_salles SET active = 0 WHERE id = ?', (rec_id,))
+        conn.execute('UPDATE recurrences_salles SET active = 0 WHERE id = %s', (rec_id,))
         conn.commit()
         flash('Recurrence desactivee et reservations futures supprimees.', 'success')
     finally:
@@ -515,7 +516,7 @@ def regenerer_recurrence(rec_id):
     conn = get_db()
     try:
         recurrence = conn.execute(
-            'SELECT * FROM recurrences_salles WHERE id = ? AND active = 1', (rec_id,)
+            'SELECT * FROM recurrences_salles WHERE id = %s AND active = 1', (rec_id,)
         ).fetchone()
         if not recurrence:
             flash('Recurrence introuvable ou inactive.', 'error')
@@ -525,7 +526,7 @@ def regenerer_recurrence(rec_id):
         # Supprimer les reservations futures liees
         conn.execute('''
             DELETE FROM reservations_salles
-            WHERE recurrence_id = ? AND date >= ?
+            WHERE recurrence_id = %s AND date >= %s
         ''', (rec_id, today))
 
         # Ajuster la date de debut pour ne regenerer que le futur
@@ -559,7 +560,7 @@ def api_reservations():
             FROM reservations_salles r
             JOIN salles s ON r.salle_id = s.id
             LEFT JOIN users u ON r.created_by = u.id
-            WHERE r.date = ?
+            WHERE r.date = %s
             ORDER BY r.heure_debut, s.nom
         ''', (date,)).fetchall()
 

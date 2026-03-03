@@ -187,7 +187,7 @@ def generer_ecritures():
                 continue
 
             # Récupérer la facture pour la date et l'échéance
-            fac = conn.execute('SELECT date_facture, date_echeance, numero_facture FROM factures WHERE id=?',
+            fac = conn.execute('SELECT date_facture, date_echeance, numero_facture FROM factures WHERE id=%s',
                                (facture_id,)).fetchone()
             if not fac:
                 continue
@@ -208,7 +208,7 @@ def generer_ecritures():
                     '''INSERT INTO ecritures_comptables
                        (facture_id, date_ecriture, compte, libelle, numero_facture,
                         debit, credit, code_analytique, echeance)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)''',
                     (facture_id, date_ecriture, ligne.get('compte', ''),
                      (ligne.get('libelle', '') or '').upper(),
                      fac['numero_facture'] or '',
@@ -221,7 +221,7 @@ def generer_ecritures():
 
             # Marquer la facture comme traitée
             conn.execute(
-                "UPDATE factures SET statut='traitee', updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                "UPDATE factures SET statut='traitee', updated_at=CURRENT_TIMESTAMP WHERE id=%s",
                 (facture_id,)
             )
             # Historique
@@ -262,8 +262,8 @@ def modifier_ecriture(ecriture_id):
 
     conn = get_db()
     conn.execute(
-        '''UPDATE ecritures_comptables SET compte=?, libelle=?, debit=?, credit=?,
-           code_analytique=?, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+        '''UPDATE ecritures_comptables SET compte=%s, libelle=%s, debit=%s, credit=%s,
+           code_analytique=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s''',
         (compte, libelle, debit, credit, code_analytique, ecriture_id)
     )
     conn.commit()
@@ -287,7 +287,7 @@ def valider_ecritures():
         return redirect(url_for('ecritures_bp.liste_ecritures'))
 
     conn = get_db()
-    placeholders = ','.join('?' * len(ids))
+    placeholders = ','.join('%s' * len(ids))
     conn.execute(
         f"UPDATE ecritures_comptables SET statut='validee', updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND statut='brouillon'",
         ids

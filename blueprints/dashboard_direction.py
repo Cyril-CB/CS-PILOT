@@ -46,8 +46,8 @@ def dashboard_direction():
         FROM contrats c
         JOIN users u ON c.user_id = u.id
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
-          AND c.date_debut <= ?
-          AND (c.date_fin IS NULL OR c.date_fin >= ?)
+          AND c.date_debut <= %s
+          AND (c.date_fin IS NULL OR c.date_fin >= %s)
         GROUP BY c.type_contrat
         ORDER BY c.type_contrat
     ''', (today_str, today_str)).fetchall()
@@ -62,7 +62,7 @@ def dashboard_direction():
         FROM absences a
         JOIN users u ON a.user_id = u.id
         LEFT JOIN secteurs s ON u.secteur_id = s.id
-        WHERE a.date_debut <= ? AND a.date_fin >= ?
+        WHERE a.date_debut <= %s AND a.date_fin >= %s
         ORDER BY s.nom, u.nom, u.prenom
     ''', (today_str, today_str)).fetchall()
 
@@ -78,7 +78,7 @@ def dashboard_direction():
     repartition_motifs = conn.execute('''
         SELECT a.motif, COUNT(*) as nb
         FROM absences a
-        WHERE a.date_debut <= ? AND a.date_fin >= ?
+        WHERE a.date_debut <= %s AND a.date_fin >= %s
         GROUP BY a.motif
         ORDER BY nb DESC
     ''', (today_str, today_str)).fetchall()
@@ -126,7 +126,7 @@ def dashboard_direction():
     validations_map = {}
     validations_rows = conn.execute('''
         SELECT * FROM validations
-        WHERE mois = ? AND annee = ?
+        WHERE mois = %s AND annee = %s
     ''', (mois_validation, annee_validation)).fetchall()
     for v in validations_rows:
         validations_map[v['user_id']] = dict(v)
@@ -240,7 +240,7 @@ def dashboard_direction():
     absences_mois = conn.execute('''
         SELECT COUNT(*) as nb, COALESCE(SUM(jours_ouvres), 0) as total_jours
         FROM absences
-        WHERE date_debut <= ? AND date_fin >= ?
+        WHERE date_debut <= %s AND date_fin >= %s
     ''', (dernier_jour_mois_str, premier_jour_mois)).fetchone()
 
     conn.close()

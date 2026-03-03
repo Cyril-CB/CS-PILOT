@@ -44,7 +44,7 @@ class TestSaisieCreation:
 
             # Vérifier en base
             row = db.execute(
-                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                "SELECT * FROM heures_reelles WHERE user_id = %s AND date = %s",
                 (sample_users['salarie_id'], date_test)
             ).fetchone()
             assert row is not None
@@ -63,7 +63,7 @@ class TestSaisieCreation:
             }, follow_redirects=True)
 
             row = db.execute(
-                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                "SELECT * FROM heures_reelles WHERE user_id = %s AND date = %s",
                 (sample_users['salarie_id'], date_test)
             ).fetchone()
             assert row is not None
@@ -82,7 +82,7 @@ class TestSaisieCreation:
             }, follow_redirects=True)
 
             row = db.execute(
-                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                "SELECT * FROM heures_reelles WHERE user_id = %s AND date = %s",
                 (sample_users['salarie_id'], date_test)
             ).fetchone()
             assert row is not None
@@ -107,7 +107,7 @@ class TestSaisieHistorique:
             }, follow_redirects=True)
 
             historique = db.execute(
-                "SELECT * FROM historique_modifications WHERE user_id_modifie = ? AND date_concernee = ?",
+                "SELECT * FROM historique_modifications WHERE user_id_modifie = %s AND date_concernee = %s",
                 (sample_users['salarie_id'], date_test)
             ).fetchone()
             assert historique is not None
@@ -143,7 +143,7 @@ class TestSaisieDroits:
             assert response.status_code == 200
 
             row = db.execute(
-                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                "SELECT * FROM heures_reelles WHERE user_id = %s AND date = %s",
                 (sample_users['salarie_id'], date_test)
             ).fetchone()
             assert row is not None

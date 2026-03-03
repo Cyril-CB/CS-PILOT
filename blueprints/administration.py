@@ -5,7 +5,7 @@ Accessible uniquement aux directeurs et comptables.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from utils import login_required
-from database import get_db, DATABASE
+from database import get_db
 import os
 
 administration_bp = Blueprint('administration_bp', __name__)
@@ -144,24 +144,20 @@ def reinitialiser_bdd():
     import shutil
     from database import init_db
 
-    # Sauvegarde de securite avant suppression
-    if os.path.exists(DATABASE):
-        backup_path = DATABASE + '.avant_reinit'
-        try:
-            shutil.copy2(DATABASE, backup_path)
-        except Exception:
-            pass
-
-        try:
-            os.remove(DATABASE)
-            # Supprimer aussi les fichiers WAL/SHM si presents
-            for ext in ('-wal', '-shm'):
-                wal = DATABASE + ext
-                if os.path.exists(wal):
-                    os.remove(wal)
-        except Exception as e:
-            flash(f'Erreur lors de la suppression : {e}', 'error')
-            return redirect(url_for('administration_bp.administration'))
+    # Pour PostgreSQL, supprimer toutes les tables et recréer le schema
+    try:
+        conn = get_db()
+        # Drop all tables in public schema
+        tables = conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname='public'"
+        ).fetchall()
+        for row in tables:
+            conn.execute(f"DROP TABLE IF EXISTS {row['tablename']} CASCADE")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        flash(f'Erreur lors de la suppression des tables : {e}', 'error')
+        return redirect(url_for('administration_bp.administration'))
 
     # Recreer le schema vide
     init_db()
@@ -176,25 +172,16 @@ def reinitialiser_bdd():
 def _get_db_info():
     """Recupere les informations sur la base de donnees."""
     info = {
-        'fichier': DATABASE,
+        'fichier': 'PostgreSQL',
         'taille': None,
         'nb_tables': 0,
         'tables': []
     }
 
-    if os.path.exists(DATABASE):
-        size_bytes = os.path.getsize(DATABASE)
-        if size_bytes < 1024:
-            info['taille'] = f"{size_bytes} o"
-        elif size_bytes < 1024 * 1024:
-            info['taille'] = f"{size_bytes / 1024:.1f} Ko"
-        else:
-            info['taille'] = f"{size_bytes / (1024 * 1024):.1f} Mo"
-
     try:
         conn = get_db()
         tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            "SELECT table_name as name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name"
         ).fetchall()
         info['nb_tables'] = len(tables)
 

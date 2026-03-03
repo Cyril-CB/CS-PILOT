@@ -33,8 +33,8 @@ def saisie_heures():
         peut_modifier = True
     elif session.get('profil') == 'responsable':
         # Responsable peut modifier les fiches de son secteur
-        user_to_modify = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_cible,)).fetchone()
-        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        user_to_modify = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id_cible,)).fetchone()
+        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
         
         if user_to_modify and responsable_secteur and user_to_modify['secteur_id'] == responsable_secteur['secteur_id']:
             peut_modifier = True
@@ -55,7 +55,7 @@ def saisie_heures():
         
         validation = conn.execute('''
             SELECT bloque FROM validations 
-            WHERE user_id = ? AND mois = ? AND annee = ?
+            WHERE user_id = %s AND mois = %s AND annee = %s
         ''', (user_id_cible, mois, annee)).fetchone()
         
         if validation and validation['bloque']:
@@ -101,7 +101,7 @@ def saisie_heures():
         try:
             # Récupérer les anciennes valeurs pour l'historique
             anciennes_donnees = conn.execute('''
-                SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?
+                SELECT * FROM heures_reelles WHERE user_id = %s AND date = %s
             ''', (user_id_cible, date)).fetchone()
             
             action = 'modification' if anciennes_donnees else 'creation'
@@ -136,7 +136,7 @@ def saisie_heures():
                         conn.execute('''
                             INSERT INTO anomalies 
                             (user_id, date_modification, date_concernee, type_anomalie, gravite, description, ancienne_valeur, nouvelle_valeur)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (user_id_cible, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), date,
                               'recup_validee_modifiee', 'critique',
                               f"Récupération validée modifiée/supprimée : {anciennes_donnees['commentaire']}",
@@ -165,7 +165,7 @@ def saisie_heures():
                         conn.execute('''
                             INSERT INTO anomalies 
                             (user_id, date_modification, date_concernee, type_anomalie, gravite, description, ancienne_valeur, nouvelle_valeur)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (user_id_cible, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), date,
                               'gros_changement_heures', 'alerte',
                               f"Changement important : {heures_avant:.2f}h → {heures_apres:.2f}h (écart: {ecart:.2f}h)",
@@ -174,7 +174,7 @@ def saisie_heures():
                 # 3. Détection modification après validation
                 validation = conn.execute('''
                     SELECT * FROM validations 
-                    WHERE user_id = ? AND mois = ? AND annee = ?
+                    WHERE user_id = %s AND mois = %s AND annee = %s
                 ''', (user_id_cible, mois, annee)).fetchone()
                 
                 if validation:
@@ -183,7 +183,7 @@ def saisie_heures():
                         conn.execute('''
                             INSERT INTO anomalies 
                             (user_id, date_modification, date_concernee, type_anomalie, gravite, description, ancienne_valeur, nouvelle_valeur)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                         ''', (user_id_cible, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), date,
                               'modification_apres_validation', 'suspect',
                               f"Modification après validation par {validation['validation_responsable']}",
@@ -191,10 +191,18 @@ def saisie_heures():
             
             # Enregistrer la modification
             conn.execute('''
-                INSERT OR REPLACE INTO heures_reelles 
+                INSERT INTO heures_reelles 
                 (user_id, date, heure_debut_matin, heure_fin_matin, 
                  heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, date) DO UPDATE SET
+                    heure_debut_matin=EXCLUDED.heure_debut_matin,
+                    heure_fin_matin=EXCLUDED.heure_fin_matin,
+                    heure_debut_aprem=EXCLUDED.heure_debut_aprem,
+                    heure_fin_aprem=EXCLUDED.heure_fin_aprem,
+                    commentaire=EXCLUDED.commentaire,
+                    type_saisie=EXCLUDED.type_saisie,
+                    declaration_conforme=EXCLUDED.declaration_conforme
             ''', (user_id_cible, date, heure_debut_matin, heure_fin_matin,
                   heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme_val))
             
@@ -202,7 +210,7 @@ def saisie_heures():
             conn.execute('''
                 INSERT INTO historique_modifications
                 (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', (user_id_cible, date, session['user_id'], action, anciennes_valeurs, nouvelles_valeurs))
             
             conn.commit()
@@ -239,7 +247,7 @@ def saisie_heures():
     # Charger les données existantes pour la date (pour l'utilisateur cible)
     row = conn.execute('''
         SELECT * FROM heures_reelles 
-        WHERE user_id = ? AND date = ?
+        WHERE user_id = %s AND date = %s
     ''', (user_id_cible, date_defaut)).fetchone()
     
     # Convertir le Row en dictionnaire pour le template
@@ -247,7 +255,7 @@ def saisie_heures():
         heures_existantes = dict(row)
     
     # Récupérer les infos de l'utilisateur cible
-    user_cible = conn.execute('SELECT * FROM users WHERE id = ?', (user_id_cible,)).fetchone()
+    user_cible = conn.execute('SELECT * FROM users WHERE id = %s', (user_id_cible,)).fetchone()
 
     # Solde de récupération
     solde_recup = calculer_solde_recup(user_id_cible)
@@ -256,7 +264,7 @@ def saisie_heures():
     date_obj = datetime.strptime(date_defaut, '%Y-%m-%d')
     validation = conn.execute('''
         SELECT bloque FROM validations
-        WHERE user_id = ? AND mois = ? AND annee = ?
+        WHERE user_id = %s AND mois = %s AND annee = %s
     ''', (user_id_cible, date_obj.month, date_obj.year)).fetchone()
     mois_verrouille = validation and validation['bloque']
 

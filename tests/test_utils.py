@@ -105,7 +105,7 @@ class TestGetHeuresTheoriquesJour:
             from database import get_db
             conn = get_db()
             planning = conn.execute(
-                "SELECT * FROM planning_theorique WHERE id = ?",
+                "SELECT * FROM planning_theorique WHERE id = %s",
                 (sample_planning['planning_id'],)
             ).fetchone()
             conn.close()

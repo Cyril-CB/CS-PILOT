@@ -36,7 +36,7 @@ def get_salaries_visibles():
         ''').fetchall()
     else:
         # Responsable : voir les salariés de son secteur + lui-même
-        user = conn.execute('SELECT secteur_id FROM users WHERE id = ?',
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = %s',
                             (session['user_id'],)).fetchone()
         secteur_id = user['secteur_id'] if user else None
 
@@ -45,7 +45,7 @@ def get_salaries_visibles():
                 SELECT u.id, u.nom, u.prenom, u.profil, s.nom as secteur_nom
                 FROM users u
                 LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.actif = 1 AND (u.secteur_id = ? OR u.id = ?)
+                WHERE u.actif = 1 AND (u.secteur_id = %s OR u.id = %s)
                 ORDER BY u.nom, u.prenom
             ''', (secteur_id, session['user_id'])).fetchall()
         else:
@@ -53,7 +53,7 @@ def get_salaries_visibles():
                 SELECT u.id, u.nom, u.prenom, u.profil, s.nom as secteur_nom
                 FROM users u
                 LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.id = ? AND u.actif = 1
+                WHERE u.id = %s AND u.actif = 1
             ''', (session['user_id'],)).fetchall()
 
     conn.close()
@@ -88,8 +88,8 @@ def api_vacances(annee):
     conn = get_db()
     periodes = conn.execute('''
         SELECT nom, date_debut, date_fin FROM periodes_vacances
-        WHERE date_debut LIKE ? OR date_fin LIKE ?
-           OR (date_debut < ? AND date_fin > ?)
+        WHERE date_debut LIKE %s OR date_fin LIKE %s
+           OR (date_debut < %s AND date_fin > %s)
         ORDER BY date_debut
     ''', (f'{annee}%', f'{annee}%', f'{annee}-01-01', f'{annee}-12-31')).fetchall()
     conn.close()
@@ -118,7 +118,7 @@ def api_feries(annee):
     conn = get_db()
     feries = conn.execute('''
         SELECT date, libelle FROM jours_feries
-        WHERE annee = ?
+        WHERE annee = %s
         ORDER BY date
     ''', (annee,)).fetchall()
     conn.close()
@@ -155,7 +155,7 @@ def api_get_config():
     conn = get_db()
     config = conn.execute('''
         SELECT config_json FROM planning_enfance_config
-        WHERE user_id = ? AND annee = ?
+        WHERE user_id = %s AND annee = %s
     ''', (user_id, annee)).fetchone()
     conn.close()
 
@@ -185,19 +185,19 @@ def api_save_config():
     conn = get_db()
     existing = conn.execute('''
         SELECT id FROM planning_enfance_config
-        WHERE user_id = ? AND annee = ?
+        WHERE user_id = %s AND annee = %s
     ''', (user_id, annee)).fetchone()
 
     if existing:
         conn.execute('''
             UPDATE planning_enfance_config
-            SET config_json = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
-            WHERE user_id = ? AND annee = ?
+            SET config_json = %s, updated_at = CURRENT_TIMESTAMP, updated_by = %s
+            WHERE user_id = %s AND annee = %s
         ''', (config_json, session['user_id'], user_id, annee))
     else:
         conn.execute('''
             INSERT INTO planning_enfance_config (user_id, annee, config_json, created_by, updated_by)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         ''', (user_id, annee, config_json, session['user_id'], session['user_id']))
 
     conn.commit()

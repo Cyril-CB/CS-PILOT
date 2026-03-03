@@ -70,13 +70,13 @@ def api_ajouter_compte():
     conn = get_db()
     try:
         existing = conn.execute(
-            'SELECT id FROM comptabilite_comptes WHERE compte_num = ?', (compte_num,)
+            'SELECT id FROM comptabilite_comptes WHERE compte_num = %s', (compte_num,)
         ).fetchone()
         if existing:
             return jsonify({'error': f'Le compte {compte_num} existe déjà.'}), 409
 
         conn.execute(
-            'INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (?, ?)',
+            'INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (%s, %s)',
             (compte_num, libelle)
         )
         conn.commit()
@@ -96,7 +96,7 @@ def api_supprimer_compte(compte_id):
 
     conn = get_db()
     try:
-        conn.execute('DELETE FROM comptabilite_comptes WHERE id = ?', (compte_id,))
+        conn.execute('DELETE FROM comptabilite_comptes WHERE id = %s', (compte_id,))
         conn.commit()
         return jsonify({'success': True})
     finally:
@@ -145,18 +145,18 @@ def api_import_txt():
                 continue
 
             existing = conn.execute(
-                'SELECT id FROM comptabilite_comptes WHERE compte_num = ?', (compte_num,)
+                'SELECT id FROM comptabilite_comptes WHERE compte_num = %s', (compte_num,)
             ).fetchone()
             if existing:
                 # Mettre a jour le libelle si different
                 conn.execute(
-                    'UPDATE comptabilite_comptes SET libelle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    'UPDATE comptabilite_comptes SET libelle = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
                     (libelle, existing['id'])
                 )
                 nb_doublons += 1
             else:
                 conn.execute(
-                    'INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (?, ?)',
+                    'INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (%s, %s)',
                     (compte_num, libelle)
                 )
                 nb_importes += 1
@@ -192,8 +192,8 @@ def api_update_affectation(compte_id):
     try:
         conn.execute('''
             UPDATE comptabilite_comptes
-            SET secteur_id = ?, action_id = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
+            SET secteur_id = %s, action_id = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
         ''', (secteur_id, action_id, compte_id))
         conn.commit()
         return jsonify({'success': True})
@@ -218,12 +218,12 @@ def api_ajouter_action():
     conn = get_db()
     try:
         existing = conn.execute(
-            'SELECT id FROM comptabilite_actions WHERE nom = ?', (nom,)
+            'SELECT id FROM comptabilite_actions WHERE nom = %s', (nom,)
         ).fetchone()
         if existing:
             return jsonify({'id': existing['id'], 'nom': nom, 'exists': True})
 
-        conn.execute('INSERT INTO comptabilite_actions (nom) VALUES (?)', (nom,))
+        conn.execute('INSERT INTO comptabilite_actions (nom) VALUES (%s)', (nom,))
         conn.commit()
         new_id = conn.execute('SELECT last_insert_rowid() as id').fetchone()['id']
         return jsonify({'id': new_id, 'nom': nom, 'success': True})
@@ -241,12 +241,12 @@ def api_supprimer_action(action_id):
     conn = get_db()
     try:
         used = conn.execute(
-            'SELECT COUNT(*) as nb FROM comptabilite_comptes WHERE action_id = ?', (action_id,)
+            'SELECT COUNT(*) as nb FROM comptabilite_comptes WHERE action_id = %s', (action_id,)
         ).fetchone()
         if used['nb'] > 0:
             return jsonify({'error': 'Action utilisée par des comptes.'}), 409
 
-        conn.execute('DELETE FROM comptabilite_actions WHERE id = ?', (action_id,))
+        conn.execute('DELETE FROM comptabilite_actions WHERE id = %s', (action_id,))
         conn.commit()
         return jsonify({'success': True})
     finally:

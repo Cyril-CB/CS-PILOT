@@ -52,7 +52,7 @@ def login():
         conn = get_db()
         try:
             user = conn.execute(
-                'SELECT * FROM users WHERE login = ? AND actif = 1',
+                'SELECT * FROM users WHERE login = %s AND actif = 1',
                 (login_val,)
             ).fetchone()
 
@@ -65,7 +65,7 @@ def login():
                         password_ok = True
                         # Migration vers un hash sécurisé (werkzeug)
                         new_hash = generate_password_hash(password)
-                        conn.execute('UPDATE users SET password = ? WHERE id = ?',
+                        conn.execute('UPDATE users SET password = %s WHERE id = %s',
                                      (new_hash, user['id']))
                         conn.commit()
                 else:
@@ -133,7 +133,7 @@ def setup():
             password_hash = generate_password_hash(password)
             conn.execute('''
                 INSERT INTO users (nom, prenom, login, password, profil)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (nom, prenom, login_val, password_hash, 'directeur'))
             conn.commit()
         finally:

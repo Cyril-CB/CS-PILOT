@@ -61,13 +61,13 @@ def api_ajouter_compte():
     conn = get_db()
     try:
         existing = conn.execute(
-            'SELECT id FROM plan_comptable_general WHERE compte_num = ?', (compte_num,)
+            'SELECT id FROM plan_comptable_general WHERE compte_num = %s', (compte_num,)
         ).fetchone()
         if existing:
             return jsonify({'error': f'Le compte {compte_num} existe déjà.'}), 409
 
         conn.execute(
-            'INSERT INTO plan_comptable_general (compte_num, libelle) VALUES (?, ?)',
+            'INSERT INTO plan_comptable_general (compte_num, libelle) VALUES (%s, %s)',
             (compte_num, libelle)
         )
         conn.commit()
@@ -87,7 +87,7 @@ def api_supprimer_compte(compte_id):
 
     conn = get_db()
     try:
-        conn.execute('DELETE FROM plan_comptable_general WHERE id = ?', (compte_id,))
+        conn.execute('DELETE FROM plan_comptable_general WHERE id = %s', (compte_id,))
         conn.commit()
         return jsonify({'success': True})
     finally:
@@ -136,18 +136,18 @@ def api_import_txt():
                 continue
 
             existing = conn.execute(
-                'SELECT id FROM plan_comptable_general WHERE compte_num = ?', (compte_num,)
+                'SELECT id FROM plan_comptable_general WHERE compte_num = %s', (compte_num,)
             ).fetchone()
             if existing:
                 # Mettre a jour le libelle si different
                 conn.execute(
-                    'UPDATE plan_comptable_general SET libelle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    'UPDATE plan_comptable_general SET libelle = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
                     (libelle, existing['id'])
                 )
                 nb_doublons += 1
             else:
                 conn.execute(
-                    'INSERT INTO plan_comptable_general (compte_num, libelle) VALUES (?, ?)',
+                    'INSERT INTO plan_comptable_general (compte_num, libelle) VALUES (%s, %s)',
                     (compte_num, libelle)
                 )
                 nb_importes += 1

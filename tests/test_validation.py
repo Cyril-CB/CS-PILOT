@@ -24,7 +24,7 @@ def _creer_saisie_mois(db, user_id, mois, annee):
                 """INSERT OR IGNORE INTO heures_reelles
                    (user_id, date, heure_debut_matin, heure_fin_matin,
                     heure_debut_aprem, heure_fin_aprem, type_saisie, declaration_conforme)
-                   VALUES (?, ?, '08:30', '12:00', '13:30', '17:00', 'heures_modifiees', 0)""",
+                   VALUES (%s, %s, '08:30', '12:00', '13:30', '17:00', 'heures_modifiees', 0)""",
                 (user_id, jour.strftime('%Y-%m-%d'))
             )
         jour += timedelta(days=1)
@@ -49,7 +49,7 @@ class TestValidationMois:
             assert response.status_code == 200
 
             validation = db.execute(
-                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                "SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s",
                 (sample_users['salarie_id'], mois, annee)
             ).fetchone()
             assert validation is not None
@@ -70,7 +70,7 @@ class TestValidationMois:
             assert response.status_code == 200
 
             validation = db.execute(
-                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                "SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s",
                 (sample_users['salarie_id'], mois, annee)
             ).fetchone()
             assert validation is not None
@@ -101,7 +101,7 @@ class TestValidationMois:
             }, follow_redirects=True)
 
             validation = db.execute(
-                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                "SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s",
                 (sample_users['salarie_id'], mois, annee)
             ).fetchone()
             assert validation is not None
@@ -130,7 +130,7 @@ class TestDeverrouillage:
             # Créer une validation verrouillée manuellement
             db.execute(
                 """INSERT INTO validations (user_id, mois, annee, validation_responsable,
-                   validation_directeur, bloque) VALUES (?, ?, ?, 'Resp', 'Dir', 1)""",
+                   validation_directeur, bloque) VALUES (%s, %s, %s, 'Resp', 'Dir', 1)""",
                 (sample_users['salarie_id'], mois, annee)
             )
             db.commit()
@@ -145,7 +145,7 @@ class TestDeverrouillage:
 
             # Vérifier que la validation a été supprimée
             validation = db.execute(
-                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                "SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s",
                 (sample_users['salarie_id'], mois, annee)
             ).fetchone()
             assert validation is None
@@ -156,7 +156,7 @@ class TestDeverrouillage:
         with app.app_context():
             db.execute(
                 """INSERT INTO validations (user_id, mois, annee, validation_responsable,
-                   validation_directeur, bloque) VALUES (?, ?, ?, 'Resp', 'Dir', 1)""",
+                   validation_directeur, bloque) VALUES (%s, %s, %s, 'Resp', 'Dir', 1)""",
                 (sample_users['salarie_id'], mois, annee)
             )
             db.commit()
@@ -176,7 +176,7 @@ class TestDeverrouillage:
         with app.app_context():
             db.execute(
                 """INSERT INTO validations (user_id, mois, annee, validation_responsable,
-                   validation_directeur, bloque) VALUES (?, ?, ?, 'Resp', 'Dir', 1)""",
+                   validation_directeur, bloque) VALUES (%s, %s, %s, 'Resp', 'Dir', 1)""",
                 (sample_users['salarie_id'], mois, annee)
             )
             db.commit()
@@ -190,7 +190,7 @@ class TestDeverrouillage:
             assert response.status_code == 200
             # Doit rester verrouillé
             validation = db.execute(
-                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                "SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s",
                 (sample_users['salarie_id'], mois, annee)
             ).fetchone()
             assert validation is not None

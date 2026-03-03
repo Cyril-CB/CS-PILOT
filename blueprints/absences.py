@@ -48,7 +48,7 @@ def _calculer_jours_ouvres_sans_feries(date_debut_str, date_fin_str):
     conn = get_db()
     feries_rows = conn.execute('''
         SELECT date FROM jours_feries
-        WHERE date >= ? AND date <= ?
+        WHERE date >= %s AND date <= %s
     ''', (date_debut_str, date_fin_str)).fetchall()
     conn.close()
 
@@ -82,7 +82,7 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
         ajout: True pour une nouvelle absence, False pour une suppression
     """
     if motif == 'Congé payé':
-        user = conn.execute('SELECT cp_a_prendre, cp_pris FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT cp_a_prendre, cp_pris FROM users WHERE id = %s', (user_id,)).fetchone()
         if not user:
             return
         cp_pris = (user['cp_pris'] or 0)
@@ -100,11 +100,11 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
                 cp_a_prendre += abs(cp_pris)
                 cp_pris = 0
 
-        conn.execute('UPDATE users SET cp_pris = ?, cp_a_prendre = ? WHERE id = ?',
+        conn.execute('UPDATE users SET cp_pris = %s, cp_a_prendre = %s WHERE id = %s',
                      (cp_pris, cp_a_prendre, user_id))
 
     elif motif == 'Congé conventionnel':
-        user = conn.execute('SELECT cc_solde FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT cc_solde FROM users WHERE id = %s', (user_id,)).fetchone()
         if not user:
             return
         cc_solde = (user['cc_solde'] or 0)
@@ -114,7 +114,7 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
         else:
             cc_solde += jours_ouvres
 
-        conn.execute('UPDATE users SET cc_solde = ? WHERE id = ?', (cc_solde, user_id))
+        conn.execute('UPDATE users SET cc_solde = %s WHERE id = %s', (cc_solde, user_id))
 
 
 def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, date_fin_str, motif):
@@ -125,7 +125,7 @@ def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, 
     # Recuperer les jours feries
     feries_rows = conn.execute('''
         SELECT date FROM jours_feries
-        WHERE date >= ? AND date <= ?
+        WHERE date >= %s AND date <= %s
     ''', (date_debut_str, date_fin_str)).fetchall()
     jours_feries = {row['date'] for row in feries_rows}
 
@@ -140,10 +140,18 @@ def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, 
 
             # Inserer ou remplacer dans heures_reelles avec declaration_conforme
             conn.execute('''
-                INSERT OR REPLACE INTO heures_reelles
+                INSERT INTO heures_reelles
                 (user_id, date, heure_debut_matin, heure_fin_matin,
                  heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme)
-                VALUES (?, ?, NULL, NULL, NULL, NULL, ?, 'absence', 1)
+                VALUES (%s, %s, NULL, NULL, NULL, NULL, %s, 'absence', 1)
+                ON CONFLICT (user_id, date) DO UPDATE SET
+                    heure_debut_matin=NULL,
+                    heure_fin_matin=NULL,
+                    heure_debut_aprem=NULL,
+                    heure_fin_aprem=NULL,
+                    commentaire=EXCLUDED.commentaire,
+                    type_saisie='absence',
+                    declaration_conforme=1
             ''', (user_id, date_str, commentaire))
 
         jour_actuel += timedelta(days=1)
@@ -153,9 +161,9 @@ def _supprimer_absence_du_calendrier(conn, absence_id, user_id, date_debut_str, 
     """Supprime les entrees heures_reelles liees a une absence."""
     conn.execute('''
         DELETE FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
+        WHERE user_id = %s AND date >= %s AND date <= %s
         AND type_saisie = 'absence'
-        AND commentaire LIKE ?
+        AND commentaire LIKE %s
     ''', (user_id, date_debut_str, date_fin_str, f"Absence #{absence_id}%"))
 
 
@@ -215,7 +223,7 @@ def absences():
                 return redirect(url_for('absences_bp.absences'))
 
             # Recuperer les infos du salarie pour le nom de fichier
-            salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
+            salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = %s', (user_id,)).fetchone()
             if salarie:
                 date_fmt = datetime.strptime(date_debut, '%Y-%m-%d').strftime('%d-%m-%Y')
                 nom_fichier = f"{date_fmt}_{salarie['nom']}_{salarie['prenom']}_{motif.replace(' ', '_')}{ext}"
@@ -242,7 +250,7 @@ def absences():
                 INSERT INTO absences
                 (user_id, motif, date_debut, date_fin, date_reprise, commentaire,
                  jours_ouvres, justificatif_path, justificatif_nom, saisi_par)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
             ''', (user_id, motif, date_debut, date_fin, date_reprise, commentaire,
                   jours_ouvres, justificatif_path, justificatif_nom, session['user_id']))
 
@@ -259,7 +267,7 @@ def absences():
             conn.execute('''
                 INSERT INTO historique_modifications
                 (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-                VALUES (?, ?, ?, ?, NULL, ?)
+                VALUES (%s, %s, %s, %s, NULL, %s)
             ''', (user_id, date_debut, session['user_id'], 'creation_absence',
                   json.dumps({
                       'motif': motif,
@@ -296,7 +304,7 @@ def absences():
             FROM absences a
             JOIN users u ON a.user_id = u.id
             JOIN users s ON a.saisi_par = s.id
-            WHERE a.user_id = ?
+            WHERE a.user_id = %s
             ORDER BY a.date_debut DESC
         ''', (search_user_id,)).fetchall()
     else:
@@ -329,7 +337,7 @@ def supprimer_absence(absence_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    absence = conn.execute('SELECT * FROM absences WHERE id = ?', (absence_id,)).fetchone()
+    absence = conn.execute('SELECT * FROM absences WHERE id = %s', (absence_id,)).fetchone()
 
     if not absence:
         flash('Absence introuvable.', 'error')
@@ -359,7 +367,7 @@ def supprimer_absence(absence_id):
         conn.execute('''
             INSERT INTO historique_modifications
             (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-            VALUES (?, ?, ?, ?, ?, NULL)
+            VALUES (%s, %s, %s, %s, %s, NULL)
         ''', (absence['user_id'], absence['date_debut'], session['user_id'], 'suppression_absence',
               json.dumps({
                   'motif': absence['motif'],
@@ -368,7 +376,7 @@ def supprimer_absence(absence_id):
                   'jours_ouvres': absence['jours_ouvres']
               })))
 
-        conn.execute('DELETE FROM absences WHERE id = ?', (absence_id,))
+        conn.execute('DELETE FROM absences WHERE id = %s', (absence_id,))
         conn.commit()
         flash('Absence supprimée et calendrier mis à jour.', 'success')
     except Exception as e:
@@ -388,7 +396,7 @@ def telecharger_justificatif(absence_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    absence = conn.execute('SELECT justificatif_path, justificatif_nom FROM absences WHERE id = ?',
+    absence = conn.execute('SELECT justificatif_path, justificatif_nom FROM absences WHERE id = %s',
                            (absence_id,)).fetchone()
     conn.close()
 
@@ -457,7 +465,7 @@ def api_compteurs_conges():
     conn = get_db()
     user = conn.execute('''
         SELECT cp_acquis, cp_a_prendre, cp_pris, cc_solde
-        FROM users WHERE id = ?
+        FROM users WHERE id = %s
     ''', (user_id,)).fetchone()
     conn.close()
 

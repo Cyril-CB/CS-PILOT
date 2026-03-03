@@ -932,7 +932,8 @@ def api_creer_poste():
                  formation_niveau, complexite_niveau, autonomie_niveau,
                  relationnel_niveau, finances_niveau, rh_niveau,
                  securite_niveau, projet_niveau, total_points, created_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         ''', (intitule, famille, data.get('emploi_repere', ''),
               niveaux['formation_niveau'], niveaux['complexite_niveau'],
               niveaux['autonomie_niveau'], niveaux['relationnel_niveau'],
@@ -970,13 +971,13 @@ def api_modifier_poste(poste_id):
     conn = get_db()
     conn.execute('''
         UPDATE postes_alisfa SET
-            intitule = ?, famille_metier = ?, emploi_repere = ?,
-            formation_niveau = ?, complexite_niveau = ?,
-            autonomie_niveau = ?, relationnel_niveau = ?,
-            finances_niveau = ?, rh_niveau = ?,
-            securite_niveau = ?, projet_niveau = ?,
-            total_points = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
+            intitule = %s, famille_metier = %s, emploi_repere = %s,
+            formation_niveau = %s, complexite_niveau = %s,
+            autonomie_niveau = %s, relationnel_niveau = %s,
+            finances_niveau = %s, rh_niveau = %s,
+            securite_niveau = %s, projet_niveau = %s,
+            total_points = %s, updated_at = CURRENT_TIMESTAMP
+        WHERE id = %s
     ''', (intitule, famille, data.get('emploi_repere', ''),
           niveaux['formation_niveau'], niveaux['complexite_niveau'],
           niveaux['autonomie_niveau'], niveaux['relationnel_niveau'],
@@ -996,7 +997,7 @@ def api_supprimer_poste(poste_id):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     conn = get_db()
-    conn.execute('DELETE FROM postes_alisfa WHERE id = ?', (poste_id,))
+    conn.execute('DELETE FROM postes_alisfa WHERE id = %s', (poste_id,))
     conn.commit()
     conn.close()
     return jsonify({'ok': True})
@@ -1010,7 +1011,7 @@ def api_get_poste(poste_id):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     conn = get_db()
-    poste = conn.execute('SELECT * FROM postes_alisfa WHERE id = ?', (poste_id,)).fetchone()
+    poste = conn.execute('SELECT * FROM postes_alisfa WHERE id = %s', (poste_id,)).fetchone()
     conn.close()
     if not poste:
         return jsonify({'error': 'Poste introuvable'}), 404

@@ -43,8 +43,8 @@ def valider_mois():
             peut_valider = True
             type_validation = 'salarie'
         elif session.get('profil') == 'responsable':
-            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id,)).fetchone()
+            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
 
             if user_to_validate and responsable_secteur and user_to_validate['secteur_id'] == responsable_secteur['secteur_id']:
                 peut_valider = True
@@ -59,7 +59,7 @@ def valider_mois():
 
         # Récupérer ou créer la validation
         validation = conn.execute('''
-            SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
+            SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s
         ''', (user_id, mois, annee)).fetchone()
 
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -70,47 +70,47 @@ def valider_mois():
             if type_validation == 'salarie':
                 conn.execute('''
                     INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                 ''', (user_id, mois, annee, validation_nom, now))
             elif type_validation == 'responsable':
                 conn.execute('''
                     INSERT INTO validations (user_id, mois, annee, validation_responsable, date_responsable)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                 ''', (user_id, mois, annee, validation_nom, now))
             elif type_validation == 'directeur':
                 conn.execute('''
                     INSERT INTO validations (user_id, mois, annee, validation_directeur, date_directeur)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                 ''', (user_id, mois, annee, validation_nom, now))
         else:
             if type_validation == 'salarie':
                 conn.execute('''
                     UPDATE validations
-                    SET validation_salarie = ?, date_salarie = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
+                    SET validation_salarie = %s, date_salarie = %s
+                    WHERE user_id = %s AND mois = %s AND annee = %s
                 ''', (validation_nom, now, user_id, mois, annee))
             elif type_validation == 'responsable':
                 conn.execute('''
                     UPDATE validations
-                    SET validation_responsable = ?, date_responsable = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
+                    SET validation_responsable = %s, date_responsable = %s
+                    WHERE user_id = %s AND mois = %s AND annee = %s
                 ''', (validation_nom, now, user_id, mois, annee))
             elif type_validation == 'directeur':
                 conn.execute('''
                     UPDATE validations
-                    SET validation_directeur = ?, date_directeur = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
+                    SET validation_directeur = %s, date_directeur = %s
+                    WHERE user_id = %s AND mois = %s AND annee = %s
                 ''', (validation_nom, now, user_id, mois, annee))
 
         # Vérifier si la fiche doit être verrouillée (responsable + directeur validés)
         validation_updated = conn.execute('''
-            SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
+            SELECT * FROM validations WHERE user_id = %s AND mois = %s AND annee = %s
         ''', (user_id, mois, annee)).fetchone()
 
         if validation_updated and validation_updated['validation_responsable'] and validation_updated['validation_directeur']:
             conn.execute('''
                 UPDATE validations SET bloque = 1
-                WHERE user_id = ? AND mois = ? AND annee = ?
+                WHERE user_id = %s AND mois = %s AND annee = %s
             ''', (user_id, mois, annee))
             flash('Fiche validée et verrouillée définitivement', 'success')
         else:
@@ -149,7 +149,7 @@ def deverrouiller_mois():
         # Vérifier que la fiche est bien verrouillée
         validation = conn.execute('''
             SELECT * FROM validations
-            WHERE user_id = ? AND mois = ? AND annee = ?
+            WHERE user_id = %s AND mois = %s AND annee = %s
         ''', (user_id, mois, annee)).fetchone()
 
         if not validation or not validation['bloque']:
@@ -163,14 +163,14 @@ def deverrouiller_mois():
         conn.execute('''
             INSERT INTO historique_modifications
             (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         ''', (user_id, f"{annee}-{mois:02d}-01", session['user_id'], 'deverrouillage',
               json.dumps({'motif': motif, 'date': now, 'par': f"{user_info['prenom']} {user_info['nom']}"}), None))
 
         # Supprimer la validation (réinitialisation complète)
         conn.execute('''
             DELETE FROM validations
-            WHERE user_id = ? AND mois = ? AND annee = ?
+            WHERE user_id = %s AND mois = %s AND annee = %s
         ''', (user_id, mois, annee))
 
         conn.commit()
@@ -201,7 +201,7 @@ def vue_ensemble_validation():
     try:
         # Récupérer les utilisateurs selon le profil connecté
         if session.get('profil') == 'responsable':
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
 
             if not responsable_secteur or not responsable_secteur['secteur_id']:
                 flash('Vous n\'êtes rattaché à aucun secteur', 'error')
@@ -214,7 +214,7 @@ def vue_ensemble_validation():
                 FROM users u
                 LEFT JOIN secteurs s ON u.secteur_id = s.id
                 LEFT JOIN users r ON u.responsable_id = r.id
-                WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+                WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = %s
                 ORDER BY u.nom, u.prenom
             ''', (responsable_secteur['secteur_id'],)).fetchall()
         else:
@@ -234,7 +234,7 @@ def vue_ensemble_validation():
         for user in users:
             validation = conn.execute('''
                 SELECT * FROM validations
-                WHERE user_id = ? AND mois = ? AND annee = ?
+                WHERE user_id = %s AND mois = %s AND annee = %s
             ''', (user['id'], mois, annee)).fetchone()
 
             users_validation.append({
@@ -299,8 +299,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         if session.get('profil') == 'directeur' or session.get('profil') == 'comptable':
             pass
         elif session.get('profil') == 'responsable':
-            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id_a_afficher,)).fetchone()
+            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
 
             if not user_to_view or not responsable_secteur or user_to_view['secteur_id'] != responsable_secteur['secteur_id']:
                 flash('Accès non autorisé à cette fiche', 'error')
@@ -309,7 +309,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             flash('Accès non autorisé', 'error')
             return None, redirect(url_for(redirect_route))
 
-    user_affiche = conn.execute('SELECT * FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
+    user_affiche = conn.execute('SELECT * FROM users WHERE id = %s', (user_id_a_afficher,)).fetchone()
     if not user_affiche:
         flash('Utilisateur introuvable', 'error')
         return None, redirect(url_for(redirect_route))
@@ -323,11 +323,11 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             ORDER BY nom, prenom
         ''').fetchall()
     elif session.get('profil') == 'responsable':
-        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
         if responsable_secteur and responsable_secteur['secteur_id']:
             users_accessibles = conn.execute('''
                 SELECT id, nom, prenom, profil FROM users
-                WHERE actif = 1 AND secteur_id = ?
+                WHERE actif = 1 AND secteur_id = %s
                 ORDER BY nom, prenom
             ''', (responsable_secteur['secteur_id'],)).fetchall()
 
@@ -342,14 +342,14 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     plannings = {}
     planning_rows = conn.execute('''
         SELECT * FROM planning_theorique
-        WHERE user_id = ?
+        WHERE user_id = %s
     ''', (user_id_a_afficher,)).fetchall()
 
     # Heures reelles du mois
     heures_reelles = {}
     heures_rows = conn.execute('''
         SELECT * FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
+        WHERE user_id = %s AND date >= %s AND date <= %s
     ''', (user_id_a_afficher, premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
 
     for h in heures_rows:
@@ -438,7 +438,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
     # Solde anterieur
     try:
-        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
+        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = %s', (user_id_a_afficher,)).fetchone()
         solde_anterieur = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
     except (Exception,):
         solde_anterieur = 0
@@ -447,7 +447,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem, declaration_conforme
         FROM heures_reelles
-        WHERE user_id = ? AND date < ?
+        WHERE user_id = %s AND date < %s
         ORDER BY date
     ''', (user_id_a_afficher, premier_jour.strftime('%Y-%m-%d'))).fetchall()
 
@@ -478,7 +478,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
     validation = conn.execute('''
         SELECT * FROM validations
-        WHERE user_id = ? AND mois = ? AND annee = ?
+        WHERE user_id = %s AND mois = %s AND annee = %s
     ''', (user_id_a_afficher, mois, annee)).fetchone()
 
     today = datetime.now()
@@ -496,8 +496,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         elif session.get('profil') == 'directeur':
             peut_valider_mois = True
         elif session.get('profil') == 'responsable':
-            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id_a_afficher,)).fetchone()
+            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
 
             if user_to_validate and responsable_secteur and user_to_validate['secteur_id'] == responsable_secteur['secteur_id']:
                 peut_valider_mois = True
@@ -510,8 +510,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         elif session.get('profil') == 'directeur':
             peut_modifier = True
         elif session.get('profil') == 'responsable':
-            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id_a_afficher,)).fetchone()
+            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
 
             if user_to_view and responsable_secteur and user_to_view['secteur_id'] == responsable_secteur['secteur_id']:
                 peut_modifier = True
@@ -533,7 +533,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     # Jours feries du mois
     jours_feries_rows = conn.execute('''
         SELECT date, libelle FROM jours_feries
-        WHERE date >= ? AND date <= ?
+        WHERE date >= %s AND date <= %s
     ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
     jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
 

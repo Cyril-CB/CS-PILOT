@@ -69,7 +69,7 @@ def exporter():
         return redirect(url_for('exportation_bp.liste_exportation'))
 
     conn = get_db()
-    placeholders = ','.join('?' * len(ids))
+    placeholders = ','.join('%s' * len(ids))
     ecritures = conn.execute(f'''
         SELECT e.*, f.fournisseur_id, fr.nom as fournisseur_nom
         FROM ecritures_comptables e
@@ -111,7 +111,7 @@ def exporter():
 
     # Marquer les écritures comme exportées (uniquement celles validées)
     exported_ids = [str(e['id']) for e in ecritures]
-    exported_placeholders = ','.join('?' * len(exported_ids))
+    exported_placeholders = ','.join('%s' * len(exported_ids))
     conn.execute(
         f"UPDATE ecritures_comptables SET statut='exportee', updated_at=CURRENT_TIMESTAMP WHERE id IN ({exported_placeholders}) AND statut='validee'",
         exported_ids
@@ -129,7 +129,7 @@ def exporter():
 
     # Enregistrer l'archive en BDD
     conn.execute(
-        'INSERT INTO archives_export (nom_fichier, fichier_path, nb_ecritures, created_by) VALUES (?, ?, ?, ?)',
+        'INSERT INTO archives_export (nom_fichier, fichier_path, nb_ecritures, created_by) VALUES (%s, %s, %s, %s)',
         (filename, filepath, len(ecritures), session.get('user_id'))
     )
     conn.commit()
@@ -150,7 +150,7 @@ def telecharger_archive(archive_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    archive = conn.execute('SELECT * FROM archives_export WHERE id=?', (archive_id,)).fetchone()
+    archive = conn.execute('SELECT * FROM archives_export WHERE id=%s', (archive_id,)).fetchone()
     conn.close()
 
     if not archive or not os.path.exists(archive['fichier_path']):
@@ -168,10 +168,10 @@ def supprimer_archive(archive_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    archive = conn.execute('SELECT * FROM archives_export WHERE id=?', (archive_id,)).fetchone()
+    archive = conn.execute('SELECT * FROM archives_export WHERE id=%s', (archive_id,)).fetchone()
     if archive and archive['fichier_path'] and os.path.exists(archive['fichier_path']):
         os.unlink(archive['fichier_path'])
-    conn.execute('DELETE FROM archives_export WHERE id=?', (archive_id,))
+    conn.execute('DELETE FROM archives_export WHERE id=%s', (archive_id,))
     conn.commit()
     conn.close()
 

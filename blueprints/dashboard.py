@@ -27,7 +27,7 @@ def dashboard():
                    heure_debut_aprem, heure_fin_aprem,
                    commentaire, type_saisie, declaration_conforme
             FROM heures_reelles
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY date DESC
             LIMIT 10
         ''', (session['user_id'],)).fetchall()
@@ -76,7 +76,7 @@ def dashboard():
         # Compteurs de conges
         conges_user = conn.execute('''
             SELECT cp_acquis, cp_a_prendre, cp_pris, cc_solde
-            FROM users WHERE id = ?
+            FROM users WHERE id = %s
         ''', (session['user_id'],)).fetchone()
 
         cp_acquis = (conges_user['cp_acquis'] or 0) if conges_user else 0
@@ -90,7 +90,7 @@ def dashboard():
         if session.get('profil') in ('salarie', 'prestataire'):
             try:
                 notif_row = conn.execute(
-                    'SELECT email_notifications_enabled FROM users WHERE id = ?',
+                    'SELECT email_notifications_enabled FROM users WHERE id = %s',
                     (session['user_id'],)
                 ).fetchone()
                 if notif_row and not notif_row['email_notifications_enabled']:

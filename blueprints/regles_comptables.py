@@ -70,7 +70,7 @@ def ajouter_regle():
         '''INSERT INTO regles_comptables
            (nom, type_regle, cible, compte_comptable, code_analytique_1, code_analytique_2,
             pourcentage_analytique_1, pourcentage_analytique_2, modele_libelle, statut)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)''',
         (nom, type_regle, cible, compte_comptable, code_analytique_1, code_analytique_2,
          pct1, pct2, modele_libelle, statut)
     )
@@ -114,10 +114,10 @@ def modifier_regle(regle_id):
 
     conn = get_db()
     conn.execute(
-        '''UPDATE regles_comptables SET nom=?, type_regle=?, cible=?, compte_comptable=?,
-           code_analytique_1=?, code_analytique_2=?, pourcentage_analytique_1=?,
-           pourcentage_analytique_2=?, modele_libelle=?, statut=?, updated_at=CURRENT_TIMESTAMP
-           WHERE id=?''',
+        '''UPDATE regles_comptables SET nom=%s, type_regle=%s, cible=%s, compte_comptable=%s,
+           code_analytique_1=%s, code_analytique_2=%s, pourcentage_analytique_1=%s,
+           pourcentage_analytique_2=%s, modele_libelle=%s, statut=%s, updated_at=CURRENT_TIMESTAMP
+           WHERE id=%s''',
         (nom, type_regle, cible, compte_comptable, code_analytique_1, code_analytique_2,
          pct1, pct2, modele_libelle, statut, regle_id)
     )
@@ -136,7 +136,7 @@ def supprimer_regle(regle_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    conn.execute('DELETE FROM regles_comptables WHERE id = ?', (regle_id,))
+    conn.execute('DELETE FROM regles_comptables WHERE id = %s', (regle_id,))
     conn.commit()
     conn.close()
 

@@ -38,15 +38,15 @@ def historique_modifications():
     params = []
     
     if user_id_filtre:
-        query += ' AND h.user_id_modifie = ?'
+        query += ' AND h.user_id_modifie = %s'
         params.append(user_id_filtre)
     
     if date_debut:
-        query += ' AND h.date_concernee >= ?'
+        query += ' AND h.date_concernee >= %s'
         params.append(date_debut)
     
     if date_fin:
-        query += ' AND h.date_concernee <= ?'
+        query += ' AND h.date_concernee <= %s'
         params.append(date_fin)
     
     query += ' ORDER BY h.date_modification DESC LIMIT 200'
@@ -101,7 +101,7 @@ def suivi_anomalies():
         action = request.form.get('action')
         
         if anomalie_id and action == 'traiter':
-            conn.execute('UPDATE anomalies SET traitee = 1 WHERE id = ?', (anomalie_id,))
+            conn.execute('UPDATE anomalies SET traitee = 1 WHERE id = %s', (anomalie_id,))
             conn.commit()
             flash('Anomalie marquée comme traitée', 'success')
         
@@ -127,7 +127,7 @@ def suivi_anomalies():
         query += ' AND a.traitee = 0'
     
     if gravite_filtre != 'toutes':
-        query += ' AND a.gravite = ?'
+        query += ' AND a.gravite = %s'
         params.append(gravite_filtre)
     
     query += ' ORDER BY a.date_modification DESC, a.gravite ASC LIMIT 500'

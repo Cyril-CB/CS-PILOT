@@ -1,7 +1,7 @@
 """
 Blueprint admin_bp.
 """
-import sqlite3
+import psycopg2
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash
 from datetime import datetime
@@ -89,7 +89,7 @@ def creer_user():
                 conn.execute('''
                     INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id,
                                        solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (nom, prenom, login, password_hash, profil, secteur_id, responsable_id,
                       solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde))
                 conn.commit()
@@ -145,11 +145,11 @@ def modifier_user(user_id):
                 if password_errors:
                     for err in password_errors:
                         flash(err, 'error')
-                    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+                    user = conn.execute('SELECT * FROM users WHERE id = %s', (user_id,)).fetchone()
                     secteurs = conn.execute('SELECT * FROM secteurs ORDER BY nom').fetchall()
                     responsables = conn.execute('''
                         SELECT id, nom, prenom FROM users
-                        WHERE profil IN ('directeur', 'responsable') AND actif = 1 AND id != ?
+                        WHERE profil IN ('directeur', 'responsable') AND actif = 1 AND id != %s
                         ORDER BY nom, prenom
                     ''', (user_id,)).fetchall()
                     return render_template('modifier_user.html', user=dict(user), secteurs=secteurs, responsables=responsables)
@@ -160,17 +160,17 @@ def modifier_user(user_id):
                     password_hash = generate_password_hash(nouveau_password)
                     conn.execute('''
                         UPDATE users
-                        SET nom=?, prenom=?, login=?, password=?, profil=?, secteur_id=?, responsable_id=?,
-                            solde_initial=?, date_entree=?, cp_acquis=?, cp_a_prendre=?, cp_pris=?, cc_solde=?
-                        WHERE id=?
+                        SET nom=%s, prenom=%s, login=%s, password=%s, profil=%s, secteur_id=%s, responsable_id=%s,
+                            solde_initial=%s, date_entree=%s, cp_acquis=%s, cp_a_prendre=%s, cp_pris=%s, cc_solde=%s
+                        WHERE id=%s
                     ''', (nom, prenom, login, password_hash, profil, secteur_id, responsable_id,
                           solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, user_id))
                 else:
                     conn.execute('''
                         UPDATE users
-                        SET nom=?, prenom=?, login=?, profil=?, secteur_id=?, responsable_id=?,
-                            solde_initial=?, date_entree=?, cp_acquis=?, cp_a_prendre=?, cp_pris=?, cc_solde=?
-                        WHERE id=?
+                        SET nom=%s, prenom=%s, login=%s, profil=%s, secteur_id=%s, responsable_id=%s,
+                            solde_initial=%s, date_entree=%s, cp_acquis=%s, cp_a_prendre=%s, cp_pris=%s, cc_solde=%s
+                        WHERE id=%s
                     ''', (nom, prenom, login, profil, secteur_id, responsable_id,
                           solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, user_id))
 
@@ -181,7 +181,7 @@ def modifier_user(user_id):
                 flash(f'Erreur: {str(e)}', 'error')
 
         # Récupérer l'utilisateur
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT * FROM users WHERE id = %s', (user_id,)).fetchone()
         if not user:
             flash('Utilisateur introuvable', 'error')
             return redirect(url_for('admin_bp.gestion_users'))
@@ -190,7 +190,7 @@ def modifier_user(user_id):
         secteurs = conn.execute('SELECT * FROM secteurs ORDER BY nom').fetchall()
         responsables = conn.execute('''
             SELECT id, nom, prenom FROM users
-            WHERE profil IN ('directeur', 'responsable') AND actif = 1 AND id != ?
+            WHERE profil IN ('directeur', 'responsable') AND actif = 1 AND id != %s
             ORDER BY nom, prenom
         ''', (user_id,)).fetchall()
 
@@ -208,11 +208,11 @@ def toggle_user(user_id):
 
     conn = get_db()
     try:
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT * FROM users WHERE id = %s', (user_id,)).fetchone()
 
         if user:
             nouveau_statut = 0 if user['actif'] == 1 else 1
-            conn.execute('UPDATE users SET actif = ? WHERE id = ?', (nouveau_statut, user_id))
+            conn.execute('UPDATE users SET actif = %s WHERE id = %s', (nouveau_statut, user_id))
             conn.commit()
             statut_texte = 'activé' if nouveau_statut == 1 else 'désactivé'
             flash(f'Utilisateur {user["prenom"]} {user["nom"]} {statut_texte}', 'success')
@@ -242,7 +242,7 @@ def gestion_secteurs():
                 try:
                     conn.execute('''
                         INSERT INTO secteurs (nom, description, type_secteur)
-                        VALUES (?, ?, ?)
+                        VALUES (%s, %s, %s)
                     ''', (nom, description, type_secteur))
                     conn.commit()
                     flash(f'Secteur "{nom}" créé avec succès', 'success')
@@ -260,8 +260,8 @@ def gestion_secteurs():
                 else:
                     try:
                         conn.execute('''
-                            UPDATE secteurs SET nom = ?, description = ?, type_secteur = ?
-                            WHERE id = ?
+                            UPDATE secteurs SET nom = %s, description = %s, type_secteur = %s
+                            WHERE id = %s
                         ''', (nom, description, type_secteur, secteur_id))
                         conn.commit()
                         flash(f'Secteur "{nom}" modifié avec succès', 'success')
@@ -271,14 +271,14 @@ def gestion_secteurs():
             elif action == 'supprimer':
                 secteur_id = request.form.get('secteur_id')
                 users_count = conn.execute(
-                    'SELECT COUNT(*) as count FROM users WHERE secteur_id = ?',
+                    'SELECT COUNT(*) as count FROM users WHERE secteur_id = %s',
                     (secteur_id,)
                 ).fetchone()['count']
 
                 if users_count > 0:
                     flash(f'Impossible de supprimer : {users_count} utilisateur(s) sont dans ce secteur', 'error')
                 else:
-                    conn.execute('DELETE FROM secteurs WHERE id = ?', (secteur_id,))
+                    conn.execute('DELETE FROM secteurs WHERE id = %s', (secteur_id,))
                     conn.commit()
                     flash('Secteur supprimé avec succès', 'success')
 
@@ -320,7 +320,7 @@ def gestion_vacances():
                     try:
                         conn.execute('''
                             INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
-                            VALUES (?, ?, ?, ?)
+                            VALUES (%s, %s, %s, %s)
                         ''', (nom, date_debut, date_fin, session['user_id']))
                         conn.commit()
                         flash(f'Période "{nom}" ajoutée avec succès', 'success')
@@ -330,7 +330,7 @@ def gestion_vacances():
             elif action == 'supprimer':
                 periode_id = request.form.get('periode_id')
                 try:
-                    conn.execute('DELETE FROM periodes_vacances WHERE id = ?', (periode_id,))
+                    conn.execute('DELETE FROM periodes_vacances WHERE id = %s', (periode_id,))
                     conn.commit()
                     flash('Période supprimée avec succès', 'success')
                 except Exception as e:
@@ -370,11 +370,11 @@ def gestion_jours_feries():
             try:
                 conn.execute('''
                     INSERT INTO jours_feries (annee, date, libelle)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                 ''', (annee, date, libelle))
                 conn.commit()
                 flash(f'Jour férié ajouté : {libelle}', 'success')
-            except sqlite3.IntegrityError:
+            except psycopg2.errors.UniqueViolation:
                 flash('Ce jour férié existe déjà', 'error')
             finally:
                 conn.close()
@@ -382,7 +382,7 @@ def gestion_jours_feries():
         elif action == 'supprimer':
             ferie_id = request.form.get('ferie_id', type=int)
             conn = get_db()
-            conn.execute('DELETE FROM jours_feries WHERE id = ?', (ferie_id,))
+            conn.execute('DELETE FROM jours_feries WHERE id = %s', (ferie_id,))
             conn.commit()
             conn.close()
             flash('Jour férié supprimé', 'success')
@@ -395,7 +395,7 @@ def gestion_jours_feries():
     
     jours_feries_raw = conn.execute('''
         SELECT * FROM jours_feries 
-        WHERE annee >= ?
+        WHERE annee >= %s
         ORDER BY date
     ''', (annee_actuelle,)).fetchall()
     

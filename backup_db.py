@@ -1,5 +1,5 @@
 """
-Script de sauvegarde de la base de donnees SQLite.
+Script de sauvegarde de la base de donnees PostgreSQL.
 Peut etre utilise en ligne de commande ou importe par le blueprint backup.
 
 Usage CLI:
@@ -11,12 +11,12 @@ Usage CLI:
 import os
 import re
 import sys
-import sqlite3
+import subprocess
 import shutil
 import argparse
 from datetime import datetime
+from urllib.parse import urlparse
 
-DATABASE = 'gestion_temps.db'
 BACKUP_DIR = 'backups'
 
 # Regex stricte pour les noms de fichiers autorises dans le dossier backups
@@ -48,41 +48,53 @@ def get_backup_dir():
 
 
 def get_db_path():
-    """Retourne le chemin absolu de la base de donnees."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, DATABASE)
+    """Pour PostgreSQL, retourne None (pas de fichier DB local)."""
+    return None
+
+
+def _get_pg_env():
+    """Retourne les variables d'environnement pour psql/pg_dump."""
+    database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
+    parsed = urlparse(database_url)
+    env = os.environ.copy()
+    if parsed.password:
+        env['PGPASSWORD'] = parsed.password
+    return env, parsed
 
 
 def creer_sauvegarde(label=None):
     """
-    Cree une sauvegarde de la base de donnees avec l'API sqlite3 backup.
+    Cree une sauvegarde de la base de donnees PostgreSQL avec pg_dump.
     Retourne le chemin du fichier de sauvegarde ou None en cas d'erreur.
     """
-    db_path = get_db_path()
-    if not os.path.exists(db_path):
-        return None, "Base de donnees introuvable"
-
+    env, parsed = _get_pg_env()
     backup_dir = get_backup_dir()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    # Nettoyer le label : ne garder que les caracteres alphanumeriques, tirets et underscores
     if label:
         label = re.sub(r'[^a-zA-Z0-9_-]', '', label)
     suffix = f"_{label}" if label else ""
-    filename = f"backup_{timestamp}{suffix}.db"
+    filename = f"backup_{timestamp}{suffix}.sql"
     backup_path = os.path.join(backup_dir, filename)
 
-    try:
-        # Utiliser l'API backup de SQLite pour une copie coherente
-        source = sqlite3.connect(db_path)
-        dest = sqlite3.connect(backup_path)
-        source.backup(dest)
-        dest.close()
-        source.close()
+    cmd = ['pg_dump']
+    if parsed.hostname:
+        cmd += ['-h', parsed.hostname]
+    if parsed.port:
+        cmd += ['-p', str(parsed.port)]
+    if parsed.username:
+        cmd += ['-U', parsed.username]
+    if parsed.path and parsed.path != '/':
+        cmd += [parsed.path.lstrip('/')]
 
-        size = os.path.getsize(backup_path)
+    try:
+        with open(backup_path, 'w') as f:
+            result = subprocess.run(cmd, env=env, stdout=f, stderr=subprocess.PIPE, timeout=120)
+        if result.returncode != 0:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+            return None, result.stderr.decode('utf-8', errors='replace')
         return backup_path, None
     except Exception as e:
-        # Nettoyer le fichier partiel en cas d'erreur
         if os.path.exists(backup_path):
             os.remove(backup_path)
         return None, str(e)
@@ -94,7 +106,7 @@ def lister_sauvegardes():
     sauvegardes = []
 
     for f in os.listdir(backup_dir):
-        if f.startswith('backup_') and f.endswith('.db'):
+        if f.startswith('backup_') and (f.endswith('.sql') or f.endswith('.db')):
             filepath = os.path.join(backup_dir, f)
             stat = os.stat(filepath)
             sauvegardes.append({
@@ -112,7 +124,7 @@ def lister_sauvegardes():
 
 def restaurer_sauvegarde(filename):
     """
-    Restaure la base de donnees a partir d'un fichier de sauvegarde.
+    Restaure la base de donnees a partir d'un fichier de sauvegarde SQL.
     Cree automatiquement une sauvegarde de securite avant la restauration.
     """
     backup_path = _safe_backup_path(filename)
@@ -122,28 +134,31 @@ def restaurer_sauvegarde(filename):
     if not os.path.exists(backup_path):
         return False, "Fichier de sauvegarde introuvable"
 
-    # Verifier que le fichier est une base SQLite valide
-    try:
-        conn = sqlite3.connect(backup_path)
-        conn.execute("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1")
-        conn.close()
-    except sqlite3.DatabaseError:
-        return False, "Le fichier n'est pas une base de donnees SQLite valide"
-
-    db_path = get_db_path()
+    if not filename.endswith('.sql'):
+        return False, "Seules les sauvegardes SQL PostgreSQL peuvent etre restaurees"
 
     # Creer une sauvegarde de securite avant restauration
     securite_path, err = creer_sauvegarde(label="avant_restauration")
     if err:
         return False, f"Impossible de creer la sauvegarde de securite: {err}"
 
+    env, parsed = _get_pg_env()
+
+    cmd = ['psql']
+    if parsed.hostname:
+        cmd += ['-h', parsed.hostname]
+    if parsed.port:
+        cmd += ['-p', str(parsed.port)]
+    if parsed.username:
+        cmd += ['-U', parsed.username]
+    if parsed.path and parsed.path != '/':
+        cmd += [parsed.path.lstrip('/')]
+
     try:
-        # Restaurer via l'API backup de SQLite
-        source = sqlite3.connect(backup_path)
-        dest = sqlite3.connect(db_path)
-        source.backup(dest)
-        dest.close()
-        source.close()
+        with open(backup_path, 'r') as f:
+            result = subprocess.run(cmd, env=env, stdin=f, stderr=subprocess.PIPE, timeout=300)
+        if result.returncode != 0:
+            return False, result.stderr.decode('utf-8', errors='replace')
         return True, f"Base restauree avec succes. Sauvegarde de securite: {os.path.basename(securite_path)}"
     except Exception as e:
         return False, str(e)
@@ -152,7 +167,7 @@ def restaurer_sauvegarde(filename):
 def supprimer_sauvegarde(filename):
     """Supprime un fichier de sauvegarde."""
     filepath = _safe_backup_path(filename)
-    if not filepath or not filename.endswith('.db'):
+    if not filepath or not (filename.endswith('.sql') or filename.endswith('.db')):
         return False, "Operation non autorisee"
 
     if not os.path.exists(filepath):
@@ -190,7 +205,7 @@ def _format_size(size_bytes):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Sauvegarde de la base de donnees')
+    parser = argparse.ArgumentParser(description='Sauvegarde de la base de donnees PostgreSQL')
     parser.add_argument('--list', action='store_true', help='Lister les sauvegardes')
     parser.add_argument('--restore', type=str, help='Restaurer une sauvegarde (nom du fichier)')
     parser.add_argument('--max-backups', type=int, default=20, help='Nombre max de sauvegardes a conserver')

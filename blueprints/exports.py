@@ -34,7 +34,7 @@ def export_pdf_mensuel():
     # Vérifier que la fiche est verrouillée
     validation = conn.execute('''
         SELECT * FROM validations 
-        WHERE user_id = ? AND mois = ? AND annee = ?
+        WHERE user_id = %s AND mois = %s AND annee = %s
     ''', (user_id_param, mois, annee)).fetchone()
     
     if not validation or not validation['bloque']:
@@ -43,7 +43,7 @@ def export_pdf_mensuel():
         return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id_param, mois=mois, annee=annee))
     
     # Récupérer les infos de l'utilisateur
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id_param,)).fetchone()
+    user = conn.execute('SELECT * FROM users WHERE id = %s', (user_id_param,)).fetchone()
     if not user:
         flash('Utilisateur introuvable', 'error')
         conn.close()
@@ -60,7 +60,7 @@ def export_pdf_mensuel():
     heures_reelles = {}
     heures_rows = conn.execute('''
         SELECT * FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
+        WHERE user_id = %s AND date >= %s AND date <= %s
     ''', (user_id_param, premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
     
     for h in heures_rows:
@@ -181,7 +181,7 @@ def export_pdf_mensuel():
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem, declaration_conforme, type_saisie
         FROM heures_reelles 
-        WHERE user_id = ? AND date < ?
+        WHERE user_id = %s AND date < %s
         ORDER BY date
     ''', (user_id_param, premier_jour.strftime('%Y-%m-%d'))).fetchall()
     

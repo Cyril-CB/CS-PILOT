@@ -4,40 +4,40 @@
 def _seed_compta_rows(db, user_id):
     """Insère un minimum de données pour afficher les actions des pages comptables."""
     cur = db.cursor()
-    cur.execute("INSERT INTO fournisseurs (nom) VALUES (?)", ("Fournisseur Test",))
+    cur.execute("INSERT INTO fournisseurs (nom) VALUES (%s) RETURNING id", ("Fournisseur Test",))
     fournisseur_id = cur.lastrowid
 
     cur.execute(
         """INSERT INTO factures
            (fournisseur_id, numero_facture, date_facture, montant_ttc, fichier_path, fichier_nom, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
         (fournisseur_id, "FAC-001", "2026-01-15", 120.50, "/tmp/fac.pdf", "fac.pdf", user_id),
     )
     facture_id = cur.lastrowid
 
     cur.execute(
         """INSERT INTO regles_comptables (nom, type_regle, cible, compte_comptable)
-           VALUES (?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s)""",
         ("Règle test", "type_depense", "Fournitures", "606100"),
     )
 
     cur.execute(
         """INSERT INTO ecritures_comptables
            (facture_id, date_ecriture, compte, libelle, numero_facture, debit, credit, statut)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
         (facture_id, "2026-01-15", "606100", "FOURNISSEUR TEST", "FAC-001", 120.50, 0, "brouillon"),
     )
 
     cur.execute(
         """INSERT INTO ecritures_comptables
            (facture_id, date_ecriture, compte, libelle, numero_facture, debit, credit, statut)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
         (facture_id, "2026-01-15", "401000", "FOURNISSEUR TEST", "FAC-001", 0, 120.50, "validee"),
     )
 
     cur.execute(
         """INSERT INTO archives_export (nom_fichier, fichier_path, nb_ecritures, created_by)
-           VALUES (?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s)""",
         ("export_test.txt", "/tmp/export_test.txt", 1, user_id),
     )
     db.commit()
@@ -81,7 +81,7 @@ def test_profil_comptable_peut_etre_assigne_secteur_et_responsable_ui(admin_clie
     cur = db.cursor()
     cur.execute(
         """INSERT INTO users (nom, prenom, login, password, profil)
-           VALUES (?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s) RETURNING id""",
         ("Comptable", "Test", "comptable_ui", "hash", "comptable"),
     )
     user_id = cur.lastrowid

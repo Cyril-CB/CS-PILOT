@@ -2,7 +2,7 @@
 Fixtures pytest partagées pour tous les tests.
 
 Architecture des fixtures :
-- app            : Instance Flask configurée pour les tests (base SQLite en mémoire)
+- app            : Instance Flask configurée pour les tests (base PostgreSQL de test)
 - db             : Connexion à la base de test, avec rollback automatique
 - client         : Client HTTP Flask pour simuler des requêtes
 - auth_client    : Client déjà authentifié en tant que salarié
@@ -13,8 +13,6 @@ Architecture des fixtures :
 """
 import os
 import sys
-import sqlite3
-import tempfile
 
 import pytest
 
@@ -24,16 +22,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 # Définir une SECRET_KEY pour les tests AVANT l'import de l'app
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 
+# URL de base de données pour les tests
+_TEST_DB_URL = os.environ.get(
+    'TEST_DATABASE_URL',
+    os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot_test')
+)
+
+
+def _pg_available():
+    """Vérifie si PostgreSQL est disponible."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(_TEST_DB_URL, connect_timeout=2)
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+
+requires_pg = pytest.mark.skipif(
+    not _pg_available(),
+    reason="PostgreSQL non disponible - définir TEST_DATABASE_URL"
+)
+
 
 @pytest.fixture(scope='function')
-def app(tmp_path):
-    """Crée une instance Flask avec une base SQLite temporaire par test."""
-    # Créer un fichier temporaire pour la base de données
-    db_path = str(tmp_path / 'test.db')
+def app():
+    """Crée une instance Flask pointant sur la base PostgreSQL de test."""
+    if not _pg_available():
+        pytest.skip("PostgreSQL non disponible")
 
-    # Patcher le chemin de la base AVANT d'importer l'app
-    import database
-    database.DATABASE = db_path
+    os.environ['DATABASE_URL'] = _TEST_DB_URL
 
     from app import app as flask_app
     from extensions import limiter
@@ -44,22 +63,18 @@ def app(tmp_path):
         'WTF_CSRF_ENABLED': False,
         'RATELIMIT_ENABLED': False,
         'SERVER_NAME': 'localhost',
+        'SQLALCHEMY_DATABASE_URI': _TEST_DB_URL,
     })
 
-    # Désactiver explicitement le rate limiter pour les tests
     limiter.enabled = False
 
-    # Initialiser la base de données et appliquer toutes les migrations
     with flask_app.app_context():
+        import database
         database.init_db()
         from migration_manager import appliquer_toutes_en_attente
         appliquer_toutes_en_attente(appliquee_par='pytest')
 
     yield flask_app
-
-    # Nettoyage : supprimer la base temporaire
-    if os.path.exists(db_path):
-        os.unlink(db_path)
 
 
 @pytest.fixture
@@ -95,28 +110,28 @@ def sample_users(app, db):
 
         # Créer un secteur
         cursor.execute(
-            "INSERT INTO secteurs (nom, description) VALUES (?, ?)",
+            "INSERT INTO secteurs (nom, description) VALUES (%s, %s) RETURNING id",
             ('Secteur Test', 'Secteur pour les tests automatisés')
         )
         secteur_id = cursor.lastrowid
 
-        # Créer le compte directeur (plus de compte par défaut dans init_db)
+        # Créer le compte directeur
         cursor.execute(
-            "INSERT INTO users (nom, prenom, login, password, profil) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO users (nom, prenom, login, password, profil) VALUES (%s, %s, %s, %s, %s) RETURNING id",
             ('Admin', 'Système', 'admin', generate_password_hash('Admin1234'), 'directeur')
         )
         directeur_id = cursor.lastrowid
 
         # Créer un responsable
         cursor.execute(
-            "INSERT INTO users (nom, prenom, login, password, profil, secteur_id) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (nom, prenom, login, password, profil, secteur_id) VALUES (%s, %s, %s, %s, %s, %s) RETURNING id",
             ('Dupont', 'Marie', 'resp_test', generate_password_hash('resp123'), 'responsable', secteur_id)
         )
         responsable_id = cursor.lastrowid
 
         # Créer un salarié
         cursor.execute(
-            "INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id) VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
             ('Martin', 'Jean', 'salarie_test', generate_password_hash('sal123'), 'salarie', secteur_id, responsable_id)
         )
         salarie_id = cursor.lastrowid
@@ -186,9 +201,9 @@ def sample_planning(app, db, sample_users):
         planning_data['total_hebdo'] = 35.0
 
         columns = ', '.join(planning_data.keys())
-        placeholders = ', '.join(['?'] * len(planning_data))
+        placeholders = ', '.join(['%s'] * len(planning_data))
         cursor.execute(
-            f"INSERT INTO planning_theorique ({columns}) VALUES ({placeholders})",
+            f"INSERT INTO planning_theorique ({columns}) VALUES ({placeholders}) RETURNING id",
             list(planning_data.values())
         )
         planning_id = cursor.lastrowid

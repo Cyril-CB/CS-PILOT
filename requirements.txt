@@ -10,6 +10,9 @@ requests==2.32.4
 openpyxl==3.1.5
 python-docx==1.2.0
 waitress==3.0.1
+psycopg2-binary==2.9.10
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.7
 
 # Tests
 pytest==9.0.2

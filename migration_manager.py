@@ -1,7 +1,7 @@
 """
 Gestionnaire de migrations de base de donnees.
 
-Systeme de versionnement du schema de la base SQLite.
+Systeme de versionnement du schema de la base PostgreSQL.
 Chaque migration est un fichier Python dans le dossier migrations/
 avec un numero de version, un nom descriptif, et des fonctions upgrade/downgrade.
 
@@ -9,9 +9,8 @@ Conventions de nommage : XXXX_description.py (ex: 0001_initial_schema.py)
 """
 import os
 import importlib.util
-import sqlite3
 from datetime import datetime
-from database import get_db, DATABASE
+from database import get_db
 
 MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
 
@@ -21,7 +20,7 @@ def _ensure_migration_table():
     conn = get_db()
     conn.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             version TEXT NOT NULL UNIQUE,
             nom TEXT NOT NULL,
             description TEXT,
@@ -113,7 +112,7 @@ def appliquer_migration(version, appliquee_par=None):
     # Verifier que la migration n'est pas deja appliquee avec succes
     conn = get_db()
     existing = conn.execute(
-        "SELECT id, statut FROM schema_migrations WHERE version = ?", (version,)
+        "SELECT id, statut FROM schema_migrations WHERE version = %s", (version,)
     ).fetchone()
     conn.close()
     if existing and existing['statut'] == 'ok':
@@ -145,7 +144,7 @@ def appliquer_migration(version, appliquee_par=None):
 
         conn.execute(
             "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-            "VALUES (?, ?, ?, ?, ?, 'ok')",
+            "VALUES (%s, %s, %s, %s, %s, 'ok')",
             (
                 version,
                 getattr(module, 'NOM', fichier['fichier']),
@@ -173,8 +172,10 @@ def appliquer_migration(version, appliquee_par=None):
         try:
             conn2 = get_db()
             conn2.execute(
-                "INSERT OR REPLACE INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-                "VALUES (?, ?, ?, ?, ?, 'erreur')",
+                "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
+                "VALUES (%s, %s, %s, %s, %s, 'erreur') "
+                "ON CONFLICT (version) DO UPDATE SET nom=EXCLUDED.nom, description=EXCLUDED.description, "
+                "appliquee_par=EXCLUDED.appliquee_par, duree_ms=EXCLUDED.duree_ms, statut=EXCLUDED.statut",
                 (
                     version,
                     getattr(module, 'NOM', fichier['fichier']),
@@ -231,12 +232,12 @@ def marquer_migration_existante(version, nom, description=''):
     _ensure_migration_table()
     conn = get_db()
     existing = conn.execute(
-        "SELECT id FROM schema_migrations WHERE version = ?", (version,)
+        "SELECT id FROM schema_migrations WHERE version = %s", (version,)
     ).fetchone()
     if not existing:
         conn.execute(
             "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-            "VALUES (?, ?, ?, 'baseline', 0, 'ok')",
+            "VALUES (%s, %s, %s, 'baseline', 0, 'ok')",
             (version, nom, description)
         )
         conn.commit()

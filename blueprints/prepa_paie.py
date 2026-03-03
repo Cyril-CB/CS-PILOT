@@ -54,8 +54,8 @@ def _get_salaries_avec_contrat_actif(conn, mois, annee):
         JOIN contrats c ON c.user_id = u.id
         LEFT JOIN secteurs s ON u.secteur_id = s.id
         WHERE u.profil != 'prestataire'
-        AND c.date_debut <= ?
-        AND (c.date_fin IS NULL OR c.date_fin >= ?)
+        AND c.date_debut <= %s
+        AND (c.date_fin IS NULL OR c.date_fin >= %s)
         ORDER BY u.nom, u.prenom
     ''', (date_fin_mois, date_debut_mois)).fetchall()
 
@@ -69,14 +69,14 @@ def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mo
     # Recuperer les statuts traite
     statuts_rows = conn.execute('''
         SELECT user_id, traite FROM prepa_paie_statut
-        WHERE mois = ? AND annee = ?
+        WHERE mois = %s AND annee = %s
     ''', (mois, annee)).fetchall()
     statuts = {r['user_id']: r['traite'] for r in statuts_rows}
 
     # Recuperer les variables paie du mois
     vp_rows = conn.execute('''
         SELECT * FROM variables_paie
-        WHERE mois = ? AND annee = ?
+        WHERE mois = %s AND annee = %s
     ''', (mois, annee)).fetchall()
     variables = {r['user_id']: dict(r) for r in vp_rows}
 
@@ -88,9 +88,9 @@ def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mo
             SELECT id, type_contrat, date_debut, date_fin, forfait, nbr_jours,
                    fichier_path, fichier_nom
             FROM contrats
-            WHERE user_id = ?
-            AND date_debut <= ?
-            AND (date_fin IS NULL OR date_fin >= ?)
+            WHERE user_id = %s
+            AND date_debut <= %s
+            AND (date_fin IS NULL OR date_fin >= %s)
             ORDER BY date_debut DESC
         ''', (uid, date_fin_mois, date_debut_mois)).fetchall()
 
@@ -98,15 +98,15 @@ def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mo
         vp = variables.get(uid, {})
 
         # Absences du mois (hors recuperations)
-        placeholders = ','.join('?' for _ in MOTIFS_ABSENCE_PAIE)
+        placeholders = ','.join('%s' for _ in MOTIFS_ABSENCE_PAIE)
         absences = conn.execute(f'''
             SELECT id, motif, date_debut, date_fin, date_reprise, commentaire, jours_ouvres,
                    justificatif_path
             FROM absences
-            WHERE user_id = ?
+            WHERE user_id = %s
             AND motif IN ({placeholders})
-            AND date_debut <= ?
-            AND date_fin >= ?
+            AND date_debut <= %s
+            AND date_fin >= %s
             ORDER BY date_debut
         ''', (uid, *MOTIFS_ABSENCE_PAIE, date_fin_mois, date_debut_mois)).fetchall()
 
@@ -203,20 +203,20 @@ def enregistrer_statut():
             traite = 1 if request.form.get(f'traite_{uid}') else 0
 
             existing = conn.execute(
-                'SELECT id FROM prepa_paie_statut WHERE user_id = ? AND mois = ? AND annee = ?',
+                'SELECT id FROM prepa_paie_statut WHERE user_id = %s AND mois = %s AND annee = %s',
                 (uid, mois, annee)
             ).fetchone()
 
             if existing:
                 conn.execute('''
                     UPDATE prepa_paie_statut
-                    SET traite = ?, traite_par = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
+                    SET traite = %s, traite_par = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
                 ''', (traite, session['user_id'], existing['id']))
             else:
                 conn.execute('''
                     INSERT INTO prepa_paie_statut (user_id, mois, annee, traite, traite_par)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                 ''', (uid, mois, annee, traite, session['user_id']))
 
         conn.commit()

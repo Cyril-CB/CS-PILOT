@@ -9,7 +9,7 @@ from flask import Flask, session, render_template, flash, redirect, url_for
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import init_db, get_db
-from extensions import csrf, limiter
+from extensions import csrf, limiter, db, migrate
 
 # Charger les variables d'environnement depuis .env (s'il existe)
 load_dotenv()
@@ -72,8 +72,16 @@ else:
     app.config['SESSION_COOKIE_SECURE'] = False
 
 # ==================== Initialisation des extensions ====================
+_db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
+app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 csrf.init_app(app)
 limiter.init_app(app)
+db.init_app(app)
+
+import models  # noqa: F401 – registers models with SQLAlchemy for Flask-Migrate
+migrate.init_app(app, db)
 
 # ==================== Enregistrement des Blueprints ====================
 from blueprints.auth import auth
@@ -191,13 +199,13 @@ def inject_pending_counts():
                 "SELECT COUNT(*) as nb FROM demandes_recup WHERE statut IN ('en_attente_direction', 'en_attente_responsable')"
             ).fetchone()
         elif profil == 'responsable':
-            user = conn.execute("SELECT secteur_id FROM users WHERE id = ?", (session['user_id'],)).fetchone()
+            user = conn.execute("SELECT secteur_id FROM users WHERE id = %s", (session['user_id'],)).fetchone()
             sid = user['secteur_id'] if user else None
             if sid:
                 row = conn.execute(
                     """SELECT COUNT(*) as nb FROM demandes_recup d
                        JOIN users u ON d.user_id = u.id
-                       WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'""",
+                       WHERE u.secteur_id = %s AND d.statut = 'en_attente_responsable'""",
                     (sid,)
                 ).fetchone()
             else:

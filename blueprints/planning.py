@@ -44,7 +44,7 @@ def planning_theorique():
             conn = get_db()
             heures_apres = conn.execute('''
                 SELECT COUNT(*) as nb FROM heures_reelles 
-                WHERE user_id = ? AND date >= ?
+                WHERE user_id = %s AND date >= %s
             ''', (session['user_id'], date_debut_validite)).fetchone()
             
             if heures_apres and heures_apres['nb'] > 0:
@@ -85,7 +85,7 @@ def planning_theorique():
                  jeudi_matin_debut, jeudi_matin_fin, jeudi_aprem_debut, jeudi_aprem_fin,
                  vendredi_matin_debut, vendredi_matin_fin, vendredi_aprem_debut, vendredi_aprem_fin,
                  total_hebdo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ''', (session['user_id'], type_periode, date_debut_validite, type_alternance,
                   horaires['lundi_matin_debut'], horaires['lundi_matin_fin'], 
                   horaires['lundi_aprem_debut'], horaires['lundi_aprem_fin'],
@@ -104,13 +104,13 @@ def planning_theorique():
                 # Vérifier si on a déjà une référence pour cette date
                 ref_existante = conn.execute('''
                     SELECT id FROM alternance_reference
-                    WHERE user_id = ? AND date_debut_validite = ?
+                    WHERE user_id = %s AND date_debut_validite = %s
                 ''', (session['user_id'], date_debut_validite)).fetchone()
                 
                 if not ref_existante:
                     conn.execute('''
                         INSERT INTO alternance_reference (user_id, date_reference, date_debut_validite)
-                        VALUES (?, ?, ?)
+                        VALUES (%s, %s, %s)
                     ''', (session['user_id'], date_reference, date_debut_validite))
             
             conn.commit()
@@ -130,14 +130,14 @@ def planning_theorique():
     conn = get_db()
     plannings = conn.execute('''
         SELECT * FROM planning_theorique 
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY type_alternance, type_periode, date_debut_validite DESC
     ''', (session['user_id'],)).fetchall()
     
     # Récupérer les dates de référence alternance
     references = conn.execute('''
         SELECT * FROM alternance_reference
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY date_debut_validite DESC
     ''', (session['user_id'],)).fetchall()
     

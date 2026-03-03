@@ -3,7 +3,6 @@ Blueprint recup_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from datetime import datetime, timedelta
-import sqlite3
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
@@ -44,15 +43,15 @@ def demande_recup():
             SELECT date, heure_debut_matin, heure_fin_matin,
                    heure_debut_aprem, heure_fin_aprem, declaration_conforme
             FROM heures_reelles 
-            WHERE user_id = ?
+            WHERE user_id = %s
             ORDER BY date
         ''', (session['user_id'],)).fetchall()
         
         # Récupérer le solde initial
         try:
-            user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            user_data = conn.execute('SELECT solde_initial FROM users WHERE id = %s', (session['user_id'],)).fetchone()
             solde_recup = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
-        except (sqlite3.OperationalError, KeyError, TypeError):
+        except (KeyError, TypeError):
             solde_recup = 0
         
         for h in heures:
@@ -120,17 +119,17 @@ def demande_recup():
             conn.execute('''
                 INSERT INTO demandes_recup
                 (user_id, date_debut, date_fin, nb_jours, nb_heures, motif_demande, statut)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             ''', (session['user_id'], date_debut, date_fin, nb_jours, nb_heures, motif_demande, statut_initial))
             conn.commit()
             flash(f'Demande créée : {nb_jours} jour(s) = {nb_heures:.2f}h', 'success')
 
             # Notification email au responsable (si configure)
             if is_email_configured() and statut_initial == 'en_attente_responsable':
-                demandeur = conn.execute('SELECT nom, prenom, responsable_id FROM users WHERE id = ?',
+                demandeur = conn.execute('SELECT nom, prenom, responsable_id FROM users WHERE id = %s',
                                          (session['user_id'],)).fetchone()
                 if demandeur and demandeur['responsable_id']:
-                    resp = conn.execute('SELECT prenom, email FROM users WHERE id = ?',
+                    resp = conn.execute('SELECT prenom, email FROM users WHERE id = %s',
                                         (demandeur['responsable_id'],)).fetchone()
                     if resp and resp['email']:
                         demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
@@ -141,7 +140,7 @@ def demande_recup():
 
             # Si responsable -> notifier directement la direction
             if is_email_configured() and statut_initial == 'en_attente_direction':
-                demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+                demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = %s',
                                          (session['user_id'],)).fetchone()
                 if demandeur:
                     demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
@@ -169,15 +168,15 @@ def demande_recup():
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem, declaration_conforme
         FROM heures_reelles 
-        WHERE user_id = ?
+        WHERE user_id = %s
         ORDER BY date
     ''', (session['user_id'],)).fetchall()
     
     # Récupérer le solde initial
     try:
-        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = %s', (session['user_id'],)).fetchone()
         solde_recup = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
-    except (sqlite3.OperationalError, KeyError, TypeError):
+    except (KeyError, TypeError):
         solde_recup = 0
     
     for h in heures:
@@ -222,7 +221,7 @@ def mes_demandes_recup():
                u.nom || ' ' || u.prenom as demandeur_nom
         FROM demandes_recup d
         JOIN users u ON d.user_id = u.id
-        WHERE d.user_id = ?
+        WHERE d.user_id = %s
         ORDER BY d.date_demande DESC
     ''', (session['user_id'],)).fetchall()
     
@@ -251,7 +250,7 @@ def validation_demandes_recup():
 
         try:
             # Récupérer la demande
-            demande = conn.execute('SELECT * FROM demandes_recup WHERE id = ?', (demande_id,)).fetchone()
+            demande = conn.execute('SELECT * FROM demandes_recup WHERE id = %s', (demande_id,)).fetchone()
 
             if not demande:
                 flash('Demande introuvable', 'error')
@@ -268,8 +267,8 @@ def validation_demandes_recup():
                 # Refuser la demande
                 conn.execute('''
                     UPDATE demandes_recup
-                    SET statut = 'refusee', motif_refus = ?, refuse_par = ?, date_refus = ?
-                    WHERE id = ?
+                    SET statut = 'refusee', motif_refus = %s, refuse_par = %s, date_refus = %s
+                    WHERE id = %s
                 ''', (motif_refus, session['user_id'], now, demande_id))
                 conn.commit()
                 flash('Demande refusée', 'success')
@@ -278,7 +277,7 @@ def validation_demandes_recup():
                 if is_email_configured():
                     peut, email_sal = peut_envoyer_email(demande['user_id'])
                     if peut:
-                        salarie = conn.execute('SELECT prenom FROM users WHERE id = ?',
+                        salarie = conn.execute('SELECT prenom FROM users WHERE id = %s',
                                                 (demande['user_id'],)).fetchone()
                         if salarie:
                             notifier_demande_recup_decision(
@@ -294,16 +293,16 @@ def validation_demandes_recup():
                     conn.execute('''
                         UPDATE demandes_recup
                         SET statut = 'en_attente_direction',
-                            validation_responsable = ?,
-                            date_validation_responsable = ?
-                        WHERE id = ?
+                            validation_responsable = %s,
+                            date_validation_responsable = %s
+                        WHERE id = %s
                     ''', (f"{user_info['prenom']} {user_info['nom']}", now, demande_id))
                     conn.commit()
                     flash('Demande validée, en attente de la direction', 'success')
 
                     # Notification email a la direction
                     if is_email_configured():
-                        demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+                        demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = %s',
                                                  (demande['user_id'],)).fetchone()
                         if demandeur:
                             demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
@@ -322,9 +321,9 @@ def validation_demandes_recup():
                     conn.execute('''
                         UPDATE demandes_recup
                         SET statut = 'validee',
-                            validation_direction = ?,
-                            date_validation_direction = ?
-                        WHERE id = ?
+                            validation_direction = %s,
+                            date_validation_direction = %s
+                        WHERE id = %s
                     ''', (f"{user_info['prenom']} {user_info['nom']}", now, demande_id))
 
                     # Créer automatiquement les entrées de récupération dans heures_reelles
@@ -346,12 +345,12 @@ def validation_demandes_recup():
                             annee = jour_actuel.year
                             validation = conn.execute('''
                                 SELECT bloque FROM validations
-                                WHERE user_id = ? AND mois = ? AND annee = ?
+                                WHERE user_id = %s AND mois = %s AND annee = %s
                             ''', (demande['user_id'], mois, annee)).fetchone()
 
                             if not validation or not validation['bloque']:
                                 # Supprimer entrée existante si présente
-                                conn.execute('DELETE FROM heures_reelles WHERE user_id = ? AND date = ?',
+                                conn.execute('DELETE FROM heures_reelles WHERE user_id = %s AND date = %s',
                                            (demande['user_id'], date_str))
 
                                 # Créer la nouvelle entrée de récupération
@@ -359,7 +358,7 @@ def validation_demandes_recup():
                                     INSERT INTO heures_reelles
                                     (user_id, date, type_saisie, commentaire, declaration_conforme,
                                      heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem)
-                                    VALUES (?, ?, 'recup_journee', ?, 0, NULL, NULL, NULL, NULL)
+                                    VALUES (%s, %s, 'recup_journee', %s, 0, NULL, NULL, NULL, NULL)
                                 ''', (demande['user_id'], date_str, f"Récupération - Demande #{demande_id} validée"))
 
                                 nb_jours_crees += 1
@@ -373,7 +372,7 @@ def validation_demandes_recup():
                     if is_email_configured():
                         peut, email_sal = peut_envoyer_email(demande['user_id'])
                         if peut:
-                            salarie = conn.execute('SELECT prenom FROM users WHERE id = ?',
+                            salarie = conn.execute('SELECT prenom FROM users WHERE id = %s',
                                                     (demande['user_id'],)).fetchone()
                             if salarie:
                                 notifier_demande_recup_decision(
@@ -390,7 +389,7 @@ def validation_demandes_recup():
     
     if session.get('profil') == 'responsable':
         # Responsable : demandes de son secteur en attente_responsable
-        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (session['user_id'],)).fetchone()
         
         if responsable_secteur and responsable_secteur['secteur_id']:
             demandes = conn.execute('''
@@ -400,7 +399,7 @@ def validation_demandes_recup():
                 FROM demandes_recup d
                 JOIN users u ON d.user_id = u.id
                 LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'
+                WHERE u.secteur_id = %s AND d.statut = 'en_attente_responsable'
                 ORDER BY d.date_demande ASC
             ''', (responsable_secteur['secteur_id'],)).fetchall()
         else:

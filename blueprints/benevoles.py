@@ -70,7 +70,7 @@ def gestion_benevoles():
 
         if is_responsable:
             benevoles = conn.execute(
-                'SELECT * FROM benevoles WHERE responsable_id = ? ORDER BY ordre, id',
+                'SELECT * FROM benevoles WHERE responsable_id = %s ORDER BY ordre, id',
                 (user_id,)
             ).fetchall()
         else:
@@ -122,7 +122,7 @@ def api_ajouter_benevole():
     conn = get_db()
     try:
         cursor = conn.execute(
-            'INSERT INTO benevoles (nom, groupe) VALUES (?, ?)',
+            'INSERT INTO benevoles (nom, groupe) VALUES (%s, %s) RETURNING id',
             (nom, groupe)
         )
         conn.commit()
@@ -156,7 +156,7 @@ def api_modifier_benevole(ben_id):
     conn = get_db()
     try:
         conn.execute(
-            f'UPDATE benevoles SET {field} = ?, updated_at = ? WHERE id = ?',
+            f'UPDATE benevoles SET {field} = %s, updated_at = %s WHERE id = %s',
             (value, datetime.now().isoformat(), ben_id)
         )
         conn.commit()
@@ -173,7 +173,7 @@ def api_supprimer_benevole(ben_id):
 
     conn = get_db()
     try:
-        conn.execute('DELETE FROM benevoles WHERE id = ?', (ben_id,))
+        conn.execute('DELETE FROM benevoles WHERE id = %s', (ben_id,))
         conn.commit()
         return jsonify({'ok': True})
     finally:

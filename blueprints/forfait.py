@@ -45,9 +45,10 @@ def calendrier_forfait_jour():
         conn = get_db()
         try:
             conn.execute('''
-                INSERT OR REPLACE INTO presence_forfait_jour 
+                INSERT INTO presence_forfait_jour 
                 (user_id, date, type_journee, commentaire)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id, date) DO UPDATE SET type_journee=EXCLUDED.type_journee, commentaire=EXCLUDED.commentaire
             ''', (session['user_id'], date, type_journee, commentaire))
             conn.commit()
             flash('Journée enregistrée', 'success')
@@ -67,7 +68,7 @@ def calendrier_forfait_jour():
     presences = conn.execute('''
         SELECT date, type_journee, commentaire
         FROM presence_forfait_jour
-        WHERE user_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        WHERE user_id = %s AND strftime('%Y', date) = %s AND strftime('%m', date) = %s
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
     
     # Convertir en dictionnaire
@@ -76,7 +77,7 @@ def calendrier_forfait_jour():
     # Récupérer les jours fériés du mois
     jours_feries = conn.execute('''
         SELECT date, libelle FROM jours_feries
-        WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        WHERE strftime('%Y', date) = %s AND strftime('%m', date) = %s
     ''', (str(annee), f'{mois:02d}')).fetchall()
     
     jours_feries_dict = {f['date']: f['libelle'] for f in jours_feries}
@@ -137,7 +138,7 @@ def rapport_forfait_jour_pdf(mois, annee):
     presences = conn.execute('''
         SELECT date, type_journee, commentaire
         FROM presence_forfait_jour
-        WHERE user_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
+        WHERE user_id = %s AND strftime('%Y', date) = %s AND strftime('%m', date) = %s
         ORDER BY date
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
     

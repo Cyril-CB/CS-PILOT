@@ -1,19 +1,80 @@
 """
-Module de gestion de la base de données SQLite.
+Module de gestion de la base de données PostgreSQL.
 Contient l'initialisation du schéma et la connexion.
 """
-import sqlite3
-
-DATABASE = 'gestion_temps.db'
+import os
+import psycopg2
+import psycopg2.extras
 
 
 def get_db():
-    """Connexion à la base de données"""
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    """Connexion à la base de données PostgreSQL."""
+    database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
+    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    return PsycopgConnectionWrapper(conn)
+
+
+class PsycopgCursorWrapper:
+    """Mimics sqlite3.Cursor with dict-like rows via RealDictCursor."""
+
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self._lastrowid = None
+
+    def execute(self, query, params=None):
+        if params is not None:
+            self._cursor.execute(query, params)
+        else:
+            self._cursor.execute(query)
+        # Capture RETURNING id result if present (single-column result named 'id')
+        if (self._cursor.description and
+                len(self._cursor.description) == 1 and
+                self._cursor.description[0][0] == 'id'):
+            row = self._cursor.fetchone()
+            if row is not None:
+                self._lastrowid = row['id']
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    @property
+    def lastrowid(self):
+        return self._lastrowid
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    def __iter__(self):
+        return iter(self._cursor.fetchall())
+
+
+class PsycopgConnectionWrapper:
+    """Wraps psycopg2 connection to mimic sqlite3.Connection interface."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query, params=None):
+        cur = self._conn.cursor()
+        wrapper = PsycopgCursorWrapper(cur)
+        return wrapper.execute(query, params)
+
+    def cursor(self):
+        return PsycopgCursorWrapper(self._conn.cursor())
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
 
 
 # Liste de toutes les versions de migration connues.
@@ -72,7 +133,7 @@ def init_db():
     # ===== Table des utilisateurs =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             prenom TEXT NOT NULL,
             login TEXT UNIQUE NOT NULL,
@@ -101,7 +162,7 @@ def init_db():
     # ===== Table des secteurs =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS secteurs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL UNIQUE,
             description TEXT,
             type_secteur TEXT DEFAULT NULL,
@@ -112,7 +173,7 @@ def init_db():
     # ===== Table des plannings theoriques =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS planning_theorique (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             type_periode TEXT NOT NULL,
             date_debut_validite TEXT NOT NULL DEFAULT '2000-01-01',
@@ -145,7 +206,7 @@ def init_db():
     # ===== Table alternance reference =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS alternance_reference (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date_reference TEXT NOT NULL,
             date_debut_validite TEXT NOT NULL,
@@ -156,7 +217,7 @@ def init_db():
     # ===== Table des anomalies =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS anomalies (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date_modification TEXT NOT NULL,
             date_concernee TEXT NOT NULL,
@@ -173,7 +234,7 @@ def init_db():
     # ===== Table des heures reelles =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS heures_reelles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date TEXT NOT NULL,
             heure_debut_matin TEXT,
@@ -192,7 +253,7 @@ def init_db():
     # ===== Table des validations mensuelles =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS validations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
@@ -211,7 +272,7 @@ def init_db():
     # ===== Table des periodes de vacances scolaires =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS periodes_vacances (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             date_debut TEXT NOT NULL,
             date_fin TEXT NOT NULL,
@@ -224,7 +285,7 @@ def init_db():
     # ===== Table d'historique des modifications =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS historique_modifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id_modifie INTEGER NOT NULL,
             date_concernee TEXT NOT NULL,
             modifie_par INTEGER NOT NULL,
@@ -240,7 +301,7 @@ def init_db():
     # ===== Table des demandes de recuperation =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS demandes_recup (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date_demande TEXT DEFAULT CURRENT_TIMESTAMP,
             date_debut TEXT NOT NULL,
@@ -264,7 +325,7 @@ def init_db():
     # ===== Table des jours feries =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS jours_feries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             annee INTEGER NOT NULL,
             date TEXT NOT NULL,
             libelle TEXT NOT NULL,
@@ -275,7 +336,7 @@ def init_db():
     # ===== Table planning enfance =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS planning_enfance_config (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             annee INTEGER NOT NULL,
             config_json TEXT NOT NULL,
@@ -293,7 +354,7 @@ def init_db():
     # ===== Table des absences (migration 0003) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS absences (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             motif TEXT NOT NULL,
             date_debut TEXT NOT NULL,
@@ -313,7 +374,7 @@ def init_db():
     # ===== Table parametres applicatifs =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS app_settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             key TEXT NOT NULL UNIQUE,
             value TEXT NOT NULL,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -323,7 +384,7 @@ def init_db():
     # ===== Table forfait jour =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS presence_forfait_jour (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             date TEXT NOT NULL,
             type_journee TEXT NOT NULL,
@@ -336,7 +397,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS validation_forfait_jour (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
@@ -351,7 +412,7 @@ def init_db():
     # ===== Table variables paie defauts (migration 0004) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS variables_paie_defauts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL UNIQUE,
             mutuelle TEXT,
             nb_enfants INTEGER DEFAULT 0,
@@ -364,7 +425,7 @@ def init_db():
     # ===== Table variables paie mensuelles (migration 0004 + 0010) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS variables_paie (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
@@ -390,7 +451,7 @@ def init_db():
     # ===== Table contrats (migration 0005 + 0006) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS contrats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             type_contrat TEXT NOT NULL,
             date_debut TEXT NOT NULL,
@@ -409,7 +470,7 @@ def init_db():
     # ===== Table documents salaries (migration 0005) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS documents_salaries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             type_document TEXT NOT NULL,
             description TEXT,
@@ -425,7 +486,7 @@ def init_db():
     # ===== Table statut preparation paie (migration 0006) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS prepa_paie_statut (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
@@ -441,7 +502,7 @@ def init_db():
     # ===== Table cloture conges mensuelle (migration 0008) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS conges_cloture_mensuelle (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
             cloture_le TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -456,7 +517,7 @@ def init_db():
     # ===== Table postes ALISFA (migration 0009) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS postes_alisfa (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             intitule TEXT NOT NULL,
             famille_metier TEXT NOT NULL,
             emploi_repere TEXT,
@@ -479,7 +540,7 @@ def init_db():
     # ===== Tables budget (migration 0012) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS postes_depense (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL UNIQUE,
             actif INTEGER DEFAULT 1,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -488,7 +549,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS postes_depense_secteur_types (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             poste_depense_id INTEGER NOT NULL,
             type_secteur TEXT NOT NULL,
             FOREIGN KEY (poste_depense_id) REFERENCES postes_depense(id) ON DELETE CASCADE,
@@ -498,7 +559,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS budgets (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             secteur_id INTEGER NOT NULL,
             annee INTEGER NOT NULL,
             montant_global REAL NOT NULL DEFAULT 0,
@@ -515,7 +576,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS budget_lignes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             budget_id INTEGER NOT NULL,
             poste_depense_id INTEGER NOT NULL,
             periode TEXT NOT NULL DEFAULT 'annuel',
@@ -532,7 +593,7 @@ def init_db():
     # ===== Table budget reel (migration 0013) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS budget_reel_lignes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             budget_id INTEGER NOT NULL,
             poste_depense_id INTEGER NOT NULL,
             periode TEXT NOT NULL DEFAULT 'annuel',
@@ -550,7 +611,7 @@ def init_db():
     # ===== Table frequentation creche (migration 0014 + 0015) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS frequentation_creche (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             secteur_id INTEGER NOT NULL,
             tranche TEXT NOT NULL,
             nb_enfants REAL DEFAULT 0,
@@ -566,7 +627,7 @@ def init_db():
     # ===== Tables subventions (migration 0016) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS subventions_analytiques (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL UNIQUE,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -574,7 +635,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS subventions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             groupe TEXT NOT NULL DEFAULT 'nouveau_projet',
             assignee_1_id INTEGER,
@@ -599,7 +660,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS subventions_sous_elements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             subvention_id INTEGER NOT NULL,
             nom TEXT NOT NULL,
             assignee_id INTEGER,
@@ -615,7 +676,7 @@ def init_db():
     # ===== Table benevoles (migration 0017) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS benevoles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             groupe TEXT NOT NULL DEFAULT 'nouveau',
             responsable_id INTEGER,
@@ -635,7 +696,7 @@ def init_db():
     # ===== Tables salles (migration 0018) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS salles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             capacite INTEGER,
             description TEXT DEFAULT '',
@@ -647,7 +708,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS recurrences_salles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             salle_id INTEGER NOT NULL,
             titre TEXT NOT NULL,
             description TEXT DEFAULT '',
@@ -668,7 +729,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS reservations_salles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             salle_id INTEGER NOT NULL,
             titre TEXT NOT NULL,
             description TEXT DEFAULT '',
@@ -687,7 +748,7 @@ def init_db():
     # ===== Tables tresorerie (migration 0019) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_imports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             type_import TEXT NOT NULL,
             fichier_nom TEXT NOT NULL,
             annee INTEGER,
@@ -703,7 +764,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_comptes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL UNIQUE,
             libelle_original TEXT,
             libelle_affiche TEXT,
@@ -717,7 +778,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_donnees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL,
             annee INTEGER NOT NULL,
             mois INTEGER NOT NULL,
@@ -731,7 +792,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_solde_initial (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             annee INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             montant REAL NOT NULL DEFAULT 0,
@@ -746,7 +807,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_budget_n (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL,
             annee INTEGER NOT NULL,
             mois INTEGER NOT NULL,
@@ -761,7 +822,7 @@ def init_db():
     # ===== Tables epargne tresorerie (migration 0021) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_epargne_solde (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             montant REAL NOT NULL DEFAULT 0,
             saisi_par INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -771,7 +832,7 @@ def init_db():
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tresorerie_epargne_mouvements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             type_mouvement TEXT NOT NULL,
             annee INTEGER NOT NULL,
             mois INTEGER NOT NULL,
@@ -786,7 +847,7 @@ def init_db():
     # ===== Table fournisseurs (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS fournisseurs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             alias1 TEXT,
             alias2 TEXT,
@@ -800,7 +861,7 @@ def init_db():
     # ===== Table factures (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS factures (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             fournisseur_id INTEGER,
             numero_facture TEXT,
             date_facture TEXT,
@@ -829,7 +890,7 @@ def init_db():
     # ===== Table historique factures (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS facture_historique (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             facture_id INTEGER NOT NULL,
             action TEXT NOT NULL,
             details TEXT,
@@ -843,7 +904,7 @@ def init_db():
     # ===== Table commentaires factures (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS facture_commentaires (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             facture_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             commentaire TEXT NOT NULL,
@@ -856,7 +917,7 @@ def init_db():
     # ===== Table regles comptables (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS regles_comptables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             type_regle TEXT NOT NULL,
             cible TEXT NOT NULL,
@@ -875,7 +936,7 @@ def init_db():
     # ===== Table ecritures comptables (migration 0022) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS ecritures_comptables (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             facture_id INTEGER NOT NULL,
             date_ecriture TEXT NOT NULL,
             compte TEXT NOT NULL,
@@ -895,7 +956,7 @@ def init_db():
     # ===== Table archives export (migration 0023) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS archives_export (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom_fichier TEXT NOT NULL,
             fichier_path TEXT NOT NULL,
             nb_ecritures INTEGER DEFAULT 0,
@@ -908,7 +969,7 @@ def init_db():
     # ===== Table des modeles de contrats (DOCX) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS modeles_contrats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             fichier_path TEXT NOT NULL,
             fichier_nom TEXT NOT NULL,
@@ -921,7 +982,7 @@ def init_db():
     # ===== Table des lieux de travail =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS lieux_travail (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL,
             adresse TEXT NOT NULL,
             created_by INTEGER,
@@ -933,7 +994,7 @@ def init_db():
     # ===== Table des forfaits CEE =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS forfaits_cee (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             montant REAL NOT NULL,
             condition TEXT,
             created_by INTEGER,
@@ -945,7 +1006,7 @@ def init_db():
     # ===== Table des contrats generes (dernier contrat par salarie) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS contrats_generes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             fichier_path TEXT NOT NULL,
             fichier_nom TEXT NOT NULL,
@@ -962,7 +1023,7 @@ def init_db():
     # Actions analytiques (liste libre, ajoutables par l'utilisateur)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comptabilite_actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             nom TEXT NOT NULL UNIQUE,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
@@ -971,7 +1032,7 @@ def init_db():
     # Plan comptable general (comptes saisis ou importes)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS plan_comptable_general (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL UNIQUE,
             libelle TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -982,7 +1043,7 @@ def init_db():
     # Plan comptable analytique (comptes saisis ou importes)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS comptabilite_comptes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL UNIQUE,
             libelle TEXT NOT NULL,
             secteur_id INTEGER,
@@ -997,7 +1058,7 @@ def init_db():
     # Imports FEC pour le bilan secteurs/actions
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bilan_fec_imports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             fichier_nom TEXT NOT NULL,
             annee INTEGER NOT NULL,
             nb_ecritures INTEGER DEFAULT 0,
@@ -1010,7 +1071,7 @@ def init_db():
     # Donnees FEC pour le bilan (charges 6x, produits 7x avec code analytique)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bilan_fec_donnees (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             compte_num TEXT NOT NULL,
             libelle TEXT,
             code_analytique TEXT,
@@ -1025,7 +1086,7 @@ def init_db():
     # Taux de logistique par annee
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bilan_taux_logistique (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             annee INTEGER NOT NULL UNIQUE,
             taux_site1 REAL DEFAULT 0,
             taux_site2 REAL DEFAULT 0,
@@ -1038,7 +1099,7 @@ def init_db():
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             version TEXT NOT NULL UNIQUE,
             nom TEXT NOT NULL,
             description TEXT,
@@ -1053,79 +1114,26 @@ def init_db():
 
     # Marquer toutes les migrations comme appliquees pour les nouvelles installations
     cursor.execute("SELECT COUNT(*) as nb FROM schema_migrations")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone()['nb'] == 0:
         for version, nom in ALL_MIGRATION_VERSIONS:
             cursor.execute(
                 "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-                "VALUES (?, ?, 'Inclus dans le schema initial', 'systeme', 0, 'ok')",
+                "VALUES (%s, %s, 'Inclus dans le schema initial', 'systeme', 0, 'ok')",
                 (version, nom)
             )
 
     # Inserer les postes de depense par defaut (migration 0012) si la table est vide
-    existing_postes = cursor.execute('SELECT COUNT(*) FROM postes_depense').fetchone()[0]
+    cursor.execute('SELECT COUNT(*) as nb FROM postes_depense')
+    existing_postes = cursor.fetchone()['nb']
     if existing_postes == 0:
         for nom_poste, types in _POSTES_DEPENSE_DEFAUT:
-            cursor.execute('INSERT INTO postes_depense (nom) VALUES (?)', (nom_poste,))
+            cursor.execute('INSERT INTO postes_depense (nom) VALUES (%s) RETURNING id', (nom_poste,))
             poste_id = cursor.lastrowid
             for type_s in types:
                 cursor.execute(
-                    'INSERT OR IGNORE INTO postes_depense_secteur_types (poste_depense_id, type_secteur) VALUES (?, ?)',
+                    'INSERT INTO postes_depense_secteur_types (poste_depense_id, type_secteur) VALUES (%s, %s) ON CONFLICT DO NOTHING',
                     (poste_id, type_s)
                 )
-
-    # --- Migrations incrementales pour bases existantes ---
-    # Ces blocs ne s'executent que si les colonnes manquent (anciennes installations).
-
-    # Migration : ajouter solde_initial si n'existe pas
-    try:
-        cursor.execute("SELECT solde_initial FROM users LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE users ADD COLUMN solde_initial REAL DEFAULT 0")
-
-    # Migration : ajouter colonnes conges si n'existent pas
-    for col, col_type in [('cp_acquis', 'REAL DEFAULT 0'), ('cp_a_prendre', 'REAL DEFAULT 0'),
-                          ('cp_pris', 'REAL DEFAULT 0'), ('cc_solde', 'REAL DEFAULT 0'),
-                          ('date_entree', 'TEXT')]:
-        try:
-            cursor.execute(f"SELECT {col} FROM users LIMIT 1")
-        except sqlite3.OperationalError:
-            cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
-
-    # Migration : ajouter date_debut_validite si n'existe pas
-    try:
-        cursor.execute("SELECT date_debut_validite FROM planning_theorique LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE planning_theorique ADD COLUMN date_debut_validite TEXT NOT NULL DEFAULT '2000-01-01'")
-
-    # Migration : ajouter type_alternance si n'existe pas
-    try:
-        cursor.execute("SELECT type_alternance FROM planning_theorique LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE planning_theorique ADD COLUMN type_alternance TEXT DEFAULT 'fixe'")
-
-    # Migration : ajouter pesee si n'existe pas
-    try:
-        cursor.execute("SELECT pesee FROM users LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE users ADD COLUMN pesee INTEGER")
-
-    # Migration : ajouter email si n'existe pas
-    try:
-        cursor.execute("SELECT email FROM users LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT")
-
-    # Migration : ajouter email_notifications_enabled si n'existe pas
-    try:
-        cursor.execute("SELECT email_notifications_enabled FROM users LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 0")
-
-    # Migration : ajouter type_secteur si n'existe pas
-    try:
-        cursor.execute("SELECT type_secteur FROM secteurs LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE secteurs ADD COLUMN type_secteur TEXT DEFAULT NULL")
 
     conn.commit()
     conn.close()

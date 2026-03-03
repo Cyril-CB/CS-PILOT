@@ -29,7 +29,7 @@ class TestInitDb:
         """Toutes les tables du schéma doivent exister après init_db."""
         with app.app_context():
             tables = db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                "SELECT table_name as name FROM information_schema.tables WHERE table_schema='public'"
             ).fetchall()
             noms_tables = {t['name'] for t in tables}
 
@@ -47,7 +47,7 @@ class TestInitDb:
         with app.app_context():
             for version, nom in ALL_MIGRATION_VERSIONS:
                 migration = db.execute(
-                    "SELECT * FROM schema_migrations WHERE version = ?", (version,)
+                    "SELECT * FROM schema_migrations WHERE version = %s", (version,)
                 ).fetchone()
                 assert migration is not None, f"Migration {version} non enregistrée"
                 assert migration['statut'] == 'ok', f"Migration {version} en erreur"

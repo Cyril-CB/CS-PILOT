@@ -248,7 +248,7 @@ def _get_equipe(conn, user_id):
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     user = conn.execute(
-        'SELECT secteur_id FROM users WHERE id = ?', (user_id,)
+        'SELECT secteur_id FROM users WHERE id = %s', (user_id,)
     ).fetchone()
 
     if not user or not user['secteur_id']:
@@ -258,12 +258,12 @@ def _get_equipe(conn, user_id):
                    COALESCE(s.nom, '') AS secteur_nom
             FROM users u
             LEFT JOIN secteurs s ON u.secteur_id = s.id
-            WHERE u.id = ? AND u.actif = 1
+            WHERE u.id = %s AND u.actif = 1
               AND EXISTS (
                   SELECT 1 FROM contrats c
                   WHERE c.user_id = u.id
-                    AND c.date_debut <= ?
-                    AND (c.date_fin IS NULL OR c.date_fin >= ?)
+                    AND c.date_debut <= %s
+                    AND (c.date_fin IS NULL OR c.date_fin >= %s)
               )
         ''', (user_id, today_str, today_str)).fetchall()
 
@@ -277,12 +277,12 @@ def _get_equipe(conn, user_id):
         LEFT JOIN secteurs s ON u.secteur_id = s.id
         WHERE u.actif = 1
         AND u.profil != 'prestataire'
-        AND u.secteur_id = ?
+        AND u.secteur_id = %s
         AND EXISTS (
             SELECT 1 FROM contrats c
             WHERE c.user_id = u.id
-              AND c.date_debut <= ?
-              AND (c.date_fin IS NULL OR c.date_fin >= ?)
+              AND c.date_debut <= %s
+              AND (c.date_fin IS NULL OR c.date_fin >= %s)
         )
         ORDER BY
             CASE u.profil WHEN 'responsable' THEN 0 ELSE 1 END,
@@ -300,14 +300,14 @@ def _get_equipe(conn, user_id):
         FROM users u
         JOIN users r ON u.responsable_id = r.id
         LEFT JOIN secteurs s ON r.secteur_id = s.id
-        WHERE u.secteur_id = ? AND r.actif = 1 AND r.id NOT IN ({})
+        WHERE u.secteur_id = %s AND r.actif = 1 AND r.id NOT IN ({})
           AND EXISTS (
               SELECT 1 FROM contrats c
               WHERE c.user_id = r.id
-                AND c.date_debut <= ?
-                AND (c.date_fin IS NULL OR c.date_fin >= ?)
+                AND c.date_debut <= %s
+                AND (c.date_fin IS NULL OR c.date_fin >= %s)
           )
-    '''.format(','.join('?' for _ in ids_existants) if ids_existants else '0'),
+    '''.format(','.join('%s' for _ in ids_existants) if ids_existants else '0'),
         (secteur_id, *ids_existants, today_str, today_str) if ids_existants else (secteur_id, today_str, today_str)
     ).fetchall()
 
@@ -318,7 +318,7 @@ def _get_jours_feries(conn, date_debut_str, date_fin_str):
     """Retourne l'ensemble des dates feriees dans la plage."""
     rows = conn.execute('''
         SELECT date FROM jours_feries
-        WHERE date >= ? AND date <= ?
+        WHERE date >= %s AND date <= %s
     ''', (date_debut_str, date_fin_str)).fetchall()
     return {r['date'] for r in rows}
 
@@ -336,14 +336,14 @@ def _construire_grille(conn, membres, lundi):
     if not ids:
         return []
 
-    placeholders = ','.join('?' for _ in ids)
+    placeholders = ','.join('%s' for _ in ids)
     heures_rows = conn.execute(f'''
         SELECT user_id, date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
                type_saisie, declaration_conforme, commentaire
         FROM heures_reelles
         WHERE user_id IN ({placeholders})
-        AND date >= ? AND date <= ?
+        AND date >= %s AND date <= %s
     ''', (*ids, lundi_str, vendredi_str)).fetchall()
 
     # Indexer par (user_id, date)
@@ -356,7 +356,7 @@ def _construire_grille(conn, membres, lundi):
         SELECT user_id, motif, date_debut, date_fin, commentaire
         FROM absences
         WHERE user_id IN ({placeholders})
-        AND date_debut <= ? AND date_fin >= ?
+        AND date_debut <= %s AND date_fin >= %s
     ''', (*ids, vendredi_str, lundi_str)).fetchall()
 
     # Indexer par user_id -> liste
@@ -507,7 +507,7 @@ def mon_equipe():
                COALESCE(s.type_secteur, '') AS type_secteur
         FROM users u
         LEFT JOIN secteurs s ON u.secteur_id = s.id
-        WHERE u.id = ?
+        WHERE u.id = %s
     ''', (session['user_id'],)).fetchone()
     secteur_nom = user_row['secteur_nom'] if user_row else ''
     type_secteur = user_row['type_secteur'] if user_row else ''
@@ -523,7 +523,7 @@ def mon_equipe():
         freq_rows = conn.execute('''
             SELECT tranche, nb_enfants, COALESCE(responsable_terrain, 0) AS responsable_terrain
             FROM frequentation_creche
-            WHERE secteur_id = ?
+            WHERE secteur_id = %s
         ''', (secteur_id,)).fetchall()
         freq_map = {r['tranche']: r['nb_enfants'] for r in freq_rows}
         terrain_map = {r['tranche']: bool(r['responsable_terrain']) for r in freq_rows}
@@ -601,7 +601,7 @@ def api_save_frequentation():
         SELECT u.secteur_id, s.type_secteur
         FROM users u
         LEFT JOIN secteurs s ON u.secteur_id = s.id
-        WHERE u.id = ?
+        WHERE u.id = %s
     ''', (session['user_id'],)).fetchone()
 
     if not user or str(user['secteur_id']) != str(secteur_id) or user['type_secteur'] != 'creche':
@@ -618,7 +618,7 @@ def api_save_frequentation():
 
             conn.execute('''
                 INSERT INTO frequentation_creche (secteur_id, tranche, nb_enfants, responsable_terrain, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                VALUES (%s, %s, %s, %s, %s, datetime('now'))
                 ON CONFLICT(secteur_id, tranche)
                 DO UPDATE SET nb_enfants = excluded.nb_enfants,
                               responsable_terrain = excluded.responsable_terrain,

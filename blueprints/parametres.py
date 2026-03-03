@@ -12,7 +12,9 @@ parametres_bp = Blueprint('parametres_bp', __name__)
 
 def _has_notif_column(conn):
     """Verifie si la colonne email_notifications_enabled existe."""
-    cols = [row[1] for row in conn.execute('PRAGMA table_info(users)').fetchall()]
+    cols = [row['column_name'] for row in conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name='users'"
+    ).fetchall()]
     return 'email_notifications_enabled' in cols
 
 
@@ -36,12 +38,12 @@ def parametres():
 
         if has_notif:
             conn.execute(
-                'UPDATE users SET email = ?, email_notifications_enabled = ? WHERE id = ?',
+                'UPDATE users SET email = %s, email_notifications_enabled = %s WHERE id = %s',
                 (email, notif_enabled, session['user_id'])
             )
         else:
             conn.execute(
-                'UPDATE users SET email = ? WHERE id = ?',
+                'UPDATE users SET email = %s WHERE id = %s',
                 (email, session['user_id'])
             )
         conn.commit()
@@ -52,12 +54,12 @@ def parametres():
 
     if has_notif:
         user = conn.execute(
-            'SELECT email, email_notifications_enabled FROM users WHERE id = ?',
+            'SELECT email, email_notifications_enabled FROM users WHERE id = %s',
             (session['user_id'],)
         ).fetchone()
     else:
         row = conn.execute(
-            'SELECT email FROM users WHERE id = ?',
+            'SELECT email FROM users WHERE id = %s',
             (session['user_id'],)
         ).fetchone()
         user = {'email': row['email'] if row else None, 'email_notifications_enabled': 0}

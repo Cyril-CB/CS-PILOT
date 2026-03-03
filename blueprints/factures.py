@@ -48,7 +48,7 @@ def _add_historique(conn, facture_id, action, details=None, user_id=None):
     if user_id is None:
         user_id = session.get('user_id')
     conn.execute(
-        'INSERT INTO facture_historique (facture_id, action, details, user_id) VALUES (?, ?, ?, ?)',
+        'INSERT INTO facture_historique (facture_id, action, details, user_id) VALUES (%s, %s, %s, %s)',
         (facture_id, action, details, user_id)
     )
 
@@ -174,7 +174,7 @@ def importer_facture():
             cursor = conn.execute(
                 '''INSERT INTO factures (fournisseur_id, numero_facture, date_facture, date_echeance,
                    montant_ttc, description, fichier_path, fichier_nom, fichier_original, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id''',
                 (fournisseur_id, info.get('numero_facture'), date_facture,
                  info.get('date_echeance'), info.get('montant_ttc'),
                  info.get('description'), dest_path, nouveau_nom,
@@ -234,7 +234,7 @@ def _match_or_create_fournisseur(nom_fournisseur):
     # Chercher par nom exact ou alias
     row = conn.execute('''
         SELECT id FROM fournisseurs
-        WHERE LOWER(nom) = LOWER(?) OR LOWER(alias1) = LOWER(?) OR LOWER(alias2) = LOWER(?)
+        WHERE LOWER(nom) = LOWER(%s) OR LOWER(alias1) = LOWER(%s) OR LOWER(alias2) = LOWER(%s)
     ''', (nom_fournisseur, nom_fournisseur, nom_fournisseur)).fetchone()
 
     if row:
@@ -242,7 +242,7 @@ def _match_or_create_fournisseur(nom_fournisseur):
         return row['id']
 
     # Créer un nouveau fournisseur
-    cursor = conn.execute('INSERT INTO fournisseurs (nom) VALUES (?)', (nom_fournisseur,))
+    cursor = conn.execute('INSERT INTO fournisseurs (nom) VALUES (%s) RETURNING id', (nom_fournisseur,))
     fournisseur_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -266,14 +266,14 @@ def assigner_facture(facture_id):
     conn = get_db()
     if direction:
         conn.execute(
-            'UPDATE factures SET assigned_direction=1, secteur_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            'UPDATE factures SET assigned_direction=1, secteur_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=%s',
             (facture_id,)
         )
         _add_historique(conn, facture_id, 'Assignation', 'Assignée à la direction')
     elif secteur_id:
-        secteur = conn.execute('SELECT nom FROM secteurs WHERE id=?', (secteur_id,)).fetchone()
+        secteur = conn.execute('SELECT nom FROM secteurs WHERE id=%s', (secteur_id,)).fetchone()
         conn.execute(
-            'UPDATE factures SET secteur_id=?, assigned_direction=0, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+            'UPDATE factures SET secteur_id=%s, assigned_direction=0, updated_at=CURRENT_TIMESTAMP WHERE id=%s',
             (secteur_id, facture_id)
         )
         _add_historique(conn, facture_id, 'Assignation',
@@ -302,7 +302,7 @@ def detail_facture(facture_id):
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
         LEFT JOIN secteurs s ON f.secteur_id = s.id
-        WHERE f.id = ?
+        WHERE f.id = %s
     ''', (facture_id,)).fetchone()
 
     if not facture:
@@ -312,7 +312,7 @@ def detail_facture(facture_id):
 
     # Responsable : vérifier que la facture est de son secteur
     if session.get('profil') == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=%s', (session['user_id'],)).fetchone()
         if not user or user['secteur_id'] != facture['secteur_id']:
             conn.close()
             flash('Accès non autorisé à cette facture.', 'error')
@@ -322,7 +322,7 @@ def detail_facture(facture_id):
         SELECT h.*, u.prenom, u.nom as user_nom
         FROM facture_historique h
         LEFT JOIN users u ON h.user_id = u.id
-        WHERE h.facture_id = ?
+        WHERE h.facture_id = %s
         ORDER BY h.created_at DESC
     ''', (facture_id,)).fetchall()
 
@@ -330,7 +330,7 @@ def detail_facture(facture_id):
         SELECT c.*, u.prenom, u.nom as user_nom, u.profil
         FROM facture_commentaires c
         LEFT JOIN users u ON c.user_id = u.id
-        WHERE c.facture_id = ?
+        WHERE c.facture_id = %s
         ORDER BY c.created_at ASC
     ''', (facture_id,)).fetchall()
 
@@ -355,7 +355,7 @@ def commenter_facture(facture_id):
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO facture_commentaires (facture_id, user_id, commentaire) VALUES (?, ?, ?)',
+        'INSERT INTO facture_commentaires (facture_id, user_id, commentaire) VALUES (%s, %s, %s)',
         (facture_id, session['user_id'], commentaire)
     )
     user_nom = f"{session.get('prenom', '')} {session.get('nom', '')}"
@@ -375,7 +375,7 @@ def telecharger_facture(facture_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    facture = conn.execute('SELECT fichier_path, fichier_nom, secteur_id FROM factures WHERE id=?', (facture_id,)).fetchone()
+    facture = conn.execute('SELECT fichier_path, fichier_nom, secteur_id FROM factures WHERE id=%s', (facture_id,)).fetchone()
 
     if not facture or not facture['fichier_path'] or not os.path.exists(facture['fichier_path']):
         conn.close()
@@ -384,7 +384,7 @@ def telecharger_facture(facture_id):
 
     # Responsable : vérifier que la facture est de son secteur
     if session.get('profil') == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=%s', (session['user_id'],)).fetchone()
         if not user or user['secteur_id'] != facture['secteur_id']:
             conn.close()
             flash('Accès non autorisé à cette facture.', 'error')
@@ -402,14 +402,14 @@ def supprimer_facture(facture_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    facture = conn.execute('SELECT fichier_path FROM factures WHERE id=?', (facture_id,)).fetchone()
+    facture = conn.execute('SELECT fichier_path FROM factures WHERE id=%s', (facture_id,)).fetchone()
     if facture and facture['fichier_path'] and os.path.exists(facture['fichier_path']):
         os.unlink(facture['fichier_path'])
 
-    conn.execute('DELETE FROM facture_historique WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM facture_commentaires WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM ecritures_comptables WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM factures WHERE id=?', (facture_id,))
+    conn.execute('DELETE FROM facture_historique WHERE facture_id=%s', (facture_id,))
+    conn.execute('DELETE FROM facture_commentaires WHERE facture_id=%s', (facture_id,))
+    conn.execute('DELETE FROM ecritures_comptables WHERE facture_id=%s', (facture_id,))
+    conn.execute('DELETE FROM factures WHERE id=%s', (facture_id,))
     conn.commit()
     conn.close()
 
@@ -427,7 +427,7 @@ def approuver_facture(facture_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    facture = conn.execute('SELECT * FROM factures WHERE id=?', (facture_id,)).fetchone()
+    facture = conn.execute('SELECT * FROM factures WHERE id=%s', (facture_id,)).fetchone()
     if not facture:
         conn.close()
         flash('Facture introuvable.', 'error')
@@ -435,15 +435,15 @@ def approuver_facture(facture_id):
 
     # Vérifier les droits : responsable pour son secteur, directeur pour tout
     if profil == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=%s', (session['user_id'],)).fetchone()
         if not user or user['secteur_id'] != facture['secteur_id']:
             conn.close()
             flash('Vous ne pouvez approuver que les factures de votre secteur.', 'error')
             return redirect(url_for('factures_bp.approbation_factures'))
 
     conn.execute(
-        '''UPDATE factures SET approbation='approuvee', approuve_par=?, date_approbation=CURRENT_TIMESTAMP,
-           updated_at=CURRENT_TIMESTAMP WHERE id=?''',
+        '''UPDATE factures SET approbation='approuvee', approuve_par=%s, date_approbation=CURRENT_TIMESTAMP,
+           updated_at=CURRENT_TIMESTAMP WHERE id=%s''',
         (session['user_id'], facture_id)
     )
     user_nom = f"{session.get('prenom', '')} {session.get('nom', '')}"
@@ -467,14 +467,14 @@ def approbation_factures():
     conn = get_db()
 
     if profil == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=%s', (session['user_id'],)).fetchone()
         if user and user['secteur_id']:
             factures = conn.execute('''
                 SELECT f.*, fr.nom as fournisseur_nom, s.nom as secteur_nom
                 FROM factures f
                 LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
                 LEFT JOIN secteurs s ON f.secteur_id = s.id
-                WHERE f.secteur_id = ? AND f.approbation = 'en_attente'
+                WHERE f.secteur_id = %s AND f.approbation = 'en_attente'
                 ORDER BY f.created_at DESC
             ''', (user['secteur_id'],)).fetchall()
         else:
@@ -531,7 +531,7 @@ def relancer_secteurs():
     for row in factures_secteurs:
         responsables = conn.execute('''
             SELECT prenom, email FROM users
-            WHERE secteur_id = ? AND profil = 'responsable' AND email IS NOT NULL AND email != ''
+            WHERE secteur_id = %s AND profil = 'responsable' AND email IS NOT NULL AND email != ''
         ''', (row['secteur_id'],)).fetchall()
 
         nb = row['nb']

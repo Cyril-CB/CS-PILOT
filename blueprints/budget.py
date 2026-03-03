@@ -66,14 +66,14 @@ def _calculer_jours_ouvres_periodes(annee, conn):
     """
     # Recuperer les jours feries de l'annee
     feries_rows = conn.execute(
-        'SELECT date FROM jours_feries WHERE annee = ?', (annee,)
+        'SELECT date FROM jours_feries WHERE annee = %s', (annee,)
     ).fetchall()
     jours_feries = {row['date'] for row in feries_rows}
 
     # Recuperer les periodes de vacances qui chevauchent l'annee
     periodes_vac = conn.execute('''
         SELECT nom, date_debut, date_fin FROM periodes_vacances
-        WHERE date_debut <= ? AND date_fin >= ?
+        WHERE date_debut <= %s AND date_fin >= %s
         ORDER BY date_debut
     ''', (f'{annee}-12-31', f'{annee}-01-01')).fetchall()
 
@@ -164,7 +164,7 @@ def gestion_budgets():
         SELECT b.*, s.nom as secteur_nom, s.type_secteur
         FROM budgets b
         JOIN secteurs s ON b.secteur_id = s.id
-        WHERE b.annee = ?
+        WHERE b.annee = %s
     ''', (annee,)).fetchall()
     budgets_map = {b['secteur_id']: dict(b) for b in budgets_raw}
 
@@ -173,7 +173,7 @@ def gestion_budgets():
         total_reparti = conn.execute('''
             SELECT COALESCE(SUM(bl.montant), 0) as total
             FROM budget_lignes bl
-            WHERE bl.budget_id = ?
+            WHERE bl.budget_id = %s
         ''', (budget['id'],)).fetchone()['total']
         budget['total_reparti'] = total_reparti
         budget['pct_reparti'] = round(
@@ -183,7 +183,7 @@ def gestion_budgets():
         total_reel = conn.execute('''
             SELECT COALESCE(SUM(brl.montant), 0) as total
             FROM budget_reel_lignes brl
-            WHERE brl.budget_id = ?
+            WHERE brl.budget_id = %s
         ''', (budget['id'],)).fetchone()['total']
         budget['total_reel'] = total_reel
         budget['pct_reel'] = round(
@@ -218,7 +218,7 @@ def budget_secteur(secteur_id):
     user_id = session.get('user_id')
 
     conn = get_db()
-    secteur = conn.execute('SELECT * FROM secteurs WHERE id = ?', (secteur_id,)).fetchone()
+    secteur = conn.execute('SELECT * FROM secteurs WHERE id = %s', (secteur_id,)).fetchone()
     if not secteur:
         flash('Secteur introuvable', 'error')
         conn.close()
@@ -226,7 +226,7 @@ def budget_secteur(secteur_id):
 
     # Verifier les droits d'acces
     if profil == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id,)).fetchone()
         if not user or user['secteur_id'] != secteur_id:
             flash('Accès non autorisé', 'error')
             conn.close()
@@ -244,7 +244,7 @@ def budget_secteur(secteur_id):
 
     # Recuperer ou creer le budget
     budget = conn.execute(
-        'SELECT * FROM budgets WHERE secteur_id = ? AND annee = ?',
+        'SELECT * FROM budgets WHERE secteur_id = %s AND annee = %s',
         (secteur_id, annee)
     ).fetchone()
 
@@ -258,7 +258,7 @@ def budget_secteur(secteur_id):
     postes = conn.execute('''
         SELECT pd.* FROM postes_depense pd
         JOIN postes_depense_secteur_types pdst ON pd.id = pdst.poste_depense_id
-        WHERE pdst.type_secteur = ? AND pd.actif = 1
+        WHERE pdst.type_secteur = %s AND pd.actif = 1
         ORDER BY pd.nom
     ''', (type_secteur,)).fetchall()
 
@@ -266,7 +266,7 @@ def budget_secteur(secteur_id):
     lignes_map = {}
     if budget:
         lignes = conn.execute(
-            'SELECT * FROM budget_lignes WHERE budget_id = ?',
+            'SELECT * FROM budget_lignes WHERE budget_id = %s',
             (budget['id'],)
         ).fetchall()
         for l in lignes:
@@ -277,7 +277,7 @@ def budget_secteur(secteur_id):
     reel_map = {}
     if budget:
         reel_lignes = conn.execute(
-            'SELECT * FROM budget_reel_lignes WHERE budget_id = ?',
+            'SELECT * FROM budget_reel_lignes WHERE budget_id = %s',
             (budget['id'],)
         ).fetchall()
         for rl in reel_lignes:
@@ -387,14 +387,14 @@ def api_budget_save():
     conn = get_db()
 
     # Verifier le secteur
-    secteur = conn.execute('SELECT * FROM secteurs WHERE id = ?', (secteur_id,)).fetchone()
+    secteur = conn.execute('SELECT * FROM secteurs WHERE id = %s', (secteur_id,)).fetchone()
     if not secteur:
         conn.close()
         return jsonify({'error': 'Secteur introuvable'}), 404
 
     # Verifier les droits
     if profil == 'responsable':
-        user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id,)).fetchone()
         if not user or user['secteur_id'] != int(secteur_id):
             conn.close()
             return jsonify({'error': 'Accès non autorisé'}), 403
@@ -405,7 +405,7 @@ def api_budget_save():
     try:
         # Recuperer ou creer le budget
         budget = conn.execute(
-            'SELECT * FROM budgets WHERE secteur_id = ? AND annee = ?',
+            'SELECT * FROM budgets WHERE secteur_id = %s AND annee = %s',
             (secteur_id, annee)
         ).fetchone()
 
@@ -414,8 +414,8 @@ def api_budget_save():
             # Seul direction/comptable peut modifier le global
             if profil in ['directeur', 'comptable'] and montant_global is not None:
                 conn.execute('''
-                    UPDATE budgets SET montant_global = ?, modifie_par = ?,
-                    updated_at = CURRENT_TIMESTAMP WHERE id = ?
+                    UPDATE budgets SET montant_global = %s, modifie_par = %s,
+                    updated_at = CURRENT_TIMESTAMP WHERE id = %s
                 ''', (float(montant_global), user_id, budget_id))
         else:
             if profil not in ['directeur', 'comptable']:
@@ -423,13 +423,13 @@ def api_budget_save():
                 return jsonify({'error': 'Seule la direction peut créer un budget'}), 403
             conn.execute('''
                 INSERT INTO budgets (secteur_id, annee, montant_global, cree_par, modifie_par)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (secteur_id, annee, float(montant_global or 0), user_id, user_id))
             budget_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
         # Calculer le montant global effectif pour la validation
         budget_after = conn.execute(
-            'SELECT montant_global FROM budgets WHERE id = ?', (budget_id,)
+            'SELECT montant_global FROM budgets WHERE id = %s', (budget_id,)
         ).fetchone()
         montant_global_effectif = budget_after['montant_global']
 
@@ -450,9 +450,9 @@ def api_budget_save():
 
             conn.execute('''
                 INSERT INTO budget_lignes (budget_id, poste_depense_id, periode, montant, modifie_par, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT(budget_id, poste_depense_id, periode)
-                DO UPDATE SET montant = ?, modifie_par = ?, updated_at = ?
+                DO UPDATE SET montant = %s, modifie_par = %s, updated_at = %s
             ''', (budget_id, poste_id, periode, montant, user_id, now,
                   montant, user_id, now))
 
@@ -501,7 +501,7 @@ def api_budget_save_reel():
 
     # Verifier que le budget existe
     budget = conn.execute(
-        'SELECT id FROM budgets WHERE secteur_id = ? AND annee = ?',
+        'SELECT id FROM budgets WHERE secteur_id = %s AND annee = %s',
         (secteur_id, annee)
     ).fetchone()
 
@@ -520,9 +520,9 @@ def api_budget_save_reel():
 
             conn.execute('''
                 INSERT INTO budget_reel_lignes (budget_id, poste_depense_id, periode, montant, modifie_par, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT(budget_id, poste_depense_id, periode)
-                DO UPDATE SET montant = ?, modifie_par = ?, updated_at = ?
+                DO UPDATE SET montant = %s, modifie_par = %s, updated_at = %s
             ''', (budget_id, poste_id, periode, montant, user_id, now,
                   montant, user_id, now))
 
@@ -531,11 +531,11 @@ def api_budget_save_reel():
         # Calculer le nouveau total reel
         total_reel = conn.execute('''
             SELECT COALESCE(SUM(montant), 0) as total
-            FROM budget_reel_lignes WHERE budget_id = ?
+            FROM budget_reel_lignes WHERE budget_id = %s
         ''', (budget_id,)).fetchone()['total']
 
         montant_global = conn.execute(
-            'SELECT montant_global FROM budgets WHERE id = ?', (budget_id,)
+            'SELECT montant_global FROM budgets WHERE id = %s', (budget_id,)
         ).fetchone()['montant_global']
 
         conn.close()
@@ -579,12 +579,12 @@ def gestion_postes_depense():
                 flash('Sélectionnez au moins un type de secteur', 'error')
             else:
                 try:
-                    conn.execute('INSERT INTO postes_depense (nom) VALUES (?)', (nom,))
+                    conn.execute('INSERT INTO postes_depense (nom) VALUES (%s)', (nom,))
                     poste_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
                     for ts in types_selected:
                         conn.execute('''
                             INSERT INTO postes_depense_secteur_types (poste_depense_id, type_secteur)
-                            VALUES (?, ?)
+                            VALUES (%s, %s)
                         ''', (poste_id, ts))
                     conn.commit()
                     flash(f'Poste "{nom}" créé avec succès', 'success')
@@ -602,16 +602,16 @@ def gestion_postes_depense():
                 flash('Sélectionnez au moins un type de secteur', 'error')
             else:
                 try:
-                    conn.execute('UPDATE postes_depense SET nom = ? WHERE id = ?', (nom, poste_id))
+                    conn.execute('UPDATE postes_depense SET nom = %s WHERE id = %s', (nom, poste_id))
                     # Supprimer les anciennes associations et recreer
                     conn.execute(
-                        'DELETE FROM postes_depense_secteur_types WHERE poste_depense_id = ?',
+                        'DELETE FROM postes_depense_secteur_types WHERE poste_depense_id = %s',
                         (poste_id,)
                     )
                     for ts in types_selected:
                         conn.execute('''
                             INSERT INTO postes_depense_secteur_types (poste_depense_id, type_secteur)
-                            VALUES (?, ?)
+                            VALUES (%s, %s)
                         ''', (poste_id, ts))
                     conn.commit()
                     flash(f'Poste "{nom}" modifié avec succès', 'success')
@@ -622,7 +622,7 @@ def gestion_postes_depense():
             poste_id = request.form.get('poste_id', type=int)
             # Verifier si le poste est utilise dans des lignes budgetaires
             nb_lignes = conn.execute(
-                'SELECT COUNT(*) as nb FROM budget_lignes WHERE poste_depense_id = ?',
+                'SELECT COUNT(*) as nb FROM budget_lignes WHERE poste_depense_id = %s',
                 (poste_id,)
             ).fetchone()['nb']
             if nb_lignes > 0:
@@ -633,19 +633,19 @@ def gestion_postes_depense():
                 )
             else:
                 conn.execute(
-                    'DELETE FROM postes_depense_secteur_types WHERE poste_depense_id = ?',
+                    'DELETE FROM postes_depense_secteur_types WHERE poste_depense_id = %s',
                     (poste_id,)
                 )
-                conn.execute('DELETE FROM postes_depense WHERE id = ?', (poste_id,))
+                conn.execute('DELETE FROM postes_depense WHERE id = %s', (poste_id,))
                 conn.commit()
                 flash('Poste de dépense supprimé', 'success')
 
         elif action == 'toggle_actif':
             poste_id = request.form.get('poste_id', type=int)
-            poste = conn.execute('SELECT actif FROM postes_depense WHERE id = ?', (poste_id,)).fetchone()
+            poste = conn.execute('SELECT actif FROM postes_depense WHERE id = %s', (poste_id,)).fetchone()
             if poste:
                 new_val = 0 if poste['actif'] else 1
-                conn.execute('UPDATE postes_depense SET actif = ? WHERE id = ?', (new_val, poste_id))
+                conn.execute('UPDATE postes_depense SET actif = %s WHERE id = %s', (new_val, poste_id))
                 conn.commit()
                 statut = 'activé' if new_val else 'désactivé'
                 flash(f'Poste {statut}', 'success')
@@ -662,7 +662,7 @@ def gestion_postes_depense():
         pd = dict(p)
         types = conn.execute('''
             SELECT type_secteur FROM postes_depense_secteur_types
-            WHERE poste_depense_id = ?
+            WHERE poste_depense_id = %s
         ''', (p['id'],)).fetchall()
         pd['types_secteur'] = [t['type_secteur'] for t in types]
         postes_data.append(pd)
@@ -684,7 +684,7 @@ def mon_budget():
     """Raccourci pour les responsables vers le budget de leur secteur."""
     user_id = session.get('user_id')
     conn = get_db()
-    user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = conn.execute('SELECT secteur_id FROM users WHERE id = %s', (user_id,)).fetchone()
     conn.close()
 
     if not user or not user['secteur_id']:

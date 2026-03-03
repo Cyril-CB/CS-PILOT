@@ -103,7 +103,7 @@ class TestPlanComptableAnalytique:
         data = resp.get_json()
         assert data['success'] is True
 
-        row = db.execute("SELECT secteur_id, action_id FROM comptabilite_comptes WHERE id = ?",
+        row = db.execute("SELECT secteur_id, action_id FROM comptabilite_comptes WHERE id = %s",
                          (compte['id'],)).fetchone()
         assert row['secteur_id'] == secteur_id
         assert row['action_id'] == action['id']
@@ -122,7 +122,7 @@ class TestPlanComptableAnalytique:
         db.execute("INSERT INTO comptabilite_actions (nom) VALUES ('Action Utilisée')")
         db.commit()
         action = db.execute("SELECT id FROM comptabilite_actions WHERE nom = 'Action Utilisée'").fetchone()
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, action_id) VALUES ('601000', 'Test', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, action_id) VALUES ('601000', 'Test', %s)",
                    (action['id'],))
         db.commit()
 
@@ -194,7 +194,7 @@ class TestBilanSecteurs:
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports WHERE annee = 2025").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, annee, mois, montant, import_id) VALUES ('601000', 2025, 1, 100, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, annee, mois, montant, import_id) VALUES ('601000', 2025, 1, 100, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -216,15 +216,15 @@ class TestBilanSecteurs:
         """L'API retourne les données filtrées par secteur (correspondance code analytique)."""
         secteur_id = sample_users['secteur_id']
         # Créer un compte analytique lié au secteur
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('ANA001', 'Analytique 1', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('ANA001', 'Analytique 1', %s)",
                    (secteur_id,))
         # Créer des données FEC avec ce code analytique
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 2)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Charge', 'ANA001', 2025, 1, 500, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Charge', 'ANA001', 2025, 1, 500, %s)",
                    (imp['id'],))
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Produit', 'ANA001', 2025, 1, 800, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Produit', 'ANA001', 2025, 1, 800, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -237,17 +237,17 @@ class TestBilanSecteurs:
         """L'API fonctionne quand le plan comptable a les mêmes numéros que le FEC."""
         secteur_id = sample_users['secteur_id']
         # Plan comptable avec numéros de compte généraux
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', %s)",
                    (secteur_id,))
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', %s)",
                    (secteur_id,))
         # FEC avec les mêmes numéros, code_analytique vide (cas réel standard)
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec.txt', 2025, 2)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat fournisseur', '', 2025, 1, 300, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat fournisseur', '', 2025, 1, 300, %s)",
                    (imp['id'],))
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente client', '', 2025, 1, 600, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente client', '', 2025, 1, 600, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -260,22 +260,22 @@ class TestBilanSecteurs:
         """L'API fonctionne avec des préfixes (601 correspond à 601000, 601100, etc.)."""
         secteur_id = sample_users['secteur_id']
         # Plan comptable avec des préfixes courts
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601', 'Achats stockés', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601', 'Achats stockés', %s)",
                    (secteur_id,))
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701', 'Ventes produits', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701', 'Ventes produits', %s)",
                    (secteur_id,))
         # FEC avec des comptes détaillés
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec.txt', 2025, 4)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat MP', '', 2025, 1, 200, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat MP', '', 2025, 1, 200, %s)",
                    (imp['id'],))
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601100', 'Achat alim', '', 2025, 1, 150, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601100', 'Achat alim', '', 2025, 1, 150, %s)",
                    (imp['id'],))
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente A', '', 2025, 1, 500, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente A', '', 2025, 1, 500, %s)",
                    (imp['id'],))
         # Ce compte 602xxx ne doit PAS être inclus (pas de préfixe 602 assigné)
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('602000', 'Achat non stocké', '', 2025, 1, 100, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('602000', 'Achat non stocké', '', 2025, 1, 100, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -318,16 +318,16 @@ class TestBilanSecteurs:
     def test_export_pdf(self, admin_client, db, sample_users):
         """L'export PDF retourne un fichier PDF valide."""
         secteur_id = sample_users['secteur_id']
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', %s)",
                    (secteur_id,))
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', %s)",
                    (secteur_id,))
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 2)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Charge', '', 2025, 1, 500, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Charge', '', 2025, 1, 500, %s)",
                    (imp['id'],))
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Produit', '', 2025, 1, 800, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Produit', '', 2025, 1, 800, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -516,7 +516,7 @@ class TestBilanLabelsFromPCG:
         """L'API bilan utilise le libellé du PCG plutôt que celui de l'opération."""
         secteur_id = sample_users['secteur_id']
         # Plan comptable analytique
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats analytique', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats analytique', %s)",
                    (secteur_id,))
         # Plan comptable général avec le bon libellé
         db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('601000', 'Achats matières premières')")
@@ -524,7 +524,7 @@ class TestBilanLabelsFromPCG:
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, %s)",
                    (imp['id'],))
         db.commit()
 
@@ -538,12 +538,12 @@ class TestBilanLabelsFromPCG:
     def test_bilan_donnees_fallback_operation(self, admin_client, db, sample_users):
         """Sans PCG, le bilan utilise le libellé de l'opération comme fallback."""
         secteur_id = sample_users['secteur_id']
-        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', %s)",
                    (secteur_id,))
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
         db.commit()
         imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
-        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, ?)",
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Facture XYZ', '', 2025, 1, 500, %s)",
                    (imp['id'],))
         db.commit()
 

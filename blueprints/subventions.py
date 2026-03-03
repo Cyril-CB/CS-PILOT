@@ -112,7 +112,7 @@ def gestion_subventions():
 
         if is_responsable:
             subventions = conn.execute(
-                'SELECT * FROM subventions WHERE assignee_1_id = ? OR assignee_2_id = ? ORDER BY ordre, id',
+                'SELECT * FROM subventions WHERE assignee_1_id = %s OR assignee_2_id = %s ORDER BY ordre, id',
                 (user_id, user_id)
             ).fetchall()
         else:
@@ -123,7 +123,7 @@ def gestion_subventions():
         sub_ids = [s['id'] for s in subventions]
         sous_elements = {}
         if sub_ids:
-            placeholders = ','.join('?' * len(sub_ids))
+            placeholders = ','.join('%s' * len(sub_ids))
             rows = conn.execute(
                 f'SELECT * FROM subventions_sous_elements WHERE subvention_id IN ({placeholders}) ORDER BY ordre, id',
                 sub_ids
@@ -179,14 +179,14 @@ def api_ajouter_subvention():
     conn = get_db()
     try:
         cursor = conn.execute(
-            'INSERT INTO subventions (nom, groupe) VALUES (?, ?)',
+            'INSERT INTO subventions (nom, groupe) VALUES (%s, %s) RETURNING id',
             (nom, groupe)
         )
         sub_id = cursor.lastrowid
 
         for i, se_nom in enumerate(DEFAULT_SOUS_ELEMENTS):
             conn.execute(
-                'INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) VALUES (?, ?, ?)',
+                'INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) VALUES (%s, %s, %s)',
                 (sub_id, se_nom, i)
             )
 
@@ -227,7 +227,7 @@ def api_modifier_subvention(sub_id):
     conn = get_db()
     try:
         conn.execute(
-            f'UPDATE subventions SET {field} = ?, updated_at = ? WHERE id = ?',
+            f'UPDATE subventions SET {field} = %s, updated_at = %s WHERE id = %s',
             (value, datetime.now().isoformat(), sub_id)
         )
         conn.commit()
@@ -244,15 +244,15 @@ def api_supprimer_subvention(sub_id):
 
     conn = get_db()
     try:
-        conn.execute('DELETE FROM subventions_sous_elements WHERE subvention_id = ?', (sub_id,))
-        sub = conn.execute('SELECT justificatif_path FROM subventions WHERE id = ?', (sub_id,)).fetchone()
+        conn.execute('DELETE FROM subventions_sous_elements WHERE subvention_id = %s', (sub_id,))
+        sub = conn.execute('SELECT justificatif_path FROM subventions WHERE id = %s', (sub_id,)).fetchone()
         if sub and sub['justificatif_path']:
             chemin = os.path.join(DOCUMENTS_DIR, sub['justificatif_path'])
             chemin_reel = os.path.realpath(chemin)
             dossier_reel = os.path.realpath(DOCUMENTS_DIR)
             if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
                 os.remove(chemin)
-        conn.execute('DELETE FROM subventions WHERE id = ?', (sub_id,))
+        conn.execute('DELETE FROM subventions WHERE id = %s', (sub_id,))
         conn.commit()
         return jsonify({'ok': True})
     finally:
@@ -275,12 +275,12 @@ def api_ajouter_sous_element(sub_id):
     conn = get_db()
     try:
         max_ordre = conn.execute(
-            'SELECT COALESCE(MAX(ordre), -1) as m FROM subventions_sous_elements WHERE subvention_id = ?',
+            'SELECT COALESCE(MAX(ordre), -1) as m FROM subventions_sous_elements WHERE subvention_id = %s',
             (sub_id,)
         ).fetchone()['m']
 
         cursor = conn.execute(
-            'INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) VALUES (?, ?, ?)',
+            'INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) VALUES (%s, %s, %s) RETURNING id',
             (sub_id, nom, max_ordre + 1)
         )
         conn.commit()
@@ -311,7 +311,7 @@ def api_modifier_sous_element(se_id):
     conn = get_db()
     try:
         conn.execute(
-            f'UPDATE subventions_sous_elements SET {field} = ? WHERE id = ?',
+            f'UPDATE subventions_sous_elements SET {field} = %s WHERE id = %s',
             (value, se_id)
         )
         conn.commit()
@@ -328,7 +328,7 @@ def api_supprimer_sous_element(se_id):
 
     conn = get_db()
     try:
-        conn.execute('DELETE FROM subventions_sous_elements WHERE id = ?', (se_id,))
+        conn.execute('DELETE FROM subventions_sous_elements WHERE id = %s', (se_id,))
         conn.commit()
         return jsonify({'ok': True})
     finally:
@@ -351,13 +351,13 @@ def api_ajouter_analytique():
     conn = get_db()
     try:
         existing = conn.execute(
-            'SELECT id FROM subventions_analytiques WHERE nom = ?', (nom,)
+            'SELECT id FROM subventions_analytiques WHERE nom = %s', (nom,)
         ).fetchone()
         if existing:
             return jsonify({'ok': True, 'id': existing['id']})
 
         cursor = conn.execute(
-            'INSERT INTO subventions_analytiques (nom) VALUES (?)', (nom,)
+            'INSERT INTO subventions_analytiques (nom) VALUES (%s) RETURNING id', (nom,)
         )
         conn.commit()
         return jsonify({'ok': True, 'id': cursor.lastrowid})
@@ -386,7 +386,7 @@ def api_upload_justificatif(sub_id):
     conn = get_db()
     try:
         sub = conn.execute(
-            'SELECT nom, justificatif_path FROM subventions WHERE id = ?', (sub_id,)
+            'SELECT nom, justificatif_path FROM subventions WHERE id = %s', (sub_id,)
         ).fetchone()
         if not sub:
             return jsonify({'ok': False, 'error': 'Subvention introuvable'}), 404
@@ -415,7 +415,7 @@ def api_upload_justificatif(sub_id):
         fichier.save(chemin_complet)
 
         conn.execute(
-            'UPDATE subventions SET justificatif_path = ?, justificatif_nom = ?, updated_at = ? WHERE id = ?',
+            'UPDATE subventions SET justificatif_path = %s, justificatif_nom = %s, updated_at = %s WHERE id = %s',
             (nom_fichier, nom_affichage, datetime.now().isoformat(), sub_id)
         )
         conn.commit()
@@ -434,7 +434,7 @@ def telecharger_justificatif(sub_id):
     conn = get_db()
     try:
         sub = conn.execute(
-            'SELECT justificatif_path, justificatif_nom FROM subventions WHERE id = ?',
+            'SELECT justificatif_path, justificatif_nom FROM subventions WHERE id = %s',
             (sub_id,)
         ).fetchone()
     finally:

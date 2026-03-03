@@ -113,7 +113,7 @@ def relance_validation():
         WHERE r.profil = 'responsable' AND r.actif = 1 AND r.email IS NOT NULL AND r.email != ''
     ''').fetchall()
 
-    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = %s',
                               (session['user_id'],)).fetchone()
     expediteur_nom = f"{expediteur['prenom']} {expediteur['nom']}" if expediteur else 'La direction'
 
@@ -125,10 +125,10 @@ def relance_validation():
         # Compter les fiches non validees par ce responsable dans son secteur
         fiches_en_attente = conn.execute('''
             SELECT COUNT(*) as nb FROM users u
-            WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+            WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = %s
             AND u.id NOT IN (
                 SELECT v.user_id FROM validations v
-                WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
+                WHERE v.mois = %s AND v.annee = %s AND v.validation_responsable IS NOT NULL
             )
         ''', (resp['secteur_id'], mois, annee)).fetchone()
 
@@ -183,7 +183,7 @@ def relance_responsable_unique():
 
     resp = conn.execute('''
         SELECT id, nom, prenom, email, secteur_id FROM users
-        WHERE id = ? AND profil = 'responsable' AND actif = 1
+        WHERE id = %s AND profil = 'responsable' AND actif = 1
     ''', (responsable_id,)).fetchone()
 
     if not resp:
@@ -197,16 +197,16 @@ def relance_responsable_unique():
     # Compter les fiches en attente
     fiches_en_attente = conn.execute('''
         SELECT COUNT(*) as nb FROM users u
-        WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+        WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = %s
         AND u.id NOT IN (
             SELECT v.user_id FROM validations v
-            WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
+            WHERE v.mois = %s AND v.annee = %s AND v.validation_responsable IS NOT NULL
         )
     ''', (resp['secteur_id'], mois, annee)).fetchone()
 
     nb_fiches = fiches_en_attente['nb'] if fiches_en_attente else 0
 
-    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = %s',
                               (session['user_id'],)).fetchone()
     expediteur_nom = f"{expediteur['prenom']} {expediteur['nom']}" if expediteur else 'La direction'
 

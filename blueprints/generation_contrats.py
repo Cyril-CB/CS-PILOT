@@ -152,7 +152,7 @@ def generation_contrats():
     if preselect_user_id:
         try:
             dernier_contrat = conn.execute(
-                'SELECT * FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+                'SELECT * FROM contrats_generes WHERE user_id = %s ORDER BY created_at DESC LIMIT 1',
                 (preselect_user_id,)
             ).fetchone()
         except Exception:
@@ -202,14 +202,14 @@ def generer_contrat():
     conn = get_db()
 
     # Récupérer le modèle
-    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = ?', (modele_id,)).fetchone()
+    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = %s', (modele_id,)).fetchone()
     if not modele:
         flash("Modèle introuvable.", 'error')
         conn.close()
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
 
     # Récupérer le salarié
-    salarie = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    salarie = conn.execute('SELECT * FROM users WHERE id = %s', (user_id,)).fetchone()
     if not salarie:
         flash("Salarié introuvable.", 'error')
         conn.close()
@@ -219,13 +219,13 @@ def generer_contrat():
     poste_id = request.form.get('poste_id', type=int)
     poste = None
     if poste_id:
-        poste = conn.execute('SELECT * FROM postes_alisfa WHERE id = ?', (poste_id,)).fetchone()
+        poste = conn.execute('SELECT * FROM postes_alisfa WHERE id = %s', (poste_id,)).fetchone()
 
     # Récupérer le responsable
     responsable_id = request.form.get('responsable_id', type=int)
     responsable = None
     if responsable_id:
-        responsable = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (responsable_id,)).fetchone()
+        responsable = conn.execute('SELECT nom, prenom FROM users WHERE id = %s', (responsable_id,)).fetchone()
 
     # Récupérer les lieux (jusqu'à 3)
     lieux_ids = request.form.getlist('lieux_ids')
@@ -235,7 +235,7 @@ def generer_contrat():
             lid_int = int(lid)
         except (ValueError, TypeError):
             continue
-        lieu = conn.execute('SELECT nom, adresse FROM lieux_travail WHERE id = ?', (lid_int,)).fetchone()
+        lieu = conn.execute('SELECT nom, adresse FROM lieux_travail WHERE id = %s', (lid_int,)).fetchone()
         if lieu:
             adresse = (lieu['adresse'] or '').strip()
             lieux_noms.append(f"{lieu['nom']} – {adresse}" if adresse else lieu['nom'])
@@ -251,7 +251,7 @@ def generer_contrat():
     forfait_id = request.form.get('forfait_id', type=int)
     forfait_val = ''
     if forfait_id:
-        forfait = conn.execute('SELECT montant, condition FROM forfaits_cee WHERE id = ?', (forfait_id,)).fetchone()
+        forfait = conn.execute('SELECT montant, condition FROM forfaits_cee WHERE id = %s', (forfait_id,)).fetchone()
         if forfait:
             forfait_val = f"{forfait['montant']} €"
 
@@ -337,7 +337,7 @@ def generer_contrat():
     conn = get_db()
     try:
         ancien = conn.execute(
-            'SELECT fichier_path FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+            'SELECT fichier_path FROM contrats_generes WHERE user_id = %s ORDER BY created_at DESC LIMIT 1',
             (user_id,)
         ).fetchone()
         if ancien and ancien['fichier_path']:
@@ -346,13 +346,13 @@ def generer_contrat():
                 os.remove(ancien_chemin)
     except Exception:
         ancien = None
-    conn.execute('DELETE FROM contrats_generes WHERE user_id = ?', (user_id,))
+    conn.execute('DELETE FROM contrats_generes WHERE user_id = %s', (user_id,))
 
     doc.save(chemin_sortie)
 
     conn.execute('''
         INSERT INTO contrats_generes (user_id, fichier_path, fichier_nom, type_contrat, created_by)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s)
     ''', (user_id, nom_fichier, nom_fichier, type_contrat_label, session['user_id']))
     conn.commit()
     conn.close()
@@ -379,7 +379,7 @@ def retelecharger_contrat(user_id):
 
     conn = get_db()
     contrat = conn.execute(
-        'SELECT * FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+        'SELECT * FROM contrats_generes WHERE user_id = %s ORDER BY created_at DESC LIMIT 1',
         (user_id,)
     ).fetchone()
     conn.close()
@@ -436,7 +436,7 @@ def upload_modele():
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO modeles_contrats (nom, fichier_path, fichier_nom, created_by) VALUES (?, ?, ?, ?)',
+        'INSERT INTO modeles_contrats (nom, fichier_path, fichier_nom, created_by) VALUES (%s, %s, %s, %s)',
         (nom, nom_fichier, fichier.filename, session['user_id'])
     )
     conn.commit()
@@ -465,7 +465,7 @@ def remplacer_modele(modele_id):
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='2'))
 
     conn = get_db()
-    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = ?', (modele_id,)).fetchone()
+    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = %s', (modele_id,)).fetchone()
     if not modele:
         flash("Modèle introuvable.", 'error')
         conn.close()
@@ -478,7 +478,7 @@ def remplacer_modele(modele_id):
 
     fichier.save(ancien_chemin)
     conn.execute(
-        'UPDATE modeles_contrats SET fichier_nom = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?',
+        'UPDATE modeles_contrats SET fichier_nom = %s, created_at = CURRENT_TIMESTAMP WHERE id = %s',
         (fichier.filename, modele_id)
     )
     conn.commit()
@@ -497,7 +497,7 @@ def telecharger_modele(modele_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = ?', (modele_id,)).fetchone()
+    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = %s', (modele_id,)).fetchone()
     conn.close()
 
     if not modele:
@@ -522,7 +522,7 @@ def supprimer_modele(modele_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = ?', (modele_id,)).fetchone()
+    modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = %s', (modele_id,)).fetchone()
     if not modele:
         flash("Modèle introuvable.", 'error')
         conn.close()
@@ -533,7 +533,7 @@ def supprimer_modele(modele_id):
     if _chemin_securise(chemin, modeles_dir) and os.path.exists(chemin):
         os.remove(chemin)
 
-    conn.execute('DELETE FROM modeles_contrats WHERE id = ?', (modele_id,))
+    conn.execute('DELETE FROM modeles_contrats WHERE id = %s', (modele_id,))
     conn.commit()
     conn.close()
 
@@ -560,7 +560,7 @@ def ajouter_lieu():
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO lieux_travail (nom, adresse, created_by) VALUES (?, ?, ?)',
+        'INSERT INTO lieux_travail (nom, adresse, created_by) VALUES (%s, %s, %s)',
         (nom, adresse, session['user_id'])
     )
     conn.commit()
@@ -579,7 +579,7 @@ def supprimer_lieu(lieu_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    conn.execute('DELETE FROM lieux_travail WHERE id = ?', (lieu_id,))
+    conn.execute('DELETE FROM lieux_travail WHERE id = %s', (lieu_id,))
     conn.commit()
     conn.close()
 
@@ -607,7 +607,7 @@ def ajouter_forfait_cee():
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO forfaits_cee (montant, condition, created_by) VALUES (?, ?, ?)',
+        'INSERT INTO forfaits_cee (montant, condition, created_by) VALUES (%s, %s, %s)',
         (montant, condition, session['user_id'])
     )
     conn.commit()
@@ -626,7 +626,7 @@ def supprimer_forfait_cee(forfait_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    conn.execute('DELETE FROM forfaits_cee WHERE id = ?', (forfait_id,))
+    conn.execute('DELETE FROM forfaits_cee WHERE id = %s', (forfait_id,))
     conn.commit()
     conn.close()
 

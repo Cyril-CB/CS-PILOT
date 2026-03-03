@@ -138,7 +138,7 @@ def infos_salaries():
             SELECT u.*, COALESCE(s.nom, '') AS secteur_nom
             FROM users u
             LEFT JOIN secteurs s ON u.secteur_id = s.id
-            WHERE u.id = ?
+            WHERE u.id = %s
         ''', (selected_id,)).fetchone()
 
         if salarie:
@@ -146,7 +146,7 @@ def infos_salaries():
                 SELECT c.*, su.nom AS saisi_par_nom, su.prenom AS saisi_par_prenom
                 FROM contrats c
                 LEFT JOIN users su ON c.saisi_par = su.id
-                WHERE c.user_id = ?
+                WHERE c.user_id = %s
                 ORDER BY c.date_debut DESC
             ''', (selected_id,)).fetchall()
 
@@ -154,7 +154,7 @@ def infos_salaries():
                 SELECT d.*, su.nom AS saisi_par_nom, su.prenom AS saisi_par_prenom
                 FROM documents_salaries d
                 LEFT JOIN users su ON d.saisi_par = su.id
-                WHERE d.user_id = ?
+                WHERE d.user_id = %s
                 ORDER BY d.type_document
             ''', (selected_id,)).fetchall()
 
@@ -192,7 +192,7 @@ def modifier_email():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
-    conn.execute('UPDATE users SET email = ? WHERE id = ?', (email, user_id))
+    conn.execute('UPDATE users SET email = %s WHERE id = %s', (email, user_id))
     conn.commit()
     conn.close()
 
@@ -219,7 +219,7 @@ def modifier_infos_personnelles():
 
     conn = get_db()
     conn.execute(
-        'UPDATE users SET adresse = ?, date_naissance = ?, numero_secu = ? WHERE id = ?',
+        'UPDATE users SET adresse = %s, date_naissance = %s, numero_secu = %s WHERE id = %s',
         (adresse, date_naissance, numero_secu, user_id)
     )
     conn.commit()
@@ -246,7 +246,7 @@ def modifier_pesee():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
-    conn.execute('UPDATE users SET pesee = ? WHERE id = ?', (pesee, user_id))
+    conn.execute('UPDATE users SET pesee = %s WHERE id = %s', (pesee, user_id))
     conn.commit()
     conn.close()
 
@@ -278,7 +278,7 @@ def ajouter_contrat():
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     conn = get_db()
-    salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
+    salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = %s', (user_id,)).fetchone()
     if not salarie:
         flash("Salarie introuvable.", 'error')
         conn.close()
@@ -305,7 +305,7 @@ def ajouter_contrat():
         conn.execute('''
             INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin,
                                   fichier_path, fichier_nom, saisi_par, forfait, nbr_jours)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ''', (user_id, type_contrat, date_debut, date_fin,
               fichier_path, fichier_nom, session['user_id'], forfait, nbr_jours))
         conn.commit()
@@ -348,7 +348,7 @@ def ajouter_document():
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     conn = get_db()
-    salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
+    salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = %s', (user_id,)).fetchone()
     if not salarie:
         flash("Salarie introuvable.", 'error')
         conn.close()
@@ -356,7 +356,7 @@ def ajouter_document():
 
     # Si un document du meme type existe deja, le remplacer
     existing = conn.execute(
-        'SELECT id, fichier_path FROM documents_salaries WHERE user_id = ? AND type_document = ?',
+        'SELECT id, fichier_path FROM documents_salaries WHERE user_id = %s AND type_document = %s',
         (user_id, type_document)
     ).fetchone()
 
@@ -371,16 +371,16 @@ def ajouter_document():
             _supprimer_fichier(existing['fichier_path'])
             conn.execute('''
                 UPDATE documents_salaries
-                SET fichier_path = ?, fichier_nom = ?, description = ?,
-                    saisi_par = ?, created_at = CURRENT_TIMESTAMP
-                WHERE id = ?
+                SET fichier_path = %s, fichier_nom = %s, description = %s,
+                    saisi_par = %s, created_at = CURRENT_TIMESTAMP
+                WHERE id = %s
             ''', (fichier_path, fichier.filename, description,
                   session['user_id'], existing['id']))
         else:
             conn.execute('''
                 INSERT INTO documents_salaries
                 (user_id, type_document, description, fichier_path, fichier_nom, saisi_par)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
             ''', (user_id, type_document, description, fichier_path,
                   fichier.filename, session['user_id']))
         conn.commit()
@@ -404,7 +404,7 @@ def telecharger_document(doc_id):
 
     conn = get_db()
     doc = conn.execute(
-        'SELECT fichier_path, fichier_nom, user_id FROM documents_salaries WHERE id = ?',
+        'SELECT fichier_path, fichier_nom, user_id FROM documents_salaries WHERE id = %s',
         (doc_id,)
     ).fetchone()
     conn.close()
@@ -433,7 +433,7 @@ def supprimer_document(doc_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    doc = conn.execute('SELECT * FROM documents_salaries WHERE id = ?', (doc_id,)).fetchone()
+    doc = conn.execute('SELECT * FROM documents_salaries WHERE id = %s', (doc_id,)).fetchone()
     if not doc:
         flash("Document introuvable.", 'error')
         conn.close()
@@ -441,7 +441,7 @@ def supprimer_document(doc_id):
 
     user_id = doc['user_id']
     _supprimer_fichier(doc['fichier_path'])
-    conn.execute('DELETE FROM documents_salaries WHERE id = ?', (doc_id,))
+    conn.execute('DELETE FROM documents_salaries WHERE id = %s', (doc_id,))
     conn.commit()
     conn.close()
 
@@ -459,7 +459,7 @@ def telecharger_contrat(contrat_id):
 
     conn = get_db()
     contrat = conn.execute(
-        'SELECT fichier_path, fichier_nom, user_id FROM contrats WHERE id = ?',
+        'SELECT fichier_path, fichier_nom, user_id FROM contrats WHERE id = %s',
         (contrat_id,)
     ).fetchone()
     conn.close()
@@ -488,7 +488,7 @@ def supprimer_contrat(contrat_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    contrat = conn.execute('SELECT * FROM contrats WHERE id = ?', (contrat_id,)).fetchone()
+    contrat = conn.execute('SELECT * FROM contrats WHERE id = %s', (contrat_id,)).fetchone()
     if not contrat:
         flash("Contrat introuvable.", 'error')
         conn.close()
@@ -496,7 +496,7 @@ def supprimer_contrat(contrat_id):
 
     user_id = contrat['user_id']
     _supprimer_fichier(contrat['fichier_path'])
-    conn.execute('DELETE FROM contrats WHERE id = ?', (contrat_id,))
+    conn.execute('DELETE FROM contrats WHERE id = %s', (contrat_id,))
     conn.commit()
     conn.close()
 

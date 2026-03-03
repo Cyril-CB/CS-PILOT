@@ -58,7 +58,7 @@ def ajouter_fournisseur():
 
     conn = get_db()
     conn.execute(
-        'INSERT INTO fournisseurs (nom, alias1, alias2, code_comptable, email_contact) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO fournisseurs (nom, alias1, alias2, code_comptable, email_contact) VALUES (%s, %s, %s, %s, %s)',
         (nom, alias1, alias2, code_comptable, email_contact)
     )
     conn.commit()
@@ -93,7 +93,7 @@ def modifier_fournisseur(fournisseur_id):
 
     conn = get_db()
     conn.execute(
-        'UPDATE fournisseurs SET nom=?, alias1=?, alias2=?, code_comptable=?, email_contact=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        'UPDATE fournisseurs SET nom=%s, alias1=%s, alias2=%s, code_comptable=%s, email_contact=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s',
         (nom, alias1, alias2, code_comptable, email_contact, fournisseur_id)
     )
     conn.commit()
@@ -112,13 +112,13 @@ def supprimer_fournisseur(fournisseur_id):
 
     conn = get_db()
     # Vérifier qu'il n'y a pas de factures liées
-    nb = conn.execute('SELECT COUNT(*) as nb FROM factures WHERE fournisseur_id = ?', (fournisseur_id,)).fetchone()['nb']
+    nb = conn.execute('SELECT COUNT(*) as nb FROM factures WHERE fournisseur_id = %s', (fournisseur_id,)).fetchone()['nb']
     if nb > 0:
         conn.close()
         flash(f'Impossible de supprimer : {nb} facture(s) liée(s) à ce fournisseur.', 'error')
         return redirect(url_for('fournisseurs_bp.liste_fournisseurs'))
 
-    conn.execute('DELETE FROM fournisseurs WHERE id = ?', (fournisseur_id,))
+    conn.execute('DELETE FROM fournisseurs WHERE id = %s', (fournisseur_id,))
     conn.commit()
     conn.close()
 

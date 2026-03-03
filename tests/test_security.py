@@ -140,7 +140,7 @@ class TestPathTraversalProtection:
             db.execute(
                 '''INSERT INTO documents_salaries
                    (user_id, type_document, description, fichier_path, fichier_nom, saisi_par)
-                   VALUES (?, ?, ?, ?, ?, ?)''',
+                   VALUES (%s, %s, %s, %s, %s, %s)''',
                 (sample_users['salarie_id'], 'AUTRE-1', 'doc test', '../documents_evil/pwn.pdf', 'pwn.pdf',
                  sample_users['directeur_id'])
             )
@@ -164,7 +164,7 @@ class TestPathTraversalProtection:
             db.execute(
                 '''INSERT INTO absences
                    (user_id, motif, date_debut, date_fin, jours_ouvres, justificatif_path, justificatif_nom, saisi_par)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)''',
                 (sample_users['salarie_id'], 'Maladie', '2025-01-01', '2025-01-01', 1,
                  '../documents_evil/pwn.pdf', 'pwn.pdf', sample_users['directeur_id'])
             )
@@ -187,7 +187,7 @@ class TestPathTraversalProtection:
         with app.app_context():
             db.execute(
                 '''INSERT INTO subventions (nom, justificatif_path, justificatif_nom)
-                   VALUES (?, ?, ?)''',
+                   VALUES (%s, %s, %s)''',
                 ('Subvention test', '../documents_evil/pwn.pdf', 'pwn.pdf')
             )
             db.commit()

@@ -55,7 +55,7 @@ def variables_paie():
     # Donnees mensuelles existantes pour ce mois
     rows = conn.execute('''
         SELECT * FROM variables_paie
-        WHERE mois = ? AND annee = ?
+        WHERE mois = %s AND annee = %s
     ''', (mois, annee)).fetchall()
     donnees_mois = {r['user_id']: dict(r) for r in rows}
 
@@ -65,7 +65,7 @@ def variables_paie():
 
     # Verifier si les conges ont deja ete clotures pour ce mois
     cloture_conges = conn.execute(
-        'SELECT * FROM conges_cloture_mensuelle WHERE mois = ? AND annee = ?',
+        'SELECT * FROM conges_cloture_mensuelle WHERE mois = %s AND annee = %s',
         (mois, annee)
     ).fetchone()
     conges_deja_clotures = dict(cloture_conges) if cloture_conges else None
@@ -164,18 +164,18 @@ def enregistrer_variables_paie():
 
             # Upsert donnees mensuelles
             existing = conn.execute(
-                'SELECT id FROM variables_paie WHERE user_id = ? AND mois = ? AND annee = ?',
+                'SELECT id FROM variables_paie WHERE user_id = %s AND mois = %s AND annee = %s',
                 (uid, mois, annee)
             ).fetchone()
 
             if existing:
                 conn.execute('''
                     UPDATE variables_paie
-                    SET mutuelle = ?, nb_enfants = ?, heures_reelles = ?, heures_supps = ?,
-                        transport = ?, acompte = ?,
-                        saisie_salaire = ?, pret_avance = ?, autres_regularisation = ?,
-                        commentaire = ?, saisi_par = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
+                    SET mutuelle = %s, nb_enfants = %s, heures_reelles = %s, heures_supps = %s,
+                        transport = %s, acompte = %s,
+                        saisie_salaire = %s, pret_avance = %s, autres_regularisation = %s,
+                        commentaire = %s, saisi_par = %s, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
                 ''', (mutuelle, nb_enfants, heures_reelles, heures_supps,
                       transport, acompte,
                       saisie_salaire, pret_avance, autres_reg,
@@ -186,27 +186,27 @@ def enregistrer_variables_paie():
                     (user_id, mois, annee, mutuelle, nb_enfants, heures_reelles, heures_supps,
                      transport, acompte,
                      saisie_salaire, pret_avance, autres_regularisation, commentaire, saisi_par)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (uid, mois, annee, mutuelle, nb_enfants, heures_reelles, heures_supps,
                       transport, acompte,
                       saisie_salaire, pret_avance, autres_reg, commentaire, session['user_id']))
 
             # Mettre a jour les valeurs persistantes
             existing_def = conn.execute(
-                'SELECT id FROM variables_paie_defauts WHERE user_id = ?', (uid,)
+                'SELECT id FROM variables_paie_defauts WHERE user_id = %s', (uid,)
             ).fetchone()
 
             if existing_def:
                 conn.execute('''
                     UPDATE variables_paie_defauts
-                    SET mutuelle = ?, nb_enfants = ?, saisie_salaire = ?, pret_avance = ?
-                    WHERE user_id = ?
+                    SET mutuelle = %s, nb_enfants = %s, saisie_salaire = %s, pret_avance = %s
+                    WHERE user_id = %s
                 ''', (mutuelle, nb_enfants, saisie_salaire, pret_avance, uid))
             else:
                 conn.execute('''
                     INSERT INTO variables_paie_defauts
                     (user_id, mutuelle, nb_enfants, saisie_salaire, pret_avance)
-                    VALUES (?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s)
                 ''', (uid, mutuelle, nb_enfants, saisie_salaire, pret_avance))
 
             nb_saved += 1
@@ -248,7 +248,7 @@ def cloturer_conges():
 
     # Verifier si deja cloture
     existing = conn.execute(
-        'SELECT id FROM conges_cloture_mensuelle WHERE mois = ? AND annee = ?',
+        'SELECT id FROM conges_cloture_mensuelle WHERE mois = %s AND annee = %s',
         (mois, annee)
     ).fetchone()
     if existing:
@@ -323,8 +323,8 @@ def cloturer_conges():
             # Mettre a jour
             conn.execute('''
                 UPDATE users
-                SET cp_acquis = ?, cp_a_prendre = ?, cp_pris = ?, cc_solde = ?
-                WHERE id = ?
+                SET cp_acquis = %s, cp_a_prendre = %s, cp_pris = %s, cc_solde = %s
+                WHERE id = %s
             ''', (round(cp_acquis, 6), round(cp_a_prendre, 6), cp_pris,
                   round(cc_solde, 6), uid))
 
@@ -339,7 +339,7 @@ def cloturer_conges():
         # Enregistrer la cloture
         conn.execute('''
             INSERT INTO conges_cloture_mensuelle (mois, annee, cloture_par, nb_salaries_traites, detail)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
         ''', (mois, annee, session['user_id'], nb_traites, json.dumps(details)))
 
         conn.commit()

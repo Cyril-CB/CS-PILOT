@@ -203,7 +203,7 @@ def api_import_bi():
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures, importe_par)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s) RETURNING id
         ''', (fichier.filename, annee_val, nb_ecritures, session.get('user_id')))
         import_id = cursor.lastrowid
 
@@ -212,7 +212,7 @@ def api_import_bi():
             cursor.execute('''
                 INSERT INTO bilan_fec_donnees
                 (compte_num, libelle, code_analytique, annee, mois, montant, import_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             ''', (r['compte_num'], r['libelle'], r['code_analytique'],
                   r['annee'], r['mois'], r['montant'], import_id))
 
@@ -241,13 +241,13 @@ def api_supprimer_annee(annee):
     try:
         # Recuperer les imports de cette annee
         imports = conn.execute(
-            'SELECT id FROM bilan_fec_imports WHERE annee = ?', (annee,)
+            'SELECT id FROM bilan_fec_imports WHERE annee = %s', (annee,)
         ).fetchall()
 
         for imp in imports:
-            conn.execute('DELETE FROM bilan_fec_donnees WHERE import_id = ?', (imp['id'],))
+            conn.execute('DELETE FROM bilan_fec_donnees WHERE import_id = %s', (imp['id'],))
 
-        conn.execute('DELETE FROM bilan_fec_imports WHERE annee = ?', (annee,))
+        conn.execute('DELETE FROM bilan_fec_imports WHERE annee = %s', (annee,))
         conn.commit()
 
         return jsonify({'success': True, 'message': f'Données {annee} supprimées.'})
@@ -287,13 +287,13 @@ def api_bilan_donnees():
         params = [annee]
 
         if secteur_id and action_id:
-            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s AND c.action_id = %s')
             params.extend([secteur_id, action_id])
         elif secteur_id:
-            compte_filter_parts.append('c.secteur_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s')
             params.append(secteur_id)
         else:
-            compte_filter_parts.append('c.action_id = ?')
+            compte_filter_parts.append('c.action_id = %s')
             params.append(action_id)
 
         compte_filter = ' AND '.join(compte_filter_parts)
@@ -305,7 +305,7 @@ def api_bilan_donnees():
         all_donnees = conn.execute(f'''
             SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
-            WHERE d.annee = ?
+            WHERE d.annee = %s
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
@@ -373,7 +373,7 @@ def api_bilan_donnees():
 
         # Taux de logistique
         taux_row = conn.execute(
-            'SELECT * FROM bilan_taux_logistique WHERE annee = ?', (annee,)
+            'SELECT * FROM bilan_taux_logistique WHERE annee = %s', (annee,)
         ).fetchone()
         taux = {
             'taux_site1': taux_row['taux_site1'] if taux_row else 0,
@@ -418,13 +418,13 @@ def api_detail_compte():
         params = [annee, compte_num]
 
         if secteur_id and action_id:
-            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s AND c.action_id = %s')
             params.extend([secteur_id, action_id])
         elif secteur_id:
-            compte_filter_parts.append('c.secteur_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s')
             params.append(secteur_id)
         elif action_id:
-            compte_filter_parts.append('c.action_id = ?')
+            compte_filter_parts.append('c.action_id = %s')
             params.append(action_id)
         else:
             return jsonify({'operations': []})
@@ -434,7 +434,7 @@ def api_detail_compte():
         operations = conn.execute(f'''
             SELECT d.annee, d.mois, d.libelle, d.montant
             FROM bilan_fec_donnees d
-            WHERE d.annee = ? AND d.compte_num = ?
+            WHERE d.annee = %s AND d.compte_num = %s
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
@@ -493,9 +493,9 @@ def api_save_taux_logistique():
     try:
         conn.execute('''
             INSERT INTO bilan_taux_logistique (annee, taux_site1, taux_site2, taux_global, taux_selectionne)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT(annee) DO UPDATE SET
-                taux_site1 = ?, taux_site2 = ?, taux_global = ?, taux_selectionne = ?,
+                taux_site1 = %s, taux_site2 = %s, taux_global = %s, taux_selectionne = %s,
                 updated_at = CURRENT_TIMESTAMP
         ''', (annee, taux_site1, taux_site2, taux_global, taux_selectionne,
               taux_site1, taux_site2, taux_global, taux_selectionne))
@@ -553,13 +553,13 @@ def api_export_pdf():
         params = [annee]
 
         if secteur_id and action_id:
-            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s AND c.action_id = %s')
             params.extend([secteur_id, action_id])
         elif secteur_id:
-            compte_filter_parts.append('c.secteur_id = ?')
+            compte_filter_parts.append('c.secteur_id = %s')
             params.append(secteur_id)
         else:
-            compte_filter_parts.append('c.action_id = ?')
+            compte_filter_parts.append('c.action_id = %s')
             params.append(action_id)
 
         compte_filter = ' AND '.join(compte_filter_parts)
@@ -567,7 +567,7 @@ def api_export_pdf():
         all_donnees = conn.execute(f'''
             SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
-            WHERE d.annee = ?
+            WHERE d.annee = %s
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
@@ -620,7 +620,7 @@ def api_export_pdf():
 
         # Taux de logistique
         taux_row = conn.execute(
-            'SELECT * FROM bilan_taux_logistique WHERE annee = ?', (annee,)
+            'SELECT * FROM bilan_taux_logistique WHERE annee = %s', (annee,)
         ).fetchone()
 
         taux_val = 0
@@ -639,12 +639,12 @@ def api_export_pdf():
         # Noms secteur / action pour le titre
         titre_parts = [f'Bilan {annee}']
         if secteur_id:
-            row_s = conn.execute('SELECT nom FROM secteurs WHERE id = ?',
+            row_s = conn.execute('SELECT nom FROM secteurs WHERE id = %s',
                                  (secteur_id,)).fetchone()
             if row_s:
                 titre_parts.append(f'Secteur : {row_s["nom"]}')
         if action_id:
-            row_a = conn.execute('SELECT nom FROM comptabilite_actions WHERE id = ?',
+            row_a = conn.execute('SELECT nom FROM comptabilite_actions WHERE id = %s',
                                  (action_id,)).fetchone()
             if row_a:
                 titre_parts.append(f'Action : {row_a["nom"]}')

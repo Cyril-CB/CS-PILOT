@@ -182,7 +182,7 @@ def _process_fec_content(content, conn, user_id, type_import='historique'):
     cursor.execute('''
         INSERT INTO tresorerie_imports
         (type_import, fichier_nom, annee, mois_debut, mois_fin, nb_ecritures, nb_comptes, importe_par)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
     ''', (
         type_import, 'import_fec',
         annee_val,
@@ -196,9 +196,9 @@ def _process_fec_content(content, conn, user_id, type_import='historique'):
     for (compte_num, annee, mois), data in totaux.items():
         cursor.execute('''
             INSERT INTO tresorerie_donnees (compte_num, annee, mois, montant, import_id)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT(compte_num, annee, mois)
-            DO UPDATE SET montant = ?, import_id = ?, updated_at = CURRENT_TIMESTAMP
+            DO UPDATE SET montant = %s, import_id = %s, updated_at = CURRENT_TIMESTAMP
         ''', (compte_num, annee, mois, round(data['net'], 2), import_id,
               round(data['net'], 2), import_id))
 
@@ -219,7 +219,7 @@ def _process_fec_content(content, conn, user_id, type_import='historique'):
             type_compte = 'produit' if total >= 0 else 'charge'
 
         existing = cursor.execute(
-            'SELECT id FROM tresorerie_comptes WHERE compte_num = ?',
+            'SELECT id FROM tresorerie_comptes WHERE compte_num = %s',
             (compte_num,)
         ).fetchone()
 
@@ -235,22 +235,22 @@ def _process_fec_content(content, conn, user_id, type_import='historique'):
             cursor.execute('''
                 INSERT INTO tresorerie_comptes
                 (compte_num, libelle_original, libelle_affiche, type_compte, ordre_affichage)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (compte_num, libelle, libelle, type_compte, ordre))
         else:
             # Mettre a jour le libelle original si vide
             cursor.execute('''
                 UPDATE tresorerie_comptes
-                SET libelle_original = COALESCE(NULLIF(libelle_original, ''), ?),
+                SET libelle_original = COALESCE(NULLIF(libelle_original, ''), %s),
                     updated_at = CURRENT_TIMESTAMP
-                WHERE compte_num = ? AND (libelle_original IS NULL OR libelle_original = '')
+                WHERE compte_num = %s AND (libelle_original IS NULL OR libelle_original = '')
             ''', (libelle, compte_num))
 
     # Nettoyer les comptes exclus qui auraient ete importes precedemment
     for prefix in COMPTES_EXCLUS_PREFIXES:
-        cursor.execute("DELETE FROM tresorerie_donnees WHERE compte_num LIKE ?",
+        cursor.execute("DELETE FROM tresorerie_donnees WHERE compte_num LIKE %s",
                         (prefix + '%',))
-        cursor.execute("DELETE FROM tresorerie_comptes WHERE compte_num LIKE ?",
+        cursor.execute("DELETE FROM tresorerie_comptes WHERE compte_num LIKE %s",
                         (prefix + '%',))
 
     conn.commit()
@@ -297,12 +297,12 @@ def _build_projection(conn, annee_debut, mois_debut, nb_mois=18):
         pre_rows = conn.execute('''
             SELECT COALESCE(SUM(montant), 0) as total
             FROM tresorerie_donnees
-            WHERE (annee > ? OR (annee = ? AND mois >= ?))
-              AND (annee < ? OR (annee = ? AND mois < ?))
-              AND compte_num NOT LIKE '512%'
-              AND compte_num NOT LIKE '531%'
-              AND compte_num NOT LIKE '580%'
-              AND compte_num NOT LIKE '471%'
+            WHERE (annee > %s OR (annee = %s AND mois >= %s))
+              AND (annee < %s OR (annee = %s AND mois < %s))
+              AND compte_num NOT LIKE '512%%'
+              AND compte_num NOT LIKE '531%%'
+              AND compte_num NOT LIKE '580%%'
+              AND compte_num NOT LIKE '471%%'
               AND compte_num IN (SELECT compte_num FROM tresorerie_comptes WHERE actif = 1)
         ''', (solde_ref_annee, solde_ref_annee, solde_ref_mois,
               annee_debut, annee_debut, mois_debut)).fetchone()
@@ -316,8 +316,8 @@ def _build_projection(conn, annee_debut, mois_debut, nb_mois=18):
                  ELSE 0 END
         ), 0) as total
         FROM tresorerie_epargne_mouvements
-        WHERE (annee > ? OR (annee = ? AND mois >= ?))
-          AND (annee < ? OR (annee = ? AND mois < ?))
+        WHERE (annee > %s OR (annee = %s AND mois >= %s))
+          AND (annee < %s OR (annee = %s AND mois < %s))
     ''', (solde_ref_annee, solde_ref_annee, solde_ref_mois,
           annee_debut, annee_debut, mois_debut)).fetchone()
     solde_initial += pre_epargne['total'] if pre_epargne else 0
@@ -341,12 +341,12 @@ def _build_projection(conn, annee_debut, mois_debut, nb_mois=18):
     annee_fin = periodes[-1][0]
     comptes_nums_actifs = [c['compte_num'] for c in comptes]
     if comptes_nums_actifs:
-        placeholders = ','.join('?' for _ in comptes_nums_actifs)
+        placeholders = ','.join('%s' for _ in comptes_nums_actifs)
         donnees_rows = conn.execute(f'''
             SELECT compte_num, annee, mois, montant
             FROM tresorerie_donnees
-            WHERE (annee > ? OR (annee = ? AND mois >= ?))
-              AND (annee < ? OR (annee = ? AND mois <= ?))
+            WHERE (annee > %s OR (annee = %s AND mois >= %s))
+              AND (annee < %s OR (annee = %s AND mois <= %s))
               AND compte_num IN ({placeholders})
         ''', (annee_debut, annee_debut, mois_debut,
               annee_fin, annee_fin, periodes[-1][1],
@@ -363,8 +363,8 @@ def _build_projection(conn, annee_debut, mois_debut, nb_mois=18):
     budget_rows = conn.execute('''
         SELECT compte_num, annee, mois, montant
         FROM tresorerie_budget_n
-        WHERE (annee > ? OR (annee = ? AND mois >= ?))
-          AND (annee < ? OR (annee = ? AND mois <= ?))
+        WHERE (annee > %s OR (annee = %s AND mois >= %s))
+          AND (annee < %s OR (annee = %s AND mois <= %s))
     ''', (annee_debut, annee_debut, mois_debut,
           annee_fin, annee_fin, periodes[-1][1])).fetchall()
 
@@ -397,7 +397,7 @@ def _build_projection(conn, annee_debut, mois_debut, nb_mois=18):
         ref_rows = conn.execute('''
             SELECT compte_num, annee, mois, montant
             FROM tresorerie_donnees
-            WHERE annee IN (?, ?)
+            WHERE annee IN (%s, %s)
         ''', (annee_n_1, annee_n)).fetchall()
 
         ref_data = {}
@@ -748,7 +748,7 @@ def api_solde_initial():
         conn.execute('DELETE FROM tresorerie_solde_initial')
         conn.execute('''
             INSERT INTO tresorerie_solde_initial (annee, mois, montant, saisi_par, annee_ref, mois_ref)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         ''', (annee_ref, mois_ref, montant, session.get('user_id'),
               annee_ref, mois_ref))
         conn.commit()
@@ -786,7 +786,7 @@ def api_budget_n():
             # Supprimer l'ajustement
             conn.execute('''
                 DELETE FROM tresorerie_budget_n
-                WHERE compte_num = ? AND annee = ? AND mois = ?
+                WHERE compte_num = %s AND annee = %s AND mois = %s
             ''', (compte_num, annee, mois))
         else:
             try:
@@ -796,9 +796,9 @@ def api_budget_n():
 
             conn.execute('''
                 INSERT INTO tresorerie_budget_n (compte_num, annee, mois, montant, saisi_par)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT(compte_num, annee, mois)
-                DO UPDATE SET montant = ?, saisi_par = ?, updated_at = CURRENT_TIMESTAMP
+                DO UPDATE SET montant = %s, saisi_par = %s, updated_at = CURRENT_TIMESTAMP
             ''', (compte_num, annee, mois, montant, session.get('user_id'),
                   montant, session.get('user_id')))
 
@@ -870,8 +870,8 @@ def api_modifier_compte(compte_num):
     try:
         conn.execute(f'''
             UPDATE tresorerie_comptes
-            SET {field} = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE compte_num = ?
+            SET {field} = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE compte_num = %s
         ''', (value, compte_num))
         conn.commit()
         return jsonify({'success': True})
@@ -895,8 +895,8 @@ def api_reordonner_comptes():
         for item in data['ordres']:
             conn.execute('''
                 UPDATE tresorerie_comptes
-                SET ordre_affichage = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE compte_num = ?
+                SET ordre_affichage = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE compte_num = %s
             ''', (item['ordre'], item['compte_num']))
         conn.commit()
         return jsonify({'success': True})
@@ -918,8 +918,8 @@ def api_supprimer_import(import_id):
     conn = get_db()
     try:
         # Supprimer les donnees liees a cet import
-        conn.execute('DELETE FROM tresorerie_donnees WHERE import_id = ?', (import_id,))
-        conn.execute('DELETE FROM tresorerie_imports WHERE id = ?', (import_id,))
+        conn.execute('DELETE FROM tresorerie_donnees WHERE import_id = %s', (import_id,))
+        conn.execute('DELETE FROM tresorerie_imports WHERE id = %s', (import_id,))
         conn.commit()
         return jsonify({'success': True})
     finally:
@@ -959,7 +959,7 @@ def api_epargne_solde():
         conn.execute('DELETE FROM tresorerie_epargne_solde')
         conn.execute('''
             INSERT INTO tresorerie_epargne_solde (montant, saisi_par)
-            VALUES (?, ?)
+            VALUES (%s, %s)
         ''', (montant, session.get('user_id')))
         conn.commit()
         return jsonify({'success': True})
@@ -1008,7 +1008,7 @@ def api_epargne_mouvement():
         conn.execute('''
             INSERT INTO tresorerie_epargne_mouvements
             (type_mouvement, annee, mois, montant, commentaire, saisi_par)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
         ''', (type_mvt, annee, mois, montant, commentaire, session.get('user_id')))
         conn.commit()
         return jsonify({'success': True})
@@ -1026,7 +1026,7 @@ def api_epargne_supprimer_mouvement(mouvement_id):
     conn = get_db()
     try:
         conn.execute(
-            'DELETE FROM tresorerie_epargne_mouvements WHERE id = ?',
+            'DELETE FROM tresorerie_epargne_mouvements WHERE id = %s',
             (mouvement_id,)
         )
         conn.commit()
