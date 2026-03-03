@@ -11,13 +11,14 @@ Fonctionnalites :
 - Detail des operations par compte (modal)
 - Taux de logistique (site1, site2, global) par annee avec selection
 - Calcul du resultat avec et sans logistique
+- Export PDF du bilan
 - Accessible aux profils directeur et comptable
 """
 import csv
 import io
 from datetime import datetime
 from flask import (Blueprint, render_template, request, redirect,
-                   url_for, session, flash, jsonify)
+                   url_for, session, flash, jsonify, make_response)
 from database import get_db
 from utils import login_required
 
@@ -490,5 +491,264 @@ def api_save_taux_logistique():
               taux_site1, taux_site2, taux_global, taux_selectionne))
         conn.commit()
         return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+# ── Export PDF ───────────────────────────────────────────────────────────────
+
+NOMS_CATEGORIES = {
+    '60': 'Achats', '61': 'Services extérieurs', '62': 'Autres services ext.',
+    '63': 'Impôts et taxes', '64': 'Charges de personnel',
+    '65': 'Autres charges de gestion', '66': 'Charges financières',
+    '67': 'Charges exceptionnelles', '68': 'Dotations amort.',
+    '70': 'Ventes/prestations', '71': 'Production stockée',
+    '72': 'Production immobilisée', '73': 'Produits nets partiels',
+    '74': 'Subventions', '75': 'Autres produits de gestion',
+    '76': 'Produits financiers', '77': 'Produits exceptionnels',
+    '78': 'Reprises amort.', '79': 'Transferts de charges',
+}
+
+
+def _fmt(n):
+    """Formate un nombre en style français : 1 234,56."""
+    return f'{n:,.2f}'.replace(',', '\u202f').replace('.', ',')
+
+
+@bilan_secteurs_bp.route('/api/bilan/export-pdf')
+@login_required
+def api_export_pdf():
+    """Génère un PDF du bilan secteurs/actions."""
+    if not _peut_acceder():
+        flash('Accès non autorisé.', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
+    action_id = request.args.get('action_id', type=int)
+    taux_selectionne = request.args.get('taux_selectionne', 'global')
+
+    if not annee:
+        flash('Année requise.', 'error')
+        return redirect(url_for('bilan_secteurs_bp.bilan_secteurs'))
+
+    if not secteur_id and not action_id:
+        flash('Sélectionnez un secteur ou une action.', 'error')
+        return redirect(url_for('bilan_secteurs_bp.bilan_secteurs'))
+
+    conn = get_db()
+    try:
+        # --- Recuperer les donnees (meme logique que api_bilan_donnees) ---
+        compte_filter_parts = []
+        params = [annee]
+
+        if secteur_id and action_id:
+            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
+            params.extend([secteur_id, action_id])
+        elif secteur_id:
+            compte_filter_parts.append('c.secteur_id = ?')
+            params.append(secteur_id)
+        else:
+            compte_filter_parts.append('c.action_id = ?')
+            params.append(action_id)
+
+        compte_filter = ' AND '.join(compte_filter_parts)
+
+        all_donnees = conn.execute(f'''
+            SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
+            FROM bilan_fec_donnees d
+            WHERE d.annee = ?
+            AND EXISTS (
+                SELECT 1 FROM comptabilite_comptes c
+                WHERE {compte_filter}
+                AND (d.compte_num LIKE c.compte_num || '%'
+                     OR d.code_analytique = c.compte_num)
+            )
+        ''', params).fetchall()
+
+        charges = {}
+        produits = {}
+
+        for d in all_donnees:
+            compte = d['compte_num']
+            premier = compte[0]
+            categorie = compte[:2]
+            montant = d['montant']
+
+            if premier == '6':
+                if categorie not in charges:
+                    charges[categorie] = {'comptes': {}, 'total': 0}
+                if compte not in charges[categorie]['comptes']:
+                    charges[categorie]['comptes'][compte] = {
+                        'libelle': d['libelle'] or compte, 'total': 0}
+                charges[categorie]['comptes'][compte]['total'] += montant
+                charges[categorie]['total'] += montant
+            elif premier == '7':
+                if categorie not in produits:
+                    produits[categorie] = {'comptes': {}, 'total': 0}
+                if compte not in produits[categorie]['comptes']:
+                    produits[categorie]['comptes'][compte] = {
+                        'libelle': d['libelle'] or compte, 'total': 0}
+                produits[categorie]['comptes'][compte]['total'] += montant
+                produits[categorie]['total'] += montant
+
+        total_charges = round(sum(c['total'] for c in charges.values()), 2)
+        total_produits = round(sum(p['total'] for p in produits.values()), 2)
+
+        for cat in charges.values():
+            cat['total'] = round(cat['total'], 2)
+            for c in cat['comptes'].values():
+                c['total'] = round(c['total'], 2)
+        for cat in produits.values():
+            cat['total'] = round(cat['total'], 2)
+            for c in cat['comptes'].values():
+                c['total'] = round(c['total'], 2)
+
+        # Taux de logistique
+        taux_row = conn.execute(
+            'SELECT * FROM bilan_taux_logistique WHERE annee = ?', (annee,)
+        ).fetchone()
+
+        taux_val = 0
+        if taux_row:
+            if taux_selectionne == 'site1':
+                taux_val = taux_row['taux_site1']
+            elif taux_selectionne == 'site2':
+                taux_val = taux_row['taux_site2']
+            else:
+                taux_val = taux_row['taux_global']
+
+        logistique = total_charges * (taux_val / 100)
+        resultat_sans = total_produits - total_charges
+        resultat_avec = total_produits - total_charges - logistique
+
+        # Noms secteur / action pour le titre
+        titre_parts = [f'Bilan {annee}']
+        if secteur_id:
+            row_s = conn.execute('SELECT nom FROM secteurs WHERE id = ?',
+                                 (secteur_id,)).fetchone()
+            if row_s:
+                titre_parts.append(f'Secteur : {row_s["nom"]}')
+        if action_id:
+            row_a = conn.execute('SELECT nom FROM comptabilite_actions WHERE id = ?',
+                                 (action_id,)).fetchone()
+            if row_a:
+                titre_parts.append(f'Action : {row_a["nom"]}')
+
+        # --- Generer le PDF ---
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (SimpleDocTemplate, Table as RLTable,
+                                        TableStyle, Paragraph, Spacer)
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4,
+                                topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                                leftMargin=1.5 * cm, rightMargin=1.5 * cm)
+        elements = []
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle('BilanTitle', parent=styles['Heading1'],
+                                     alignment=TA_CENTER, fontSize=14,
+                                     spaceAfter=6)
+        subtitle_style = ParagraphStyle('BilanSub', parent=styles['Normal'],
+                                        alignment=TA_CENTER, fontSize=10,
+                                        spaceAfter=14)
+        section_style = ParagraphStyle('BilanSection', parent=styles['Heading2'],
+                                       fontSize=12, spaceAfter=6, spaceBefore=12)
+        normal_style = styles['Normal']
+
+        elements.append(Paragraph('BILAN SECTEURS / ACTIONS', title_style))
+        elements.append(Paragraph(' — '.join(titre_parts), subtitle_style))
+
+        # --- Helper : table pour charges ou produits ---
+        def _build_section(categories, label, color_header):
+            elements.append(Paragraph(label, section_style))
+            if not categories:
+                elements.append(Paragraph('Aucune donnée.', normal_style))
+                return
+
+            data = [['Compte', 'Libellé', 'Montant']]
+            for cat_code in sorted(categories.keys()):
+                cat = categories[cat_code]
+                cat_name = NOMS_CATEGORIES.get(cat_code, f'Catégorie {cat_code}')
+                data.append([f'{cat_code} - {cat_name}', '', _fmt(cat['total']) + ' €'])
+                for cpt_num in sorted(cat['comptes'].keys()):
+                    cpt = cat['comptes'][cpt_num]
+                    data.append([f'   {cpt_num}', cpt['libelle'], _fmt(cpt['total']) + ' €'])
+
+            col_widths = [4 * cm, 9 * cm, 4 * cm]
+            t = RLTable(data, colWidths=col_widths, repeatRows=1)
+
+            style_cmds = [
+                ('BACKGROUND', (0, 0), (-1, 0), color_header),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+                ('TOPPADDING', (0, 0), (-1, 0), 6),
+                ('FONTSIZE', (0, 1), (-1, -1), 8),
+                ('TOPPADDING', (0, 1), (-1, -1), 3),
+                ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
+                ('ALIGN', (2, 0), (2, -1), 'RIGHT'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ]
+
+            # Mettre en gras les lignes de catégorie
+            row_idx = 1
+            for cat_code in sorted(categories.keys()):
+                style_cmds.append(('FONTNAME', (0, row_idx), (-1, row_idx), 'Helvetica-Bold'))
+                style_cmds.append(('BACKGROUND', (0, row_idx), (-1, row_idx),
+                                   colors.HexColor('#F0F0F0')))
+                row_idx += 1 + len(categories[cat_code]['comptes'])
+
+            t.setStyle(TableStyle(style_cmds))
+            elements.append(t)
+
+        _build_section(charges, 'Charges', colors.HexColor('#C0392B'))
+        _build_section(produits, 'Produits', colors.HexColor('#27AE60'))
+
+        # --- Résumé ---
+        elements.append(Spacer(1, 0.5 * cm))
+        summary_data = [
+            ['Total charges', _fmt(total_charges) + ' €'],
+            ['Total produits', _fmt(total_produits) + ' €'],
+            [f'Logistique ({_fmt(taux_val)} %)', _fmt(round(logistique, 2)) + ' €'],
+            ['Résultat sans logistique', _fmt(round(resultat_sans, 2)) + ' €'],
+            ['Résultat avec logistique', _fmt(round(resultat_avec, 2)) + ' €'],
+        ]
+        summary_t = RLTable(summary_data, colWidths=[10 * cm, 7 * cm])
+        summary_t.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 10),
+            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#FFF9C4')),
+            ('BACKGROUND', (0, 4), (-1, 4), colors.HexColor('#FFF9C4')),
+        ]))
+        elements.append(summary_t)
+
+        # Construire le PDF
+        doc.build(elements)
+        buffer.seek(0)
+
+        response = make_response(buffer.getvalue())
+        response.headers['Content-Type'] = 'application/pdf'
+        filename = f'bilan_{annee}'
+        if secteur_id:
+            filename += f'_secteur{secteur_id}'
+        if action_id:
+            filename += f'_action{action_id}'
+        response.headers['Content-Disposition'] = (
+            f'attachment; filename={filename}.pdf'
+        )
+        return response
     finally:
         conn.close()

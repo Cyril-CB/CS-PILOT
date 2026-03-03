@@ -12,7 +12,7 @@
 
 {% if comptes %}
 <div class="table-responsive" style="margin-top:16px;">
-    <table class="table">
+    <table class="data-table">
         <thead>
             <tr>
                 <th>N° Compte</th>
@@ -68,7 +68,7 @@
             <h3>📥 Importer un plan comptable (TXT tabulé)</h3>
             <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
             <p>Format attendu : fichier texte avec tabulation entre les colonnes.</p>
             <p><em>Colonne 1 : Numéro de compte &nbsp;|&nbsp; Colonne 2 : Libellé</em></p>
             <form id="importForm" enctype="multipart/form-data">
@@ -92,7 +92,7 @@
             <h3>➕ Ajouter un compte</h3>
             <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
             <form id="ajoutForm">
                 <div class="form-group">
                     <label>Numéro de compte</label>

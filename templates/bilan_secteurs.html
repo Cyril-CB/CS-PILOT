@@ -6,6 +6,7 @@
     <h2>📊 Bilan secteurs / actions</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
+        <button class="btn btn-secondary" id="btnExportPdf" style="display:none;" onclick="exporterPdf()">📄 Export PDF</button>
         <button class="btn btn-danger" onclick="supprimerAnnee()" id="btnSuppAnnee" style="display:none;">🗑️ Supprimer données</button>
     </div>
 </div>
@@ -99,7 +100,7 @@
             <h3>📥 Importer un export BI</h3>
             <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
             <p>Importez un export BI de la comptabilité (CSV/TSV). Les comptes 6x (charges) et 7x (produits) seront extraits avec leur compte analytique.</p>
             <form id="importBiForm" enctype="multipart/form-data">
                 <div class="form-group">
@@ -122,7 +123,7 @@
             <h3 id="detailTitle">Détail du compte</h3>
             <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
             <div id="detailContent"></div>
         </div>
     </div>
@@ -189,6 +190,7 @@ function chargerBilan() {
     if (!secteur && !action) {
         document.getElementById('bilanContainer').style.display = 'none';
         document.getElementById('bilanInfo').style.display = 'block';
+        document.getElementById('btnExportPdf').style.display = 'none';
         return;
     }
 
@@ -212,6 +214,7 @@ function chargerBilan() {
 function afficherBilan(data) {
     document.getElementById('bilanInfo').style.display = 'none';
     document.getElementById('bilanContainer').style.display = 'block';
+    document.getElementById('btnExportPdf').style.display = '';
 
     // Charges
     var html = buildCategoryTable(data.charges);
@@ -239,12 +242,13 @@ function buildCategoryTable(categories) {
     var cats = Object.keys(categories).sort();
     if (cats.length === 0) return '<p style="color:var(--text-muted);">Aucune donnée.</p>';
 
-    var html = '<table class="table" style="font-size:0.95em;">';
+    var html = '<table class="data-table" style="font-size:0.95em;">';
+    html += '<thead><tr><th colspan="2">Compte</th><th style="text-align:right;">Montant</th></tr></thead><tbody>';
     for (var i = 0; i < cats.length; i++) {
         var cat = cats[i];
         var catData = categories[cat];
         var catName = NOMS_CATEGORIES[cat] || ('Catégorie ' + cat);
-        html += '<tr style="background:var(--bg-secondary, #f0f0f0);font-weight:bold;">';
+        html += '<tr style="background:var(--gray-100, #f0f0f0);font-weight:bold;">';
         html += '<td colspan="2">' + cat + ' - ' + catName + '</td>';
         html += '<td style="text-align:right;">' + fmt(catData.total) + ' €</td></tr>';
 
@@ -258,7 +262,7 @@ function buildCategoryTable(categories) {
             html += '<td style="text-align:right;">' + fmt(cptData.total) + ' €</td></tr>';
         }
     }
-    html += '</table>';
+    html += '</tbody></table>';
     return html;
 }
 
@@ -278,7 +282,7 @@ function voirDetail(compteNum) {
         .then(r => r.json())
         .then(data => {
             if (data.operations && data.operations.length > 0) {
-                var html = '<table class="table"><thead><tr><th>Année</th><th>Mois</th><th>Libellé</th><th style="text-align:right;">Montant</th></tr></thead><tbody>';
+                var html = '<table class="data-table"><thead><tr><th>Année</th><th>Mois</th><th>Libellé</th><th style="text-align:right;">Montant</th></tr></thead><tbody>';
                 for (var i = 0; i < data.operations.length; i++) {
                     var op = data.operations[i];
                     html += '<tr><td>' + op.annee + '</td><td>' + op.mois_nom + '</td><td>' + op.libelle + '</td><td style="text-align:right;">' + fmt(op.montant) + ' €</td></tr>';
@@ -343,6 +347,23 @@ function calculerResultat(data) {
     resHtml += ' <small>(Produits ' + fmt(totalProduits) + ' − Charges ' + fmt(totalCharges) + ' − Logistique ' + fmt(logistique) + ')</small></div>';
 
     document.getElementById('resultatDisplay').innerHTML = resHtml;
+}
+
+// Export PDF
+function exporterPdf() {
+    var annee = document.getElementById('filtreAnnee').value;
+    var secteur = document.getElementById('filtreSecteur').value;
+    var action = document.getElementById('filtreAction').value;
+
+    var url = '/api/bilan/export-pdf?annee=' + annee;
+    if (secteur) url += '&secteur_id=' + secteur;
+    if (action) url += '&action_id=' + action;
+
+    // Ajouter le taux de logistique selectionne
+    var sel = document.querySelector('input[name="tauxSel"]:checked');
+    if (sel) url += '&taux_selectionne=' + sel.value;
+
+    window.open(url, '_blank');
 }
 </script>
 {% endblock %}

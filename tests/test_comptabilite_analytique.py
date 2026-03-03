@@ -315,6 +315,32 @@ class TestBilanSecteurs:
         assert row['taux_global'] == 25.0
         assert row['taux_selectionne'] == 'site1'
 
+    def test_export_pdf(self, admin_client, db, sample_users):
+        """L'export PDF retourne un fichier PDF valide."""
+        secteur_id = sample_users['secteur_id']
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+                   (secteur_id,))
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', ?)",
+                   (secteur_id,))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 2)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Charge', '', 2025, 1, 500, ?)",
+                   (imp['id'],))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Produit', '', 2025, 1, 800, ?)",
+                   (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/export-pdf?annee=2025&secteur_id={secteur_id}')
+        assert resp.status_code == 200
+        assert resp.content_type == 'application/pdf'
+        assert resp.data[:5] == b'%PDF-'
+
+    def test_export_pdf_sans_filtre(self, admin_client):
+        """L'export PDF sans secteur ni action redirige."""
+        resp = admin_client.get('/api/bilan/export-pdf?annee=2025', follow_redirects=True)
+        assert 'Sélectionnez' in resp.get_data(as_text=True)
+
 
 class TestNavigationMenus:
     """Vérifie que les nouveaux menus apparaissent dans la sidebar."""
@@ -331,6 +357,34 @@ class TestNavigationMenus:
         html = resp.get_data(as_text=True)
         assert 'Comptable' in html
         assert 'Plan comptable analytique' in html
+
+
+class TestUIStyle:
+    """Vérifie que les pages utilisent les bons styles CSS."""
+
+    def test_plan_comptable_utilise_data_table(self, admin_client, db):
+        """Le tableau du plan comptable utilise la classe data-table."""
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES ('601000', 'Test')")
+        db.commit()
+        html = admin_client.get('/plan-comptable-analytique').get_data(as_text=True)
+        assert 'class="data-table"' in html
+
+    def test_plan_comptable_modal_padding(self, admin_client):
+        """Les modales du plan comptable ont du padding."""
+        html = admin_client.get('/plan-comptable-analytique').get_data(as_text=True)
+        assert 'modal-body' in html
+        assert 'padding:0 1.5rem 1.5rem' in html
+
+    def test_bilan_secteurs_export_pdf_bouton(self, admin_client):
+        """La page bilan secteurs contient le bouton export PDF."""
+        html = admin_client.get('/bilan-secteurs').get_data(as_text=True)
+        assert 'Export PDF' in html
+        assert 'exporterPdf' in html
+
+    def test_bilan_secteurs_data_table_in_js(self, admin_client):
+        """Le JS du bilan secteurs utilise la classe data-table."""
+        html = admin_client.get('/bilan-secteurs').get_data(as_text=True)
+        assert 'class="data-table"' in html
 
 
 class TestTablesCreees:
