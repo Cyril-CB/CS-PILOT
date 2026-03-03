@@ -97,12 +97,23 @@ def generation_contrats():
     conn = get_db()
 
     # Données pour l'onglet 1 (formulaire)
-    salaries = conn.execute('''
-        SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
-        FROM users u
-        WHERE u.actif = 1 AND u.profil != 'prestataire'
-        ORDER BY u.nom, u.prenom
-    ''').fetchall()
+    # Robustesse : les colonnes adresse/date_naissance/numero_secu peuvent manquer
+    # sur une installation existante avant application de la migration 0024.
+    try:
+        salaries = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
+            FROM users u
+            WHERE u.actif = 1 AND u.profil != 'prestataire'
+            ORDER BY u.nom, u.prenom
+        ''').fetchall()
+    except Exception:
+        salaries = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, u.profil,
+                   '' AS adresse, '' AS date_naissance, '' AS numero_secu
+            FROM users u
+            WHERE u.actif = 1 AND u.profil != 'prestataire'
+            ORDER BY u.nom, u.prenom
+        ''').fetchall()
 
     postes = conn.execute(
         'SELECT id, intitule, total_points, formation_niveau, complexite_niveau, '
@@ -132,10 +143,13 @@ def generation_contrats():
     # Dernier contrat généré pour re-téléchargement
     dernier_contrat = None
     if preselect_user_id:
-        dernier_contrat = conn.execute(
-            'SELECT * FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
-            (preselect_user_id,)
-        ).fetchone()
+        try:
+            dernier_contrat = conn.execute(
+                'SELECT * FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+                (preselect_user_id,)
+            ).fetchone()
+        except Exception:
+            dernier_contrat = None
 
     conn.close()
 
