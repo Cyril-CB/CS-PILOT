@@ -13,6 +13,13 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
 from database import get_db
 from utils import login_required, get_setting, save_setting
+from blueprints.pesee_alisfa import CRITERES_ALISFA as _CRITERES_ALISFA
+
+# Lookup : _POINTS_PAR_CRITERE[i][niveau] = valeur en points (str) pour le critère i (0-based)
+_POINTS_PAR_CRITERE = [
+    {n['niveau']: str(n['points']) for n in c['niveaux']}
+    for c in _CRITERES_ALISFA
+]
 
 generation_contrats_bp = Blueprint('generation_contrats_bp', __name__)
 
@@ -262,8 +269,13 @@ def generer_contrat():
     if poste:
         pesee_total = str(poste['total_points']) if poste['total_points'] else ''
         for i, field in enumerate(CRITERE_FIELDS, 1):
-            val = poste[field] if poste[field] is not None else ''
-            criteres_vals[f'!CRITERE{i}!'] = str(val)
+            niveau = poste[field] if poste[field] is not None else None
+            criteres_vals[f'!POSITION{i}!'] = str(niveau) if niveau is not None else ''
+            if niveau is not None:
+                lookup = _POINTS_PAR_CRITERE[i - 1]
+                criteres_vals[f'!CRITERE{i}!'] = lookup.get(niveau, str(niveau))
+            else:
+                criteres_vals[f'!CRITERE{i}!'] = ''
 
     # Horaires
     horaires = {}
