@@ -263,21 +263,12 @@ def api_bilan_donnees():
 
         # Recuperer les donnees FEC pour ces codes analytiques
         placeholders = ','.join(['?' for _ in codes])
-        donnees = conn.execute(f'''
-            SELECT d.compte_num, d.libelle, d.mois, d.montant
+        all_donnees = conn.execute(f'''
+            SELECT DISTINCT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
-            WHERE d.annee = ? AND d.code_analytique IN ({placeholders})
-        ''', [annee] + codes).fetchall()
-
-        # Aussi chercher les donnees dont le compte_num correspond directement
-        donnees_direct = conn.execute(f'''
-            SELECT d.compte_num, d.libelle, d.mois, d.montant
-            FROM bilan_fec_donnees d
-            WHERE d.annee = ? AND d.compte_num IN ({placeholders})
-        ''', [annee] + codes).fetchall()
-
-        # Fusionner les deux sources (eviter les doublons)
-        all_donnees = list(donnees) + list(donnees_direct)
+            WHERE d.annee = ?
+            AND (d.code_analytique IN ({placeholders}) OR d.compte_num IN ({placeholders}))
+        ''', [annee] + codes + codes).fetchall()
 
         # Regrouper par categorie
         charges = {}  # {'60': {'nom': 'Achats', 'total': 0, 'comptes': {}}, ...}

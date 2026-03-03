@@ -173,7 +173,7 @@ class TestBilanSecteurs:
             "VE\t20250115\t701000\tVentes\t\tVente\t0\t100\n"
             "BQ\t20250115\t512000\tBanque\t\tVirement\t100\t0\n"
             "HA\t20250115\t601000\tAchats\t\tAchat\t200\t0\n"
-            "OD\t20250115\t401000\tFournisseurs\t\tPaiment\t0\t200\n"
+            "OD\t20250115\t401000\tFournisseurs\t\tPaiement\t0\t200\n"
         )
         data = {'fichier': (io.BytesIO(fec_content.encode('utf-8')), 'fec.txt')}
         resp = admin_client.post('/api/bilan/import-fec',
