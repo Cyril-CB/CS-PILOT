@@ -205,7 +205,7 @@ class TestBilanSecteurs:
         assert resp.status_code == 400
 
     def test_api_bilan_donnees_avec_secteur(self, admin_client, db, sample_users):
-        """L'API retourne les données filtrées par secteur."""
+        """L'API retourne les données filtrées par secteur (correspondance code analytique)."""
         secteur_id = sample_users['secteur_id']
         # Créer un compte analytique lié au secteur
         db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('ANA001', 'Analytique 1', ?)",
@@ -224,6 +224,59 @@ class TestBilanSecteurs:
         data = resp.get_json()
         assert data['total_charges'] == 500
         assert data['total_produits'] == 800
+
+    def test_api_bilan_donnees_compte_num_exact(self, admin_client, db, sample_users):
+        """L'API fonctionne quand le plan comptable a les mêmes numéros que le FEC."""
+        secteur_id = sample_users['secteur_id']
+        # Plan comptable avec numéros de compte généraux
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601000', 'Achats', ?)",
+                   (secteur_id,))
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701000', 'Ventes', ?)",
+                   (secteur_id,))
+        # FEC avec les mêmes numéros, code_analytique vide (cas réel standard)
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec.txt', 2025, 2)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat fournisseur', '', 2025, 1, 300, ?)",
+                   (imp['id'],))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente client', '', 2025, 1, 600, ?)",
+                   (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2025&secteur_id={secteur_id}')
+        data = resp.get_json()
+        assert data['total_charges'] == 300
+        assert data['total_produits'] == 600
+
+    def test_api_bilan_donnees_prefixe(self, admin_client, db, sample_users):
+        """L'API fonctionne avec des préfixes (601 correspond à 601000, 601100, etc.)."""
+        secteur_id = sample_users['secteur_id']
+        # Plan comptable avec des préfixes courts
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('601', 'Achats stockés', ?)",
+                   (secteur_id,))
+        db.execute("INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('701', 'Ventes produits', ?)",
+                   (secteur_id,))
+        # FEC avec des comptes détaillés
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec.txt', 2025, 4)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601000', 'Achat MP', '', 2025, 1, 200, ?)",
+                   (imp['id'],))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('601100', 'Achat alim', '', 2025, 1, 150, ?)",
+                   (imp['id'],))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('701000', 'Vente A', '', 2025, 1, 500, ?)",
+                   (imp['id'],))
+        # Ce compte 602xxx ne doit PAS être inclus (pas de préfixe 602 assigné)
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) VALUES ('602000', 'Achat non stocké', '', 2025, 1, 100, ?)",
+                   (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2025&secteur_id={secteur_id}')
+        data = resp.get_json()
+        # 601000 (200) + 601100 (150) = 350 charges
+        assert data['total_charges'] == 350
+        # 701000 (500) = 500 produits
+        assert data['total_produits'] == 500
 
     def test_taux_logistique(self, admin_client, db):
         """On peut sauvegarder les taux de logistique."""

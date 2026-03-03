@@ -237,38 +237,37 @@ def api_bilan_donnees():
 
     conn = get_db()
     try:
-        # Recuperer les codes analytiques associes au secteur/action
-        query_parts = []
-        params = []
+        # Construire le filtre secteur/action
+        compte_filter_parts = []
+        params = [annee]
 
         if secteur_id and action_id:
-            query_parts.append('(c.secteur_id = ? AND c.action_id = ?)')
+            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
             params.extend([secteur_id, action_id])
         elif secteur_id:
-            query_parts.append('c.secteur_id = ?')
+            compte_filter_parts.append('c.secteur_id = ?')
             params.append(secteur_id)
         else:
-            query_parts.append('c.action_id = ?')
+            compte_filter_parts.append('c.action_id = ?')
             params.append(action_id)
 
-        comptes_analytiques = conn.execute(
-            f'SELECT compte_num FROM comptabilite_comptes c WHERE {query_parts[0]}',
-            params
-        ).fetchall()
+        compte_filter = ' AND '.join(compte_filter_parts)
 
-        codes = [c['compte_num'] for c in comptes_analytiques]
-        if not codes:
-            return jsonify({'charges': {}, 'produits': {}, 'total_charges': 0,
-                            'total_produits': 0, 'detail_comptes': {}})
-
-        # Recuperer les donnees FEC pour ces codes analytiques
-        placeholders = ','.join(['?' for _ in codes])
+        # Recuperer les donnees FEC liees aux comptes du plan comptable analytique.
+        # Correspondance par prefixe : le compte_num du plan analytique peut etre
+        # un prefixe du compte FEC (ex: "601" correspond a "601000", "601100", etc.)
+        # ou une correspondance exacte sur le code analytique du FEC.
         all_donnees = conn.execute(f'''
-            SELECT DISTINCT d.id, d.compte_num, d.libelle, d.mois, d.montant
+            SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
             WHERE d.annee = ?
-            AND (d.code_analytique IN ({placeholders}) OR d.compte_num IN ({placeholders}))
-        ''', [annee] + codes + codes).fetchall()
+            AND EXISTS (
+                SELECT 1 FROM comptabilite_comptes c
+                WHERE {compte_filter}
+                AND (d.compte_num LIKE c.compte_num || '%'
+                     OR d.code_analytique = c.compte_num)
+            )
+        ''', params).fetchall()
 
         # Regrouper par categorie
         charges = {}  # {'60': {'nom': 'Achats', 'total': 0, 'comptes': {}}, ...}
@@ -365,39 +364,36 @@ def api_detail_compte():
 
     conn = get_db()
     try:
-        # Recuperer les codes analytiques du filtre
-        query_parts = []
-        params = []
+        # Construire le filtre secteur/action
+        compte_filter_parts = []
+        params = [annee, compte_num]
 
         if secteur_id and action_id:
-            query_parts.append('(c.secteur_id = ? AND c.action_id = ?)')
+            compte_filter_parts.append('c.secteur_id = ? AND c.action_id = ?')
             params.extend([secteur_id, action_id])
         elif secteur_id:
-            query_parts.append('c.secteur_id = ?')
+            compte_filter_parts.append('c.secteur_id = ?')
             params.append(secteur_id)
         elif action_id:
-            query_parts.append('c.action_id = ?')
+            compte_filter_parts.append('c.action_id = ?')
             params.append(action_id)
         else:
             return jsonify({'operations': []})
 
-        comptes_analytiques = conn.execute(
-            f'SELECT compte_num FROM comptabilite_comptes c WHERE {query_parts[0]}',
-            params
-        ).fetchall()
-        codes = [c['compte_num'] for c in comptes_analytiques]
+        compte_filter = ' AND '.join(compte_filter_parts)
 
-        if not codes:
-            return jsonify({'operations': []})
-
-        placeholders = ','.join(['?' for _ in codes])
         operations = conn.execute(f'''
             SELECT d.annee, d.mois, d.libelle, d.montant
             FROM bilan_fec_donnees d
             WHERE d.annee = ? AND d.compte_num = ?
-            AND (d.code_analytique IN ({placeholders}) OR d.compte_num IN ({placeholders}))
+            AND EXISTS (
+                SELECT 1 FROM comptabilite_comptes c
+                WHERE {compte_filter}
+                AND (d.compte_num LIKE c.compte_num || '%'
+                     OR d.code_analytique = c.compte_num)
+            )
             ORDER BY d.mois
-        ''', [annee, compte_num] + codes + codes).fetchall()
+        ''', params).fetchall()
 
         result = []
         for op in operations:
