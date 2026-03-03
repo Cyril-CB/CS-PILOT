@@ -59,7 +59,11 @@ class _PostgresCompatCursor:
 
         if is_insert and not has_returning:
             # Assumes tables use 'id' as primary key (standard convention).
-            # Falls back to no RETURNING if the table uses a different PK name.
+            # Falls back to no RETURNING if the table has no 'id' column
+            # (e.g. pure junction tables with composite PKs).
+            # The exception is intentionally broad: psycopg2 raises
+            # UndefinedColumn which is a subclass of ProgrammingError;
+            # catching Exception avoids a dependency on psycopg2 error types here.
             fixed_with_ret = fixed.rstrip().rstrip(';') + ' RETURNING id'
             try:
                 if params is not None:
@@ -69,7 +73,7 @@ class _PostgresCompatCursor:
                 row = self._cur.fetchone()
                 self.lastrowid = row['id'] if row and 'id' in row else None
             except Exception:
-                # Table has no 'id' column or other issue – retry without RETURNING
+                # RETURNING id failed (no 'id' column) – retry without it
                 if params is not None:
                     self._cur.execute(fixed, params)
                 else:

@@ -82,8 +82,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 # ==================== Initialisation des extensions ====================
 csrf.init_app(app)
 limiter.init_app(app)
-# Deferred import to avoid circular dependency (models.py imports from extensions.py)
-from extensions import db as _db, migrate as _migrate
+# db and migrate are imported from extensions (already defined there);
+# they must be initialized after the app object is configured.
+from extensions import db as _db, migrate as _migrate  # noqa: E402
 _db.init_app(app)
 _migrate.init_app(app, _db, directory='flask_migrations')
 
