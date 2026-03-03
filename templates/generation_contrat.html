@@ -2,25 +2,28 @@
 {% block title %}Generation contrat{% endblock %}
 {% block content %}
 <style>
-.gc-wrap { max-width: 1200px; margin: 0 auto; }
+.gc-wrap { width: 100%; max-width: 1200px; margin: 0 auto; }
 .gc-head { margin-bottom: 1rem; }
 .gc-head p { margin: 0.35rem 0 0; color: var(--gray-500); }
 .gc-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
 .gc-tab-btn { border: 1px solid var(--gray-300); background: var(--white); }
 .gc-tab-btn.active { background: var(--primary, #1976d2); color: #fff; border-color: var(--primary, #1976d2); }
 .gc-card { background: var(--white); border: 1px solid var(--gray-200); border-radius: 10px; padding: 1rem; box-shadow: var(--shadow-sm); margin-bottom: 1rem; }
-.gc-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 0.75rem; }
+.gc-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 0.75rem; }
 .gc-subtitle { font-size: 0.95rem; color: var(--gray-500); margin: 0.2rem 0 0.9rem; }
 .gc-help { font-size: 0.86rem; color: var(--gray-600); background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 8px; padding: 0.6rem 0.75rem; margin-bottom: 0.9rem; }
 .gc-actions { margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
 [data-theme="dark"] .gc-card { background: var(--gray-800); border-color: var(--gray-600); }
 [data-theme="dark"] .gc-help { background: var(--gray-700); border-color: var(--gray-600); }
+@media (max-width: 640px) {
+    .gc-grid { grid-template-columns: 1fr; }
+}
 </style>
 
 <div class="gc-wrap">
     <div class="gc-head">
         <h1>Generation contrat</h1>
-        <p>Fusion d’un modele DOCX avec les donnees salarie/contrat puis generation du PDF.</p>
+        <p>Fusion d’un modele DOCX avec les données salarie/contrat puis generation du PDF.</p>
     </div>
 
     <div class="gc-tabs">
@@ -32,7 +35,7 @@
         <form method="POST" action="{{ url_for('generation_contrat_bp.generer_contrat') }}">
             <div class="gc-card">
                 <h3 style="margin-top:0;">Informations du contrat</h3>
-                <p class="gc-subtitle">Les noms de champs ci-dessous sont des libelles de saisie. Les etoiles sont utiles uniquement dans les modeles DOCX (ex: ***NOM***).</p>
+                <p class="gc-subtitle">Les noms de champs ci-dessous sont des libellés de saisie. Les étoiles sont utiles uniquement dans les modeles DOCX (ex: ***NOM***).</p>
                 <div class="gc-help">Placeholders DOCX supportes : ***NOM***, ***PRENOM***, ***ADRESSE***, ***DEBUT***, ***PESEE***, ***CRITERE1***...***CRITERE8***, ***BRUTM***, etc.</div>
 
                 <div class="gc-grid">
@@ -63,7 +66,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Date de debut</label>
+                        <label>Date de début</label>
                         <input type="date" name="date_debut" required>
                     </div>
                     <div class="form-group cdd-only">
@@ -93,11 +96,11 @@
                         </select>
                     </div>
                     <div class="form-group non-cee-only">
-                        <label>Duree hebdomadaire</label>
+                        <label>Durée hebdomadaire</label>
                         <input type="text" name="hebdo" placeholder="35h">
                     </div>
                     <div class="form-group">
-                        <label>Periode d’essai</label>
+                        <label>Période d’essai</label>
                         <input type="text" name="essai" placeholder="2 mois">
                     </div>
                     <div class="form-group">
@@ -139,11 +142,11 @@
             <div class="gc-card non-cee-only">
                 <h3 style="margin-top:0;">Horaires hebdomadaires</h3>
                 <div class="gc-grid">
-                    <div class="form-group"><label>Lundi</label><input name="lundi" placeholder="09h00 a 12h00 et 14h00 a 18h00"></div>
-                    <div class="form-group"><label>Mardi</label><input name="mardi" placeholder="09h00 a 12h00 et 14h00 a 18h00"></div>
-                    <div class="form-group"><label>Mercredi</label><input name="mercredi" placeholder="09h00 a 12h00 et 14h00 a 18h00"></div>
-                    <div class="form-group"><label>Jeudi</label><input name="jeudi" placeholder="09h00 a 12h00 et 14h00 a 18h00"></div>
-                    <div class="form-group"><label>Vendredi</label><input name="vendredi" placeholder="09h00 a 12h00 et 14h00 a 18h00"></div>
+                    <div class="form-group"><label>Lundi</label><input name="lundi" placeholder="09h00 à 12h00 et 14h00 à 18h00"></div>
+                    <div class="form-group"><label>Mardi</label><input name="mardi" placeholder="09h00 à 12h00 et 14h00 à 18h00"></div>
+                    <div class="form-group"><label>Mercredi</label><input name="mercredi" placeholder="09h00 à 12h00 et 14h00 à 18h00"></div>
+                    <div class="form-group"><label>Jeudi</label><input name="jeudi" placeholder="09h00 à 12h00 et 14h00 à 18h00"></div>
+                    <div class="form-group"><label>Vendredi</label><input name="vendredi" placeholder="09h00 à 12h00 et 14h00 à 18h00"></div>
                 </div>
             </div>
 

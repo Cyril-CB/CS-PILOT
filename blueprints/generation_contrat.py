@@ -108,6 +108,12 @@ def _get_critere_points(poste_row):
     return points
 
 
+def _format_montant(value):
+    if value is None:
+        return ''
+    return str(int(value) if value.is_integer() else value)
+
+
 @generation_contrat_bp.route('/generation_contrat')
 @login_required
 def generation_contrat():
@@ -341,10 +347,8 @@ def generer_contrat():
         'HEBDO': request.form.get('hebdo', '').strip(),
         'ESSAI': request.form.get('essai', '').strip(),
         'LIEU': ', '.join([lr['nom'] for lr in lieux_rows]),
-        'SOCLE': str(int(socle) if socle.is_integer() else socle),
-        'BRUTM': '' if type_contrat == 'CEE' else (
-            str(int(brutm) if brutm is not None and brutm.is_integer() else brutm) if brutm is not None else ''
-        ),
+        'SOCLE': _format_montant(socle),
+        'BRUTM': '' if type_contrat == 'CEE' else _format_montant(brutm),
         'PESEE': str(poste['total_points']) if poste else '',
         'ANCIENNETE': request.form.get('anciennete', '').strip(),
         'FORFAIT': request.form.get('forfait', '').strip(),
