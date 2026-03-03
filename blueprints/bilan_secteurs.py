@@ -512,7 +512,7 @@ NOMS_CATEGORIES = {
 
 def _fmt(n):
     """Formate un nombre en style français : 1 234,56."""
-    return f'{n:,.2f}'.replace(',', '\u202f').replace('.', ',')
+    return f'{n:,.2f}'.replace(',', '\xa0').replace('.', ',')
 
 
 @bilan_secteurs_bp.route('/api/bilan/export-pdf')
