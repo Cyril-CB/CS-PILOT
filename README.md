@@ -10,7 +10,7 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 
 ## Fonctionnalites
 
-### Gestion des temps
+### Gestion des temps de travail
 - Planning theorique par salarie (periodes scolaires / vacances)
 - Saisie des heures reelles et heures supplementaires
 - Calcul automatique du solde de recuperation
