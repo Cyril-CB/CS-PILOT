@@ -290,7 +290,7 @@ def generer_contrat():
         '!SECURITESOCIALE!': salarie['numero_secu'] or '',
         '!TYPECONTRAT!': type_contrat_label,
         '!DEBUT!': _format_date(request.form.get('date_debut', '')),
-        '!FIN!': _format_date(request.form.get('date_fin', '')) if is_cdd else '',
+        '!FIN!': _format_date(request.form.get('date_fin', '')) if (is_cdd or is_cee) else '',
         '!REMPLACE!': request.form.get('remplace', '').strip() if is_cdd_remplacement else '',
         '!POSTE!': poste['intitule'] if poste else '',
         '!RESPONSABLE!': f"{responsable['nom']} {responsable['prenom']}" if responsable else '',

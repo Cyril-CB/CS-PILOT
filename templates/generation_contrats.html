@@ -103,7 +103,7 @@
                                 <label for="date_debut">Date de début <span class="required">*</span></label>
                                 <input type="date" name="date_debut" id="date_debut" required>
                             </div>
-                            <div class="form-group cdd-field" style="display:none;">
+                            <div class="form-group cdd-or-cee-field" style="display:none;">
                                 <label for="date_fin">Date de fin</label>
                                 <input type="date" name="date_fin" id="date_fin">
                             </div>
@@ -210,6 +210,18 @@
                             <div class="form-group">
                                 <label for="jours">Nombre de jours</label>
                                 <input type="number" name="jours" id="jours" min="0" step="0.5" style="width: 100px;">
+                            </div>
+                            <div class="form-group">
+                                <label>Lieu(x) de travail <small style="font-weight:normal;">(max 3)</small></label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                    {% for l in lieux %}
+                                    <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: normal; font-size: 0.9rem;">
+                                        <input type="checkbox" name="lieux_ids" value="{{ l.id }}"> {{ l.nom }}
+                                        <span style="font-size: 0.8rem; color: var(--gray-500);">({{ l.adresse }})</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <button type="button" class="btn btn-sm" onclick="toggleModal('modal-lieu')">+ Ajouter un lieu</button>
                             </div>
                         </div>
 
@@ -330,7 +342,7 @@
                         ('!SECURITESOCIALE!', 'N° de sécurité sociale'),
                         ('!TYPECONTRAT!', 'Type de contrat'),
                         ('!DEBUT!', 'Date de début'),
-                        ('!FIN!', 'Date de fin (CDD)'),
+                        ('!FIN!', 'Date de fin (CDD et CEE)'),
                         ('!REMPLACE!', 'Personne remplacée (CDD remplacement)'),
                         ('!POSTE!', 'Poste occupé'),
                         ('!RESPONSABLE!', 'Responsable'),
@@ -466,6 +478,9 @@ function updateContratType() {
     var isCddRempl = (val === 'CDD_REMPLACEMENT');
 
     // Blocs conditionnels
+    document.querySelectorAll('.cdd-or-cee-field').forEach(function(el) {
+        el.style.display = (isCdd || isCee) ? '' : 'none';
+    });
     document.querySelectorAll('.cdd-field').forEach(function(el) {
         el.style.display = isCdd ? '' : 'none';
     });
