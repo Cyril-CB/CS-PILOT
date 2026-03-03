@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Plan comptable analytique - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2>📊 Plan comptable analytique</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="document.getElementById('importModal').style.display='flex'">📥 Importer TXT</button>
+        <button class="btn btn-primary" onclick="document.getElementById('ajoutModal').style.display='flex'">➕ Ajouter un compte</button>
+    </div>
+</div>
+
+{% if comptes %}
+<div class="table-responsive" style="margin-top:16px;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>N° Compte</th>
+                <th>Libellé</th>
+                <th>Secteur</th>
+                <th>Action</th>
+                <th style="width:60px;"></th>
+            </tr>
+        </thead>
+        <tbody id="comptesBody">
+            {% for c in comptes %}
+            <tr data-id="{{ c.id }}">
+                <td><strong>{{ c.compte_num }}</strong></td>
+                <td>{{ c.libelle }}</td>
+                <td>
+                    <select class="form-select" onchange="updateAffectation({{ c.id }}, this.parentElement.parentElement)" data-field="secteur">
+                        <option value="">— Aucun —</option>
+                        {% for s in secteurs %}
+                        <option value="{{ s.id }}" {% if c.secteur_id == s.id %}selected{% endif %}>{{ s.nom }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <div style="display:flex;gap:4px;align-items:center;">
+                        <select class="form-select" onchange="updateAffectation({{ c.id }}, this.parentElement.parentElement.parentElement)" data-field="action" style="flex:1;">
+                            <option value="">— Aucune —</option>
+                            {% for a in actions %}
+                            <option value="{{ a.id }}" {% if c.action_id == a.id %}selected{% endif %}>{{ a.nom }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn-icon" title="Nouvelle action" onclick="promptNouvelleAction({{ c.id }}, this.parentElement.querySelector('select'))">➕</button>
+                    </div>
+                </td>
+                <td>
+                    <button class="btn-icon btn-danger" title="Supprimer" onclick="supprimerCompte({{ c.id }}, '{{ c.compte_num }}')">🗑️</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state" style="text-align:center;padding:40px;margin-top:24px;">
+    <p style="font-size:1.2em;color:var(--text-muted);">Aucun compte analytique enregistré.</p>
+    <p>Importez un fichier TXT tabulé ou ajoutez des comptes manuellement.</p>
+</div>
+{% endif %}
+
+{# ── Modal import TXT ── #}
+<div id="importModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header">
+            <h3>📥 Importer un plan comptable (TXT tabulé)</h3>
+            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
+            <p>Format attendu : fichier texte avec tabulation entre les colonnes.</p>
+            <p><em>Colonne 1 : Numéro de compte &nbsp;|&nbsp; Colonne 2 : Libellé</em></p>
+            <form id="importForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Fichier TXT</label>
+                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
+                </div>
+                <div style="margin-top:16px;text-align:right;">
+                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{# ── Modal ajout compte ── #}
+<div id="ajoutModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:450px;">
+        <div class="modal-header">
+            <h3>➕ Ajouter un compte</h3>
+            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
+            <form id="ajoutForm">
+                <div class="form-group">
+                    <label>Numéro de compte</label>
+                    <input type="text" id="newCompteNum" class="form-control" placeholder="Ex: 601000" required>
+                </div>
+                <div class="form-group" style="margin-top:12px;">
+                    <label>Libellé</label>
+                    <input type="text" id="newCompteLib" class="form-control" placeholder="Ex: Achats matières premières" required>
+                </div>
+                <div style="margin-top:16px;text-align:right;">
+                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Ajouter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Import TXT
+document.getElementById('importForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var fd = new FormData(this);
+    fetch('/api/comptabilite/import-txt', {method: 'POST', body: fd})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload();
+            } else {
+                alert(data.error || 'Erreur lors de l\'import.');
+            }
+        })
+        .catch(() => alert('Erreur réseau.'));
+});
+
+// Ajout compte
+document.getElementById('ajoutForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var num = document.getElementById('newCompteNum').value.trim();
+    var lib = document.getElementById('newCompteLib').value.trim();
+    if (!num || !lib) return;
+
+    fetch('/api/comptabilite/comptes', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({compte_num: num, libelle: lib})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Erreur.');
+        }
+    })
+    .catch(() => alert('Erreur réseau.'));
+});
+
+// Mise a jour affectation secteur/action
+function updateAffectation(compteId, row) {
+    var secteurSel = row.querySelector('select[data-field="secteur"]');
+    var actionSel = row.querySelector('select[data-field="action"]');
+    var secteurId = secteurSel ? secteurSel.value : '';
+    var actionId = actionSel ? actionSel.value : '';
+
+    fetch('/api/comptabilite/comptes/' + compteId + '/affectation', {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({secteur_id: secteurId, action_id: actionId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) alert(data.error || 'Erreur.');
+    })
+    .catch(() => alert('Erreur réseau.'));
+}
+
+// Suppression compte
+function supprimerCompte(id, num) {
+    if (!confirm('Supprimer le compte ' + num + ' ?')) return;
+    fetch('/api/comptabilite/comptes/' + id, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) location.reload();
+            else alert(data.error || 'Erreur.');
+        })
+        .catch(() => alert('Erreur réseau.'));
+}
+
+// Ajout d'une nouvelle action
+function promptNouvelleAction(compteId, selectEl) {
+    var nom = prompt('Nom de la nouvelle action :');
+    if (!nom || !nom.trim()) return;
+
+    fetch('/api/comptabilite/actions', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({nom: nom.trim()})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.id) {
+            // Ajouter l'option a tous les selects d'action de la page
+            document.querySelectorAll('select[data-field="action"]').forEach(function(sel) {
+                var exists = false;
+                for (var i = 0; i < sel.options.length; i++) {
+                    if (sel.options[i].value == data.id) { exists = true; break; }
+                }
+                if (!exists) {
+                    var opt = document.createElement('option');
+                    opt.value = data.id;
+                    opt.textContent = data.nom;
+                    sel.appendChild(opt);
+                }
+            });
+            selectEl.value = data.id;
+            // Sauvegarder l'affectation
+            var row = selectEl.closest('tr');
+            updateAffectation(compteId, row);
+        } else {
+            alert(data.error || 'Erreur.');
+        }
+    })
+    .catch(() => alert('Erreur réseau.'));
+}
+</script>
+{% endblock %}

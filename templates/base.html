@@ -62,6 +62,7 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salariés</a>
+                    <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
                     <a href="{{ url_for('absences_bp.absences') }}">🏥 Absences</a>
                     <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}">🤝 Bénévoles</a>
                     <a href="{{ url_for('pesee_alisfa_bp.pesee_alisfa') }}">⚖️ Pesée ALISFA</a>
@@ -80,6 +81,16 @@
                     <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
+                    <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}">📊 Bilan secteurs/actions</a>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
+                    <span>🧮 Comptable</span><span class="sidebar-arrow">&#9662;</span>
+                </button>
+                <div class="sidebar-section-menu">
+                    <a href="{{ url_for('comptabilite_analytique_bp.plan_comptable_analytique') }}">📊 Plan comptable analytique</a>
+                    <a href="{{ url_for('plan_comptable_general_bp.plan_comptable_general') }}">📒 Plan comptable général</a>
                 </div>
             </div>
             <div class="sidebar-section">
@@ -152,6 +163,7 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salariés</a>
+                    <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
                     <a href="{{ url_for('absences_bp.absences') }}">🏥 Absences</a>
                     <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}">🤝 Bénévoles</a>
                     <a href="{{ url_for('pesee_alisfa_bp.pesee_alisfa') }}">⚖️ Pesée ALISFA</a>
@@ -170,6 +182,16 @@
                     <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
+                    <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}">📊 Bilan secteurs/actions</a>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
+                    <span>🧮 Comptable</span><span class="sidebar-arrow">&#9662;</span>
+                </button>
+                <div class="sidebar-section-menu">
+                    <a href="{{ url_for('comptabilite_analytique_bp.plan_comptable_analytique') }}">📊 Plan comptable analytique</a>
+                    <a href="{{ url_for('plan_comptable_general_bp.plan_comptable_general') }}">📒 Plan comptable général</a>
                 </div>
             </div>
             <div class="sidebar-section">

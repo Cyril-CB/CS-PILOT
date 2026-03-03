@@ -42,6 +42,8 @@ ALL_MIGRATION_VERSIONS = [
     ('0021', 'Ajout epargne tresorerie'),
     ('0022', 'Module comptable factures'),
     ('0023', 'Archivage exportations ecritures'),
+    ('0024', 'Ajout module generation contrats'),
+    ('0026', 'Module comptabilite analytique'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -88,6 +90,9 @@ def init_db():
             pesee INTEGER,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
+            adresse TEXT,
+            date_naissance TEXT,
+            numero_secu TEXT,
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
             FOREIGN KEY (responsable_id) REFERENCES users(id)
         )
@@ -897,6 +902,136 @@ def init_db():
             created_by INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des modeles de contrats (DOCX) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS modeles_contrats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            fichier_path TEXT NOT NULL,
+            fichier_nom TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des lieux de travail =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS lieux_travail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            adresse TEXT NOT NULL,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des forfaits CEE =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS forfaits_cee (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            montant REAL NOT NULL,
+            condition TEXT,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des contrats generes (dernier contrat par salarie) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_generes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            fichier_path TEXT NOT NULL,
+            fichier_nom TEXT NOT NULL,
+            type_contrat TEXT,
+            created_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Tables comptabilite analytique (migration 0026) =====
+
+    # Actions analytiques (liste libre, ajoutables par l'utilisateur)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS comptabilite_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Plan comptable general (comptes saisis ou importes)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS plan_comptable_general (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL UNIQUE,
+            libelle TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Plan comptable analytique (comptes saisis ou importes)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS comptabilite_comptes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL UNIQUE,
+            libelle TEXT NOT NULL,
+            secteur_id INTEGER,
+            action_id INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
+            FOREIGN KEY (action_id) REFERENCES comptabilite_actions(id)
+        )
+    ''')
+
+    # Imports FEC pour le bilan secteurs/actions
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bilan_fec_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fichier_nom TEXT NOT NULL,
+            annee INTEGER NOT NULL,
+            nb_ecritures INTEGER DEFAULT 0,
+            importe_par INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (importe_par) REFERENCES users(id)
+        )
+    ''')
+
+    # Donnees FEC pour le bilan (charges 6x, produits 7x avec code analytique)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bilan_fec_donnees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL,
+            libelle TEXT,
+            code_analytique TEXT,
+            annee INTEGER NOT NULL,
+            mois INTEGER NOT NULL,
+            montant REAL NOT NULL DEFAULT 0,
+            import_id INTEGER,
+            FOREIGN KEY (import_id) REFERENCES bilan_fec_imports(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Taux de logistique par annee
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bilan_taux_logistique (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL UNIQUE,
+            taux_site1 REAL DEFAULT 0,
+            taux_site2 REAL DEFAULT 0,
+            taux_global REAL DEFAULT 0,
+            taux_selectionne TEXT DEFAULT 'global',
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 

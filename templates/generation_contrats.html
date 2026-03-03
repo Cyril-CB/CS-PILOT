@@ -1,0 +1,632 @@
+{% extends "base.html" %}
+
+{% block title %}Génération de contrats{% endblock %}
+
+{% block content %}
+<div class="gen-contrats-page">
+    <h1>Génération de contrats</h1>
+    <p class="subtitle">Créer et gérer les modèles de contrats de travail</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-messages" style="margin-bottom: 1rem;">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}" style="padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.5rem;
+             background: {% if category == 'success' %}#d4edda{% elif category == 'error' %}#f8d7da{% else %}#d1ecf1{% endif %};
+             color: {% if category == 'success' %}#155724{% elif category == 'error' %}#721c24{% else %}#0c5460{% endif %};">
+            {{ message }}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <!-- Onglets -->
+    <div class="tabs-container">
+        <div class="tabs-header" style="display: flex; border-bottom: 2px solid var(--primary, #1976d2); margin-bottom: 1.5rem;">
+            <button class="tab-btn {% if onglet == '1' %}active{% endif %}" onclick="switchTab('1')"
+                    id="tab-btn-1" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer;
+                    font-size: 1rem; font-weight: 600; border-bottom: 3px solid {% if onglet == '1' %}var(--primary, #1976d2){% else %}transparent{% endif %};
+                    margin-bottom: -2px; color: {% if onglet == '1' %}var(--primary, #1976d2){% else %}inherit{% endif %};">
+                📝 Nouveau contrat
+            </button>
+            <button class="tab-btn {% if onglet == '2' %}active{% endif %}" onclick="switchTab('2')"
+                    id="tab-btn-2" style="padding: 0.75rem 1.5rem; border: none; background: none; cursor: pointer;
+                    font-size: 1rem; font-weight: 600; border-bottom: 3px solid {% if onglet == '2' %}var(--primary, #1976d2){% else %}transparent{% endif %};
+                    margin-bottom: -2px; color: {% if onglet == '2' %}var(--primary, #1976d2){% else %}inherit{% endif %};">
+                📁 Modèles DOCX
+            </button>
+        </div>
+
+        <!-- ═══ ONGLET 1 : Formulaire de génération ═══ -->
+        <div id="tab-content-1" class="tab-content" {% if onglet != '1' %}style="display:none"{% endif %}>
+            <form method="POST" action="{{ url_for('generation_contrats_bp.generer_contrat') }}" id="form-generation">
+
+                <div class="grid-2col" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+
+                    <!-- Colonne gauche -->
+                    <div>
+                        <!-- Salarié -->
+                        <div class="form-card">
+                            <h3 class="form-card-title">👤 Salarié</h3>
+                            <div class="form-group">
+                                <label for="user_id">Salarié <span class="required">*</span></label>
+                                <select name="user_id" id="user_id" required onchange="chargerInfosSalarie()">
+                                    <option value="">-- Choisir un salarié --</option>
+                                    {% for s in salaries %}
+                                    <option value="{{ s.id }}"
+                                        data-nom="{{ s.nom }}"
+                                        data-prenom="{{ s.prenom }}"
+                                        data-adresse="{{ s.adresse or '' }}"
+                                        data-naissance="{{ s.date_naissance or '' }}"
+                                        data-secu="{{ s.numero_secu or '' }}"
+                                        {% if preselect_user_id == s.id %}selected{% endif %}>
+                                        {{ s.nom }} {{ s.prenom }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div id="salarie-infos" style="font-size: 0.88rem; color: var(--gray-600); display: none;
+                                 background: var(--gray-50, #f8f9fa); padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem;">
+                                <div><strong>Adresse :</strong> <span id="info-adresse">—</span></div>
+                                <div><strong>Date de naissance :</strong> <span id="info-naissance">—</span></div>
+                                <div><strong>N° Sécu :</strong> <span id="info-secu">—</span></div>
+                            </div>
+                        </div>
+
+                        <!-- Type de contrat + modèle -->
+                        <div class="form-card">
+                            <h3 class="form-card-title">📋 Contrat</h3>
+                            <div class="form-group">
+                                <label for="type_contrat">Type de contrat <span class="required">*</span></label>
+                                <select name="type_contrat" id="type_contrat" required onchange="updateContratType()">
+                                    {% for code, label in types_contrat %}
+                                    <option value="{{ code }}">{{ label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="modele_id">Modèle DOCX <span class="required">*</span></label>
+                                <select name="modele_id" id="modele_id" required>
+                                    <option value="">-- Choisir un modèle --</option>
+                                    {% for m in modeles %}
+                                    <option value="{{ m.id }}">{{ m.nom }}</option>
+                                    {% endfor %}
+                                </select>
+                                {% if not modeles %}
+                                <p style="font-size: 0.85rem; color: var(--danger, #dc3545); margin-top: 0.25rem;">
+                                    ⚠️ Aucun modèle disponible. Allez dans l'onglet 2 pour en uploader.
+                                </p>
+                                {% endif %}
+                            </div>
+                            <div class="form-group">
+                                <label for="date_debut">Date de début <span class="required">*</span></label>
+                                <input type="date" name="date_debut" id="date_debut" required>
+                            </div>
+                            <div class="form-group cdd-or-cee-field" style="display:none;">
+                                <label for="date_fin">Date de fin</label>
+                                <input type="date" name="date_fin" id="date_fin">
+                            </div>
+                            <div class="form-group cdd-remplacement-field" style="display:none;">
+                                <label for="remplace">Personne remplacée</label>
+                                <input type="text" name="remplace" id="remplace" placeholder="Prénom NOM">
+                            </div>
+                        </div>
+
+                        <!-- Poste et responsable -->
+                        <div class="form-card">
+                            <h3 class="form-card-title">🏢 Poste &amp; Responsable</h3>
+                            <div class="form-group">
+                                <label for="poste_id">Poste occupé</label>
+                                <select name="poste_id" id="poste_id" onchange="afficherPesee()">
+                                    <option value="">-- Choisir un poste --</option>
+                                    {% for p in postes %}
+                                    <option value="{{ p.id }}"
+                                        data-pesee="{{ p.total_points or '' }}"
+                                        data-critere1="{{ p.formation_niveau or '' }}"
+                                        data-critere2="{{ p.complexite_niveau or '' }}"
+                                        data-critere3="{{ p.autonomie_niveau or '' }}"
+                                        data-critere4="{{ p.relationnel_niveau or '' }}"
+                                        data-critere5="{{ p.finances_niveau or '' }}"
+                                        data-critere6="{{ p.rh_niveau or '' }}"
+                                        data-critere7="{{ p.securite_niveau or '' }}"
+                                        data-critere8="{{ p.projet_niveau or '' }}">
+                                        {{ p.intitule }} ({{ p.total_points or 0 }} pts)
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div id="pesee-display" style="display:none; background: var(--gray-50, #f8f9fa);
+                                 padding: 0.75rem; border-radius: 6px; margin-top: 0.5rem; font-size: 0.88rem;">
+                                <strong>Pesée :</strong> <span id="pesee-total">—</span> pts
+                                <div id="criteres-detail" style="margin-top: 0.5rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.25rem;"></div>
+                            </div>
+                            <div class="form-group">
+                                <label for="responsable_id">Responsable</label>
+                                <select name="responsable_id" id="responsable_id">
+                                    <option value="">-- Choisir un responsable --</option>
+                                    {% for r in responsables %}
+                                    <option value="{{ r.id }}">{{ r.nom }} {{ r.prenom }} ({{ r.profil }})</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Colonne droite -->
+                    <div>
+                        <!-- Conditions de travail (sauf CEE) -->
+                        <div class="form-card non-cee-block">
+                            <h3 class="form-card-title">⏱️ Conditions de travail</h3>
+                            <div class="form-group">
+                                <label for="hebdo">Durée hebdomadaire (heures)</label>
+                                <input type="text" name="hebdo" id="hebdo" placeholder="Ex : 35h00">
+                            </div>
+                            <div class="form-group">
+                                <label for="essai">Durée période d'essai</label>
+                                <input type="text" name="essai" id="essai" placeholder="Ex : 2 mois">
+                            </div>
+                            <div class="form-group">
+                                <label>Lieu(x) de travail <small style="font-weight:normal;">(max 3)</small></label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                    {% for l in lieux %}
+                                    <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: normal; font-size: 0.9rem;">
+                                        <input type="checkbox" name="lieux_ids" value="{{ l.id }}"> {{ l.nom }}
+                                        <span style="font-size: 0.8rem; color: var(--gray-500);">({{ l.adresse }})</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <button type="button" class="btn btn-sm" onclick="toggleModal('modal-lieu')">+ Ajouter un lieu</button>
+                            </div>
+                            <div class="form-group">
+                                <label for="salaire_socle">Salaire socle (€)</label>
+                                <input type="number" name="salaire_socle" id="salaire_socle"
+                                       value="{{ salaire_socle }}" step="1" min="0" style="width: 140px;">
+                                <span style="font-size: 0.8rem; color: var(--gray-500); margin-left: 0.5rem;">Valeur mémorisée pour les prochains contrats</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="anciennete">Reprise ancienneté (années)</label>
+                                <input type="number" name="anciennete" id="anciennete" min="0" step="0.5" style="width: 100px;">
+                            </div>
+                            <div class="form-group">
+                                <label for="brut_mensuel">Brut mensuel (€)</label>
+                                <input type="text" name="brut_mensuel" id="brut_mensuel" placeholder="Ex : 1 800,00">
+                            </div>
+                        </div>
+
+                        <!-- Champs CEE uniquement -->
+                        <div class="form-card cee-block" style="display:none;">
+                            <h3 class="form-card-title">🎫 Paramètres CEE</h3>
+                            <div class="form-group">
+                                <label for="forfait_id">Forfait</label>
+                                <select name="forfait_id" id="forfait_id">
+                                    <option value="">-- Choisir un forfait --</option>
+                                    {% for f in forfaits_cee %}
+                                    <option value="{{ f.id }}">{{ f.montant }} €{% if f.condition %} — {{ f.condition }}{% endif %}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="button" class="btn btn-sm" style="margin-top: 0.4rem;" onclick="toggleModal('modal-forfait')">+ Ajouter un forfait</button>
+                            </div>
+                            <div class="form-group">
+                                <label for="jours">Nombre de jours</label>
+                                <input type="number" name="jours" id="jours" min="0" step="0.5" style="width: 100px;">
+                            </div>
+                            <div class="form-group">
+                                <label>Lieu(x) de travail <small style="font-weight:normal;">(max 3)</small></label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                                    {% for l in lieux %}
+                                    <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: normal; font-size: 0.9rem;">
+                                        <input type="checkbox" name="lieux_ids" value="{{ l.id }}"> {{ l.nom }}
+                                        <span style="font-size: 0.8rem; color: var(--gray-500);">({{ l.adresse }})</span>
+                                    </label>
+                                    {% endfor %}
+                                </div>
+                                <button type="button" class="btn btn-sm" onclick="toggleModal('modal-lieu')">+ Ajouter un lieu</button>
+                            </div>
+                        </div>
+
+                        <!-- Horaires (sauf CEE) -->
+                        <div class="form-card non-cee-block">
+                            <h3 class="form-card-title">🕐 Horaires</h3>
+                            <p style="font-size: 0.85rem; color: var(--gray-500); margin-bottom: 0.75rem;">
+                                Ex : 09h00 à 12h00 et 14h00 à 18h00
+                            </p>
+                            {% for jour in ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'] %}
+                            <div class="form-group" style="display: flex; align-items: center; gap: 0.75rem;">
+                                <label style="min-width: 70px; margin: 0; text-transform: capitalize;">{{ jour }}</label>
+                                <input type="text" name="horaire_{{ jour }}" id="horaire_{{ jour }}"
+                                       placeholder="Ex : 09h00 à 12h00 et 14h00 à 18h00" style="flex: 1;">
+                            </div>
+                            {% endfor %}
+                        </div>
+
+                        <!-- Re-téléchargement -->
+                        {% if preselect_user_id and dernier_contrat %}
+                        <div class="form-card" style="border: 1px solid var(--primary, #1976d2);">
+                            <h3 class="form-card-title">📥 Dernier contrat généré</h3>
+                            <p style="font-size: 0.88rem; margin-bottom: 0.75rem;">
+                                <strong>{{ dernier_contrat.fichier_nom }}</strong><br>
+                                <span style="color: var(--gray-500);">{{ dernier_contrat.created_at[:10] if dernier_contrat.created_at else '' }}</span>
+                            </p>
+                            <a href="{{ url_for('generation_contrats_bp.retelecharger_contrat', user_id=preselect_user_id) }}"
+                               class="btn btn-sm">📥 Re-télécharger</a>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem; text-align: center;">
+                    <button type="submit" class="btn btn-primary btn-lg" id="btn-generer">
+                        📄 Générer le contrat DOCX
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ═══ ONGLET 2 : Modèles DOCX ═══ -->
+        <div id="tab-content-2" class="tab-content" {% if onglet != '2' %}style="display:none"{% endif %}>
+
+            <!-- Upload nouveau modèle -->
+            <div class="form-card">
+                <h3 class="form-card-title">⬆️ Uploader un nouveau modèle</h3>
+                <p style="font-size: 0.88rem; color: var(--gray-600); margin-bottom: 1rem;">
+                    Les modèles sont des fichiers <strong>.docx</strong> contenant des champs de type
+                    <code>!NOM!</code>, <code>!PRENOM!</code>, <code>!ADRESSE!</code>, etc.
+                    (voir liste complète ci-dessous).
+                </p>
+                <form method="POST" action="{{ url_for('generation_contrats_bp.upload_modele') }}" enctype="multipart/form-data">
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                        <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                            <label for="nom_modele">Nom du modèle <span class="required">*</span></label>
+                            <input type="text" name="nom_modele" id="nom_modele" placeholder="Ex : CDI Temps plein" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="fichier_modele">Fichier .docx <span class="required">*</span></label>
+                            <input type="file" name="fichier_modele" id="fichier_modele" accept=".docx" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">⬆️ Uploader</button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Liste des modèles -->
+            <div class="form-card">
+                <h3 class="form-card-title">📋 Modèles disponibles</h3>
+                {% if modeles %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Fichier</th>
+                            <th>Ajouté le</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in modeles %}
+                        <tr>
+                            <td><strong>{{ m.nom }}</strong></td>
+                            <td style="font-size: 0.85rem; color: var(--gray-600);">{{ m.fichier_nom }}</td>
+                            <td style="font-size: 0.85rem;">{{ m.created_at[:10] if m.created_at else '' }}</td>
+                            <td style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                                <a href="{{ url_for('generation_contrats_bp.telecharger_modele', modele_id=m.id) }}"
+                                   class="btn btn-sm">📥 Télécharger</a>
+                                <form method="POST" action="{{ url_for('generation_contrats_bp.remplacer_modele', modele_id=m.id) }}"
+                                      enctype="multipart/form-data" style="display: inline-flex; gap: 0.4rem; align-items: center;">
+                                    <input type="file" name="fichier_modele" accept=".docx" required style="max-width: 180px; font-size: 0.8rem;">
+                                    <button type="submit" class="btn btn-sm btn-warning">🔄 Remplacer</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('generation_contrats_bp.supprimer_modele', modele_id=m.id) }}"
+                                      onsubmit="return confirm('Supprimer ce modèle ?');" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger">🗑️ Supprimer</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p style="color: var(--gray-500); font-style: italic;">Aucun modèle enregistré.</p>
+                {% endif %}
+            </div>
+
+            <!-- Liste des champs disponibles -->
+            <div class="form-card">
+                <h3 class="form-card-title">🔖 Champs disponibles dans les modèles</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.5rem; font-size: 0.88rem;">
+                    {% set champs = [
+                        ('!NOM!', 'Nom du salarié'),
+                        ('!PRENOM!', 'Prénom du salarié'),
+                        ('!ADRESSE!', 'Adresse postale'),
+                        ('!NAISSANCE!', 'Date de naissance'),
+                        ('!SECURITESOCIALE!', 'N° de sécurité sociale'),
+                        ('!TYPECONTRAT!', 'Type de contrat'),
+                        ('!DEBUT!', 'Date de début'),
+                        ('!FIN!', 'Date de fin (CDD et CEE)'),
+                        ('!REMPLACE!', 'Personne remplacée (CDD remplacement)'),
+                        ('!POSTE!', 'Poste occupé'),
+                        ('!RESPONSABLE!', 'Responsable'),
+                        ('!HEBDO!', 'Durée hebdomadaire (hors CEE)'),
+                        ('!ESSAI!', "Durée période d'essai (hors CEE)"),
+                        ('!LIEU!', 'Lieu(x) de travail'),
+                        ('!SOCLE!', 'Salaire socle (hors CEE)'),
+                        ('!PESEE!', 'Pesée totale ALISFA (hors CEE)'),
+                        ('!CRITERE1!', 'Points formation requise'),
+                        ('!CRITERE2!', "Points complexité de l'emploi"),
+                        ('!CRITERE3!', 'Points autonomie'),
+                        ('!CRITERE4!', 'Points relationnel'),
+                        ('!CRITERE5!', 'Points responsabilité financière'),
+                        ('!CRITERE6!', 'Points responsabilité RH'),
+                        ('!CRITERE7!', 'Points sécurité'),
+                        ('!CRITERE8!', 'Points gestion de projet'),
+                        ('!POSITION1!', 'Positionnement formation requise'),
+                        ('!POSITION2!', "Positionnement complexité de l'emploi"),
+                        ('!POSITION3!', 'Positionnement autonomie'),
+                        ('!POSITION4!', 'Positionnement relationnel'),
+                        ('!POSITION5!', 'Positionnement responsabilité financière'),
+                        ('!POSITION6!', 'Positionnement responsabilité RH'),
+                        ('!POSITION7!', 'Positionnement sécurité'),
+                        ('!POSITION8!', 'Positionnement gestion de projet'),
+                        ('!ANCIENNETE!', 'Reprise ancienneté (hors CEE)'),
+                        ('!BRUTM!', 'Brut mensuel (hors CEE)'),
+                        ('!FORFAIT!', 'Forfait (CEE uniquement)'),
+                        ('!JOURS!', 'Nombre de jours (CEE uniquement)'),
+                        ('!LUNDI!', 'Horaire lundi'),
+                        ('!MARDI!', 'Horaire mardi'),
+                        ('!MERCREDI!', 'Horaire mercredi'),
+                        ('!JEUDI!', 'Horaire jeudi'),
+                        ('!VENDREDI!', 'Horaire vendredi'),
+                    ] %}
+                    {% for code, desc in champs %}
+                    <div style="display: flex; gap: 0.5rem; padding: 0.3rem 0.5rem;
+                                background: var(--gray-50, #f8f9fa); border-radius: 4px;">
+                        <code style="font-size: 0.82rem; color: var(--primary, #1976d2); white-space: nowrap;">{{ code }}</code>
+                        <span style="color: var(--gray-700);">{{ desc }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal : Ajouter un lieu de travail -->
+<div id="modal-lieu" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+     background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-box" style="background: var(--bg, #fff); border-radius: 8px; padding: 1.5rem;
+         max-width: 480px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <h3 style="margin-top: 0;">Ajouter un lieu de travail</h3>
+        <form method="POST" action="{{ url_for('generation_contrats_bp.ajouter_lieu') }}">
+            <div class="form-group">
+                <label for="nom_lieu">Nom du lieu <span class="required">*</span></label>
+                <input type="text" name="nom_lieu" id="nom_lieu" placeholder="Ex : Siège social" required>
+            </div>
+            <div class="form-group">
+                <label for="adresse_lieu">Adresse <span class="required">*</span></label>
+                <textarea name="adresse_lieu" id="adresse_lieu" rows="2"
+                          placeholder="Rue, code postal, ville" required style="width: 100%;"></textarea>
+            </div>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+                <button type="button" class="btn btn-sm" onclick="toggleModal('modal-lieu')">Annuler</button>
+                <button type="submit" class="btn btn-primary btn-sm">Ajouter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal : Ajouter un forfait CEE -->
+<div id="modal-forfait" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0;
+     background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-box" style="background: var(--bg, #fff); border-radius: 8px; padding: 1.5rem;
+         max-width: 440px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+        <h3 style="margin-top: 0;">Ajouter un forfait CEE</h3>
+        <form method="POST" action="{{ url_for('generation_contrats_bp.ajouter_forfait_cee') }}">
+            <div class="form-group">
+                <label for="montant_forfait">Montant (€) <span class="required">*</span></label>
+                <input type="number" name="montant_forfait" id="montant_forfait" step="0.01" min="0"
+                       placeholder="Ex : 45.00" required>
+            </div>
+            <div class="form-group">
+                <label for="condition_forfait">Condition</label>
+                <input type="text" name="condition_forfait" id="condition_forfait"
+                       placeholder="Ex : diplômé BAFA">
+            </div>
+            <div style="display: flex; gap: 0.75rem; justify-content: flex-end;">
+                <button type="button" class="btn btn-sm" onclick="toggleModal('modal-forfait')">Annuler</button>
+                <button type="submit" class="btn btn-primary btn-sm">Ajouter</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// ─── Navigation onglets ────────────────────────────────────────────────
+function switchTab(num) {
+    document.querySelectorAll('.tab-content').forEach(function(el) {
+        el.style.display = 'none';
+    });
+    document.getElementById('tab-content-' + num).style.display = '';
+
+    document.querySelectorAll('.tab-btn').forEach(function(btn) {
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.color = 'inherit';
+    });
+    var activeBtn = document.getElementById('tab-btn-' + num);
+    activeBtn.style.borderBottomColor = 'var(--primary, #1976d2)';
+    activeBtn.style.color = 'var(--primary, #1976d2)';
+}
+
+// ─── Infos salarié ─────────────────────────────────────────────────────
+function chargerInfosSalarie() {
+    var sel = document.getElementById('user_id');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt.value) {
+        document.getElementById('salarie-infos').style.display = 'none';
+        return;
+    }
+    document.getElementById('info-adresse').textContent = opt.dataset.adresse || '—';
+    document.getElementById('info-naissance').textContent = opt.dataset.naissance || '—';
+    document.getElementById('info-secu').textContent = opt.dataset.secu || '—';
+    document.getElementById('salarie-infos').style.display = '';
+}
+
+// ─── Type de contrat ───────────────────────────────────────────────────
+function updateContratType() {
+    var val = document.getElementById('type_contrat').value;
+    var isCee = (val === 'CEE');
+    var isCdd = val.startsWith('CDD');
+    var isCddRempl = (val === 'CDD_REMPLACEMENT');
+
+    // Blocs conditionnels
+    document.querySelectorAll('.cdd-or-cee-field').forEach(function(el) {
+        el.style.display = (isCdd || isCee) ? '' : 'none';
+    });
+    document.querySelectorAll('.cdd-field').forEach(function(el) {
+        el.style.display = isCdd ? '' : 'none';
+    });
+    document.querySelectorAll('.cdd-remplacement-field').forEach(function(el) {
+        el.style.display = isCddRempl ? '' : 'none';
+    });
+    document.querySelectorAll('.non-cee-block').forEach(function(el) {
+        el.style.display = isCee ? 'none' : '';
+    });
+    document.querySelectorAll('.cee-block').forEach(function(el) {
+        el.style.display = isCee ? '' : 'none';
+    });
+}
+
+// ─── Pesée ─────────────────────────────────────────────────────────────
+var critereLabels = {{ critere_labels | tojson }};
+
+function afficherPesee() {
+    var sel = document.getElementById('poste_id');
+    var opt = sel.options[sel.selectedIndex];
+    var display = document.getElementById('pesee-display');
+    if (!opt.value) {
+        display.style.display = 'none';
+        return;
+    }
+    var pesee = opt.dataset.pesee;
+    document.getElementById('pesee-total').textContent = pesee || '—';
+
+    var detailDiv = document.getElementById('criteres-detail');
+    detailDiv.innerHTML = '';
+    for (var i = 1; i <= 8; i++) {
+        var val = opt.dataset['critere' + i];
+        var span = document.createElement('div');
+        span.style.cssText = 'background: var(--gray-100, #e8e8e8); padding: 2px 6px; border-radius: 3px;';
+        span.textContent = critereLabels[i-1] + ' : ' + (val || '—');
+        detailDiv.appendChild(span);
+    }
+    display.style.display = '';
+}
+
+// ─── Modaux ────────────────────────────────────────────────────────────
+function toggleModal(id) {
+    var modal = document.getElementById(id);
+    if (modal.style.display === 'none' || modal.style.display === '') {
+        modal.style.display = 'flex';
+    } else {
+        modal.style.display = 'none';
+    }
+}
+
+// Fermer modal en cliquant en dehors
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('modal-overlay')) {
+        e.target.style.display = 'none';
+    }
+});
+
+// ─── Init ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    updateContratType();
+
+    // Afficher infos salarié si pré-sélectionné
+    var userSel = document.getElementById('user_id');
+    if (userSel && userSel.value) {
+        var opt = userSel.options[userSel.selectedIndex];
+        if (opt && opt.value) {
+            document.getElementById('info-adresse').textContent = opt.dataset.adresse || '—';
+            document.getElementById('info-naissance').textContent = opt.dataset.naissance || '—';
+            document.getElementById('info-secu').textContent = opt.dataset.secu || '—';
+            document.getElementById('salarie-infos').style.display = '';
+        }
+    }
+
+    // Prévenir soumission double
+    var form = document.getElementById('form-generation');
+    if (form) {
+        form.addEventListener('submit', function() {
+            var btn = document.getElementById('btn-generer');
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Génération en cours...';
+            }
+        });
+    }
+});
+</script>
+
+<style>
+.gen-contrats-page .form-card {
+    background: var(--gray-50, #f8f9fa);
+    border: 1px solid var(--gray-200, #e0e0e0);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+}
+.gen-contrats-page .form-card-title {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--primary, #1976d2);
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--gray-200, #e0e0e0);
+}
+.gen-contrats-page .form-group {
+    margin-bottom: 0.75rem;
+}
+.gen-contrats-page label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+.gen-contrats-page input[type="text"],
+.gen-contrats-page input[type="number"],
+.gen-contrats-page input[type="date"],
+.gen-contrats-page select,
+.gen-contrats-page textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--gray-300, #ccc);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    background: var(--bg, #fff);
+    color: inherit;
+    box-sizing: border-box;
+}
+.required { color: var(--danger, #dc3545); }
+.btn-warning {
+    background: var(--warning, #ff9800);
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+.btn-lg {
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
+}
+[data-theme="dark"] .gen-contrats-page .form-card {
+    background: var(--gray-800, #1e1e1e) !important;
+    border-color: var(--gray-600, #555) !important;
+}
+@media (max-width: 768px) {
+    .grid-2col { grid-template-columns: 1fr !important; }
+}
+</style>
+{% endblock %}

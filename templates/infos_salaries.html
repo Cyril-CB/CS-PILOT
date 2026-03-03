@@ -47,6 +47,31 @@
             <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
         </form>
 
+        <!-- Informations personnelles : adresse, naissance, secu -->
+        <form method="POST" action="{{ url_for('infos_salaries_bp.modifier_infos_personnelles') }}"
+              style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem;">
+            <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <div style="display: flex; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap;">
+                <label for="adresse" style="font-weight: 600; margin: 0; min-width: 160px; padding-top: 6px;">Adresse postale :</label>
+                <textarea id="adresse" name="adresse" rows="2" placeholder="Rue, code postal, ville"
+                          style="width: 360px; padding: 6px 10px; resize: vertical;">{{ salarie.adresse or '' }}</textarea>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <label for="date_naissance" style="font-weight: 600; margin: 0; min-width: 160px;">Date de naissance :</label>
+                <input type="date" id="date_naissance" name="date_naissance"
+                       value="{{ salarie.date_naissance or '' }}" style="padding: 6px 10px;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                <label for="numero_secu" style="font-weight: 600; margin: 0; min-width: 160px;">N° Sécurité Sociale :</label>
+                <input type="text" id="numero_secu" name="numero_secu"
+                       value="{{ salarie.numero_secu or '' }}" placeholder="1 23 45 678 901 23 45"
+                       maxlength="21" style="width: 220px; padding: 6px 10px;">
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary btn-sm">Enregistrer les infos personnelles</button>
+            </div>
+        </form>
+
         <!-- Pesee (CDI/CDD) -->
         {% set has_cdi_cdd = contrats|selectattr('type_contrat', 'in', ['CDI', 'CDD'])|list|length > 0 %}
         {% if has_cdi_cdd %}
@@ -101,6 +126,8 @@
                     <input type="file" name="fichier_contrat" id="fichier_contrat" accept=".pdf">
                 </div>
                 <button type="submit" class="btn btn-primary">Ajouter le contrat</button>
+                <a href="{{ url_for('generation_contrats_bp.generation_contrats', user_id=salarie.id) }}"
+                   class="btn btn-secondary">📄 Générer le contrat</a>
             </div>
         </form>
 
