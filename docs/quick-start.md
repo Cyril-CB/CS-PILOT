@@ -21,8 +21,8 @@ Ce guide vous accompagne pas à pas depuis l'installation jusqu'à la première 
 
 | Élément | Version minimale |
 |---|---|
-| Python | 3.8 |
-| pip | inclus avec Python 3.8+ |
+| Python | 3.14 |
+| pip | inclus avec Python 3.14+ |
 | Système | Windows 10/11, Ubuntu 20.04+, Debian 11+ |
 
 > **Réseau local** : les autres postes accèdent à l'application via `http://<IP-du-serveur>:5000`. Le PC qui héberge l'application doit rester allumé pendant les heures d'utilisation.
