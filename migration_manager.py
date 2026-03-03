@@ -12,7 +12,7 @@ import importlib.util
 from datetime import datetime
 from database import get_db
 
-MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
+MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'legacy_migrations')
 
 
 def _ensure_migration_table():

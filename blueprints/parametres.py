@@ -13,7 +13,7 @@ parametres_bp = Blueprint('parametres_bp', __name__)
 def _has_notif_column(conn):
     """Verifie si la colonne email_notifications_enabled existe."""
     cols = [row['column_name'] for row in conn.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_name='users'"
+        "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND table_schema='public'"
     ).fetchall()]
     return 'email_notifications_enabled' in cols
 

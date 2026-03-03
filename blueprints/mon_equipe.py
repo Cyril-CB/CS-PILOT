@@ -618,7 +618,7 @@ def api_save_frequentation():
 
             conn.execute('''
                 INSERT INTO frequentation_creche (secteur_id, tranche, nb_enfants, responsable_terrain, updated_by, updated_at)
-                VALUES (%s, %s, %s, %s, %s, datetime('now'))
+                VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
                 ON CONFLICT(secteur_id, tranche)
                 DO UPDATE SET nb_enfants = excluded.nb_enfants,
                               responsable_terrain = excluded.responsable_terrain,

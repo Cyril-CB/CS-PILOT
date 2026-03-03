@@ -223,9 +223,9 @@ def api_ajouter_action():
         if existing:
             return jsonify({'id': existing['id'], 'nom': nom, 'exists': True})
 
-        conn.execute('INSERT INTO comptabilite_actions (nom) VALUES (%s)', (nom,))
+        result = conn.execute('INSERT INTO comptabilite_actions (nom) VALUES (%s) RETURNING id', (nom,))
         conn.commit()
-        new_id = conn.execute('SELECT last_insert_rowid() as id').fetchone()['id']
+        new_id = result.lastrowid
         return jsonify({'id': new_id, 'nom': nom, 'success': True})
     finally:
         conn.close()

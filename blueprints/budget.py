@@ -421,11 +421,11 @@ def api_budget_save():
             if profil not in ['directeur', 'comptable']:
                 conn.close()
                 return jsonify({'error': 'Seule la direction peut créer un budget'}), 403
-            conn.execute('''
+            result = conn.execute('''
                 INSERT INTO budgets (secteur_id, annee, montant_global, cree_par, modifie_par)
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s) RETURNING id
             ''', (secteur_id, annee, float(montant_global or 0), user_id, user_id))
-            budget_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+            budget_id = result.lastrowid
 
         # Calculer le montant global effectif pour la validation
         budget_after = conn.execute(
@@ -579,8 +579,8 @@ def gestion_postes_depense():
                 flash('Sélectionnez au moins un type de secteur', 'error')
             else:
                 try:
-                    conn.execute('INSERT INTO postes_depense (nom) VALUES (%s)', (nom,))
-                    poste_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+                    result = conn.execute('INSERT INTO postes_depense (nom) VALUES (%s) RETURNING id', (nom,))
+                    poste_id = result.lastrowid
                     for ts in types_selected:
                         conn.execute('''
                             INSERT INTO postes_depense_secteur_types (poste_depense_id, type_secteur)

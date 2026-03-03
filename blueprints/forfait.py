@@ -68,7 +68,7 @@ def calendrier_forfait_jour():
     presences = conn.execute('''
         SELECT date, type_journee, commentaire
         FROM presence_forfait_jour
-        WHERE user_id = %s AND strftime('%Y', date) = %s AND strftime('%m', date) = %s
+        WHERE user_id = %s AND SUBSTRING(date, 1, 4) = %s AND SUBSTRING(date, 6, 2) = %s
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
     
     # Convertir en dictionnaire
@@ -77,7 +77,7 @@ def calendrier_forfait_jour():
     # Récupérer les jours fériés du mois
     jours_feries = conn.execute('''
         SELECT date, libelle FROM jours_feries
-        WHERE strftime('%Y', date) = %s AND strftime('%m', date) = %s
+        WHERE SUBSTRING(date, 1, 4) = %s AND SUBSTRING(date, 6, 2) = %s
     ''', (str(annee), f'{mois:02d}')).fetchall()
     
     jours_feries_dict = {f['date']: f['libelle'] for f in jours_feries}
@@ -138,7 +138,7 @@ def rapport_forfait_jour_pdf(mois, annee):
     presences = conn.execute('''
         SELECT date, type_journee, commentaire
         FROM presence_forfait_jour
-        WHERE user_id = %s AND strftime('%Y', date) = %s AND strftime('%m', date) = %s
+        WHERE user_id = %s AND SUBSTRING(date, 1, 4) = %s AND SUBSTRING(date, 6, 2) = %s
         ORDER BY date
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
     
