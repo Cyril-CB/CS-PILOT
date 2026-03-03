@@ -144,16 +144,19 @@ class TestBilanSecteurs:
         resp = auth_client.get('/bilan-secteurs', follow_redirects=True)
         assert 'Accès non autorisé' in resp.get_data(as_text=True)
 
-    def test_import_fec(self, admin_client, db):
-        """L'import FEC crée les données charges/produits."""
-        fec_content = (
-            "JournalCode\tJournalLib\tEcritureNum\tEcritureDate\tCompteNum\tCompteLib\t"
-            "CompAuxNum\tCompAuxLib\tPieceRef\tPieceDate\tEcritureLib\tDebit\tCredit\n"
-            "VE\tVentes\t001\t20250115\t701000\tVentes marchandises\tANA001\t\tF001\t20250115\tVente client\t0\t1000,50\n"
-            "HA\tAchats\t002\t20250215\t601000\tAchats matières\tANA001\t\tF002\t20250215\tAchat fournisseur\t500,25\t0\n"
+    def test_import_bi(self, admin_client, db):
+        """L'import BI crée les données charges/produits."""
+        bi_content = (
+            "Code journal\tDate de pièce\tNuméro de pièce\tNuméro de facture\t"
+            "Numéro de règlement\tNuméro de compte général\tNuméro de compte tiers\t"
+            "Intitulé compte tiers\tLibellé écriture\tLibellé du compte analytique\t"
+            "Montant Débit\tMontant Crédit\tMode de règlement\tDate d'échéance\t"
+            "Type d'écriture\tCompte analytique\tLettrage\n"
+            "VE\t15/01/2025\t001\tF001\t\t701000\t\t\tVente client\tAnalytique 1\t0\t1000,50\t\t\tNOR\tANA001\t\n"
+            "HA\t15/02/2025\t002\tF002\t\t601000\t\t\tAchat fournisseur\tAnalytique 1\t500,25\t0\t\t\tNOR\tANA001\t\n"
         )
-        data = {'fichier': (io.BytesIO(fec_content.encode('utf-8')), 'fec_2025.txt')}
-        resp = admin_client.post('/api/bilan/import-fec',
+        data = {'fichier': (io.BytesIO(bi_content.encode('utf-8')), 'export_bi_2025.txt')}
+        resp = admin_client.post('/api/bilan/import-bi',
                                  data=data, content_type='multipart/form-data')
         result = resp.get_json()
         assert result['success'] is True
@@ -166,17 +169,22 @@ class TestBilanSecteurs:
         imports = db.execute("SELECT COUNT(*) as nb FROM bilan_fec_imports").fetchone()
         assert imports['nb'] == 1
 
-    def test_import_fec_filtre_comptes(self, admin_client, db):
-        """L'import FEC ne garde que les comptes 6x et 7x."""
-        fec_content = (
-            "JournalCode\tEcritureDate\tCompteNum\tCompteLib\tCompAuxNum\tEcritureLib\tDebit\tCredit\n"
-            "VE\t20250115\t701000\tVentes\t\tVente\t0\t100\n"
-            "BQ\t20250115\t512000\tBanque\t\tVirement\t100\t0\n"
-            "HA\t20250115\t601000\tAchats\t\tAchat\t200\t0\n"
-            "OD\t20250115\t401000\tFournisseurs\t\tPaiement\t0\t200\n"
+        # Vérifier que le code analytique est bien extrait
+        row = db.execute("SELECT code_analytique FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
+        assert row['code_analytique'] == 'ANA001'
+
+    def test_import_bi_filtre_comptes(self, admin_client, db):
+        """L'import BI ne garde que les comptes 6x et 7x."""
+        bi_content = (
+            "Code journal\tDate de pièce\tNuméro de compte général\tLibellé écriture\t"
+            "Montant Débit\tMontant Crédit\tCompte analytique\n"
+            "VE\t15/01/2025\t701000\tVente\t0\t100\tANA001\n"
+            "BQ\t15/01/2025\t512000\tVirement\t100\t0\t\n"
+            "HA\t15/01/2025\t601000\tAchat\t200\t0\tANA001\n"
+            "OD\t15/01/2025\t401000\tPaiement\t0\t200\t\n"
         )
-        data = {'fichier': (io.BytesIO(fec_content.encode('utf-8')), 'fec.txt')}
-        resp = admin_client.post('/api/bilan/import-fec',
+        data = {'fichier': (io.BytesIO(bi_content.encode('utf-8')), 'bi.txt')}
+        resp = admin_client.post('/api/bilan/import-bi',
                                  data=data, content_type='multipart/form-data')
         result = resp.get_json()
         assert result['nb_ecritures'] == 2  # 701000 + 601000 seulement

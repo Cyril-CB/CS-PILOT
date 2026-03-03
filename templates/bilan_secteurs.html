@@ -5,7 +5,7 @@
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <h2>📊 Bilan secteurs / actions</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary" onclick="document.getElementById('importFecModal').style.display='flex'">📥 Importer FEC</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
         <button class="btn btn-danger" onclick="supprimerAnnee()" id="btnSuppAnnee" style="display:none;">🗑️ Supprimer données</button>
     </div>
 </div>
@@ -92,18 +92,18 @@
     </div>
 </div>
 
-{# ── Modal import FEC ── #}
-<div id="importFecModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+{# ── Modal import BI ── #}
+<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
     <div class="modal-content" style="max-width:500px;">
         <div class="modal-header">
-            <h3>📥 Importer un FEC</h3>
+            <h3>📥 Importer un export BI</h3>
             <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
         </div>
         <div class="modal-body">
-            <p>Importez un fichier FEC (CSV/TSV). Les comptes 6x (charges) et 7x (produits) seront extraits avec leur code analytique.</p>
-            <form id="importFecForm" enctype="multipart/form-data">
+            <p>Importez un export BI de la comptabilité (CSV/TSV). Les comptes 6x (charges) et 7x (produits) seront extraits avec leur compte analytique.</p>
+            <form id="importBiForm" enctype="multipart/form-data">
                 <div class="form-group">
-                    <label>Fichier FEC</label>
+                    <label>Fichier BI</label>
                     <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
                 </div>
                 <div style="margin-top:16px;text-align:right;">
@@ -143,11 +143,11 @@ function fmt(n) { return n.toLocaleString('fr-FR', {minimumFractionDigits:2, max
 
 var bilanData = null;
 
-// Import FEC
-document.getElementById('importFecForm').addEventListener('submit', function(e) {
+// Import BI
+document.getElementById('importBiForm').addEventListener('submit', function(e) {
     e.preventDefault();
     var fd = new FormData(this);
-    fetch('/api/bilan/import-fec', {method:'POST', body:fd})
+    fetch('/api/bilan/import-bi', {method:'POST', body:fd})
         .then(r => r.json())
         .then(data => {
             if (data.success) {
@@ -163,7 +163,7 @@ document.getElementById('importFecForm').addEventListener('submit', function(e) 
 // Suppression annee
 function supprimerAnnee() {
     var annee = document.getElementById('filtreAnnee').value;
-    if (!confirm('Supprimer toutes les données FEC de ' + annee + ' ? Cette action est irréversible.')) return;
+    if (!confirm('Supprimer toutes les données de ' + annee + ' ? Cette action est irréversible.')) return;
     fetch('/api/bilan/annee/' + annee, {method:'DELETE'})
         .then(r => r.json())
         .then(data => {

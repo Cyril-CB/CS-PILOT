@@ -2,8 +2,8 @@
 Blueprint bilan_secteurs_bp - Bilan secteurs/actions.
 
 Fonctionnalites :
-- Import FEC avec extraction des comptes 6x (charges) et 7x (produits)
-  avec code analytique, annee, mois, libelle, montants
+- Import BI (export comptable) avec extraction des comptes 6x (charges)
+  et 7x (produits) avec code analytique, annee, mois, libelle, montants
 - Suppression des donnees d'une annee pour reimport
 - Filtrage par annee, secteur (optionnel), action (optionnel)
 - Affichage du compte de resultat : charges a gauche, produits a droite
@@ -63,12 +63,41 @@ def bilan_secteurs():
         conn.close()
 
 
-# ── Import FEC ───────────────────────────────────────────────────────────────
+# ── Import BI (export comptable) ─────────────────────────────────────────────
 
-@bilan_secteurs_bp.route('/api/bilan/import-fec', methods=['POST'])
+def _parse_date_bi(date_str):
+    """Parse une date au format DD/MM/YYYY ou YYYYMMDD.
+
+    Retourne (annee, mois) ou None si format non reconnu.
+    """
+    date_str = date_str.strip()
+    if '/' in date_str:
+        parts = date_str.split('/')
+        if len(parts) == 3:
+            try:
+                return int(parts[2]), int(parts[1])
+            except (ValueError, IndexError):
+                return None
+    elif len(date_str) == 8 and date_str.isdigit():
+        try:
+            return int(date_str[:4]), int(date_str[4:6])
+        except (ValueError, IndexError):
+            return None
+    return None
+
+
+@bilan_secteurs_bp.route('/api/bilan/import-bi', methods=['POST'])
 @login_required
-def api_import_fec():
-    """Importe un fichier FEC pour le bilan secteurs/actions."""
+def api_import_bi():
+    """Importe un fichier BI (export comptable) pour le bilan secteurs/actions.
+
+    Colonnes attendues (separateur tabulation ou point-virgule) :
+    Code journal | Date de pièce | Numéro de pièce | Numéro de facture |
+    Numéro de règlement | Numéro de compte général | Numéro de compte tiers |
+    Intitulé compte tiers | Libellé écriture | Libellé du compte analytique |
+    Montant Débit | Montant Crédit | Mode de règlement | Date d'échéance |
+    Type d'écriture | Compte analytique | Lettrage
+    """
     if not _peut_acceder():
         return jsonify({'error': 'Accès non autorisé'}), 403
 
@@ -103,7 +132,10 @@ def api_import_fec():
         rows_to_insert = []
 
         for row in reader:
-            compte_num = (row.get('CompteNum') or '').strip()
+            # Colonnes BI
+            compte_num = (row.get('Numéro de compte général')
+                          or row.get('Numero de compte general')
+                          or '').strip()
             if not compte_num:
                 continue
 
@@ -112,21 +144,23 @@ def api_import_fec():
             if premier not in ('6', '7'):
                 continue
 
-            date_str = (row.get('EcritureDate') or '').strip()
-            if len(date_str) != 8:
+            date_str = (row.get('Date de pièce')
+                        or row.get('Date de piece')
+                        or '').strip()
+            parsed = _parse_date_bi(date_str)
+            if parsed is None:
                 continue
-
-            try:
-                annee = int(date_str[:4])
-                mois = int(date_str[4:6])
-            except (ValueError, IndexError):
-                continue
+            annee, mois = parsed
 
             if mois < 1 or mois > 12:
                 continue
 
-            debit_str = (row.get('Debit') or '0').strip().replace(',', '.')
-            credit_str = (row.get('Credit') or '0').strip().replace(',', '.')
+            debit_str = (row.get('Montant Débit')
+                         or row.get('Montant Debit')
+                         or '0').strip().replace(',', '.')
+            credit_str = (row.get('Montant Crédit')
+                          or row.get('Montant Credit')
+                          or '0').strip().replace(',', '.')
             try:
                 debit = float(debit_str) if debit_str else 0
                 credit = float(credit_str) if credit_str else 0
@@ -141,8 +175,12 @@ def api_import_fec():
             else:
                 montant = credit - debit
 
-            libelle = (row.get('EcritureLib') or row.get('CompteLib') or '').strip()
-            code_analytique = (row.get('CompAuxNum') or '').strip()
+            libelle = (row.get('Libellé écriture')
+                       or row.get('Libelle ecriture')
+                       or '').strip()
+            code_analytique = (row.get('Compte analytique')
+                               or row.get('Compte Analytique')
+                               or '').strip()
 
             if annee_val is None:
                 annee_val = annee
