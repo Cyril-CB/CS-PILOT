@@ -27,8 +27,9 @@ def test_page_generation_contrat_accessible_admin(admin_client):
     content = response.data.decode('utf-8')
     assert response.status_code == 200
     assert 'Generation contrat' in content
-    assert 'Tab 1 - Generer' in content
-    assert 'Tab 2 - Modeles DOCX' in content
+    assert 'Generer un contrat' in content
+    assert 'Modeles DOCX' in content
+    assert 'Brut mensuel (BRUTM)' in content
 
 
 def test_upload_modele_refuse_si_pas_docx(admin_client):

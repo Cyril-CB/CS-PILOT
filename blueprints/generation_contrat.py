@@ -311,10 +311,15 @@ def generer_contrat():
         return redirect(url_for('generation_contrat_bp.generation_contrat', user_id=user_id))
 
     socle_raw = request.form.get('socle', '23000').replace(',', '.').strip() or '23000'
+    brutm_raw = request.form.get('brutm', '').replace(',', '.').strip()
     try:
         socle = float(socle_raw)
     except ValueError:
         socle = 23000.0
+    try:
+        brutm = float(brutm_raw) if brutm_raw else None
+    except ValueError:
+        brutm = None
     conn.execute(
         "UPDATE contrats_settings SET salaire_socle = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
         (socle,)
@@ -337,6 +342,9 @@ def generer_contrat():
         'ESSAI': request.form.get('essai', '').strip(),
         'LIEU': ', '.join([lr['nom'] for lr in lieux_rows]),
         'SOCLE': str(int(socle) if socle.is_integer() else socle),
+        'BRUTM': '' if type_contrat == 'CEE' else (
+            str(int(brutm) if brutm is not None and brutm.is_integer() else brutm) if brutm is not None else ''
+        ),
         'PESEE': str(poste['total_points']) if poste else '',
         'ANCIENNETE': request.form.get('anciennete', '').strip(),
         'FORFAIT': request.form.get('forfait', '').strip(),
