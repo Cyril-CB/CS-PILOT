@@ -4,11 +4,12 @@ Module de generation de contrats a partir de modeles DOCX.
 """
 import os
 import re
-import html
 import zipfile
+import shutil
+import tempfile
+import subprocess
 from io import BytesIO
 from datetime import datetime
-from reportlab.pdfgen import canvas
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file
 from database import get_db
 from utils import login_required
@@ -66,31 +67,29 @@ def _replace_docx_placeholders(path, replacements):
     return out_buffer.getvalue()
 
 
-def _extract_docx_text(docx_bytes):
-    try:
-        zf = zipfile.ZipFile(BytesIO(docx_bytes), 'r')
-        xml = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-        zf.close()
-    except Exception:
-        return ''
-    parts = re.findall(r'<w:t[^>]*>(.*?)</w:t>', xml)
-    return html.unescape(' '.join(parts))
+def _convert_docx_to_pdf(docx_bytes):
+    binary = shutil.which('soffice') or shutil.which('libreoffice')
+    if not binary:
+        raise RuntimeError("LibreOffice (soffice) non installe sur le serveur.")
 
-
-def _build_pdf(text, pdf_path, title):
-    c = canvas.Canvas(pdf_path)
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(40, 800, title)
-    c.setFont("Helvetica", 10)
-    y = 780
-    for chunk in re.findall(r'.{1,110}(?:\s+|$)', text or ''):
-        c.drawString(40, y, chunk.strip())
-        y -= 14
-        if y < 50:
-            c.showPage()
-            c.setFont("Helvetica", 10)
-            y = 800
-    c.save()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        in_path = os.path.join(tmpdir, 'contrat.docx')
+        out_path = os.path.join(tmpdir, 'contrat.pdf')
+        with open(in_path, 'wb') as f:
+            f.write(docx_bytes)
+        result = subprocess.run(
+            [binary, '--headless', '--convert-to', 'pdf', '--outdir', tmpdir, in_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60,
+            check=False
+        )
+        if result.returncode != 0 or not os.path.exists(out_path):
+            message = (result.stderr or result.stdout or 'Erreur inconnue').strip()
+            raise RuntimeError(f"Echec conversion DOCX->PDF: {message}")
+        with open(out_path, 'rb') as f:
+            return f.read()
 
 
 def _get_critere_points(poste_row):
@@ -111,7 +110,43 @@ def _get_critere_points(poste_row):
 def _format_montant(value):
     if value is None:
         return ''
-    return str(int(value) if value.is_integer() else value)
+    if isinstance(value, int):
+        return str(value)
+    return str(int(value) if isinstance(value, float) and value.is_integer() else value)
+
+
+def _build_replacements(salarie, type_contrat, poste, responsable, lieux_rows, socle, brutm, form):
+    return {
+        'NOM': salarie['nom'] or '',
+        'PRENOM': salarie['prenom'] or '',
+        'ADRESSE': salarie['adresse_postale'] or '',
+        'EMAIL': salarie['email'] or '',
+        'DATE_NAISSANCE': salarie['date_naissance'] or '',
+        'NAISSANCE': salarie['date_naissance'] or '',
+        'NUMERO_SECURITE_SOCIALE': salarie['numero_securite_sociale'] or '',
+        'SECURITESOCIALE': salarie['numero_securite_sociale'] or '',
+        'SECURITE_SOCIALE': salarie['numero_securite_sociale'] or '',
+        'TYPE_CONTRAT': type_contrat,
+        'DEBUT': form.get('date_debut', '').strip(),
+        'FIN': form.get('date_fin', '').strip(),
+        'REMPLACE': form.get('remplace', '').strip(),
+        'POSTE': poste['intitule'] if poste else '',
+        'RESPONSABLE': f"{responsable['nom']} {responsable['prenom']}" if responsable else '',
+        'HEBDO': form.get('hebdo', '').strip(),
+        'ESSAI': form.get('essai', '').strip(),
+        'LIEU': ', '.join([lr['nom'] for lr in lieux_rows]),
+        'SOCLE': _format_montant(socle),
+        'BRUTM': '' if type_contrat == 'CEE' else _format_montant(brutm),
+        'PESEE': str(poste['total_points']) if poste else '',
+        'ANCIENNETE': form.get('anciennete', '').strip(),
+        'FORFAIT': form.get('forfait', '').strip(),
+        'JOURS': form.get('jours', '').strip(),
+        'LUNDI': form.get('lundi', '').strip(),
+        'MARDI': form.get('mardi', '').strip(),
+        'MERCREDI': form.get('mercredi', '').strip(),
+        'JEUDI': form.get('jeudi', '').strip(),
+        'VENDREDI': form.get('vendredi', '').strip(),
+    }
 
 
 @generation_contrat_bp.route('/generation_contrat')
@@ -331,34 +366,16 @@ def generer_contrat():
         (socle,)
     )
 
-    replacements = {
-        'NOM': salarie['nom'] or '',
-        'PRENOM': salarie['prenom'] or '',
-        'ADRESSE': salarie['adresse_postale'] or '',
-        'EMAIL': salarie['email'] or '',
-        'DATE_NAISSANCE': salarie['date_naissance'] or '',
-        'NUMERO_SECURITE_SOCIALE': salarie['numero_securite_sociale'] or '',
-        'TYPE_CONTRAT': type_contrat,
-        'DEBUT': request.form.get('date_debut', '').strip(),
-        'FIN': request.form.get('date_fin', '').strip(),
-        'REMPLACE': request.form.get('remplace', '').strip(),
-        'POSTE': poste['intitule'] if poste else '',
-        'RESPONSABLE': f"{responsable['nom']} {responsable['prenom']}" if responsable else '',
-        'HEBDO': request.form.get('hebdo', '').strip(),
-        'ESSAI': request.form.get('essai', '').strip(),
-        'LIEU': ', '.join([lr['nom'] for lr in lieux_rows]),
-        'SOCLE': _format_montant(socle),
-        'BRUTM': '' if type_contrat == 'CEE' else _format_montant(brutm),
-        'PESEE': str(poste['total_points']) if poste else '',
-        'ANCIENNETE': request.form.get('anciennete', '').strip(),
-        'FORFAIT': request.form.get('forfait', '').strip(),
-        'JOURS': request.form.get('jours', '').strip(),
-        'LUNDI': request.form.get('lundi', '').strip(),
-        'MARDI': request.form.get('mardi', '').strip(),
-        'MERCREDI': request.form.get('mercredi', '').strip(),
-        'JEUDI': request.form.get('jeudi', '').strip(),
-        'VENDREDI': request.form.get('vendredi', '').strip(),
-    }
+    replacements = _build_replacements(
+        salarie=salarie,
+        type_contrat=type_contrat,
+        poste=poste,
+        responsable=responsable,
+        lieux_rows=lieux_rows,
+        socle=socle,
+        brutm=brutm,
+        form=request.form
+    )
     replacements.update(_get_critere_points(poste))
 
     modele_path = _safe_path(MODELES_DIR, modele['fichier_path'])
@@ -369,11 +386,17 @@ def generer_contrat():
 
     _ensure_dirs()
     merged_docx = _replace_docx_placeholders(modele_path, replacements)
-    texte = _extract_docx_text(merged_docx)
+    try:
+        pdf_bytes = _convert_docx_to_pdf(merged_docx)
+    except RuntimeError as exc:
+        conn.close()
+        flash(f"Erreur conversion PDF : {exc}", 'error')
+        return redirect(url_for('generation_contrat_bp.generation_contrat', user_id=user_id))
     now = datetime.now().strftime('%Y%m%d_%H%M%S')
     pdf_name = f"contrat_{_sanitize_name(salarie['nom'])}_{_sanitize_name(salarie['prenom'])}_{now}.pdf"
     pdf_path = os.path.join(GEN_DIR, pdf_name)
-    _build_pdf(texte, pdf_path, f"Contrat {type_contrat} - {salarie['nom']} {salarie['prenom']}")
+    with open(pdf_path, 'wb') as f:
+        f.write(pdf_bytes)
 
     old = conn.execute("SELECT fichier_pdf_path FROM contrats_generes WHERE user_id = ?", (user_id,)).fetchone()
     if old:
