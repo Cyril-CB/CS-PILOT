@@ -28,6 +28,9 @@ _TEST_DB_URL = os.environ.get(
     os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot_test')
 )
 
+# Définir DATABASE_URL AVANT l'import de l'app (évite le sys.exit sur vérification de config)
+os.environ.setdefault('DATABASE_URL', _TEST_DB_URL)
+
 
 def _pg_available():
     """Vérifie si PostgreSQL est disponible."""

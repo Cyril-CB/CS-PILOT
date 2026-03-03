@@ -37,6 +37,13 @@ if ! python3 -c "import flask" &> /dev/null; then
     echo ""
 fi
 
+# Verifier psycopg2 (requis pour PostgreSQL)
+if ! python3 -c "import psycopg2" &> /dev/null; then
+    echo "[INFO] Installation des dependances PostgreSQL..."
+    pip install -r requirements.txt
+    echo ""
+fi
+
 echo "[OK] Dependances installees"
 echo ""
 
@@ -49,6 +56,36 @@ if [ -f .env ]; then
     echo ""
 fi
 
+# Verifier que DATABASE_URL est configure
+if [ -z "$DATABASE_URL" ]; then
+    echo "============================================================"
+    echo "   CONFIGURATION BASE DE DONNEES REQUISE"
+    echo "============================================================"
+    echo ""
+    echo "La variable DATABASE_URL n'est pas definie dans le fichier .env"
+    echo ""
+    echo "Cette application necessite PostgreSQL."
+    echo ""
+    echo "Etapes de configuration :"
+    echo ""
+    echo "1. Installez PostgreSQL :"
+    echo "      sudo apt install postgresql postgresql-contrib"
+    echo ""
+    echo "2. Creez la base de donnees :"
+    echo "      sudo -u postgres psql -c \"CREATE DATABASE cspilot;\""
+    echo ""
+    echo "3. Creez ou modifiez le fichier .env dans ce dossier :"
+    echo "      DATABASE_URL=postgresql://postgres:VotreMotDePasse@localhost:5432/cspilot"
+    echo "      SECRET_KEY=VotreCleSecrete"
+    echo ""
+    echo "   (Copiez le fichier .env.example comme point de depart)"
+    echo ""
+    echo "============================================================"
+    exit 1
+fi
+
+echo "[OK] DATABASE_URL configuree"
+echo ""
 echo "============================================================"
 echo "   LANCEMENT DE L'APPLICATION"
 echo "============================================================"

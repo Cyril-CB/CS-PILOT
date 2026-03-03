@@ -9,8 +9,23 @@ import psycopg2.extras
 
 def get_db():
     """Connexion à la base de données PostgreSQL."""
-    database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
-    conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    database_url = os.environ.get('DATABASE_URL', '')
+    if not database_url:
+        raise RuntimeError(
+            "DATABASE_URL n'est pas definie. "
+            "Ajoutez DATABASE_URL dans votre fichier .env. "
+            "Exemple : DATABASE_URL=postgresql://postgres:motdepasse@localhost:5432/cspilot"
+        )
+    try:
+        conn = psycopg2.connect(database_url, cursor_factory=psycopg2.extras.RealDictCursor)
+    except psycopg2.OperationalError as e:
+        raise RuntimeError(
+            f"Impossible de se connecter a PostgreSQL : {e}\n"
+            "Verifiez que :\n"
+            "  1. PostgreSQL est installe et demarre\n"
+            "  2. La variable DATABASE_URL dans .env est correcte\n"
+            "  3. La base de donnees existe (CREATE DATABASE cspilot;)"
+        ) from e
     return PsycopgConnectionWrapper(conn)
 
 

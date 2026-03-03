@@ -71,8 +71,33 @@ else:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = False
 
+# ==================== Configuration Base de Données ====================
+_db_url = os.environ.get('DATABASE_URL', '')
+if not _db_url:
+    print("=" * 60)
+    print("CONFIGURATION BASE DE DONNEES REQUISE")
+    print("=" * 60)
+    print()
+    print("La variable d'environnement DATABASE_URL n'est pas definie.")
+    print()
+    print("Cette application necessite PostgreSQL.")
+    print()
+    print("1. Installez PostgreSQL : https://www.postgresql.org/download/")
+    print()
+    print("2. Creez la base de donnees :")
+    print("   psql -U postgres -c \"CREATE DATABASE cspilot;\"")
+    print()
+    print("3. Ajoutez dans votre fichier .env :")
+    print()
+    print("   DATABASE_URL=postgresql://utilisateur:motdepasse@localhost:5432/cspilot")
+    print()
+    print("Exemple avec l'utilisateur postgres par defaut :")
+    print("   DATABASE_URL=postgresql://postgres:MonMotDePasse@localhost:5432/cspilot")
+    print()
+    print("=" * 60)
+    sys.exit(1)
+
 # ==================== Initialisation des extensions ====================
-_db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
 app.config['SQLALCHEMY_DATABASE_URI'] = _db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
