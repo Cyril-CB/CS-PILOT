@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Generation contrat{% endblock %}
+{% block content %}
+<div class="section">
+    <h1>Generation contrat</h1>
+    <div style="display:flex;gap:0.75rem;border-bottom:1px solid var(--gray-200);margin-bottom:1rem;">
+        <button type="button" class="btn tab-btn active" data-tab="tab-generate">Tab 1 - Generer</button>
+        <button type="button" class="btn tab-btn" data-tab="tab-modeles">Tab 2 - Modeles DOCX</button>
+    </div>
+
+    <div id="tab-generate" class="tab-content">
+        <form method="POST" action="{{ url_for('generation_contrat_bp.generer_contrat') }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;">
+                <div class="form-group">
+                    <label>Modele DOCX *</label>
+                    <select name="template_id" required>
+                        <option value="">-- Choisir --</option>
+                        {% for m in modeles %}
+                        <option value="{{ m.id }}">{{ m.nom_modele }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Salarie *</label>
+                    <select name="user_id" required>
+                        <option value="">-- Choisir --</option>
+                        {% for s in salaries %}
+                        <option value="{{ s.id }}" {% if selected_user_id == s.id %}selected{% endif %}>{{ s.nom }} {{ s.prenom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Type contrat *</label>
+                    <select name="type_contrat" id="type_contrat_gen" required>
+                        {% for tc in contract_types %}
+                        <option value="{{ tc }}">{{ tc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>***DEBUT***</label>
+                    <input type="date" name="date_debut" required>
+                </div>
+                <div class="form-group cdd-only">
+                    <label>***FIN***</label>
+                    <input type="date" name="date_fin">
+                </div>
+                <div class="form-group cdd-remplacement-only">
+                    <label>***REMPLACE***</label>
+                    <input type="text" name="remplace" placeholder="Personne remplacee">
+                </div>
+                <div class="form-group">
+                    <label>***POSTE***</label>
+                    <select name="poste_id">
+                        <option value="">-- Choisir --</option>
+                        {% for p in postes %}
+                        <option value="{{ p.id }}">{{ p.intitule }} ({{ p.total_points }} pts)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>***RESPONSABLE***</label>
+                    <select name="responsable_id">
+                        <option value="">-- Choisir --</option>
+                        {% for r in responsables %}
+                        <option value="{{ r.id }}">{{ r.nom }} {{ r.prenom }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group non-cee-only">
+                    <label>***HEBDO***</label>
+                    <input type="text" name="hebdo" placeholder="35h">
+                </div>
+                <div class="form-group">
+                    <label>***ESSAI***</label>
+                    <input type="text" name="essai" placeholder="2 mois">
+                </div>
+                <div class="form-group">
+                    <label>***LIEU*** (max 3)</label>
+                    <select name="lieux_ids" multiple size="3">
+                        {% for l in lieux %}
+                        <option value="{{ l.id }}">{{ l.nom }}{% if l.adresse %} - {{ l.adresse }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group non-cee-only">
+                    <label>***SOCLE***</label>
+                    <input type="number" step="0.01" name="socle" value="{{ socle }}">
+                </div>
+                <div class="form-group non-cee-only">
+                    <label>***ANCIENNETE***</label>
+                    <input type="number" step="0.01" name="anciennete" value="0">
+                </div>
+                <div class="form-group cee-only" style="display:none;">
+                    <label>***FORFAIT***</label>
+                    <select name="forfait">
+                        <option value="">-- Choisir --</option>
+                        {% for f in forfaits %}
+                        <option value="{{ f.montant }}">{{ f.montant }}{% if f.condition_label %} ({{ f.condition_label }}){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group cee-only" style="display:none;">
+                    <label>***JOURS***</label>
+                    <input type="number" step="0.5" name="jours" min="0">
+                </div>
+            </div>
+
+            <div class="section" style="margin-top:1rem;padding:0.75rem;">
+                <strong>Horaires (sauf CEE)</strong>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;margin-top:0.5rem;">
+                    <input name="lundi" placeholder="***LUNDI***">
+                    <input name="mardi" placeholder="***MARDI***">
+                    <input name="mercredi" placeholder="***MERCREDI***">
+                    <input name="jeudi" placeholder="***JEUDI***">
+                    <input name="vendredi" placeholder="***VENDREDI***">
+                </div>
+            </div>
+
+            <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary">Generer PDF</button>
+                {% if selected_user_id %}
+                <a class="btn" href="{{ url_for('generation_contrat_bp.telecharger_dernier_contrat', user_id=selected_user_id) }}">Telecharger dernier contrat</a>
+                {% endif %}
+            </div>
+        </form>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
+            <form method="POST" action="{{ url_for('generation_contrat_bp.ajouter_lieu') }}" class="section" style="padding:0.75rem;">
+                <strong>Ajouter un lieu</strong>
+                <input type="text" name="nom_lieu" placeholder="Nom du lieu" required>
+                <input type="text" name="adresse_lieu" placeholder="Adresse du lieu">
+                <button type="submit" class="btn btn-sm">Ajouter</button>
+            </form>
+            <form method="POST" action="{{ url_for('generation_contrat_bp.ajouter_forfait') }}" class="section" style="padding:0.75rem;">
+                <strong>Ajouter un forfait CEE</strong>
+                <input type="text" name="montant_forfait" placeholder="Montant (ex: 45 €)" required>
+                <input type="text" name="condition_forfait" placeholder="Condition (guide)">
+                <button type="submit" class="btn btn-sm">Ajouter</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="tab-modeles" class="tab-content" style="display:none;">
+        <form method="POST" action="{{ url_for('generation_contrat_bp.upload_modele') }}" enctype="multipart/form-data" class="section" style="padding:0.75rem;">
+            <h3>Uploader un modele DOCX</h3>
+            <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group">
+                    <label>Nom du modele</label>
+                    <input type="text" name="nom_modele" placeholder="Ex: CDI standard">
+                </div>
+                <div class="form-group">
+                    <label>Fichier DOCX *</label>
+                    <input type="file" name="fichier_modele" accept=".docx" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Envoyer</button>
+            </div>
+        </form>
+
+        <table class="data-table">
+            <thead>
+                <tr><th>Nom</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                {% for m in modeles %}
+                <tr>
+                    <td>{{ m.nom_modele }}</td>
+                    <td style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                        <a class="btn btn-sm" href="{{ url_for('generation_contrat_bp.telecharger_modele', modele_id=m.id) }}">Telecharger</a>
+                        <form method="POST" action="{{ url_for('generation_contrat_bp.upload_modele') }}" enctype="multipart/form-data" style="display:flex;gap:0.4rem;">
+                            <input type="hidden" name="modele_id" value="{{ m.id }}">
+                            <input type="hidden" name="nom_modele" value="{{ m.nom_modele }}">
+                            <input type="file" name="fichier_modele" accept=".docx" required>
+                            <button type="submit" class="btn btn-sm">Remplacer</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('generation_contrat_bp.supprimer_modele', modele_id=m.id) }}" onsubmit="return confirm('Supprimer ce modele ?');">
+                            <button type="submit" class="btn btn-danger btn-sm">Supprimer</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2">Aucun modele.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.querySelectorAll('.tab-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c){ c.style.display = 'none'; });
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).style.display = '';
+    });
+});
+
+function toggleContractFields() {
+    var v = document.getElementById('type_contrat_gen').value || '';
+    var isCee = v === 'CEE';
+    var isCdd = v.indexOf('CDD') === 0;
+    var isCddRempl = v === 'CDD de remplacement';
+    document.querySelectorAll('.cee-only').forEach(function(el){ el.style.display = isCee ? '' : 'none'; });
+    document.querySelectorAll('.non-cee-only').forEach(function(el){ el.style.display = isCee ? 'none' : ''; });
+    document.querySelectorAll('.cdd-only').forEach(function(el){ el.style.display = isCdd ? '' : 'none'; });
+    document.querySelectorAll('.cdd-remplacement-only').forEach(function(el){ el.style.display = isCddRempl ? '' : 'none'; });
+}
+document.getElementById('type_contrat_gen').addEventListener('change', toggleContractFields);
+toggleContractFields();
+</script>
+{% endblock %}

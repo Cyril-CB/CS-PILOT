@@ -21,7 +21,8 @@ class TestInitDb:
         # Tables ajoutées par les migrations, maintenant dans le schéma initial
         'variables_paie_defauts', 'variables_paie', 'contrats',
         'documents_salaries', 'prepa_paie_statut', 'conges_cloture_mensuelle',
-        'postes_alisfa', 'postes_depense', 'postes_depense_secteur_types',
+        'postes_alisfa', 'contrats_modeles', 'contrats_lieux', 'contrats_forfaits',
+        'contrats_settings', 'contrats_generes', 'postes_depense', 'postes_depense_secteur_types',
         'budgets', 'budget_lignes', 'budget_reel_lignes', 'frequentation_creche',
     ]
 

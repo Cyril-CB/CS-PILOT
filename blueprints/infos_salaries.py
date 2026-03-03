@@ -179,12 +179,15 @@ def infos_salaries():
 @infos_salaries_bp.route('/infos_salaries/email', methods=['POST'])
 @login_required
 def modifier_email():
-    """Modifier l'email d'un salarie."""
+    """Modifier les coordonnees administratives d'un salarie."""
     if not _peut_gerer():
         flash("Acces non autorise.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     user_id = request.form.get('user_id', type=int)
+    adresse_postale = request.form.get('adresse_postale', '').strip() or None
+    numero_securite_sociale = request.form.get('numero_securite_sociale', '').strip() or None
+    date_naissance = request.form.get('date_naissance', '').strip() or None
     email = request.form.get('email', '').strip() or None
 
     if not user_id:
@@ -192,11 +195,18 @@ def modifier_email():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
-    conn.execute('UPDATE users SET email = ? WHERE id = ?', (email, user_id))
+    conn.execute(
+        '''
+        UPDATE users
+        SET adresse_postale = ?, numero_securite_sociale = ?, date_naissance = ?, email = ?
+        WHERE id = ?
+        ''',
+        (adresse_postale, numero_securite_sociale, date_naissance, email, user_id)
+    )
     conn.commit()
     conn.close()
 
-    flash("Email mis a jour.", 'success')
+    flash("Coordonnees mises a jour.", 'success')
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
 

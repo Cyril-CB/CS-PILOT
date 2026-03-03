@@ -38,9 +38,18 @@
             </div>
         </div>
 
-        <!-- Email -->
+        <!-- Coordonnees -->
         <form method="POST" action="{{ url_for('infos_salaries_bp.modifier_email') }}" style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
             <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <label for="adresse_postale" style="font-weight: 600; margin: 0;">Adresse postale :</label>
+            <input type="text" id="adresse_postale" name="adresse_postale" value="{{ salarie.adresse_postale or '' }}"
+                   placeholder="Adresse postale" style="width: 320px; padding: 6px 10px;">
+            <label for="numero_securite_sociale" style="font-weight: 600; margin: 0;">N° securite sociale :</label>
+            <input type="text" id="numero_securite_sociale" name="numero_securite_sociale" value="{{ salarie.numero_securite_sociale or '' }}"
+                   placeholder="Ex: 1 99 01 75 123 456 78" style="width: 220px; padding: 6px 10px;">
+            <label for="date_naissance" style="font-weight: 600; margin: 0;">Date naissance :</label>
+            <input type="date" id="date_naissance" name="date_naissance" value="{{ salarie.date_naissance or '' }}"
+                   style="padding: 6px 10px;">
             <label for="email" style="font-weight: 600; margin: 0;">Email :</label>
             <input type="email" id="email" name="email" value="{{ salarie.email or '' }}"
                    placeholder="adresse@email.com" style="width: 300px; padding: 6px 10px;">
@@ -100,7 +109,10 @@
                     <label for="fichier_contrat">PDF du contrat</label>
                     <input type="file" name="fichier_contrat" id="fichier_contrat" accept=".pdf">
                 </div>
-                <button type="submit" class="btn btn-primary">Ajouter le contrat</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="submit" class="btn btn-primary">Ajouter le contrat</button>
+                    <a href="{{ url_for('generation_contrat_bp.generation_contrat', user_id=salarie.id) }}" class="btn">Generer le contrat</a>
+                </div>
             </div>
         </form>
 

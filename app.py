@@ -96,6 +96,7 @@ from blueprints.absences import absences_bp
 from blueprints.variables_paie import variables_paie_bp
 from blueprints.infos_salaries import infos_salaries_bp
 from blueprints.prepa_paie import prepa_paie_bp
+from blueprints.generation_contrat import generation_contrat_bp
 from blueprints.mon_equipe import mon_equipe_bp
 from blueprints.dashboard_direction import dashboard_direction_bp
 from blueprints.notifications import notifications_bp
@@ -131,6 +132,7 @@ app.register_blueprint(absences_bp)
 app.register_blueprint(variables_paie_bp)
 app.register_blueprint(infos_salaries_bp)
 app.register_blueprint(prepa_paie_bp)
+app.register_blueprint(generation_contrat_bp)
 app.register_blueprint(mon_equipe_bp)
 app.register_blueprint(dashboard_direction_bp)
 app.register_blueprint(notifications_bp)

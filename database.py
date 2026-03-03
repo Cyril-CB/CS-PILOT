@@ -42,6 +42,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0021', 'Ajout epargne tresorerie'),
     ('0022', 'Module comptable factures'),
     ('0023', 'Archivage exportations ecritures'),
+    ('0024', 'Module generation contrats'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -86,6 +87,9 @@ def init_db():
             cc_solde REAL DEFAULT 0,
             date_entree TEXT,
             pesee INTEGER,
+            adresse_postale TEXT,
+            numero_securite_sociale TEXT,
+            date_naissance TEXT,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
@@ -398,6 +402,67 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (saisi_par) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des modeles de contrats DOCX (migration 0024) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_modeles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom_modele TEXT NOT NULL,
+            fichier_path TEXT NOT NULL,
+            saisi_par INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (saisi_par) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des lieux de travail (migration 0024) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_lieux (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            adresse TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # ===== Table des forfaits CEE (migration 0024) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_forfaits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            montant TEXT NOT NULL,
+            condition_label TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # ===== Parametres generation contrats (migration 0024) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_settings (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            salaire_socle REAL NOT NULL DEFAULT 23000,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute('''
+        INSERT OR IGNORE INTO contrats_settings (id, salaire_socle)
+        VALUES (1, 23000)
+    ''')
+
+    # ===== Dernier contrat genere par salarie (migration 0024) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contrats_generes (
+            user_id INTEGER PRIMARY KEY,
+            template_id INTEGER,
+            fichier_pdf_path TEXT NOT NULL,
+            fichier_pdf_nom TEXT NOT NULL,
+            generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            generated_by INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (template_id) REFERENCES contrats_modeles(id),
+            FOREIGN KEY (generated_by) REFERENCES users(id)
         )
     ''')
 
