@@ -89,3 +89,12 @@ def upgrade(conn):
                 FOREIGN KEY (created_by) REFERENCES users(id)
             )
         ''')
+    else:
+        # Ajouter les colonnes manquantes si la table existait sans elles
+        for col, typedef in [('fichier_path', 'TEXT'), ('fichier_nom', 'TEXT')]:
+            try:
+                cursor.execute(f"SELECT {col} FROM contrats_generes LIMIT 1")  # noqa: S608
+            except Exception:
+                cursor.execute(
+                    f"ALTER TABLE contrats_generes ADD COLUMN {col} {typedef}"  # noqa: S608
+                )

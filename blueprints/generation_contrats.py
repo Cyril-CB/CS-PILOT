@@ -321,14 +321,17 @@ def generer_contrat():
 
     # Supprimer l'ancien contrat généré pour ce salarié
     conn = get_db()
-    ancien = conn.execute(
-        'SELECT fichier_path FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
-        (user_id,)
-    ).fetchone()
-    if ancien and ancien['fichier_path']:
-        ancien_chemin = os.path.join(contrats_dir, ancien['fichier_path'])
-        if _chemin_securise(ancien_chemin, contrats_dir) and os.path.exists(ancien_chemin):
-            os.remove(ancien_chemin)
+    try:
+        ancien = conn.execute(
+            'SELECT fichier_path FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
+            (user_id,)
+        ).fetchone()
+        if ancien and ancien['fichier_path']:
+            ancien_chemin = os.path.join(contrats_dir, ancien['fichier_path'])
+            if _chemin_securise(ancien_chemin, contrats_dir) and os.path.exists(ancien_chemin):
+                os.remove(ancien_chemin)
+    except Exception:
+        ancien = None
     conn.execute('DELETE FROM contrats_generes WHERE user_id = ?', (user_id,))
 
     doc.save(chemin_sortie)
