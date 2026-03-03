@@ -1,5 +1,5 @@
 from io import BytesIO
-from blueprints.generation_contrat import _build_replacements
+from blueprints.generation_contrat import _build_replacements, _prepare_generated_file, PdfConversionError
 
 
 def test_infos_salaries_met_a_jour_coordonnees(admin_client, db, sample_users):
@@ -78,3 +78,16 @@ def test_aliases_naissance_et_securitesociale_sont_inclus():
     )
     assert repl['NAISSANCE'] == '1999-01-01'
     assert repl['SECURITESOCIALE'] == '1 99 01 75 123 456 78'
+
+
+def test_prepare_generated_file_fallback_docx_si_conversion_indisponible(monkeypatch):
+    def _fail(_docx_bytes):
+        raise PdfConversionError("LibreOffice indisponible")
+
+    monkeypatch.setattr('blueprints.generation_contrat._convert_docx_to_pdf', _fail)
+    source = b"fake-docx"
+    content, ext, mimetype, message = _prepare_generated_file(source)
+    assert content == source
+    assert ext == 'docx'
+    assert mimetype == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    assert 'DOCX' in message

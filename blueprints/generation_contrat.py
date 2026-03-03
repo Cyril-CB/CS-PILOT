@@ -24,6 +24,10 @@ MODELES_DIR = os.path.join(BASE_DIR, 'documents', 'contrats_modeles')
 GEN_DIR = os.path.join(BASE_DIR, 'documents', 'contrats_generes')
 
 
+class PdfConversionError(RuntimeError):
+    pass
+
+
 def _peut_gerer():
     return session.get('profil') in ['comptable', 'directeur']
 
@@ -70,7 +74,7 @@ def _replace_docx_placeholders(path, replacements):
 def _convert_docx_to_pdf(docx_bytes):
     binary = shutil.which('soffice') or shutil.which('libreoffice')
     if not binary:
-        raise RuntimeError("LibreOffice (soffice) non installe sur le serveur.")
+        raise PdfConversionError("LibreOffice (soffice) non installé sur le serveur.")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         in_path = os.path.join(tmpdir, 'contrat.docx')
@@ -87,9 +91,21 @@ def _convert_docx_to_pdf(docx_bytes):
         )
         if result.returncode != 0 or not os.path.exists(out_path):
             message = (result.stderr or result.stdout or 'Erreur inconnue').strip()
-            raise RuntimeError(f"Echec conversion DOCX->PDF: {message}")
+            raise PdfConversionError(f"Échec conversion DOCX->PDF: {message}")
         with open(out_path, 'rb') as f:
             return f.read()
+
+
+def _prepare_generated_file(merged_docx):
+    try:
+        return _convert_docx_to_pdf(merged_docx), 'pdf', 'application/pdf', None
+    except PdfConversionError:
+        return (
+            merged_docx,
+            'docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            "Conversion PDF indisponible sur ce serveur : contrat téléchargé au format DOCX."
+        )
 
 
 def _get_critere_points(poste_row):
@@ -386,17 +402,12 @@ def generer_contrat():
 
     _ensure_dirs()
     merged_docx = _replace_docx_placeholders(modele_path, replacements)
-    try:
-        pdf_bytes = _convert_docx_to_pdf(merged_docx)
-    except RuntimeError as exc:
-        conn.close()
-        flash(f"Erreur conversion PDF : {exc}", 'error')
-        return redirect(url_for('generation_contrat_bp.generation_contrat', user_id=user_id))
+    generated_bytes, output_ext, output_mimetype, fallback_message = _prepare_generated_file(merged_docx)
     now = datetime.now().strftime('%Y%m%d_%H%M%S')
-    pdf_name = f"contrat_{_sanitize_name(salarie['nom'])}_{_sanitize_name(salarie['prenom'])}_{now}.pdf"
-    pdf_path = os.path.join(GEN_DIR, pdf_name)
-    with open(pdf_path, 'wb') as f:
-        f.write(pdf_bytes)
+    output_name = f"contrat_{_sanitize_name(salarie['nom'])}_{_sanitize_name(salarie['prenom'])}_{now}.{output_ext}"
+    output_path = os.path.join(GEN_DIR, output_name)
+    with open(output_path, 'wb') as f:
+        f.write(generated_bytes)
 
     old = conn.execute("SELECT fichier_pdf_path FROM contrats_generes WHERE user_id = ?", (user_id,)).fetchone()
     if old:
@@ -414,12 +425,14 @@ def generer_contrat():
             generated_by = excluded.generated_by,
             generated_at = CURRENT_TIMESTAMP
         ''',
-        (user_id, template_id, pdf_name, pdf_name, session['user_id'])
+        (user_id, template_id, output_name, output_name, session['user_id'])
     )
     conn.commit()
     conn.close()
 
-    return send_file(pdf_path, as_attachment=True, download_name=pdf_name, mimetype='application/pdf')
+    if fallback_message:
+        flash(fallback_message, 'warning')
+    return send_file(output_path, as_attachment=True, download_name=output_name, mimetype=output_mimetype)
 
 
 @generation_contrat_bp.route('/generation_contrat/dernier/<int:user_id>')
