@@ -31,6 +31,9 @@ def app(tmp_path):
     # Créer un fichier temporaire pour la base de données
     db_path = str(tmp_path / 'test.db')
 
+    # Ensure SQLite is used for tests (unset any PostgreSQL DATABASE_URL)
+    os.environ.pop('DATABASE_URL', None)
+
     # Patcher le chemin de la base AVANT d'importer l'app
     import database
     database.DATABASE = db_path
@@ -44,6 +47,7 @@ def app(tmp_path):
         'WTF_CSRF_ENABLED': False,
         'RATELIMIT_ENABLED': False,
         'SERVER_NAME': 'localhost',
+        'SQLALCHEMY_DATABASE_URI': f'sqlite:///{db_path}',
     })
 
     # Désactiver explicitement le rate limiter pour les tests

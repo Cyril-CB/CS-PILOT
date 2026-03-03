@@ -1,6 +1,10 @@
 """
 Gestionnaire de migrations de base de donnees.
 
+.. deprecated::
+    Ce module est conservé pour la compatibilité avec les déploiements SQLite existants.
+    Pour PostgreSQL en production, utiliser Flask-Migrate (``flask db upgrade``).
+
 Systeme de versionnement du schema de la base SQLite.
 Chaque migration est un fichier Python dans le dossier migrations/
 avec un numero de version, un nom descriptif, et des fonctions upgrade/downgrade.

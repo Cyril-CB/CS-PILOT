@@ -71,9 +71,21 @@ else:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = False
 
+# ==================== Configuration de la base de données ====================
+_database_url = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(os.path.dirname(__file__), "gestion_temps.db")}')
+# Support Heroku-style postgres:// URLs
+if _database_url.startswith('postgres://'):
+    _database_url = _database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = _database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 # ==================== Initialisation des extensions ====================
 csrf.init_app(app)
 limiter.init_app(app)
+# Deferred import to avoid circular dependency (models.py imports from extensions.py)
+from extensions import db as _db, migrate as _migrate
+_db.init_app(app)
+_migrate.init_app(app, _db, directory='flask_migrations')
 
 # ==================== Enregistrement des Blueprints ====================
 from blueprints.auth import auth
@@ -163,9 +175,12 @@ def inject_version():
     """Injecte la version de l'application dans tous les templates (mise en cache)."""
     global _cached_app_version
     if _cached_app_version is None:
-        from migration_manager import get_version_actuelle
-        version_db = get_version_actuelle()
-        _cached_app_version = f'1.0.{version_db}'
+        try:
+            from migration_manager import get_version_actuelle
+            version_db = get_version_actuelle()
+            _cached_app_version = f'1.0.{version_db}'
+        except Exception:
+            _cached_app_version = '1.0.0'
     return {'app_version': _cached_app_version}
 
 

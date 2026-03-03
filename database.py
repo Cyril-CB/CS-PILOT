@@ -1,14 +1,167 @@
 """
-Module de gestion de la base de données SQLite.
+Module de gestion de la base de données.
+Supporte SQLite (développement/tests) et PostgreSQL (production).
 Contient l'initialisation du schéma et la connexion.
 """
+import os
+import re
 import sqlite3
+
+_PLACEHOLDER_RE = re.compile(r'\?')
 
 DATABASE = 'gestion_temps.db'
 
 
+def _is_postgres():
+    """Vérifie si DATABASE_URL pointe vers PostgreSQL."""
+    url = os.environ.get('DATABASE_URL', '')
+    return url.startswith('postgresql://') or url.startswith('postgres://')
+
+
+def _get_postgres_dsn():
+    """Retourne l'URL PostgreSQL normalisée."""
+    url = os.environ.get('DATABASE_URL', '')
+    if url.startswith('postgres://'):
+        url = url.replace('postgres://', 'postgresql://', 1)
+    return url
+
+
+class _DictRow(dict):
+    """Ligne de résultat dict-accessible (compatible sqlite3.Row)."""
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return list(self.values())[key]
+        return super().__getitem__(key)
+
+    def keys(self):
+        return super().keys()
+
+
+class _PostgresCompatCursor:
+    """Curseur psycopg2 compatible avec l'API sqlite3 utilisée dans les blueprints."""
+
+    def __init__(self, pg_cursor):
+        self._cur = pg_cursor
+        self.lastrowid = None
+        self.rowcount = 0
+
+    @staticmethod
+    def _fix_sql(sql):
+        """Convertit les placeholders ? (SQLite) en %s (psycopg2)."""
+        return _PLACEHOLDER_RE.sub('%s', sql)
+
+    def execute(self, sql, params=None):
+        fixed = self._fix_sql(sql)
+        stripped = fixed.strip().upper()
+        is_insert = stripped.startswith('INSERT')
+        has_returning = 'RETURNING' in stripped
+
+        if is_insert and not has_returning:
+            # Assumes tables use 'id' as primary key (standard convention).
+            # Falls back to no RETURNING if the table uses a different PK name.
+            fixed_with_ret = fixed.rstrip().rstrip(';') + ' RETURNING id'
+            try:
+                if params is not None:
+                    self._cur.execute(fixed_with_ret, params)
+                else:
+                    self._cur.execute(fixed_with_ret)
+                row = self._cur.fetchone()
+                self.lastrowid = row['id'] if row and 'id' in row else None
+            except Exception:
+                # Table has no 'id' column or other issue – retry without RETURNING
+                if params is not None:
+                    self._cur.execute(fixed, params)
+                else:
+                    self._cur.execute(fixed)
+                self.lastrowid = None
+        else:
+            if params is not None:
+                self._cur.execute(fixed, params)
+            else:
+                self._cur.execute(fixed)
+            self.lastrowid = None
+
+        self.rowcount = self._cur.rowcount
+        return self
+
+    def executemany(self, sql, seq_of_params):
+        fixed = self._fix_sql(sql)
+        self._cur.executemany(fixed, seq_of_params)
+        self.rowcount = self._cur.rowcount
+        return self
+
+    def fetchone(self):
+        row = self._cur.fetchone()
+        if row is None:
+            return None
+        return _DictRow(row)
+
+    def fetchall(self):
+        return [_DictRow(r) for r in self._cur.fetchall()]
+
+    def __iter__(self):
+        for row in self._cur:
+            yield _DictRow(row)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self._cur.close()
+
+
+class _PostgresCompatConnection:
+    """Connexion psycopg2 compatible avec l'API sqlite3 utilisée dans les blueprints."""
+
+    def __init__(self, pg_conn):
+        self._conn = pg_conn
+
+    def cursor(self):
+        import psycopg2.extras
+        return _PostgresCompatCursor(
+            self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        )
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        cur.execute(sql, params)
+        return cur
+
+    def commit(self):
+        self._conn.commit()
+
+    def rollback(self):
+        self._conn.rollback()
+
+    def close(self):
+        self._conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self.rollback()
+        else:
+            self.commit()
+        self.close()
+
+
 def get_db():
-    """Connexion à la base de données"""
+    """Retourne une connexion à la base de données.
+
+    - PostgreSQL si DATABASE_URL est défini et pointe vers PostgreSQL.
+    - SQLite sinon (développement local, tests).
+    """
+    if _is_postgres():
+        import psycopg2
+        import psycopg2.extras
+        dsn = _get_postgres_dsn()
+        conn = psycopg2.connect(dsn)
+        return _PostgresCompatConnection(conn)
+
+    # SQLite (fallback – tests et développement local)
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
@@ -65,7 +218,15 @@ _POSTES_DEPENSE_DEFAUT = [
 
 
 def init_db():
-    """Initialisation de la base de données avec le schema complet."""
+    """Initialisation de la base de données avec le schema complet.
+
+    Utilisé pour SQLite (tests, développement local).
+    Pour PostgreSQL en production, utiliser Flask-Migrate : flask db upgrade
+    """
+    if _is_postgres():
+        # Pour PostgreSQL, le schéma est géré par Flask-Migrate
+        return
+
     conn = get_db()
     cursor = conn.cursor()
 
