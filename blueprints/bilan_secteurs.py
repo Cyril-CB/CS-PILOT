@@ -258,23 +258,6 @@ def api_supprimer_annee(annee):
         conn.close()
 
 
-# ── Page temporaire nettoyage annee 24 ────────────────────────────────────────
-
-@bilan_secteurs_bp.route('/bilan/nettoyage-annee-24')
-@login_required
-def page_nettoyage_annee_24():
-    """Page temporaire pour supprimer les données enregistrées sous l'année 24."""
-    if not _peut_acceder():
-        return redirect(url_for('main.index'))
-    return render_template('nettoyage_annee_24.html')
-
-
-def _get_libelles_pcg(conn):
-    """Recupere un dict {compte_num: libelle} depuis le plan comptable general."""
-    rows = conn.execute('SELECT compte_num, libelle FROM plan_comptable_general').fetchall()
-    return {r['compte_num']: r['libelle'] for r in rows}
-
-
 # ── Donnees du bilan (API JSON) ──────────────────────────────────────────────
 
 @bilan_secteurs_bp.route('/api/bilan/donnees')
