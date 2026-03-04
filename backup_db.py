@@ -11,6 +11,7 @@ Usage CLI:
 import os
 import re
 import sys
+import glob
 import subprocess
 import shutil
 import argparse
@@ -52,6 +53,38 @@ def get_db_path():
     return None
 
 
+def _find_pg_tool(tool_name):
+    """
+    Trouve l'executable PostgreSQL (pg_dump, psql...) sur le systeme.
+    Cherche d'abord dans le PATH, puis dans les repertoires d'installation courants
+    de PostgreSQL sous Windows.
+    Retourne le chemin complet ou None si introuvable.
+    """
+    # Recherche standard via PATH
+    found = shutil.which(tool_name)
+    if found:
+        return found
+
+    # Chemins courants sous Windows
+    if sys.platform == 'win32':
+        pg_dirs = glob.glob(r'C:\Program Files\PostgreSQL\*\bin')
+        pg_dirs += glob.glob(r'C:\Program Files (x86)\PostgreSQL\*\bin')
+
+        def _pg_version_key(path):
+            """Extrait le numero de version numerique depuis le chemin."""
+            try:
+                return float(os.path.basename(os.path.dirname(path)))
+            except ValueError:
+                return 0.0
+
+        for pg_bin in sorted(pg_dirs, key=_pg_version_key, reverse=True):
+            candidate = os.path.join(pg_bin, tool_name + '.exe')
+            if os.path.isfile(candidate):
+                return candidate
+
+    return None
+
+
 def _get_pg_env():
     """Retourne les variables d'environnement pour psql/pg_dump."""
     database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/cspilot')
@@ -67,6 +100,13 @@ def creer_sauvegarde(label=None):
     Cree une sauvegarde de la base de donnees PostgreSQL avec pg_dump.
     Retourne le chemin du fichier de sauvegarde ou None en cas d'erreur.
     """
+    pg_dump = _find_pg_tool('pg_dump')
+    if not pg_dump:
+        return None, (
+            "pg_dump introuvable. Assurez-vous que les outils PostgreSQL sont installes "
+            "et accessibles (PATH ou C:\\Program Files\\PostgreSQL\\<version>\\bin)."
+        )
+
     env, parsed = _get_pg_env()
     backup_dir = get_backup_dir()
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -76,7 +116,7 @@ def creer_sauvegarde(label=None):
     filename = f"backup_{timestamp}{suffix}.sql"
     backup_path = os.path.join(backup_dir, filename)
 
-    cmd = ['pg_dump']
+    cmd = [pg_dump]
     if parsed.hostname:
         cmd += ['-h', parsed.hostname]
     if parsed.port:
@@ -144,7 +184,14 @@ def restaurer_sauvegarde(filename):
 
     env, parsed = _get_pg_env()
 
-    cmd = ['psql']
+    psql = _find_pg_tool('psql')
+    if not psql:
+        return False, (
+            "psql introuvable. Assurez-vous que les outils PostgreSQL sont installes "
+            "et accessibles (PATH ou C:\\Program Files\\PostgreSQL\\<version>\\bin)."
+        )
+
+    cmd = [psql]
     if parsed.hostname:
         cmd += ['-h', parsed.hostname]
     if parsed.port:
