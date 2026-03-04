@@ -309,8 +309,11 @@ def api_bilan_donnees():
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+                AND (
+                    d.compte_num LIKE c.compte_num || '%'
+                    OR c.compte_num LIKE d.compte_num || '%'
+                    OR d.code_analytique = c.compte_num
+                )
             )
         ''', params).fetchall()
 
@@ -328,7 +331,7 @@ def api_bilan_donnees():
             categorie = compte[:2]  # 60, 61, 62, 70, 71, etc.
 
             montant = d['montant']
-            libelle_compte = pcg.get(compte) or d['libelle'] or compte
+            libelle_compte = pcg.get(compte) or d['libelle'] or ''
 
             # Detail par compte
             if compte not in detail_comptes:
@@ -438,8 +441,11 @@ def api_detail_compte():
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+                AND (
+                    d.compte_num LIKE c.compte_num || '%'
+                    OR c.compte_num LIKE d.compte_num || '%'
+                    OR d.code_analytique = c.compte_num
+                )
             )
             ORDER BY d.mois
         ''', params).fetchall()
@@ -571,8 +577,11 @@ def api_export_pdf():
             AND EXISTS (
                 SELECT 1 FROM comptabilite_comptes c
                 WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+                AND (
+                    d.compte_num LIKE c.compte_num || '%'
+                    OR c.compte_num LIKE d.compte_num || '%'
+                    OR d.code_analytique = c.compte_num
+                )
             )
         ''', params).fetchall()
 
@@ -587,7 +596,7 @@ def api_export_pdf():
             premier = compte[0]
             categorie = compte[:2]
             montant = d['montant']
-            libelle_compte = pcg.get(compte) or d['libelle'] or compte
+            libelle_compte = pcg.get(compte) or d['libelle'] or ''
 
             if premier == '6':
                 if categorie not in charges:
