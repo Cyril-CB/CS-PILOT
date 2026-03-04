@@ -36,7 +36,7 @@ def liste_sauvegardes():
     # Info sur la base actuelle
     db_path = get_db_path()
     db_size = None
-    if os.path.exists(db_path):
+    if db_path and os.path.exists(db_path):
         db_size_bytes = os.path.getsize(db_path)
         if db_size_bytes < 1024:
             db_size = f"{db_size_bytes} o"

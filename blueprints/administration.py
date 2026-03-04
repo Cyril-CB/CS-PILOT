@@ -186,7 +186,8 @@ def _get_db_info():
         info['nb_tables'] = len(tables)
 
         for t in tables:
-            count = conn.execute(f"SELECT COUNT(*) as nb FROM [{t['name']}]").fetchone()
+            safe_name = t['name'].replace('"', '""')
+            count = conn.execute(f'SELECT COUNT(*) as nb FROM "{safe_name}"').fetchone()
             info['tables'].append({
                 'nom': t['name'],
                 'nb_lignes': count['nb'] if count else 0
