@@ -173,6 +173,25 @@ class TestBilanSecteurs:
         row = db.execute("SELECT code_analytique FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
         assert row['code_analytique'] == 'ANA001'
 
+    def test_import_bi_annee_2_chiffres(self, admin_client, db):
+        """L'import BI avec dates DD/MM/YY convertit l'année 2 chiffres en 4 chiffres."""
+        bi_content = (
+            "Code journal\tDate de pièce\tNuméro de compte général\tLibellé écriture\t"
+            "Montant Débit\tMontant Crédit\tCompte analytique\n"
+            "VE\t15/01/24\t701000\tVente\t0\t100\tANA001\n"
+            "HA\t15/02/24\t601000\tAchat\t200\t0\tANA001\n"
+        )
+        data = {'fichier': (io.BytesIO(bi_content.encode('utf-8')), 'bi_2024.txt')}
+        resp = admin_client.post('/api/bilan/import-bi',
+                                 data=data, content_type='multipart/form-data')
+        result = resp.get_json()
+        assert result['success'] is True
+        assert result['nb_ecritures'] == 2
+        assert result['annee'] == 2024
+
+        row = db.execute("SELECT annee FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
+        assert row['annee'] == 2024
+
     def test_import_bi_filtre_comptes(self, admin_client, db):
         """L'import BI ne garde que les comptes 6x et 7x."""
         bi_content = (

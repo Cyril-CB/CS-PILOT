@@ -67,7 +67,7 @@ def bilan_secteurs():
 # ── Import BI (export comptable) ─────────────────────────────────────────────
 
 def _parse_date_bi(date_str):
-    """Parse une date au format DD/MM/YYYY ou YYYYMMDD.
+    """Parse une date au format DD/MM/YYYY, DD/MM/YY ou YYYYMMDD.
 
     Retourne (annee, mois) ou None si format non reconnu.
     """
@@ -76,7 +76,10 @@ def _parse_date_bi(date_str):
         parts = date_str.split('/')
         if len(parts) == 3:
             try:
-                return int(parts[2]), int(parts[1])
+                annee = int(parts[2])
+                if annee < 100:
+                    annee += 2000
+                return annee, int(parts[1])
             except (ValueError, IndexError):
                 return None
     elif len(date_str) == 8 and date_str.isdigit():
@@ -253,12 +256,6 @@ def api_supprimer_annee(annee):
         return jsonify({'success': True, 'message': f'Données {annee} supprimées.'})
     finally:
         conn.close()
-
-
-def _get_libelles_pcg(conn):
-    """Recupere un dict {compte_num: libelle} depuis le plan comptable general."""
-    rows = conn.execute('SELECT compte_num, libelle FROM plan_comptable_general').fetchall()
-    return {r['compte_num']: r['libelle'] for r in rows}
 
 
 # ── Donnees du bilan (API JSON) ──────────────────────────────────────────────
