@@ -37,6 +37,7 @@ class PsycopgCursorWrapper:
         self._lastrowid = None
 
     def execute(self, query, params=None):
+        query = query.replace('?', '%s')
         if params is not None:
             self._cursor.execute(query, params)
         else:
