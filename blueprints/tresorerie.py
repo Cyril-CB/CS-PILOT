@@ -86,6 +86,9 @@ def _parse_fec_line(line_dict):
     compte_num = (line_dict.get('CompteNum') or '').strip()
     if not compte_num:
         return None
+    # Exclure les A nouveaux identifies par le journal AN
+    if (line_dict.get('JournalCode') or '').strip().upper() == 'AN':
+        return None
     # Exclure les comptes banque/caisse
     for prefix in COMPTES_EXCLUS_PREFIXES:
         if compte_num.startswith(prefix):

@@ -2,14 +2,15 @@
 import io
 
 
-def test_import_fec_filtre_a_nouveaux_comptes_1x_2x(admin_client, db):
-    """Les écritures d'A nouveaux sur comptes 1xx/2xx sont ignorées."""
+def test_import_fec_filtre_tout_journal_an(admin_client, db):
+    """Les écritures du journal AN sont ignorées, y compris en janvier."""
     fec_content = (
         "JournalCode\tJournalLib\tEcritureNum\tEcritureDate\tCompteNum\tCompteLib\tCompAuxNum\t"
         "CompAuxLib\tPieceRef\tEcritureLib\tDebit\tCredit\n"
         "AN\tA nouveaux\t1\t20250101\t120000\tRésultat\t\t\tAN-1\tA nouveaux\t0\t1000\n"
         "AN\tA nouveaux\t2\t20250101\t280000\tAmortissements\t\t\tAN-2\tA nouveaux\t500\t0\n"
-        "AC\tAchats\t3\t20250115\t601000\tAchats\t\t\tFAC-1\tFacture achat\t300\t0\n"
+        "AN\tA nouveaux\t3\t20250101\t701000\tReport produits\t\t\tAN-3\tA nouveaux\t0\t200\n"
+        "AC\tAchats\t4\t20250115\t601000\tAchats\t\t\tFAC-1\tFacture achat\t300\t0\n"
     )
     data = {'fichier': (io.BytesIO(fec_content.encode('utf-8')), 'fec.txt')}
 
