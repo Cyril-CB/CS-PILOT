@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Nettoyage année 24 - CS-PILOT{% endblock %}
+{% block content %}
+<h2>🧹 Nettoyage – Supprimer l'année « 24 »</h2>
+<p>Cette page permet de supprimer les données bilan enregistrées sous l'année <strong>24</strong> (au lieu de 2024) suite au bug d'import corrigé.</p>
+<button class="btn btn-danger" id="btnSupp24" onclick="supprimerAnnee24()">🗑️ Supprimer les données de l'année 24</button>
+<p id="resultMsg" style="margin-top:1rem;"></p>
+<script>
+function supprimerAnnee24() {
+    if (!confirm('Supprimer toutes les données enregistrées sous l\'année 24 ? Cette action est irréversible.')) return;
+    var btn = document.getElementById('btnSupp24');
+    btn.disabled = true;
+    btn.textContent = 'Suppression en cours…';
+    fetch('/api/bilan/annee/24', {method: 'DELETE'})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                document.getElementById('resultMsg').textContent = '✅ ' + data.message;
+                btn.style.display = 'none';
+            } else {
+                document.getElementById('resultMsg').textContent = '❌ ' + (data.error || 'Erreur.');
+                btn.disabled = false;
+                btn.textContent = '🗑️ Supprimer les données de l\'année 24';
+            }
+        })
+        .catch(function() {
+            document.getElementById('resultMsg').textContent = '❌ Erreur réseau.';
+            btn.disabled = false;
+            btn.textContent = '🗑️ Supprimer les données de l\'année 24';
+        });
+}
+</script>
+{% endblock %}
