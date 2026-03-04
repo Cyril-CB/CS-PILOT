@@ -917,6 +917,23 @@ def api_reordonner_comptes():
         conn.close()
 
 
+@tresorerie_bp.route('/api/tresorerie/comptes/supprimer_tous', methods=['POST'])
+@login_required
+def api_supprimer_tous_comptes():
+    """Supprime uniquement les comptes du module tresorerie."""
+    if not _peut_acceder():
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    conn = get_db()
+    try:
+        cursor = conn.execute('DELETE FROM tresorerie_comptes')
+        nb_supprimes = cursor.rowcount if cursor.rowcount is not None else 0
+        conn.commit()
+        return jsonify({'success': True, 'nb_supprimes': nb_supprimes})
+    finally:
+        conn.close()
+
+
 # ============================================================
 # SUPPRESSION D'UN IMPORT
 # ============================================================
