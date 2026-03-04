@@ -145,6 +145,17 @@ def init_db():
     conn = get_db()
     cursor = conn.cursor()
 
+    # ===== Table des secteurs =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS secteurs (
+            id SERIAL PRIMARY KEY,
+            nom TEXT NOT NULL UNIQUE,
+            description TEXT,
+            type_secteur TEXT DEFAULT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # ===== Table des utilisateurs =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -171,17 +182,6 @@ def init_db():
             numero_secu TEXT,
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
             FOREIGN KEY (responsable_id) REFERENCES users(id)
-        )
-    ''')
-
-    # ===== Table des secteurs =====
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS secteurs (
-            id SERIAL PRIMARY KEY,
-            nom TEXT NOT NULL UNIQUE,
-            description TEXT,
-            type_secteur TEXT DEFAULT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
