@@ -87,6 +87,17 @@ def _parse_date_bi(date_str):
     return None
 
 
+def _first_non_empty(row, *keys):
+    """Retourne la premiere valeur non vide trouvee parmi les cles."""
+    for key in keys:
+        value = row.get(key)
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return ''
+
+
 @bilan_secteurs_bp.route('/api/bilan/import-bi', methods=['POST'])
 @login_required
 def api_import_bi():
@@ -133,10 +144,13 @@ def api_import_bi():
         rows_to_insert = []
 
         for row in reader:
-            # Colonnes BI
-            compte_num = (row.get('Numéro de compte général')
-                          or row.get('Numero de compte general')
-                          or '').strip()
+            # Colonnes BI/FEC
+            compte_num = _first_non_empty(
+                row,
+                'Numéro de compte général',
+                'Numero de compte general',
+                'CompteNum',
+            )
             if not compte_num:
                 continue
 
@@ -145,9 +159,13 @@ def api_import_bi():
             if premier not in ('6', '7'):
                 continue
 
-            date_str = (row.get('Date de pièce')
-                        or row.get('Date de piece')
-                        or '').strip()
+            date_str = _first_non_empty(
+                row,
+                'Date de pièce',
+                'Date de piece',
+                'EcritureDate',
+                'PieceDate',
+            )
             parsed = _parse_date_bi(date_str)
             if parsed is None:
                 continue
@@ -156,12 +174,18 @@ def api_import_bi():
             if mois < 1 or mois > 12:
                 continue
 
-            debit_str = (row.get('Montant Débit')
-                         or row.get('Montant Debit')
-                         or '0').strip().replace(',', '.')
-            credit_str = (row.get('Montant Crédit')
-                          or row.get('Montant Credit')
-                          or '0').strip().replace(',', '.')
+            debit_str = (_first_non_empty(
+                row,
+                'Montant Débit',
+                'Montant Debit',
+                'Debit',
+            ) or '0').replace(',', '.')
+            credit_str = (_first_non_empty(
+                row,
+                'Montant Crédit',
+                'Montant Credit',
+                'Credit',
+            ) or '0').replace(',', '.')
             try:
                 debit = float(debit_str) if debit_str else 0
                 credit = float(credit_str) if credit_str else 0
@@ -176,12 +200,19 @@ def api_import_bi():
             else:
                 montant = credit - debit
 
-            libelle = (row.get('Libellé écriture')
-                       or row.get('Libelle ecriture')
-                       or '').strip()
-            code_analytique = (row.get('Compte analytique')
-                               or row.get('Compte Analytique')
-                               or '').strip()
+            libelle = _first_non_empty(
+                row,
+                'Libellé écriture',
+                'Libelle ecriture',
+                'EcritureLib',
+                'CompteLib',
+            )
+            code_analytique = _first_non_empty(
+                row,
+                'Compte analytique',
+                'Compte Analytique',
+                'CompAuxNum',
+            )
 
             if annee_val is None:
                 annee_val = annee

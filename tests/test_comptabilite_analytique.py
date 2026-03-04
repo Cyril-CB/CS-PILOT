@@ -189,6 +189,23 @@ class TestBilanSecteurs:
         result = resp.get_json()
         assert result['nb_ecritures'] == 2  # 701000 + 601000 seulement
 
+    def test_import_bi_accepte_colonnes_fec(self, admin_client, db):
+        """L'import accepte aussi les noms de colonnes FEC standards."""
+        bi_content = (
+            "JournalCode\tEcritureDate\tCompteNum\tEcritureLib\tDebit\tCredit\tCompAuxNum\n"
+            "VE\t20250115\t701000\tVente\t0\t100\tANA001\n"
+            "HA\t20250215\t601000\tAchat\t200\t0\tANA001\n"
+        )
+        data = {'fichier': (io.BytesIO(bi_content.encode('utf-8')), 'fec.txt')}
+        resp = admin_client.post('/api/bilan/import-bi',
+                                 data=data, content_type='multipart/form-data')
+        result = resp.get_json()
+        assert result['success'] is True
+        assert result['nb_ecritures'] == 2
+
+        row = db.execute("SELECT code_analytique FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
+        assert row['code_analytique'] == 'ANA001'
+
     def test_suppression_annee(self, admin_client, db):
         """On peut supprimer les données d'une année."""
         db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('test.txt', 2025, 1)")
