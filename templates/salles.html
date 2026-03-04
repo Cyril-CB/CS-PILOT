@@ -14,7 +14,7 @@
     {# ══════ SECTION : Gestion des salles (admin) ══════ #}
     {% if is_admin %}
     <div class="salles-section">
-        <h2 class="salles-section-title" onclick="toggleSection('section-salles')">
+        <h2 class="salles-section-title" onclick="toggleSalleSection('section-salles')">
             <span class="salles-arrow" id="arrow-section-salles">▸</span>
             Gestion des salles
         </h2>
@@ -168,7 +168,7 @@
     {# ══════ SECTION : Nouvelle reservation ponctuelle ══════ #}
     {% if salles %}
     <div class="salles-section">
-        <h2 class="salles-section-title" onclick="toggleSection('section-resa')">
+        <h2 class="salles-section-title" onclick="toggleSalleSection('section-resa')">
             <span class="salles-arrow" id="arrow-section-resa">▸</span>
             Nouvelle reservation ponctuelle
         </h2>
@@ -217,7 +217,7 @@
     {# ══════ SECTION : Recurrences (admin) ══════ #}
     {% if is_admin and salles %}
     <div class="salles-section">
-        <h2 class="salles-section-title" onclick="toggleSection('section-rec')">
+        <h2 class="salles-section-title" onclick="toggleSalleSection('section-rec')">
             <span class="salles-arrow" id="arrow-section-rec">▸</span>
             Recurrences
         </h2>
@@ -353,7 +353,7 @@
 </div>
 
 <script>
-function toggleSection(id) {
+function toggleSalleSection(id) {
     var el = document.getElementById(id);
     var arrow = document.getElementById('arrow-' + id);
     if (el.style.display === 'none') {
