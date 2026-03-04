@@ -86,10 +86,23 @@ def _parse_fec_line(line_dict):
     compte_num = (line_dict.get('CompteNum') or '').strip()
     if not compte_num:
         return None
+    # Exclure les A nouveaux identifies par le journal AN
+    if (line_dict.get('JournalCode') or '').strip().upper() == 'AN':
+        return None
     # Exclure les comptes banque/caisse
     for prefix in COMPTES_EXCLUS_PREFIXES:
         if compte_num.startswith(prefix):
             return None
+    # Exclure les A nouveaux sur comptes de bilan (1xx/2xx)
+    texte_ecriture = ' '.join([
+        (line_dict.get('JournalLib') or ''),
+        (line_dict.get('EcritureLib') or ''),
+        (line_dict.get('PieceRef') or ''),
+    ]).lower().replace('à', 'a')
+    if compte_num.startswith(('1', '2')) and (
+        'a nouveaux' in texte_ecriture or 'a nouveau' in texte_ecriture
+    ):
+        return None
 
     date_str = (line_dict.get('EcritureDate') or '').strip()
     if len(date_str) != 8:
@@ -900,6 +913,23 @@ def api_reordonner_comptes():
             ''', (item['ordre'], item['compte_num']))
         conn.commit()
         return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@tresorerie_bp.route('/api/tresorerie/comptes/supprimer_tous', methods=['POST'])
+@login_required
+def api_supprimer_tous_comptes():
+    """Supprime uniquement les comptes du module tresorerie."""
+    if not _peut_acceder():
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    conn = get_db()
+    try:
+        cursor = conn.execute('DELETE FROM tresorerie_comptes')
+        nb_supprimes = cursor.rowcount if cursor.rowcount is not None else 0
+        conn.commit()
+        return jsonify({'success': True, 'nb_supprimes': nb_supprimes})
     finally:
         conn.close()
 
