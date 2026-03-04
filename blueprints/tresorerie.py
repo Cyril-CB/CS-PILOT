@@ -218,33 +218,27 @@ def _process_fec_content(content, conn, user_id, type_import='historique'):
             total = sum(d['net'] for k, d in totaux.items() if k[0] == compte_num)
             type_compte = 'produit' if total >= 0 else 'charge'
 
-        existing = cursor.execute(
-            'SELECT id FROM tresorerie_comptes WHERE compte_num = %s',
-            (compte_num,)
-        ).fetchone()
-
-        if not existing:
-            # Determiner l'ordre par defaut
-            if type_compte == 'produit':
-                ordre = 100
-            elif type_compte == 'attente':
-                ordre = 500
-            else:
-                ordre = 300
-
-            cursor.execute('''
-                INSERT INTO tresorerie_comptes
-                (compte_num, libelle_original, libelle_affiche, type_compte, ordre_affichage)
-                VALUES (%s, %s, %s, %s, %s)
-            ''', (compte_num, libelle, libelle, type_compte, ordre))
+        # Determiner l'ordre par defaut
+        if type_compte == 'produit':
+            ordre = 100
+        elif type_compte == 'attente':
+            ordre = 500
         else:
-            # Mettre a jour le libelle original si vide
-            cursor.execute('''
-                UPDATE tresorerie_comptes
-                SET libelle_original = COALESCE(NULLIF(libelle_original, ''), %s),
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE compte_num = %s AND (libelle_original IS NULL OR libelle_original = '')
-            ''', (libelle, compte_num))
+            ordre = 300
+
+        cursor.execute('''
+            INSERT INTO tresorerie_comptes
+            (compte_num, libelle_original, libelle_affiche, type_compte, ordre_affichage)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (compte_num) DO UPDATE SET
+                libelle_original = CASE
+                    WHEN tresorerie_comptes.libelle_original IS NULL
+                      OR tresorerie_comptes.libelle_original = ''
+                    THEN EXCLUDED.libelle_original
+                    ELSE tresorerie_comptes.libelle_original
+                END,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (compte_num, libelle, libelle, type_compte, ordre))
 
     # Nettoyer les comptes exclus qui auraient ete importes precedemment
     for prefix in COMPTES_EXCLUS_PREFIXES:
