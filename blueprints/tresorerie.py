@@ -90,6 +90,16 @@ def _parse_fec_line(line_dict):
     for prefix in COMPTES_EXCLUS_PREFIXES:
         if compte_num.startswith(prefix):
             return None
+    # Exclure les A nouveaux sur comptes de bilan (1xx/2xx)
+    texte_ecriture = ' '.join([
+        (line_dict.get('JournalLib') or ''),
+        (line_dict.get('EcritureLib') or ''),
+        (line_dict.get('PieceRef') or ''),
+    ]).lower().replace('à', 'a')
+    if compte_num.startswith(('1', '2')) and (
+        'a nouveaux' in texte_ecriture or 'a nouveau' in texte_ecriture
+    ):
+        return None
 
     date_str = (line_dict.get('EcritureDate') or '').strip()
     if len(date_str) != 8:
