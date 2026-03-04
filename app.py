@@ -271,8 +271,25 @@ def set_cache_headers(response):
     return response
 
 
+def _print_startup_error(title, exception):
+    """Affiche un message d'erreur de démarrage formaté et quitte."""
+    print("=" * 60)
+    print(title)
+    print("=" * 60)
+    print()
+    print(str(exception))
+    print()
+    print("=" * 60)
+    sys.exit(1)
+
+
 if __name__ == '__main__':
-    init_db()
+    try:
+        init_db()
+    except RuntimeError as e:
+        _print_startup_error("ERREUR DE BASE DE DONNEES", e)
+    except Exception as e:  # noqa: BLE001 – frontière de démarrage, tout échec doit être affiché
+        _print_startup_error("ERREUR INATTENDUE AU DEMARRAGE", e)
 
     host = '0.0.0.0'
     port = int(os.environ.get('PORT', 5000))
