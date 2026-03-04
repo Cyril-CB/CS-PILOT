@@ -302,15 +302,32 @@ def api_bilan_donnees():
         # Correspondance par prefixe : le compte_num du plan analytique peut etre
         # un prefixe du compte FEC (ex: "601" correspond a "601000", "601100", etc.)
         # ou une correspondance exacte sur le code analytique du FEC.
+        # Fallback PCG : si le compte_num est dans plan_comptable_general mais absent
+        # de tout comptabilite_comptes (ex: compte 2024 dont l'entree analytique a ete
+        # supprimee), on l'inclut quand meme afin d'eviter une page blanche sur les
+        # annees anterieures. Le libelle est fourni par le PCG ou le libelle FEC.
         all_donnees = conn.execute(f'''
             SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
             WHERE d.annee = ?
-            AND EXISTS (
-                SELECT 1 FROM comptabilite_comptes c
-                WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+            AND (
+                EXISTS (
+                    SELECT 1 FROM comptabilite_comptes c
+                    WHERE {compte_filter}
+                    AND (d.compte_num LIKE c.compte_num || '%'
+                         OR d.code_analytique = c.compte_num)
+                )
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM plan_comptable_general pcg_f
+                        WHERE pcg_f.compte_num = d.compte_num
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM comptabilite_comptes c_any
+                        WHERE d.compte_num LIKE c_any.compte_num || '%'
+                           OR d.code_analytique = c_any.compte_num
+                    )
+                )
             )
         ''', params).fetchall()
 
@@ -435,11 +452,24 @@ def api_detail_compte():
             SELECT d.annee, d.mois, d.libelle, d.montant
             FROM bilan_fec_donnees d
             WHERE d.annee = ? AND d.compte_num = ?
-            AND EXISTS (
-                SELECT 1 FROM comptabilite_comptes c
-                WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+            AND (
+                EXISTS (
+                    SELECT 1 FROM comptabilite_comptes c
+                    WHERE {compte_filter}
+                    AND (d.compte_num LIKE c.compte_num || '%'
+                         OR d.code_analytique = c.compte_num)
+                )
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM plan_comptable_general pcg_f
+                        WHERE pcg_f.compte_num = d.compte_num
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM comptabilite_comptes c_any
+                        WHERE d.compte_num LIKE c_any.compte_num || '%'
+                           OR d.code_analytique = c_any.compte_num
+                    )
+                )
             )
             ORDER BY d.mois
         ''', params).fetchall()
@@ -568,11 +598,24 @@ def api_export_pdf():
             SELECT d.id, d.compte_num, d.libelle, d.mois, d.montant
             FROM bilan_fec_donnees d
             WHERE d.annee = ?
-            AND EXISTS (
-                SELECT 1 FROM comptabilite_comptes c
-                WHERE {compte_filter}
-                AND (d.compte_num LIKE c.compte_num || '%'
-                     OR d.code_analytique = c.compte_num)
+            AND (
+                EXISTS (
+                    SELECT 1 FROM comptabilite_comptes c
+                    WHERE {compte_filter}
+                    AND (d.compte_num LIKE c.compte_num || '%'
+                         OR d.code_analytique = c.compte_num)
+                )
+                OR (
+                    EXISTS (
+                        SELECT 1 FROM plan_comptable_general pcg_f
+                        WHERE pcg_f.compte_num = d.compte_num
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM comptabilite_comptes c_any
+                        WHERE d.compte_num LIKE c_any.compte_num || '%'
+                           OR d.code_analytique = c_any.compte_num
+                    )
+                )
             )
         ''', params).fetchall()
 

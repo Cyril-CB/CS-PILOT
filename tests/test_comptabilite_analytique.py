@@ -286,6 +286,94 @@ class TestBilanSecteurs:
         # 701000 (500) = 500 produits
         assert data['total_produits'] == 500
 
+    def test_api_bilan_donnees_fallback_pcg_compte_manquant_analytique(self, admin_client, db, sample_users):
+        """Fallback PCG : un compte présent dans plan_comptable_general mais absent du
+        plan analytique (comptabilite_comptes) s'affiche quand même — cas typique d'une
+        donnée 2024 dont l'entrée analytique a été supprimée."""
+        secteur_id = sample_users['secteur_id']
+        # Aucune entrée dans comptabilite_comptes pour ce compte
+        # Mais le compte est reconnu dans plan_comptable_general
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('601000', 'Achats matières')")
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('701000', 'Ventes')")
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec2024.txt', 2024, 2)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute(
+            "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+            "VALUES ('601000', 'Charge 2024', '', 2024, 1, 400, ?)", (imp['id'],))
+        db.execute(
+            "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+            "VALUES ('701000', 'Produit 2024', '', 2024, 1, 600, ?)", (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2024&secteur_id={secteur_id}')
+        data = resp.get_json()
+        # Les comptes du PCG sans entrée analytique doivent s'afficher via le fallback
+        assert data['total_charges'] == 400
+        assert data['total_produits'] == 600
+
+    def test_api_bilan_donnees_fallback_pcg_libelle_utilise(self, admin_client, db, sample_users):
+        """Le libellé du PCG est utilisé pour les comptes affichés via le fallback."""
+        secteur_id = sample_users['secteur_id']
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('621000', 'Salaires')")
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec2024.txt', 2024, 1)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute(
+            "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+            "VALUES ('621000', 'Libelle FEC', '', 2024, 1, 1000, ?)", (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2024&secteur_id={secteur_id}')
+        data = resp.get_json()
+        assert data['total_charges'] == 1000
+        # Le libellé doit venir du PCG
+        assert data['charges']['62']['comptes']['621000']['libelle'] == 'Salaires'
+
+    def test_api_bilan_donnees_fallback_pcg_ne_depasse_pas_secteur(self, admin_client, db, sample_users):
+        """Le fallback PCG n'affiche PAS les comptes déjà assignés à un autre secteur."""
+        secteur_id = sample_users['secteur_id']
+        # Créer un deuxième secteur
+        db.execute("INSERT INTO secteurs (nom) VALUES ('Autre secteur')")
+        db.commit()
+        autre_secteur = db.execute("SELECT id FROM secteurs WHERE nom = 'Autre secteur'").fetchone()
+        autre_secteur_id = autre_secteur['id']
+
+        # Compte '611000' est dans plan_comptable_general ET assigné à autre_secteur (pas secteur_id)
+        db.execute("INSERT INTO plan_comptable_general (compte_num, libelle) VALUES ('611000', 'Loyers')")
+        db.execute(
+            "INSERT INTO comptabilite_comptes (compte_num, libelle, secteur_id) VALUES ('611', 'Loyers', ?)",
+            (autre_secteur_id,))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec2024.txt', 2024, 1)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute(
+            "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+            "VALUES ('611000', 'Loyer bureau', '', 2024, 1, 500, ?)", (imp['id'],))
+        db.commit()
+
+        # Quand on consulte secteur_id (pas autre_secteur_id), '611000' ne doit PAS apparaître
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2024&secteur_id={secteur_id}')
+        data = resp.get_json()
+        assert data['total_charges'] == 0
+
+    def test_api_bilan_donnees_compte_absent_pcg_et_analytique_non_affiche(self, admin_client, db, sample_users):
+        """Un compte absent du PCG ET du plan analytique ne s'affiche pas (pas de fallback)."""
+        secteur_id = sample_users['secteur_id']
+        # '609000' n'est ni dans plan_comptable_general ni dans comptabilite_comptes
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('fec2024.txt', 2024, 1)")
+        db.commit()
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()
+        db.execute(
+            "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+            "VALUES ('609000', 'Inconnu', '', 2024, 1, 200, ?)", (imp['id'],))
+        db.commit()
+
+        resp = admin_client.get(f'/api/bilan/donnees?annee=2024&secteur_id={secteur_id}')
+        data = resp.get_json()
+        # Sans PCG ni plan analytique, le compte n'est pas affiché
+        assert data['total_charges'] == 0
+
     def test_taux_logistique(self, admin_client, db):
         """On peut sauvegarder les taux de logistique."""
         resp = admin_client.post('/api/bilan/taux-logistique',
