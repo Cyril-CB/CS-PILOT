@@ -16,7 +16,8 @@ import shutil
 import argparse
 from datetime import datetime
 
-DATABASE = 'cspilot.db'
+from database import DATABASE
+
 BACKUP_DIR = 'backups'
 
 # Regex stricte pour les noms de fichiers autorises dans le dossier backups
@@ -49,8 +50,7 @@ def get_backup_dir():
 
 def get_db_path():
     """Retourne le chemin absolu de la base de donnees."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, DATABASE)
+    return DATABASE
 
 
 def creer_sauvegarde(label=None):

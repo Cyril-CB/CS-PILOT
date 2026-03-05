@@ -45,7 +45,8 @@ def liste_sauvegardes():
         else:
             db_size = f"{db_size_bytes / (1024 * 1024):.1f} Mo"
 
-    return render_template('backup.html', sauvegardes=sauvegardes, db_size=db_size)
+    db_name = os.path.basename(db_path)
+    return render_template('backup.html', sauvegardes=sauvegardes, db_size=db_size, db_name=db_name)
 
 
 @backup_bp.route('/sauvegardes/creer', methods=['POST'])
