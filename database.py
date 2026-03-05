@@ -4,7 +4,16 @@ Contient l'initialisation du schéma et la connexion.
 """
 import sqlite3
 
-DATABASE = 'gestion_temps.db'
+# Déterminer le dossier où se trouve l'exécutable (ou le script)
+if getattr(sys, 'frozen', False):
+    # L'application est un .exe généré par PyInstaller
+    application_path = os.path.dirname(sys.executable)
+else:
+    # L'application tourne en tant que script Python classique
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+# On place la base de données dans le même dossier que l'exécutable
+DATABASE = os.path.join(application_path, 'cspilot.db')
 
 
 def get_db():
