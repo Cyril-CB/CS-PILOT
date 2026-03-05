@@ -41,8 +41,9 @@ def _safe_backup_path(filename):
 
 
 def get_backup_dir():
-    """Retourne le chemin du repertoire de sauvegardes, le cree si necessaire."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    """Retourne le chemin du repertoire de sauvegardes, le cree si necessaire.
+    Utilise le meme repertoire inscriptible que la base de donnees (compatible .exe)."""
+    base_dir = os.path.dirname(DATABASE)
     backup_path = os.path.join(base_dir, BACKUP_DIR)
     os.makedirs(backup_path, exist_ok=True)
     return backup_path
