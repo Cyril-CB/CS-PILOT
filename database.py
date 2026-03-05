@@ -6,16 +6,19 @@ import os
 import sys
 import sqlite3
 
-# Déterminer le dossier où se trouve l'exécutable (ou le script)
-if getattr(sys, 'frozen', False):
-    # L'application est un .exe généré par PyInstaller
-    application_path = os.path.dirname(sys.executable)
+# Placer la base de données dans un répertoire utilisateur inscriptible :
+# - Windows : %LOCALAPPDATA%\cspilot  (AppData/Local/cspilot)
+# - Linux/Mac : ~/.local/share/cspilot
+if os.name == 'nt':
+    _base_dir = os.path.join(
+        os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
+        'cspilot'
+    )
 else:
-    # L'application tourne en tant que script Python classique
-    application_path = os.path.dirname(os.path.abspath(__file__))
+    _base_dir = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
 
-# On place la base de données dans le même dossier que l'exécutable
-DATABASE = os.path.join(application_path, 'cspilot.db')
+os.makedirs(_base_dir, exist_ok=True)
+DATABASE = os.path.join(_base_dir, 'cspilot.db')
 
 
 def get_db():
