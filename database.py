@@ -3,6 +3,7 @@ Module de gestion de la base de données SQLite.
 Contient l'initialisation du schéma et la connexion.
 """
 import os
+import sys
 import sqlite3
 
 # Placer la base de données dans un répertoire utilisateur inscriptible :
