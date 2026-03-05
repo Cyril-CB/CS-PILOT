@@ -16,7 +16,7 @@ import shutil
 import argparse
 from datetime import datetime
 
-DATABASE = 'gestion_temps.db'
+DATABASE = 'cspilot.db'
 BACKUP_DIR = 'backups'
 
 # Regex stricte pour les noms de fichiers autorises dans le dossier backups
