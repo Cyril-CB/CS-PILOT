@@ -32,6 +32,12 @@ def _peut_acceder():
     return session.get('profil') in ('directeur', 'comptable')
 
 
+def _get_libelles_pcg(conn):
+    """Retourne un dict {compte_num: libelle} depuis le plan comptable general."""
+    rows = conn.execute('SELECT compte_num, libelle FROM plan_comptable_general').fetchall()
+    return {row['compte_num']: row['libelle'] for row in rows}
+
+
 # ── Page principale ──────────────────────────────────────────────────────────
 
 @bilan_secteurs_bp.route('/bilan-secteurs')
