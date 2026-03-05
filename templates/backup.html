@@ -12,7 +12,7 @@
         <h2>Creer une sauvegarde</h2>
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
             <div>
-                <p>Base de donnees actuelle : <strong>gestion_temps.db</strong>
+                <p>Base de donnees actuelle : <strong>{{ db_filename or 'cspilot.db' }}</strong>
                 {% if db_size %} ({{ db_size }}){% endif %}</p>
             </div>
             <form method="POST" action="{{ url_for('backup_bp.creer') }}" style="display: flex; align-items: center; gap: 10px;">

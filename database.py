@@ -2,9 +2,23 @@
 Module de gestion de la base de données SQLite.
 Contient l'initialisation du schéma et la connexion.
 """
+import os
+import sys
 import sqlite3
 
-DATABASE = 'gestion_temps.db'
+# Placer la base de données dans un répertoire utilisateur inscriptible :
+# - Windows : %LOCALAPPDATA%\cspilot  (AppData/Local/cspilot)
+# - Linux/Mac : ~/.local/share/cspilot
+if os.name == 'nt':
+    _base_dir = os.path.join(
+        os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
+        'cspilot'
+    )
+else:
+    _base_dir = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
+
+os.makedirs(_base_dir, exist_ok=True)
+DATABASE = os.path.join(_base_dir, 'cspilot.db')
 
 
 def get_db():
