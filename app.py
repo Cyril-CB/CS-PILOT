@@ -32,14 +32,15 @@ from flask import Flask
 
 # Vérifie si l'app tourne en .exe (frozen) ou en script normal
 if getattr(sys, 'frozen', False):
-    # Chemin vers le dossier temporaire de PyInstaller
-    base_dir = sys._MEIPASS
-    template_folder = os.path.join(base_dir, 'templates')
-    static_folder = os.path.join(base_dir, 'static')
-    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+    # Chemin vers le dossier temporaire de PyInstaller (ou fallback si non défini)
+    base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
 else:
-    app = Flask(__name__)
+    # Mode script normal : dossier du fichier courant
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
+template_folder = os.path.join(base_dir, 'templates')
+static_folder = os.path.join(base_dir, 'static')
+app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
 # ==================== Sécurité : SECRET_KEY ====================
 _secret_key = os.environ.get('SECRET_KEY', '')
 if not _secret_key or _secret_key == _DEFAULT_SECRET_KEY:
