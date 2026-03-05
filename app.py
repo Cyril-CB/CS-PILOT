@@ -12,11 +12,33 @@ from database import init_db, get_db
 from extensions import csrf, limiter
 
 # Charger les variables d'environnement depuis .env (s'il existe)
-load_dotenv()
+import os
+import sys
+from dotenv import load_dotenv
+
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+env_path = os.path.join(application_path, '.env')
+load_dotenv(dotenv_path=env_path)
 
 _DEFAULT_SECRET_KEY = 'dev-secret-key-do-not-use-in-production'
 
-app = Flask(__name__)
+import os
+import sys
+from flask import Flask
+
+# Vérifie si l'app tourne en .exe (frozen) ou en script normal
+if getattr(sys, 'frozen', False):
+    # Chemin vers le dossier temporaire de PyInstaller
+    base_dir = sys._MEIPASS
+    template_folder = os.path.join(base_dir, 'templates')
+    static_folder = os.path.join(base_dir, 'static')
+    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+else:
+    app = Flask(__name__)
 
 # ==================== Sécurité : SECRET_KEY ====================
 _secret_key = os.environ.get('SECRET_KEY', '')
