@@ -2,6 +2,8 @@
 Module de gestion de la base de données SQLite.
 Contient l'initialisation du schéma et la connexion.
 """
+import os
+import sys
 import sqlite3
 
 # Déterminer le dossier où se trouve l'exécutable (ou le script)
