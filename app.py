@@ -12,10 +12,6 @@ from database import init_db, get_db
 from extensions import csrf, limiter
 
 # Charger les variables d'environnement depuis .env (s'il existe)
-import os
-import sys
-from dotenv import load_dotenv
-
 if getattr(sys, 'frozen', False):
     application_path = os.path.dirname(sys.executable)
 else:
@@ -25,10 +21,6 @@ env_path = os.path.join(application_path, '.env')
 load_dotenv(dotenv_path=env_path)
 
 _DEFAULT_SECRET_KEY = 'dev-secret-key-do-not-use-in-production'
-
-import os
-import sys
-from flask import Flask
 
 # Vérifie si l'app tourne en .exe (frozen) ou en script normal
 if getattr(sys, 'frozen', False):
