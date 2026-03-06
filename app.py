@@ -4,12 +4,66 @@ Architecture en Blueprints Flask.
 """
 import os
 import sys
+import secrets
 from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import init_db, get_db
 from extensions import csrf, limiter
+
+
+def generate_env_file(env_path):
+    """
+    Génère un fichier .env avec une clé SECRET_KEY aléatoire sécurisée.
+
+    Args:
+        env_path: Chemin du fichier .env à créer
+    """
+    secret_key = secrets.token_hex(32)
+
+    env_content = f"""# Clé secrète pour les sessions Flask et les tokens CSRF
+# Cette clé a été générée automatiquement au premier démarrage.
+# Pour générer une nouvelle clé : python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY={secret_key}
+
+# Mettre à true si l'application est derrière un proxy/tunnel (ngrok, Cloudflare, etc.)
+# Active ProxyFix et SESSION_COOKIE_SECURE pour le bon fonctionnement en HTTPS
+# BEHIND_PROXY=true
+"""
+
+    try:
+        with open(env_path, 'w', encoding='utf-8') as f:
+            f.write(env_content)
+        print("=" * 60)
+        print("Fichier .env créé avec succès !")
+        print("=" * 60)
+        print()
+        print(f"Un nouveau fichier .env a été généré dans :")
+        print(f"  {env_path}")
+        print()
+        print("Une clé secrète aléatoire a été créée automatiquement.")
+        print("Vous pouvez maintenant utiliser l'application en toute sécurité.")
+        print()
+        print("=" * 60)
+        return True
+    except Exception as e:
+        print("=" * 60)
+        print("ERREUR lors de la création du fichier .env")
+        print("=" * 60)
+        print()
+        print(f"Impossible de créer le fichier .env : {e}")
+        print()
+        print("Veuillez créer manuellement un fichier .env avec :")
+        print()
+        print('  python -c "import secrets; print(secrets.token_hex(32))"')
+        print()
+        print("Puis ajoutez le résultat dans .env :")
+        print("  SECRET_KEY=<votre_cle_generee>")
+        print()
+        print("=" * 60)
+        return False
+
 
 # Charger les variables d'environnement depuis .env (s'il existe)
 if getattr(sys, 'frozen', False):
@@ -18,6 +72,11 @@ else:
     application_path = os.path.dirname(os.path.abspath(__file__))
 
 env_path = os.path.join(application_path, '.env')
+
+# Si le fichier .env n'existe pas, le générer automatiquement
+if not os.path.exists(env_path):
+    generate_env_file(env_path)
+
 load_dotenv(dotenv_path=env_path)
 
 _DEFAULT_SECRET_KEY = 'dev-secret-key-do-not-use-in-production'
