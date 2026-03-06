@@ -304,24 +304,30 @@ def gestion_secteurs():
                         flash(f'Erreur: {str(e)}', 'error')
 
             elif action == 'supprimer_type':
-                type_id = request.form.get('type_id')
-                code = conn.execute('SELECT code FROM types_secteur WHERE id = ?', (type_id,)).fetchone()
+                # Validation de type_id : doit être un entier valide
+                type_id = request.form.get('type_id', type=int)
 
-                if code:
-                    code = code['code']
-                    # Vérifier si le type est utilisé
-                    secteurs_count = conn.execute(
-                        'SELECT COUNT(*) as count FROM secteurs WHERE type_secteur = ?',
-                        (code,)
-                    ).fetchone()['count']
+                if type_id is None:
+                    flash('Type de secteur invalide.', 'error')
+                else:
+                    code_row = conn.execute('SELECT code FROM types_secteur WHERE id = ?', (type_id,)).fetchone()
 
-                    if secteurs_count > 0:
-                        flash(f'Impossible de supprimer : {secteurs_count} secteur(s) utilisent ce type', 'error')
+                    if not code_row:
+                        flash('Type de secteur introuvable.', 'error')
                     else:
-                        conn.execute('DELETE FROM types_secteur WHERE id = ?', (type_id,))
-                        conn.commit()
-                        flash('Type de secteur supprimé avec succès', 'success')
+                        code = code_row['code']
+                        # Vérifier si le type est utilisé
+                        secteurs_count = conn.execute(
+                            'SELECT COUNT(*) as count FROM secteurs WHERE type_secteur = ?',
+                            (code,)
+                        ).fetchone()['count']
 
+                        if secteurs_count > 0:
+                            flash(f'Impossible de supprimer : {secteurs_count} secteur(s) utilisent ce type', 'error')
+                        else:
+                            conn.execute('DELETE FROM types_secteur WHERE id = ?', (type_id,))
+                            conn.commit()
+                            flash('Type de secteur supprimé avec succès', 'success')
         # Charger les secteurs
         secteurs = conn.execute('''
             SELECT s.*, COUNT(u.id) as nb_users
