@@ -1050,6 +1050,17 @@ def init_db():
         )
     ''')
 
+    # ===== Table types de secteur (migration 0027) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS types_secteur (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            libelle TEXT NOT NULL,
+            ordre INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -1087,6 +1098,23 @@ def init_db():
                     'INSERT OR IGNORE INTO postes_depense_secteur_types (poste_depense_id, type_secteur) VALUES (?, ?)',
                     (poste_id, type_s)
                 )
+
+    # Inserer les types de secteur par defaut (migration 0027) si la table est vide
+    existing_types = cursor.execute('SELECT COUNT(*) FROM types_secteur').fetchone()[0]
+    if existing_types == 0:
+        types_defaut = [
+            ('creche', 'Crèche', 1),
+            ('accueil_loisirs', 'Accueil de loisirs', 2),
+            ('famille', 'Secteur famille', 3),
+            ('emploi_formation', 'Emploi/formation', 4),
+            ('administratif', 'Administratif', 5),
+            ('entretien', 'Entretien', 6),
+        ]
+        for code, libelle, ordre in types_defaut:
+            cursor.execute(
+                'INSERT OR IGNORE INTO types_secteur (code, libelle, ordre) VALUES (?, ?, ?)',
+                (code, libelle, ordre)
+            )
 
     # --- Migrations incrementales pour bases existantes ---
     # Ces blocs ne s'executent que si les colonnes manquent (anciennes installations).
