@@ -23,6 +23,7 @@ TYPES_SECTEUR_LABELS = {
     'famille': 'Secteur famille',
     'emploi_formation': 'Emploi/formation',
     'administratif': 'Administratif',
+    'entretien': 'Entretien',
 }
 
 # Ordre : Mercredis, puis vacances dans l'ordre chronologique d'une annee scolaire

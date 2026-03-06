@@ -227,7 +227,7 @@ def gestion_secteurs():
     if session.get('profil') not in ['directeur', 'comptable']:
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
-    
+
     conn = get_db()
 
     try:
@@ -282,6 +282,47 @@ def gestion_secteurs():
                     conn.commit()
                     flash('Secteur supprimé avec succès', 'success')
 
+            elif action == 'ajouter_type':
+                code = request.form.get('code', '').strip().lower()
+                libelle = request.form.get('libelle', '').strip()
+
+                if not code or not libelle:
+                    flash('Le code et le libellé sont requis', 'error')
+                else:
+                    try:
+                        # Trouver l'ordre maximum actuel
+                        max_ordre = conn.execute('SELECT MAX(ordre) as max_ordre FROM types_secteur').fetchone()['max_ordre']
+                        ordre = (max_ordre or 0) + 1
+
+                        conn.execute('''
+                            INSERT INTO types_secteur (code, libelle, ordre)
+                            VALUES (?, ?, ?)
+                        ''', (code, libelle, ordre))
+                        conn.commit()
+                        flash(f'Type de secteur "{libelle}" créé avec succès', 'success')
+                    except Exception as e:
+                        flash(f'Erreur: {str(e)}', 'error')
+
+            elif action == 'supprimer_type':
+                type_id = request.form.get('type_id')
+                code = conn.execute('SELECT code FROM types_secteur WHERE id = ?', (type_id,)).fetchone()
+
+                if code:
+                    code = code['code']
+                    # Vérifier si le type est utilisé
+                    secteurs_count = conn.execute(
+                        'SELECT COUNT(*) as count FROM secteurs WHERE type_secteur = ?',
+                        (code,)
+                    ).fetchone()['count']
+
+                    if secteurs_count > 0:
+                        flash(f'Impossible de supprimer : {secteurs_count} secteur(s) utilisent ce type', 'error')
+                    else:
+                        conn.execute('DELETE FROM types_secteur WHERE id = ?', (type_id,))
+                        conn.commit()
+                        flash('Type de secteur supprimé avec succès', 'success')
+
+        # Charger les secteurs
         secteurs = conn.execute('''
             SELECT s.*, COUNT(u.id) as nb_users
             FROM secteurs s
@@ -290,7 +331,12 @@ def gestion_secteurs():
             ORDER BY s.nom
         ''').fetchall()
 
-        return render_template('gestion_secteurs.html', secteurs=secteurs)
+        # Charger les types de secteur depuis la base de données
+        types_secteur = conn.execute('''
+            SELECT * FROM types_secteur ORDER BY ordre, libelle
+        ''').fetchall()
+
+        return render_template('gestion_secteurs.html', secteurs=secteurs, types_secteur=types_secteur)
     finally:
         conn.close()
 

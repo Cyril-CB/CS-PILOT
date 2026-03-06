@@ -58,23 +58,24 @@ ALL_MIGRATION_VERSIONS = [
     ('0023', 'Archivage exportations ecritures'),
     ('0024', 'Ajout module generation contrats'),
     ('0026', 'Module comptabilite analytique'),
+    ('0027', 'Ajout gestion types secteur'),
 ]
 
 # Postes de depense par defaut (migration 0012)
 _POSTES_DEPENSE_DEFAUT = [
-    ('Alimentation', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Alimentation', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ("Fournitures d'activites", ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
-    ('Petit equipement', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Petit equipement', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ("Petit equipement d'activite", ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
-    ('Honoraires', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Honoraires', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ('Mission/reception', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
     ('Restauration', ['creche', 'accueil_loisirs']),
     ('Couches', ['creche']),
-    ('Reparation', ['creche']),
+    ('Reparation', ['creche', 'entretien']),
     ('Transport', ['famille', 'accueil_loisirs']),
     ('Sorties', ['famille', 'accueil_loisirs']),
     ('Fournitures de bureau', ['administratif']),
-    ("Produit d'entretien", ['administratif']),
+    ("Produit d'entretien", ['administratif', 'entretien']),
 ]
 
 
