@@ -48,6 +48,18 @@
         {# Tarif optimal #}
         <div id="tarifOptimalSection" style="margin-top:32px;">
             <h3>💶 Tarif optimal</h3>
+            <div class="alsh-tarif-repartition">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+                    <div>
+                        <h4 style="margin:0 0 4px;">Répartition type des quotients (%)</h4>
+                        <p style="margin:0;color:var(--text-muted);font-size:0.9em;">
+                            Ajustez la part d'enfants par tranche de quotient familial pour affiner les tarifs proposés.
+                        </p>
+                    </div>
+                    <small id="repartitionQuotientsTotal" style="color:var(--text-muted);"></small>
+                </div>
+                <div id="repartitionQuotientsGrid" class="alsh-repartition-grid"></div>
+            </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-wrap:wrap;">
                 <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
                     <h4 style="margin:0 0 12px;">Vacances</h4>
@@ -214,6 +226,35 @@
     text-transform: uppercase;
 }
 .code-input::placeholder { text-transform: none; }
+.alsh-tarif-repartition {
+    margin: 12px 0 20px;
+    background: var(--bg-card, #fff);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+}
+.alsh-repartition-grid {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+.alsh-repartition-item {
+    border: 1px solid var(--gray-200, #e7ddd1);
+    border-radius: 8px;
+    padding: 8px;
+    background: var(--gray-50, #faf7f2);
+}
+.alsh-repartition-item label {
+    display: block;
+    font-size: 0.82em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.alsh-repartition-item input {
+    width: 100%;
+    text-align: right;
+}
 .tr-subtotal td {
     background: var(--gray-100, #f3eee7);
     font-weight: 600;
@@ -273,6 +314,16 @@ let _noeData = {};        // { "pid_tid": {heures, enfants} }
 let _tableauData = null;
 let _codesDisponibles = [];
 let _chartsInstances = {};
+const TARIF_QUOTIENT_TRANCHES = [
+    { id: 'qf_0_249', label: '0 - 249', coef: 0.40, defaultPct: 22 },
+    { id: 'qf_250_499', label: '250 - 499', coef: 0.55, defaultPct: 20 },
+    { id: 'qf_500_749', label: '500 - 749', coef: 0.70, defaultPct: 16 },
+    { id: 'qf_750_999', label: '750 - 999', coef: 0.85, defaultPct: 14 },
+    { id: 'qf_1000_1249', label: '1000 - 1249', coef: 1.00, defaultPct: 10 },
+    { id: 'qf_1250_1499', label: '1250 - 1499', coef: 1.15, defaultPct: 8 },
+    { id: 'qf_1500_1749', label: '1500 - 1749', coef: 1.30, defaultPct: 6 },
+    { id: 'qf_1750_plus', label: '1750 et +', coef: 1.45, defaultPct: 4 },
+];
 
 function getAnnee() { return parseInt(document.getElementById('filtreAnnee').value); }
 
@@ -719,6 +770,7 @@ function renderTableauPrincipal(data) {
 }
 
 function renderTarifOptimal(data) {
+    updateRepartitionQuotientsInfo();
     const vacationsRows = data.lignes.filter(l => l.periode_type === 'vacances');
     const mercrediRows = data.lignes.filter(l => l.periode_type === 'mercredi');
     const periscolaireRows = mercrediRows.length > 0
@@ -744,23 +796,81 @@ function renderTarifOptimalZone(containerId, lignes) {
     }
 
     const base = totalResteACharge / totalEnfants;
-    const tranches = [
-        { label: '0 - 249', coef: 0.40 },
-        { label: '250 - 499', coef: 0.55 },
-        { label: '500 - 749', coef: 0.70 },
-        { label: '750 - 999', coef: 0.85 },
-        { label: '1000 - 1249', coef: 1.00 },
-        { label: '1250 - 1499', coef: 1.15 },
-        { label: '1500 - 1749', coef: 1.30 },
-        { label: '1750 et +', coef: 1.45 },
-    ];
+    const repartition = getRepartitionQuotientsNormalisee();
+    const coefficientPondere = repartition.reduce((s, t) => s + ((t.pct / 100) * t.coef), 0);
+    if (coefficientPondere <= 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Répartition de quotients invalide.</p>';
+        return;
+    }
 
-    let html = '<table class="data-table"><thead><tr><th>Quotient familial</th><th style="text-align:right;">Tarif proposé</th></tr></thead><tbody>';
-    tranches.forEach(t => {
-        html += `<tr><td>${t.label}</td><td style="text-align:right;">${fmt(base * t.coef)} €</td></tr>`;
+    // Garantit que le tarif moyen pondéré (avec la répartition saisie) couvre le
+    // reste à charge unitaire constaté.
+    const baseAjustee = base / coefficientPondere;
+
+    let html = `<p style="margin:0 0 10px;color:var(--text-muted);font-size:0.88em;">
+        Tarif moyen pondéré cible : <strong>${fmt(base)} €</strong> par enfant
+    </p>`;
+    html += '<table class="data-table"><thead><tr><th>Quotient familial</th><th style="text-align:right;">Répartition</th><th style="text-align:right;">Tarif proposé</th></tr></thead><tbody>';
+    repartition.forEach(t => {
+        html += `<tr><td>${t.label}</td><td style="text-align:right;">${fmt(t.pct)} %</td><td style="text-align:right;">${fmt(baseAjustee * t.coef)} €</td></tr>`;
     });
     html += '</tbody></table>';
     container.innerHTML = html;
+}
+
+function initRepartitionQuotientsInputs() {
+    const grid = document.getElementById('repartitionQuotientsGrid');
+    if (!grid || grid.children.length > 0) return;
+
+    grid.innerHTML = TARIF_QUOTIENT_TRANCHES.map(t => `
+        <div class="alsh-repartition-item">
+            <label for="${t.id}">${t.label}</label>
+            <input id="${t.id}" class="form-control" type="number" min="0" step="0.1" value="${t.defaultPct}">
+        </div>
+    `).join('');
+
+    TARIF_QUOTIENT_TRANCHES.forEach(t => {
+        const input = document.getElementById(t.id);
+        input.addEventListener('input', () => {
+            updateRepartitionQuotientsInfo();
+            if (_tableauData) renderTarifOptimal(_tableauData);
+        });
+    });
+    updateRepartitionQuotientsInfo();
+}
+
+function getRepartitionQuotientsNormalisee() {
+    const values = TARIF_QUOTIENT_TRANCHES.map(t => {
+        const raw = document.getElementById(t.id)?.value || '0';
+        const parsed = parseFloat(String(raw).replace(',', '.'));
+        return { ...t, pct: Number.isFinite(parsed) && parsed > 0 ? parsed : 0 };
+    });
+    const total = values.reduce((s, t) => s + t.pct, 0);
+    if (total <= 0) {
+        return TARIF_QUOTIENT_TRANCHES.map(t => ({ ...t, pct: t.defaultPct }));
+    }
+    return values.map(t => ({ ...t, pct: (t.pct / total) * 100 }));
+}
+
+function updateRepartitionQuotientsInfo() {
+    const info = document.getElementById('repartitionQuotientsTotal');
+    if (!info) return;
+
+    const totalSaisi = TARIF_QUOTIENT_TRANCHES.reduce((s, t) => {
+        const parsed = parseFloat(String(document.getElementById(t.id)?.value || '0').replace(',', '.'));
+        return s + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+    }, 0);
+
+    if (totalSaisi <= 0) {
+        info.textContent = 'Total saisi : 0 % (répartition par défaut appliquée)';
+        info.style.color = 'var(--warning, #c56a2a)';
+    } else if (Math.abs(totalSaisi - 100) < 0.01) {
+        info.textContent = 'Total saisi : 100 %';
+        info.style.color = 'var(--success, #3f8a60)';
+    } else {
+        info.textContent = `Total saisi : ${fmt(totalSaisi)} % (normalisation automatique à 100 %)`;
+        info.style.color = 'var(--warning, #c56a2a)';
+    }
 }
 
 function destroyChart(id) {
@@ -941,6 +1051,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    initRepartitionQuotientsInputs();
     switchTab('dashboard');
 });
 </script>

@@ -131,6 +131,7 @@ def test_page_analyse_alsh_affiche_section_tarif_optimal(admin_client):
 
     assert response.status_code == 200
     assert 'Tarif optimal' in html
+    assert 'Répartition type des quotients' in html
     assert 'A charge / enfant' in html
     assert 'Évolution pluriannuelle' not in html
 
