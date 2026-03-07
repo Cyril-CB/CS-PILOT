@@ -7,7 +7,7 @@ Fonctionnalites :
 - Saisie des donnees NOE (heures de presence, nombre d'enfants differents)
 - Tableau de bord : croisement donnees comptables bilan_fec / donnees NOE
 - Calcul : heures, enfants, charges, produits, resultat, cout/heure,
-           cout/enfant, taux de couverture
+           cout/enfant, reste a charge/enfant, taux de couverture
 - Filtrage par date : si des periodes_vacances sont configurees pour l'annee,
   les donnees FEC sont restreintes aux mois couverts par chaque periode
   (evite le double-comptage quand le meme code analytique est utilise pour
@@ -39,6 +39,7 @@ _VACATION_KEYWORDS = {
     'toussaint': ['toussaint', 'automne'],
     'noel':      ['noel'],
 }
+_FAMILY_PAYMENTS_ACCOUNT_PREFIX = '7064'
 
 
 def _normaliser(s):
@@ -495,6 +496,7 @@ def _build_tableau(conn, annee):
     charges_by_code_mois = {}  # {(code, mois): total}  – pour les charges filtrées
     charges_by_code = {}       # {code: total annee}    – pour les périodes sans filtre
     produits_by_code = {}      # {code: total annee}    – les produits ne sont pas filtrés
+    subventions_by_code = {}   # {code: total annee}    – produits de subventions (hors 7064xx)
 
     if tous_les_codes:
         codes_list = list(tous_les_codes)
@@ -515,16 +517,21 @@ def _build_tableau(conn, annee):
             c = r['code_analytique']
             charges_by_code[c] = charges_by_code.get(c, 0.0) + r['total']
 
+        produits_subventions_params = [f'{_FAMILY_PAYMENTS_ACCOUNT_PREFIX}%', annee] + codes_list
         produits_rows = conn.execute(
-            'SELECT code_analytique, COALESCE(SUM(montant), 0) as total'
+            'SELECT code_analytique, '
+            '       COALESCE(SUM(montant), 0) as total, '
+            "       COALESCE(SUM(CASE WHEN compte_num LIKE '7%' AND compte_num NOT LIKE ? "
+            '                         THEN montant ELSE 0 END), 0) as total_subventions '
             ' FROM bilan_fec_donnees'
             " WHERE annee = ? AND compte_num LIKE '7%'"
             ' AND code_analytique IN (' + placeholders + ')'
             ' GROUP BY code_analytique',
-            params
+            produits_subventions_params
         ).fetchall()
         for r in produits_rows:
             produits_by_code[r['code_analytique']] = r['total']
+            subventions_by_code[r['code_analytique']] = r['total_subventions']
 
     # ── Pro-rata des produits pour les vacances partageant un meme code ────────
     # Pour chaque (code, tranche_id), recenser les periodes de vacances qui
@@ -545,28 +552,35 @@ def _build_tableau(conn, annee):
                     code_tid_vacances.setdefault(key, []).append((p['id'], nb_jours))
 
     produits_prorata = {}  # {(code, tid, pid): montant}
+    subventions_prorata = {}  # {(code, tid, pid): montant}
     for (code, tid), vac_list in code_tid_vacances.items():
         total_p = produits_by_code.get(code, 0.0)
+        total_subv = subventions_by_code.get(code, 0.0)
         if len(vac_list) == 1:
             # Code utilise par une seule periode : elle recoit tout
             pid, _ = vac_list[0]
             produits_prorata[(code, tid, pid)] = total_p
+            subventions_prorata[(code, tid, pid)] = total_subv
         elif any(j is None for _, j in vac_list):
             # Au moins une duree inconnue → repartition egale entre toutes
             for pid, _ in vac_list:
                 produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+                subventions_prorata[(code, tid, pid)] = total_subv / len(vac_list)
         else:
             total_jours = sum(j for _, j in vac_list)
             for pid, nb_j in vac_list:
                 if total_jours > 0:
                     produits_prorata[(code, tid, pid)] = total_p * nb_j / total_jours
+                    subventions_prorata[(code, tid, pid)] = total_subv * nb_j / total_jours
                 else:
                     produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+                    subventions_prorata[(code, tid, pid)] = total_subv / len(vac_list)
 
     # ── Construction des lignes ────────────────────────────────────────────────
     lignes = []
     total_charges = 0.0
     total_produits = 0.0
+    total_subventions = 0.0
     total_heures = 0.0
     total_enfants = 0
 
@@ -597,12 +611,18 @@ def _build_tableau(conn, annee):
                     produits_prorata.get((c, tranche['id'], periode['id']), 0.0)
                     for c in codes_valides
                 ), 2)
+                subventions = round(sum(
+                    subventions_prorata.get((c, tranche['id'], periode['id']), 0.0)
+                    for c in codes_valides
+                ), 2)
             else:
                 produits = round(sum(produits_by_code.get(c, 0.0) for c in codes_valides), 2)
+                subventions = round(sum(subventions_by_code.get(c, 0.0) for c in codes_valides), 2)
 
             resultat = produits - charges
             cout_heure = (charges / heures) if heures > 0 else None
             cout_enfant = (charges / enfants) if enfants > 0 else None
+            a_charge_enfant = ((charges - subventions) / enfants) if enfants > 0 else None
             taux_couverture = ((produits / charges) * 100) if charges > 0 else None
 
             ligne = {
@@ -618,8 +638,10 @@ def _build_tableau(conn, annee):
                 'charges': charges,
                 'produits': produits,
                 'resultat': round(resultat, 2),
+                'reste_a_charge': round(charges - subventions, 2),
                 'cout_heure': round(cout_heure, 2) if cout_heure is not None else None,
                 'cout_enfant': round(cout_enfant, 2) if cout_enfant is not None else None,
+                'a_charge_enfant': round(a_charge_enfant, 2) if a_charge_enfant is not None else None,
                 'taux_couverture': round(taux_couverture, 1) if taux_couverture is not None else None,
                 # Données pour le détail des charges (identifiants pour la requête)
                 'charges_mois_filter': sorted(mois_filter) if mois_filter is not None else None,
@@ -627,10 +649,13 @@ def _build_tableau(conn, annee):
             lignes.append(ligne)
             total_charges += charges
             total_produits += produits
+            total_subventions += subventions
             total_heures += heures
             total_enfants += enfants
 
     total_resultat = total_produits - total_charges
+    total_reste_a_charge = total_charges - total_subventions
+    total_a_charge_enfant = (total_reste_a_charge / total_enfants) if total_enfants > 0 else None
     total_taux = ((total_produits / total_charges) * 100) if total_charges > 0 else None
 
     return {
@@ -644,6 +669,8 @@ def _build_tableau(conn, annee):
             'charges': round(total_charges, 2),
             'produits': round(total_produits, 2),
             'resultat': round(total_resultat, 2),
+            'reste_a_charge': round(total_reste_a_charge, 2),
+            'a_charge_enfant': round(total_a_charge_enfant, 2) if total_a_charge_enfant is not None else None,
             'taux_couverture': round(total_taux, 1) if total_taux is not None else None,
         },
     }

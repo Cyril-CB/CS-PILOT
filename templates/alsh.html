@@ -40,10 +40,19 @@
             </table>
         </div>
 
-        {# Comparaison N-1 / N-2 #}
-        <div id="comparaisonSection" style="margin-top:32px;">
-            <h3>📅 Évolution pluriannuelle</h3>
-            <div id="comparaisonContent"></div>
+        {# Tarif optimal #}
+        <div id="tarifOptimalSection" style="margin-top:32px;">
+            <h3>💶 Tarif optimal</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-wrap:wrap;">
+                <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
+                    <h4 style="margin:0 0 12px;">Vacances</h4>
+                    <div id="tarifOptimalVacances"></div>
+                </div>
+                <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
+                    <h4 style="margin:0 0 12px;">Périscolaire</h4>
+                    <div id="tarifOptimalPeriscolaire"></div>
+                </div>
+            </div>
         </div>
 
         {# Graphiques #}
@@ -257,7 +266,6 @@ let _config = { tranches: [], periodes: [] };
 let _codesData = {};      // { "pid_tid": {code1, code2, code3} }
 let _noeData = {};        // { "pid_tid": {heures, enfants} }
 let _tableauData = null;
-let _comparaisonData = null;
 let _codesDisponibles = [];
 let _chartsInstances = {};
 
@@ -568,17 +576,13 @@ async function loadDashboard() {
 
     const annee = getAnnee();
 
-    const [resTab, resComp] = await Promise.all([
-        fetch(`/api/alsh/tableau?annee=${annee}`),
-        fetch(`/api/alsh/comparaison?annee=${annee}`)
-    ]);
+    const resTab = await fetch(`/api/alsh/tableau?annee=${annee}`);
     _tableauData = await resTab.json();
-    _comparaisonData = await resComp.json();
 
     renderKPICards(_tableauData.totaux);
     renderTableauPrincipal(_tableauData);
-    renderComparaison(_comparaisonData, annee);
-    try { renderCharts(_tableauData, _comparaisonData, annee); } catch(e) { console.warn('Graphiques:', e); }
+    renderTarifOptimal(_tableauData);
+    try { renderCharts(_tableauData); } catch(e) { console.warn('Graphiques:', e); }
 
     document.getElementById('dashboardLoading').style.display = 'none';
     document.getElementById('dashboardContent').style.display = '';
@@ -611,7 +615,7 @@ function renderTableauPrincipal(data) {
         <th>Période</th><th>Tranche d'âge</th><th>Codes analytiques</th>
         <th>Heures</th><th>Enfants</th>
         <th>Charges (€)</th><th>Produits (€)</th><th>Résultat (€)</th>
-        <th>Coût/heure</th><th>Coût/enfant</th><th>Taux couverture</th>
+        <th>Coût/heure</th><th>Coût/enfant</th><th>A charge / enfant</th>
     </tr>`;
 
     // Grouper par période
@@ -630,14 +634,14 @@ function renderTableauPrincipal(data) {
             subHeures += l.heures_presence; subEnfants += l.nb_enfants;
         });
         const subRes = subProduits - subCharges;
-        const subTaux = subCharges > 0 ? (subProduits / subCharges * 100) : null;
+        const subResteACharge = groupe.lignes.reduce((s, l) => s + (l.reste_a_charge || 0), 0);
         const subCH = subHeures > 0 ? subCharges / subHeures : null;
         const subCE = subEnfants > 0 ? subCharges / subEnfants : null;
+        const subACE = subEnfants > 0 ? subResteACharge / subEnfants : null;
 
         // Lignes détail
         groupe.lignes.forEach((l, idx) => {
             const resClass = l.resultat >= 0 ? 'positif' : 'negatif';
-            const tauxClass = (l.taux_couverture||0) >= 100 ? 'positif' : 'negatif';
             const codesHtml = l.codes.map(c => `<span class="badge-code">${esc(c)}</span>`).join(' ') || '<em style="color:var(--text-muted)">—</em>';
             // Show the date range used for filtering (when vacation period is date-filtered)
             const dateLabelHtml = (idx === 0 && l.periode_date_label)
@@ -664,7 +668,7 @@ function renderTableauPrincipal(data) {
                 <td style="text-align:right;color:var(--${resClass==='positif'?'success':'danger'});">${fmt(l.resultat)} €</td>
                 <td style="text-align:right;">${l.cout_heure !== null ? fmt(l.cout_heure)+' €' : '—'}</td>
                 <td style="text-align:right;">${l.cout_enfant !== null ? fmt(l.cout_enfant)+' €' : '—'}</td>
-                <td style="text-align:right;color:var(--${tauxClass==='positif'?'success':'danger'});">${fmtPct(l.taux_couverture)}</td>
+                <td style="text-align:right;">${l.a_charge_enfant !== null ? fmt(l.a_charge_enfant)+' €' : '—'}</td>
             </tr>`;
         });
 
@@ -679,7 +683,7 @@ function renderTableauPrincipal(data) {
             <td style="text-align:right;color:${stResClass};">${fmt(subRes)} €</td>
             <td style="text-align:right;">${subCH !== null ? fmt(subCH)+' €' : '—'}</td>
             <td style="text-align:right;">${subCE !== null ? fmt(subCE)+' €' : '—'}</td>
-            <td style="text-align:right;">${fmtPct(subTaux)}</td>
+            <td style="text-align:right;">${subACE !== null ? fmt(subACE)+' €' : '—'}</td>
         </tr>`;
     });
 
@@ -698,63 +702,60 @@ function renderTableauPrincipal(data) {
         <td style="text-align:right;">${fmt(tot.produits)} €</td>
         <td class="${totResClass}" style="text-align:right;">${totSign} ${fmt(tot.resultat)} €</td>
         <td>—</td><td>—</td>
-        <td style="text-align:right;">${fmtPct(tot.taux_couverture)}</td>
+        <td style="text-align:right;">${tot.a_charge_enfant !== null ? fmt(tot.a_charge_enfant)+' €' : '—'}</td>
     </tr>`;
 }
 
-function renderComparaison(data, annee) {
-    const div = document.getElementById('comparaisonContent');
-    const comp = data.comparaison || {};
-    const annees = [annee, annee - 1, annee - 2].filter(a => comp[String(a)]);
+function renderTarifOptimal(data) {
+    const vacationsRows = data.lignes.filter(l => l.periode_type === 'vacances');
+    const mercrediRows = data.lignes.filter(l => l.periode_type === 'mercredi');
+    const periscolaireRows = mercrediRows.length > 0
+        ? mercrediRows
+        : data.lignes.filter(l => l.periode_type !== 'vacances');
 
-    if (annees.length <= 1) {
-        div.innerHTML = '<p style="color:var(--text-muted);">Aucune donnée disponible pour les années précédentes.</p>';
+    renderTarifOptimalZone('tarifOptimalVacances', vacationsRows);
+    renderTarifOptimalZone('tarifOptimalPeriscolaire', periscolaireRows);
+}
+
+function renderTarifOptimalZone(containerId, lignes) {
+    const container = document.getElementById(containerId);
+    if (!lignes.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
         return;
     }
 
-    const metrics = [
-        { key: 'charges', label: 'Charges (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'produits', label: 'Produits (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'resultat', label: 'Résultat (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'heures_presence', label: 'Heures de présence', fmt: v => fmtH(v) },
-        { key: 'nb_enfants', label: 'Enfants différents', fmt: v => (v||0).toLocaleString('fr-FR') },
-        { key: 'taux_couverture', label: 'Taux de couverture', fmt: v => fmtPct(v) },
+    const totalEnfants = lignes.reduce((s, l) => s + (l.nb_enfants || 0), 0);
+    const totalResteACharge = lignes.reduce((s, l) => s + (l.reste_a_charge || 0), 0);
+    if (totalEnfants <= 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Données enfants insuffisantes pour proposer un tarif.</p>';
+        return;
+    }
+
+    const base = totalResteACharge / totalEnfants;
+    const tranches = [
+        { label: '0 - 249', coef: 0.40 },
+        { label: '250 - 499', coef: 0.55 },
+        { label: '500 - 749', coef: 0.70 },
+        { label: '750 - 999', coef: 0.85 },
+        { label: '1000 - 1249', coef: 1.00 },
+        { label: '1250 - 1499', coef: 1.15 },
+        { label: '1500 - 1749', coef: 1.30 },
+        { label: '1750 et +', coef: 1.45 },
     ];
 
-    let html = '<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Indicateur</th>';
-    annees.forEach(a => { html += `<th style="text-align:right;">${a}</th>`; });
-    if (annees.length >= 2) html += `<th style="text-align:right;">Évol. N/N-1</th>`;
-    html += '</tr></thead><tbody>';
-
-    metrics.forEach(m => {
-        html += `<tr><td>${m.label}</td>`;
-        annees.forEach(a => {
-            const tot = comp[String(a)]?.totaux || {};
-            html += `<td style="text-align:right;">${m.fmt(tot[m.key])}</td>`;
-        });
-        if (annees.length >= 2) {
-            const vN = comp[String(annees[0])]?.totaux?.[m.key] || 0;
-            const vN1 = comp[String(annees[1])]?.totaux?.[m.key] || 0;
-            if (vN1 !== 0 && m.key !== 'taux_couverture') {
-                const evol = ((vN - vN1) / Math.abs(vN1)) * 100;
-                const cls = evol >= 0 ? 'evol-pos' : 'evol-neg';
-                html += `<td style="text-align:right;" class="${cls}">${evol >= 0 ? '+' : ''}${evol.toFixed(1)} %</td>`;
-            } else {
-                html += '<td>—</td>';
-            }
-        }
-        html += '</tr>';
+    let html = '<table class="data-table"><thead><tr><th>Quotient familial</th><th style="text-align:right;">Tarif proposé</th></tr></thead><tbody>';
+    tranches.forEach(t => {
+        html += `<tr><td>${t.label}</td><td style="text-align:right;">${fmt(base * t.coef)} €</td></tr>`;
     });
-
-    html += '</tbody></table></div>';
-    div.innerHTML = html;
+    html += '</tbody></table>';
+    container.innerHTML = html;
 }
 
 function destroyChart(id) {
     if (_chartsInstances[id]) { _chartsInstances[id].destroy(); delete _chartsInstances[id]; }
 }
 
-function renderCharts(data, compData, annee) {
+function renderCharts(data) {
     if (typeof Chart === 'undefined') {
         // Chart.js non disponible (CDN bloqué ou hors ligne)
         ['chartChargesProduits','chartTauxCouverture','chartHeures','chartCoutHeure'].forEach(id => {
@@ -779,9 +780,9 @@ function renderCharts(data, compData, annee) {
     const charges = aggByPeriode(data.lignes, 'charges');
     const produits = aggByPeriode(data.lignes, 'produits');
     const heures = aggByPeriode(data.lignes, 'heures_presence');
-    const taux = periodes.map(p => {
-        const c = charges[periodes.indexOf(p)];
-        const pr = produits[periodes.indexOf(p)];
+    const taux = periodes.map((_, i) => {
+        const c = charges[i];
+        const pr = produits[i];
         return c > 0 ? Math.round(pr / c * 1000) / 10 : null;
     });
     const coutH = periodes.map((p, i) => {
@@ -850,38 +851,6 @@ function renderCharts(data, compData, annee) {
             plugins: { legend: { position: 'bottom' } } } }
     );
 
-    // Graphique évolution pluriannuelle (si données N-1 disponibles)
-    const comp = compData.comparaison || {};
-    const anneesEvol = [annee, annee - 1, annee - 2].filter(a => comp[String(a)]);
-    if (anneesEvol.length >= 2) {
-        renderEvolutionCharts(anneesEvol, comp);
-    }
-}
-
-function renderEvolutionCharts(annees, comp) {
-    // Graphique évolution charges/produits/résultat sur N années
-    const container = document.getElementById('comparaisonContent');
-    if (!container.querySelector('#chartEvolution')) {
-        container.insertAdjacentHTML('afterbegin',
-            '<div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);margin-bottom:16px;">' +
-            '<h4 style="margin:0 0 12px;">Évolution charges / produits / résultat</h4>' +
-            '<canvas id="chartEvolution" height="200"></canvas></div>');
-    }
-    destroyChart('chartEvolution');
-    _chartsInstances['chartEvolution'] = new Chart(
-        document.getElementById('chartEvolution'),
-        { type: 'line', data: {
-            labels: annees.map(String).reverse(),
-            datasets: [
-                { label: 'Charges', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.charges || 0),
-                  borderColor: 'rgba(191,68,68,1)', backgroundColor: 'rgba(191,68,68,0.1)', tension: 0.3, fill: false },
-                { label: 'Produits', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.produits || 0),
-                  borderColor: 'rgba(63,138,96,1)', backgroundColor: 'rgba(63,138,96,0.1)', tension: 0.3, fill: false },
-                { label: 'Résultat', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.resultat || 0),
-                  borderColor: 'rgba(47,93,80,1)', backgroundColor: 'rgba(47,93,80,0.1)', tension: 0.3, fill: false },
-            ]
-        }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } }
-    );
 }
 
 // ── Détail des charges (modale) ────────────────────────────────────────────────
