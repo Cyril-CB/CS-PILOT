@@ -246,8 +246,8 @@
         {% endif %}
     </div>
 
-    {# ── Ligne 4 : Demandes recup + Anomalies + Activite ── #}
-    <div class="direction-row direction-row-3">
+    {# ── Ligne 4 : Demandes recup + Top congés ── #}
+    <div class="direction-row">
         {# Demandes de recuperation en attente #}
         <div class="section">
             <h2>🏖️ Demandes de recuperation</h2>
@@ -288,36 +288,6 @@
             {% else %}
             <div class="direction-empty">
                 <p>Aucune demande en attente</p>
-            </div>
-            {% endif %}
-        </div>
-
-        {# Anomalies #}
-        <div class="section">
-            <h2>⚠️ Anomalies recentes</h2>
-            {% if anomalies_non_traitees|length > 0 %}
-            <div class="direction-anomalies-list">
-                {% for a in anomalies_non_traitees %}
-                <div class="direction-anomaly-item direction-anomaly-{{ a.gravite }}">
-                    <div class="direction-anomaly-header">
-                        <span class="badge {% if a.gravite == 'critique' %}badge-danger{% elif a.gravite == 'alerte' %}badge-warning{% else %}badge-info{% endif %}">
-                            {{ a.gravite|upper }}
-                        </span>
-                        <small>{{ a.date_modification }}</small>
-                    </div>
-                    <p><strong>{{ a.salarie_nom }} {{ a.salarie_prenom }}</strong></p>
-                    <p class="direction-anomaly-desc">{{ a.description or a.type_anomalie }}</p>
-                </div>
-                {% endfor %}
-            </div>
-            {% if nb_anomalies > 10 %}
-            <div style="margin-top: 1rem; text-align: center;">
-                <a href="{{ url_for('suivi_bp.suivi_anomalies') }}" class="btn btn-sm btn-secondary">Voir toutes les anomalies ({{ nb_anomalies }})</a>
-            </div>
-            {% endif %}
-            {% else %}
-            <div class="direction-empty direction-empty-ok">
-                <p>Aucune anomalie en attente</p>
             </div>
             {% endif %}
         </div>

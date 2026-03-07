@@ -27,6 +27,11 @@
         Chargement des données…
     </div>
     <div id="dashboardContent" style="display:none;">
+        <div id="logistiqueAlert" style="display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:#fff4e5;border:1px solid #f5c78a;color:#8a5a00;">
+            ⚠️ Taux de logistique global absent ou à 0&nbsp;%, configurez-le sur
+            <a href="/bilan-secteurs#logistiqueCalc" style="font-weight:600;">cette page</a>
+            (en bas).
+        </div>
 
         {# Résumé global #}
         <div id="cartesSommaire" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0;"></div>
@@ -40,10 +45,31 @@
             </table>
         </div>
 
-        {# Comparaison N-1 / N-2 #}
-        <div id="comparaisonSection" style="margin-top:32px;">
-            <h3>📅 Évolution pluriannuelle</h3>
-            <div id="comparaisonContent"></div>
+        {# Tarif optimal #}
+        <div id="tarifOptimalSection" style="margin-top:32px;">
+            <h3>💶 Tarif optimal</h3>
+            <div class="alsh-tarif-repartition">
+                <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+                    <div>
+                        <h4 style="margin:0 0 4px;">Répartition type des quotients (%)</h4>
+                        <p style="margin:0;color:var(--text-muted);font-size:0.9em;">
+                            Ajustez la part d'enfants par tranche de quotient familial pour affiner les tarifs proposés.
+                        </p>
+                    </div>
+                    <small id="repartitionQuotientsTotal" style="color:var(--text-muted);"></small>
+                </div>
+                <div id="repartitionQuotientsGrid" class="alsh-repartition-grid"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-wrap:wrap;">
+                <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
+                    <h4 style="margin:0 0 12px;">Vacances</h4>
+                    <div id="tarifOptimalVacances"></div>
+                </div>
+                <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
+                    <h4 style="margin:0 0 12px;">Périscolaire</h4>
+                    <div id="tarifOptimalPeriscolaire"></div>
+                </div>
+            </div>
         </div>
 
         {# Graphiques #}
@@ -200,6 +226,35 @@
     text-transform: uppercase;
 }
 .code-input::placeholder { text-transform: none; }
+.alsh-tarif-repartition {
+    margin: 12px 0 20px;
+    background: var(--bg-card, #fff);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+}
+.alsh-repartition-grid {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+}
+.alsh-repartition-item {
+    border: 1px solid var(--gray-200, #e7ddd1);
+    border-radius: 8px;
+    padding: 8px;
+    background: var(--gray-50, #faf7f2);
+}
+.alsh-repartition-item label {
+    display: block;
+    font-size: 0.82em;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.alsh-repartition-item input {
+    width: 100%;
+    text-align: right;
+}
 .tr-subtotal td {
     background: var(--gray-100, #f3eee7);
     font-weight: 600;
@@ -257,9 +312,20 @@ let _config = { tranches: [], periodes: [] };
 let _codesData = {};      // { "pid_tid": {code1, code2, code3} }
 let _noeData = {};        // { "pid_tid": {heures, enfants} }
 let _tableauData = null;
-let _comparaisonData = null;
 let _codesDisponibles = [];
 let _chartsInstances = {};
+let _repartitionApplying = false;
+let _repartitionSaveTimeout = null;
+const TARIF_QUOTIENT_TRANCHES = [
+    { id: 'qf_0_249', label: '0 - 249', coef: 0.40, defaultPct: 22 },
+    { id: 'qf_250_499', label: '250 - 499', coef: 0.55, defaultPct: 20 },
+    { id: 'qf_500_749', label: '500 - 749', coef: 0.70, defaultPct: 16 },
+    { id: 'qf_750_999', label: '750 - 999', coef: 0.85, defaultPct: 14 },
+    { id: 'qf_1000_1249', label: '1000 - 1249', coef: 1.00, defaultPct: 10 },
+    { id: 'qf_1250_1499', label: '1250 - 1499', coef: 1.15, defaultPct: 8 },
+    { id: 'qf_1500_1749', label: '1500 - 1749', coef: 1.30, defaultPct: 6 },
+    { id: 'qf_1750_plus', label: '1750 et +', coef: 1.45, defaultPct: 4 },
+];
 
 function getAnnee() { return parseInt(document.getElementById('filtreAnnee').value); }
 
@@ -305,6 +371,7 @@ async function loadTabData(tab) {
 async function loadConfig() {
     const res = await fetch('/api/alsh/config');
     _config = await res.json();
+    applyRepartitionQuotients(_config.tarif_repartition_quotients);
     renderConfigLists();
 }
 
@@ -568,20 +635,23 @@ async function loadDashboard() {
 
     const annee = getAnnee();
 
-    const [resTab, resComp] = await Promise.all([
-        fetch(`/api/alsh/tableau?annee=${annee}`),
-        fetch(`/api/alsh/comparaison?annee=${annee}`)
-    ]);
+    const resTab = await fetch(`/api/alsh/tableau?annee=${annee}`);
     _tableauData = await resTab.json();
-    _comparaisonData = await resComp.json();
 
+    renderLogistiqueAlert(_tableauData);
     renderKPICards(_tableauData.totaux);
     renderTableauPrincipal(_tableauData);
-    renderComparaison(_comparaisonData, annee);
-    try { renderCharts(_tableauData, _comparaisonData, annee); } catch(e) { console.warn('Graphiques:', e); }
+    renderTarifOptimal(_tableauData);
+    try { renderCharts(_tableauData); } catch(e) { console.warn('Graphiques:', e); }
 
     document.getElementById('dashboardLoading').style.display = 'none';
     document.getElementById('dashboardContent').style.display = '';
+}
+
+function renderLogistiqueAlert(data) {
+    const alertEl = document.getElementById('logistiqueAlert');
+    if (!alertEl) return;
+    alertEl.style.display = data.taux_logistique_manquant ? '' : 'none';
 }
 
 function renderKPICards(totaux) {
@@ -611,7 +681,7 @@ function renderTableauPrincipal(data) {
         <th>Période</th><th>Tranche d'âge</th><th>Codes analytiques</th>
         <th>Heures</th><th>Enfants</th>
         <th>Charges (€)</th><th>Produits (€)</th><th>Résultat (€)</th>
-        <th>Coût/heure</th><th>Coût/enfant</th><th>Taux couverture</th>
+        <th>Coût/heure</th><th>Coût/enfant</th><th>A charge / enfant</th>
     </tr>`;
 
     // Grouper par période
@@ -630,14 +700,14 @@ function renderTableauPrincipal(data) {
             subHeures += l.heures_presence; subEnfants += l.nb_enfants;
         });
         const subRes = subProduits - subCharges;
-        const subTaux = subCharges > 0 ? (subProduits / subCharges * 100) : null;
+        const subResteACharge = groupe.lignes.reduce((s, l) => s + (l.reste_a_charge || 0), 0);
         const subCH = subHeures > 0 ? subCharges / subHeures : null;
         const subCE = subEnfants > 0 ? subCharges / subEnfants : null;
+        const subACE = subEnfants > 0 ? subResteACharge / subEnfants : null;
 
         // Lignes détail
         groupe.lignes.forEach((l, idx) => {
             const resClass = l.resultat >= 0 ? 'positif' : 'negatif';
-            const tauxClass = (l.taux_couverture||0) >= 100 ? 'positif' : 'negatif';
             const codesHtml = l.codes.map(c => `<span class="badge-code">${esc(c)}</span>`).join(' ') || '<em style="color:var(--text-muted)">—</em>';
             // Show the date range used for filtering (when vacation period is date-filtered)
             const dateLabelHtml = (idx === 0 && l.periode_date_label)
@@ -664,7 +734,7 @@ function renderTableauPrincipal(data) {
                 <td style="text-align:right;color:var(--${resClass==='positif'?'success':'danger'});">${fmt(l.resultat)} €</td>
                 <td style="text-align:right;">${l.cout_heure !== null ? fmt(l.cout_heure)+' €' : '—'}</td>
                 <td style="text-align:right;">${l.cout_enfant !== null ? fmt(l.cout_enfant)+' €' : '—'}</td>
-                <td style="text-align:right;color:var(--${tauxClass==='positif'?'success':'danger'});">${fmtPct(l.taux_couverture)}</td>
+                <td style="text-align:right;">${l.a_charge_enfant !== null ? fmt(l.a_charge_enfant)+' €' : '—'}</td>
             </tr>`;
         });
 
@@ -679,7 +749,7 @@ function renderTableauPrincipal(data) {
             <td style="text-align:right;color:${stResClass};">${fmt(subRes)} €</td>
             <td style="text-align:right;">${subCH !== null ? fmt(subCH)+' €' : '—'}</td>
             <td style="text-align:right;">${subCE !== null ? fmt(subCE)+' €' : '—'}</td>
-            <td style="text-align:right;">${fmtPct(subTaux)}</td>
+            <td style="text-align:right;">${subACE !== null ? fmt(subACE)+' €' : '—'}</td>
         </tr>`;
     });
 
@@ -698,63 +768,177 @@ function renderTableauPrincipal(data) {
         <td style="text-align:right;">${fmt(tot.produits)} €</td>
         <td class="${totResClass}" style="text-align:right;">${totSign} ${fmt(tot.resultat)} €</td>
         <td>—</td><td>—</td>
-        <td style="text-align:right;">${fmtPct(tot.taux_couverture)}</td>
+        <td style="text-align:right;">${tot.a_charge_enfant !== null ? fmt(tot.a_charge_enfant)+' €' : '—'}</td>
     </tr>`;
 }
 
-function renderComparaison(data, annee) {
-    const div = document.getElementById('comparaisonContent');
-    const comp = data.comparaison || {};
-    const annees = [annee, annee - 1, annee - 2].filter(a => comp[String(a)]);
+function renderTarifOptimal(data) {
+    updateRepartitionQuotientsInfo();
+    const vacationsRows = data.lignes.filter(l => l.periode_type === 'vacances');
+    const mercrediRows = data.lignes.filter(l => l.periode_type === 'mercredi');
+    const periscolaireRows = mercrediRows.length > 0
+        ? mercrediRows
+        : data.lignes.filter(l => l.periode_type !== 'vacances');
 
-    if (annees.length <= 1) {
-        div.innerHTML = '<p style="color:var(--text-muted);">Aucune donnée disponible pour les années précédentes.</p>';
+    renderTarifOptimalZone('tarifOptimalVacances', vacationsRows);
+    renderTarifOptimalZone('tarifOptimalPeriscolaire', periscolaireRows);
+}
+
+function renderTarifOptimalZone(containerId, lignes) {
+    const container = document.getElementById(containerId);
+    if (!lignes.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
         return;
     }
 
-    const metrics = [
-        { key: 'charges', label: 'Charges (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'produits', label: 'Produits (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'resultat', label: 'Résultat (€)', fmt: v => fmt(v) + ' €' },
-        { key: 'heures_presence', label: 'Heures de présence', fmt: v => fmtH(v) },
-        { key: 'nb_enfants', label: 'Enfants différents', fmt: v => (v||0).toLocaleString('fr-FR') },
-        { key: 'taux_couverture', label: 'Taux de couverture', fmt: v => fmtPct(v) },
-    ];
+    const totalEnfants = lignes.reduce((s, l) => s + (l.nb_enfants || 0), 0);
+    const totalResteACharge = lignes.reduce((s, l) => s + (l.reste_a_charge || 0), 0);
+    if (totalEnfants <= 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Données enfants insuffisantes pour proposer un tarif.</p>';
+        return;
+    }
 
-    let html = '<div style="overflow-x:auto;"><table class="data-table"><thead><tr><th>Indicateur</th>';
-    annees.forEach(a => { html += `<th style="text-align:right;">${a}</th>`; });
-    if (annees.length >= 2) html += `<th style="text-align:right;">Évol. N/N-1</th>`;
-    html += '</tr></thead><tbody>';
+    const base = totalResteACharge / totalEnfants;
+    const repartition = getRepartitionQuotientsNormalisee();
+    const coefficientPondere = repartition.reduce((s, t) => s + ((t.pct / 100) * t.coef), 0);
+    if (coefficientPondere <= 0) {
+        container.innerHTML = '<p style="color:var(--text-muted);">Répartition de quotients invalide.</p>';
+        return;
+    }
 
-    metrics.forEach(m => {
-        html += `<tr><td>${m.label}</td>`;
-        annees.forEach(a => {
-            const tot = comp[String(a)]?.totaux || {};
-            html += `<td style="text-align:right;">${m.fmt(tot[m.key])}</td>`;
+    // Garantit que le tarif moyen pondéré (avec la répartition saisie) couvre le
+    // reste à charge unitaire constaté.
+    const baseAjustee = base / coefficientPondere;
+
+    let html = `<p style="margin:0 0 10px;color:var(--text-muted);font-size:0.88em;">
+        Tarif moyen pondéré cible : <strong>${fmt(base)} €</strong> par enfant
+    </p>`;
+    html += '<table class="data-table"><thead><tr><th>Quotient familial</th><th style="text-align:right;">Répartition</th><th style="text-align:right;">Tarif proposé</th></tr></thead><tbody>';
+    repartition.forEach(t => {
+        html += `<tr><td>${t.label}</td><td style="text-align:right;">${fmt(t.pct)} %</td><td style="text-align:right;">${fmt(baseAjustee * t.coef)} €</td></tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function initRepartitionQuotientsInputs() {
+    const grid = document.getElementById('repartitionQuotientsGrid');
+    if (!grid || grid.children.length > 0) return;
+
+    grid.innerHTML = TARIF_QUOTIENT_TRANCHES.map(t => `
+        <div class="alsh-repartition-item">
+            <label for="${t.id}">${t.label}</label>
+            <input id="${t.id}" class="form-control" type="number" min="0" step="0.1" value="${t.defaultPct}">
+        </div>
+    `).join('');
+
+    TARIF_QUOTIENT_TRANCHES.forEach(t => {
+        const input = document.getElementById(t.id);
+        input.addEventListener('input', () => {
+            updateRepartitionQuotientsInfo();
+            if (_tableauData) renderTarifOptimal(_tableauData);
+            if (_repartitionApplying) return;
+            scheduleSaveRepartitionQuotients();
         });
-        if (annees.length >= 2) {
-            const vN = comp[String(annees[0])]?.totaux?.[m.key] || 0;
-            const vN1 = comp[String(annees[1])]?.totaux?.[m.key] || 0;
-            if (vN1 !== 0 && m.key !== 'taux_couverture') {
-                const evol = ((vN - vN1) / Math.abs(vN1)) * 100;
-                const cls = evol >= 0 ? 'evol-pos' : 'evol-neg';
-                html += `<td style="text-align:right;" class="${cls}">${evol >= 0 ? '+' : ''}${evol.toFixed(1)} %</td>`;
-            } else {
-                html += '<td>—</td>';
-            }
-        }
-        html += '</tr>';
+    });
+    updateRepartitionQuotientsInfo();
+}
+
+function applyRepartitionQuotients(values) {
+    if (!Array.isArray(values)) return;
+    _repartitionApplying = true;
+    try {
+        const map = {};
+        values.forEach(v => {
+            if (v && typeof v.id === 'string') map[v.id] = v.pct;
+        });
+        TARIF_QUOTIENT_TRANCHES.forEach(t => {
+            const input = document.getElementById(t.id);
+            if (!input) return;
+            const val = parseFloat(map[t.id]);
+            input.value = Number.isFinite(val) && val >= 0 ? String(val) : String(t.defaultPct);
+        });
+    } finally {
+        _repartitionApplying = false;
+    }
+    updateRepartitionQuotientsInfo();
+    if (_tableauData) renderTarifOptimal(_tableauData);
+}
+
+function scheduleSaveRepartitionQuotients() {
+    if (_repartitionSaveTimeout) clearTimeout(_repartitionSaveTimeout);
+    _repartitionSaveTimeout = setTimeout(() => {
+        saveRepartitionQuotients().catch((err) => {
+            console.warn('Impossible de sauvegarder la répartition des quotients:', err);
+        });
+    }, 350);
+}
+
+function parseQuotientInputValue(inputId) {
+    const raw = document.getElementById(inputId)?.value || '0';
+    const parsed = parseFloat(String(raw).replace(',', '.'));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+async function saveRepartitionQuotients() {
+    const csrf = document.querySelector('meta[name=csrf-token]').content;
+    const payload = TARIF_QUOTIENT_TRANCHES.map(t => {
+        return { id: t.id, pct: parseQuotientInputValue(t.id) };
     });
 
-    html += '</tbody></table></div>';
-    div.innerHTML = html;
+    const res = await fetch('/api/alsh/tarif-repartition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+        body: JSON.stringify({ tarif_repartition_quotients: payload })
+    });
+    if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data && Array.isArray(data.tarif_repartition_quotients)) {
+        applyRepartitionQuotients(data.tarif_repartition_quotients);
+    }
+}
+
+function getRepartitionQuotientsNormalisee() {
+    const values = TARIF_QUOTIENT_TRANCHES.map(t => {
+        const raw = document.getElementById(t.id)?.value || '0';
+        const parsed = parseFloat(String(raw).replace(',', '.'));
+        return { ...t, pct: Number.isFinite(parsed) && parsed > 0 ? parsed : 0 };
+    });
+    const total = values.reduce((s, t) => s + t.pct, 0);
+    if (total <= 0) {
+        return TARIF_QUOTIENT_TRANCHES.map(t => ({ ...t, pct: t.defaultPct }));
+    }
+    return values.map(t => ({ ...t, pct: (t.pct / total) * 100 }));
+}
+
+function updateRepartitionQuotientsInfo() {
+    const info = document.getElementById('repartitionQuotientsTotal');
+    if (!info) return;
+
+    const totalSaisi = TARIF_QUOTIENT_TRANCHES.reduce((s, t) => {
+        const parsed = parseFloat(String(document.getElementById(t.id)?.value || '0').replace(',', '.'));
+        return s + (Number.isFinite(parsed) && parsed > 0 ? parsed : 0);
+    }, 0);
+
+    if (totalSaisi <= 0) {
+        info.textContent = 'Total saisi : 0 % (répartition par défaut appliquée)';
+        info.style.color = 'var(--warning, #c56a2a)';
+    } else if (Math.abs(totalSaisi - 100) < 0.01) {
+        info.textContent = 'Total saisi : 100 %';
+        info.style.color = 'var(--success, #3f8a60)';
+    } else {
+        info.textContent = `Total saisi : ${fmt(totalSaisi)} % (normalisation automatique à 100 %)`;
+        info.style.color = 'var(--warning, #c56a2a)';
+    }
 }
 
 function destroyChart(id) {
     if (_chartsInstances[id]) { _chartsInstances[id].destroy(); delete _chartsInstances[id]; }
 }
 
-function renderCharts(data, compData, annee) {
+function renderCharts(data) {
     if (typeof Chart === 'undefined') {
         // Chart.js non disponible (CDN bloqué ou hors ligne)
         ['chartChargesProduits','chartTauxCouverture','chartHeures','chartCoutHeure'].forEach(id => {
@@ -779,9 +963,9 @@ function renderCharts(data, compData, annee) {
     const charges = aggByPeriode(data.lignes, 'charges');
     const produits = aggByPeriode(data.lignes, 'produits');
     const heures = aggByPeriode(data.lignes, 'heures_presence');
-    const taux = periodes.map(p => {
-        const c = charges[periodes.indexOf(p)];
-        const pr = produits[periodes.indexOf(p)];
+    const taux = periodes.map((_, i) => {
+        const c = charges[i];
+        const pr = produits[i];
         return c > 0 ? Math.round(pr / c * 1000) / 10 : null;
     });
     const coutH = periodes.map((p, i) => {
@@ -850,38 +1034,6 @@ function renderCharts(data, compData, annee) {
             plugins: { legend: { position: 'bottom' } } } }
     );
 
-    // Graphique évolution pluriannuelle (si données N-1 disponibles)
-    const comp = compData.comparaison || {};
-    const anneesEvol = [annee, annee - 1, annee - 2].filter(a => comp[String(a)]);
-    if (anneesEvol.length >= 2) {
-        renderEvolutionCharts(anneesEvol, comp);
-    }
-}
-
-function renderEvolutionCharts(annees, comp) {
-    // Graphique évolution charges/produits/résultat sur N années
-    const container = document.getElementById('comparaisonContent');
-    if (!container.querySelector('#chartEvolution')) {
-        container.insertAdjacentHTML('afterbegin',
-            '<div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);margin-bottom:16px;">' +
-            '<h4 style="margin:0 0 12px;">Évolution charges / produits / résultat</h4>' +
-            '<canvas id="chartEvolution" height="200"></canvas></div>');
-    }
-    destroyChart('chartEvolution');
-    _chartsInstances['chartEvolution'] = new Chart(
-        document.getElementById('chartEvolution'),
-        { type: 'line', data: {
-            labels: annees.map(String).reverse(),
-            datasets: [
-                { label: 'Charges', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.charges || 0),
-                  borderColor: 'rgba(191,68,68,1)', backgroundColor: 'rgba(191,68,68,0.1)', tension: 0.3, fill: false },
-                { label: 'Produits', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.produits || 0),
-                  borderColor: 'rgba(63,138,96,1)', backgroundColor: 'rgba(63,138,96,0.1)', tension: 0.3, fill: false },
-                { label: 'Résultat', data: annees.slice().reverse().map(a => comp[String(a)]?.totaux?.resultat || 0),
-                  borderColor: 'rgba(47,93,80,1)', backgroundColor: 'rgba(47,93,80,0.1)', tension: 0.3, fill: false },
-            ]
-        }, options: { responsive: true, plugins: { legend: { position: 'bottom' } } } }
-    );
 }
 
 // ── Détail des charges (modale) ────────────────────────────────────────────────
@@ -960,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    initRepartitionQuotientsInputs();
     switchTab('dashboard');
 });
 </script>
