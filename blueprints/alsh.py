@@ -42,6 +42,20 @@ _VACATION_KEYWORDS = {
 _FAMILY_PAYMENTS_ACCOUNT_PREFIX = '7064'
 
 
+def _get_taux_logistique_global(conn, annee):
+    """Retourne le taux logistique global de l'année, ou None s'il est absent."""
+    row = conn.execute(
+        'SELECT taux_global FROM bilan_taux_logistique WHERE annee = ?',
+        (annee,)
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        return float(row['taux_global'])
+    except (TypeError, ValueError):
+        return None
+
+
 def _normaliser(s):
     """Normalise une chaîne (minuscules, sans accents) pour la comparaison."""
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode().lower()
@@ -487,6 +501,9 @@ def _build_tableau(conn, annee):
     # Info par periode : (mois_filter, label, nb_jours)
     periode_info = _build_periode_info(conn, periodes, annee)
 
+    taux_logistique_global = _get_taux_logistique_global(conn, annee)
+    coeff_logistique = 1 + ((taux_logistique_global or 0.0) / 100.0)
+
     # Collecter tous les codes analytiques utilises pour cette annee
     tous_les_codes = set()
     for codes in codes_map.values():
@@ -595,13 +612,14 @@ def _build_tableau(conn, annee):
 
             # Charges : filtrees par mois pour les vacances avec dates connues
             if mois_filter is not None:
-                charges = round(sum(
+                charges_brutes = sum(
                     charges_by_code_mois.get((c, m), 0.0)
                     for c in codes_valides
                     for m in mois_filter
-                ), 2)
+                )
             else:
-                charges = round(sum(charges_by_code.get(c, 0.0) for c in codes_valides), 2)
+                charges_brutes = sum(charges_by_code.get(c, 0.0) for c in codes_valides)
+            charges = round(round(charges_brutes, 6) * coeff_logistique, 2)
 
             # Produits : pro-rata pour les vacances, total annuel sinon
             if periode['type'] == 'vacances' and any(
@@ -660,6 +678,8 @@ def _build_tableau(conn, annee):
 
     return {
         'annee': annee,
+        'taux_logistique_global': taux_logistique_global,
+        'taux_logistique_manquant': taux_logistique_global is None,
         'periodes': [dict(p) for p in periodes],
         'tranches': [dict(t) for t in tranches],
         'lignes': lignes,

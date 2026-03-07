@@ -27,6 +27,11 @@
         Chargement des données…
     </div>
     <div id="dashboardContent" style="display:none;">
+        <div id="logistiqueAlert" style="display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:#fff4e5;border:1px solid #f5c78a;color:#8a5a00;">
+            ⚠️ Taux de logistique global absent, configurez-le sur
+            <a href="/bilan-secteurs#logistiqueCalc" style="font-weight:600;">cette page</a>
+            (en bas).
+        </div>
 
         {# Résumé global #}
         <div id="cartesSommaire" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0;"></div>
@@ -579,6 +584,7 @@ async function loadDashboard() {
     const resTab = await fetch(`/api/alsh/tableau?annee=${annee}`);
     _tableauData = await resTab.json();
 
+    renderLogistiqueAlert(_tableauData);
     renderKPICards(_tableauData.totaux);
     renderTableauPrincipal(_tableauData);
     renderTarifOptimal(_tableauData);
@@ -586,6 +592,12 @@ async function loadDashboard() {
 
     document.getElementById('dashboardLoading').style.display = 'none';
     document.getElementById('dashboardContent').style.display = '';
+}
+
+function renderLogistiqueAlert(data) {
+    const alertEl = document.getElementById('logistiqueAlert');
+    if (!alertEl) return;
+    alertEl.style.display = data.taux_logistique_manquant ? '' : 'none';
 }
 
 function renderKPICards(totaux) {
