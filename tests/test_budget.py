@@ -1,4 +1,4 @@
-TEST_TYPE_ORDER = 999
+TEST_SECTOR_TYPE_ORDER = 999
 
 
 def test_gestion_postes_depense_affiche_types_secteur_dynamiques(app, db, admin_client):
@@ -6,7 +6,7 @@ def test_gestion_postes_depense_affiche_types_secteur_dynamiques(app, db, admin_
     with app.app_context():
         db.execute(
             'INSERT INTO types_secteur (code, libelle, ordre) VALUES (?, ?, ?)',
-            ('transition_eco', 'Transition écologique', TEST_TYPE_ORDER)
+            ('transition_eco', 'Transition écologique', TEST_SECTOR_TYPE_ORDER)
         )
         db.commit()
 
@@ -23,7 +23,7 @@ def test_gestion_budgets_affiche_libelle_type_secteur_dynamique(app, db, admin_c
     with app.app_context():
         db.execute(
             'INSERT INTO types_secteur (code, libelle, ordre) VALUES (?, ?, ?)',
-            ('mediation', 'Médiation numérique', TEST_TYPE_ORDER)
+            ('mediation', 'Médiation numérique', TEST_SECTOR_TYPE_ORDER)
         )
         db.execute(
             'INSERT INTO secteurs (nom, description, type_secteur) VALUES (?, ?, ?)',

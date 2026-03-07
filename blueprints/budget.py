@@ -12,7 +12,7 @@ Fonctionnalites :
 """
 import sqlite3
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from database import get_db
 from utils import login_required
 
@@ -56,6 +56,9 @@ def _get_types_secteur_labels(conn):
             ORDER BY ordre, libelle
         ''').fetchall()
     except sqlite3.OperationalError:
+        current_app.logger.warning(
+            "Table types_secteur introuvable, fallback sur les libellés par défaut dans budget."
+        )
         return DEFAULT_TYPES_SECTEUR_LABELS
     return {row['code']: row['libelle'] for row in rows}
 
