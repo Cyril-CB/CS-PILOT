@@ -57,6 +57,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0022', 'Module comptable factures'),
     ('0023', 'Archivage exportations ecritures'),
     ('0024', 'Ajout module generation contrats'),
+    ('0025', 'Correctif colonnes contrats generes'),
     ('0026', 'Module comptabilite analytique'),
     ('0027', 'Ajout gestion types secteur'),
 ]
