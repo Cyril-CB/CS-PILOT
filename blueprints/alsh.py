@@ -15,11 +15,12 @@ Fonctionnalites :
 - Comparaison N/N-1/N-2 si les donnees sont disponibles
 - Accessible aux profils directeur et comptable
 """
+import json
 from datetime import datetime, date as _date
 from flask import (Blueprint, render_template, request, session,
                    flash, redirect, url_for, jsonify)
 from database import get_db
-from utils import login_required
+from utils import login_required, get_setting, save_setting
 
 alsh_bp = Blueprint('alsh_bp', __name__)
 
@@ -40,6 +41,17 @@ _VACATION_KEYWORDS = {
     'noel':      ['noel'],
 }
 _FAMILY_PAYMENTS_ACCOUNT_PREFIX = '7064'
+_TARIF_REPARTITION_SETTING_KEY = 'alsh_tarif_repartition_quotients'
+_DEFAULT_TARIF_REPARTITION = [
+    {'id': 'qf_0_249', 'pct': 22.0},
+    {'id': 'qf_250_499', 'pct': 20.0},
+    {'id': 'qf_500_749', 'pct': 16.0},
+    {'id': 'qf_750_999', 'pct': 14.0},
+    {'id': 'qf_1000_1249', 'pct': 10.0},
+    {'id': 'qf_1250_1499', 'pct': 8.0},
+    {'id': 'qf_1500_1749', 'pct': 6.0},
+    {'id': 'qf_1750_plus', 'pct': 4.0},
+]
 
 
 def _get_taux_logistique_global(conn, annee):
@@ -59,6 +71,44 @@ def _get_taux_logistique_global(conn, annee):
 def _normaliser(s):
     """Normalise une chaîne (minuscules, sans accents) pour la comparaison."""
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode().lower()
+
+
+def _get_tarif_repartition_quotients():
+    """Retourne la répartition globale des quotients (valeurs par défaut sinon)."""
+    raw = get_setting(_TARIF_REPARTITION_SETTING_KEY)
+    if not raw:
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+
+    if not isinstance(parsed, list):
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+
+    parsed_map = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        tranche_id = item.get('id')
+        pct = item.get('pct')
+        if not isinstance(tranche_id, str):
+            continue
+        try:
+            pct_val = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if pct_val < 0:
+            continue
+        parsed_map[tranche_id] = pct_val
+
+    result = []
+    for item in _DEFAULT_TARIF_REPARTITION:
+        result.append({
+            'id': item['id'],
+            'pct': parsed_map.get(item['id'], item['pct'])
+        })
+    return result
 
 
 def _detecter_type_vacances(nom):
@@ -211,9 +261,49 @@ def api_alsh_config():
         return jsonify({
             'tranches': [dict(r) for r in tranches],
             'periodes': [dict(r) for r in periodes],
+            'tarif_repartition_quotients': _get_tarif_repartition_quotients(),
         })
     finally:
         conn.close()
+
+
+@alsh_bp.route('/api/alsh/tarif-repartition', methods=['POST'])
+@login_required
+def api_alsh_save_tarif_repartition():
+    """Sauvegarde la répartition globale des quotients pour le tarif optimal ALSH."""
+    if not _peut_acceder():
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.json or {}
+    values = data.get('tarif_repartition_quotients')
+    if not isinstance(values, list):
+        return jsonify({'error': 'Format invalide.'}), 400
+
+    allowed_ids = {item['id'] for item in _DEFAULT_TARIF_REPARTITION}
+    parsed_map = {}
+    for item in values:
+        if not isinstance(item, dict):
+            return jsonify({'error': 'Format invalide.'}), 400
+        tranche_id = item.get('id')
+        if tranche_id not in allowed_ids:
+            return jsonify({'error': 'Tranche de quotient inconnue.'}), 400
+        try:
+            pct_val = float(item.get('pct'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Pourcentage invalide.'}), 400
+        if pct_val < 0:
+            return jsonify({'error': 'Pourcentage invalide.'}), 400
+        parsed_map[tranche_id] = pct_val
+
+    normalized_values = []
+    for item in _DEFAULT_TARIF_REPARTITION:
+        normalized_values.append({
+            'id': item['id'],
+            'pct': parsed_map.get(item['id'], item['pct'])
+        })
+
+    save_setting(_TARIF_REPARTITION_SETTING_KEY, json.dumps(normalized_values))
+    return jsonify({'success': True, 'tarif_repartition_quotients': normalized_values})
 
 
 # ── Configuration : tranches d'age ───────────────────────────────────────────

@@ -160,3 +160,38 @@ def test_api_tableau_alsh_indique_taux_logistique_manquant_si_taux_zero(admin_cl
     assert response.status_code == 200
     assert payload['taux_logistique_global'] == 0.0
     assert payload['taux_logistique_manquant'] is True
+
+
+def test_api_alsh_config_retourne_repartition_quotients_par_defaut(admin_client):
+    response = admin_client.get('/api/alsh/config')
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert 'tarif_repartition_quotients' in payload
+    assert payload['tarif_repartition_quotients'][0]['id'] == 'qf_0_249'
+    assert payload['tarif_repartition_quotients'][0]['pct'] == 22.0
+
+
+def test_api_alsh_tarif_repartition_persiste_globalement(admin_client):
+    nouvelle_repartition = [
+        {'id': 'qf_0_249', 'pct': 35},
+        {'id': 'qf_250_499', 'pct': 25},
+        {'id': 'qf_500_749', 'pct': 15},
+        {'id': 'qf_750_999', 'pct': 10},
+        {'id': 'qf_1000_1249', 'pct': 6},
+        {'id': 'qf_1250_1499', 'pct': 4},
+        {'id': 'qf_1500_1749', 'pct': 3},
+        {'id': 'qf_1750_plus', 'pct': 2},
+    ]
+
+    save_res = admin_client.post('/api/alsh/tarif-repartition', json={
+        'tarif_repartition_quotients': nouvelle_repartition
+    })
+    assert save_res.status_code == 200
+    assert save_res.get_json()['success'] is True
+
+    config_1 = admin_client.get('/api/alsh/config').get_json()
+    config_2 = admin_client.get('/api/alsh/config').get_json()
+
+    assert config_1['tarif_repartition_quotients'] == nouvelle_repartition
+    assert config_2['tarif_repartition_quotients'] == nouvelle_repartition

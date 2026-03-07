@@ -314,6 +314,8 @@ let _noeData = {};        // { "pid_tid": {heures, enfants} }
 let _tableauData = null;
 let _codesDisponibles = [];
 let _chartsInstances = {};
+let _repartitionApplying = false;
+let _repartitionSaveTimeout = null;
 const TARIF_QUOTIENT_TRANCHES = [
     { id: 'qf_0_249', label: '0 - 249', coef: 0.40, defaultPct: 22 },
     { id: 'qf_250_499', label: '250 - 499', coef: 0.55, defaultPct: 20 },
@@ -369,6 +371,7 @@ async function loadTabData(tab) {
 async function loadConfig() {
     const res = await fetch('/api/alsh/config');
     _config = await res.json();
+    applyRepartitionQuotients(_config.tarif_repartition_quotients);
     renderConfigLists();
 }
 
@@ -834,9 +837,67 @@ function initRepartitionQuotientsInputs() {
         input.addEventListener('input', () => {
             updateRepartitionQuotientsInfo();
             if (_tableauData) renderTarifOptimal(_tableauData);
+            if (_repartitionApplying) return;
+            scheduleSaveRepartitionQuotients();
         });
     });
     updateRepartitionQuotientsInfo();
+}
+
+function applyRepartitionQuotients(values) {
+    if (!Array.isArray(values)) return;
+    _repartitionApplying = true;
+    try {
+        const map = {};
+        values.forEach(v => {
+            if (v && typeof v.id === 'string') map[v.id] = v.pct;
+        });
+        TARIF_QUOTIENT_TRANCHES.forEach(t => {
+            const input = document.getElementById(t.id);
+            if (!input) return;
+            const val = parseFloat(map[t.id]);
+            input.value = Number.isFinite(val) && val >= 0 ? String(val) : String(t.defaultPct);
+        });
+    } finally {
+        _repartitionApplying = false;
+    }
+    updateRepartitionQuotientsInfo();
+    if (_tableauData) renderTarifOptimal(_tableauData);
+}
+
+function scheduleSaveRepartitionQuotients() {
+    if (_repartitionSaveTimeout) clearTimeout(_repartitionSaveTimeout);
+    _repartitionSaveTimeout = setTimeout(() => {
+        saveRepartitionQuotients().catch((err) => {
+            console.warn('Impossible de sauvegarder la répartition des quotients:', err);
+        });
+    }, 350);
+}
+
+function parseQuotientInputValue(inputId) {
+    const raw = document.getElementById(inputId)?.value || '0';
+    const parsed = parseFloat(String(raw).replace(',', '.'));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+async function saveRepartitionQuotients() {
+    const csrf = document.querySelector('meta[name=csrf-token]').content;
+    const payload = TARIF_QUOTIENT_TRANCHES.map(t => {
+        return { id: t.id, pct: parseQuotientInputValue(t.id) };
+    });
+
+    const res = await fetch('/api/alsh/tarif-repartition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+        body: JSON.stringify({ tarif_repartition_quotients: payload })
+    });
+    if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data && Array.isArray(data.tarif_repartition_quotients)) {
+        applyRepartitionQuotients(data.tarif_repartition_quotients);
+    }
 }
 
 function getRepartitionQuotientsNormalisee() {
