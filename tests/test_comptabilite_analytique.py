@@ -169,6 +169,9 @@ class TestBilanSecteurs:
         imports = db.execute("SELECT COUNT(*) as nb FROM bilan_fec_imports").fetchone()
         assert imports['nb'] == 1
 
+        taux = db.execute("SELECT COUNT(*) as nb FROM bilan_taux_logistique").fetchone()
+        assert taux['nb'] == 0
+
         # Vérifier que le code analytique est bien extrait
         row = db.execute("SELECT code_analytique FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
         assert row['code_analytique'] == 'ANA001'

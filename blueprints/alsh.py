@@ -679,7 +679,9 @@ def _build_tableau(conn, annee):
     return {
         'annee': annee,
         'taux_logistique_global': taux_logistique_global,
-        'taux_logistique_manquant': taux_logistique_global is None,
+        'taux_logistique_manquant': (
+            taux_logistique_global is None or taux_logistique_global == 0
+        ),
         'periodes': [dict(p) for p in periodes],
         'tranches': [dict(t) for t in tranches],
         'lignes': lignes,

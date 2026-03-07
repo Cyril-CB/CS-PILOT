@@ -141,3 +141,21 @@ def test_api_tableau_alsh_indique_taux_logistique_manquant(admin_client):
 
     assert response.status_code == 200
     assert payload['taux_logistique_manquant'] is True
+
+
+def test_api_tableau_alsh_indique_taux_logistique_manquant_si_taux_zero(admin_client, db):
+    db.execute(
+        '''
+        INSERT INTO bilan_taux_logistique (annee, taux_site1, taux_site2, taux_global, taux_selectionne)
+        VALUES (?, ?, ?, ?, ?)
+        ''',
+        (2024, 0.0, 0.0, 0.0, 'global')
+    )
+    db.commit()
+
+    response = admin_client.get('/api/alsh/tableau?annee=2024')
+    payload = response.get_json()
+
+    assert response.status_code == 200
+    assert payload['taux_logistique_global'] == 0.0
+    assert payload['taux_logistique_manquant'] is True
