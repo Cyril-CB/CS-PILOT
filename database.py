@@ -6,16 +6,21 @@ import os
 import sys
 import sqlite3
 
-# Placer la base de données dans un répertoire utilisateur inscriptible :
-# - Windows : %LOCALAPPDATA%\cspilot  (AppData/Local/cspilot)
-# - Linux/Mac : ~/.local/share/cspilot
-if os.name == 'nt':
-    DATA_DIR = os.path.join(
-        os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
-        'cspilot'
-    )
+# En mode exécutable (.exe / frozen PyInstaller), stocker les données dans un
+# répertoire utilisateur inscriptible pour qu'elles survivent entre les exécutions :
+#   - Windows : %LOCALAPPDATA%\cspilot
+#   - Linux/Mac : ~/.local/share/cspilot
+# En mode script normal, utiliser le dossier du projet (comportement d'origine).
+if getattr(sys, 'frozen', False):
+    if os.name == 'nt':
+        DATA_DIR = os.path.join(
+            os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
+            'cspilot'
+        )
+    else:
+        DATA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
 else:
-    DATA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
+    DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 
 os.makedirs(DATA_DIR, exist_ok=True)
 DATABASE = os.path.join(DATA_DIR, 'cspilot.db')

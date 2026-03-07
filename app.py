@@ -65,16 +65,10 @@ SECRET_KEY={secret_key}
         return False
 
 
-# Charger les variables d'environnement depuis .env (s'il existe)
-# En mode exécutable (.exe), le .env est dans le même dossier que la base de données
-# (DATA_DIR), pour que tout soit regroupé au même endroit.
-# En mode script normal, le .env est dans le dossier du projet.
-if getattr(sys, 'frozen', False):
-    env_dir = DATA_DIR
-else:
-    env_dir = os.path.dirname(os.path.abspath(__file__))
-
-env_path = os.path.join(env_dir, '.env')
+# Charger les variables d'environnement depuis .env (s'il existe).
+# DATA_DIR pointe vers le dossier du projet en mode script, et vers AppData en mode .exe,
+# donc le .env est toujours au même endroit que la base de données.
+env_path = os.path.join(DATA_DIR, '.env')
 
 # Si le fichier .env n'existe pas ET qu'aucune SECRET_KEY n'est définie dans l'environnement,
 # générer automatiquement un fichier .env avec une clé secrète.
