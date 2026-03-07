@@ -7,7 +7,7 @@ Fonctionnalites :
 - Saisie des donnees NOE (heures de presence, nombre d'enfants differents)
 - Tableau de bord : croisement donnees comptables bilan_fec / donnees NOE
 - Calcul : heures, enfants, charges, produits, resultat, cout/heure,
-           cout/enfant, taux de couverture
+           cout/enfant, reste a charge/enfant, taux de couverture
 - Filtrage par date : si des periodes_vacances sont configurees pour l'annee,
   les donnees FEC sont restreintes aux mois couverts par chaque periode
   (evite le double-comptage quand le meme code analytique est utilise pour
@@ -15,11 +15,12 @@ Fonctionnalites :
 - Comparaison N/N-1/N-2 si les donnees sont disponibles
 - Accessible aux profils directeur et comptable
 """
+import json
 from datetime import datetime, date as _date
 from flask import (Blueprint, render_template, request, session,
                    flash, redirect, url_for, jsonify)
 from database import get_db
-from utils import login_required
+from utils import login_required, get_setting, save_setting
 
 alsh_bp = Blueprint('alsh_bp', __name__)
 
@@ -39,11 +40,75 @@ _VACATION_KEYWORDS = {
     'toussaint': ['toussaint', 'automne'],
     'noel':      ['noel'],
 }
+_FAMILY_PAYMENTS_ACCOUNT_PREFIX = '7064'
+_TARIF_REPARTITION_SETTING_KEY = 'alsh_tarif_repartition_quotients'
+_DEFAULT_TARIF_REPARTITION = [
+    {'id': 'qf_0_249', 'pct': 22.0},
+    {'id': 'qf_250_499', 'pct': 20.0},
+    {'id': 'qf_500_749', 'pct': 16.0},
+    {'id': 'qf_750_999', 'pct': 14.0},
+    {'id': 'qf_1000_1249', 'pct': 10.0},
+    {'id': 'qf_1250_1499', 'pct': 8.0},
+    {'id': 'qf_1500_1749', 'pct': 6.0},
+    {'id': 'qf_1750_plus', 'pct': 4.0},
+]
+
+
+def _get_taux_logistique_global(conn, annee):
+    """Retourne le taux logistique global de l'année, ou None s'il est absent."""
+    row = conn.execute(
+        'SELECT taux_global FROM bilan_taux_logistique WHERE annee = ?',
+        (annee,)
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        return float(row['taux_global'])
+    except (TypeError, ValueError):
+        return None
 
 
 def _normaliser(s):
     """Normalise une chaîne (minuscules, sans accents) pour la comparaison."""
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode().lower()
+
+
+def _get_tarif_repartition_quotients():
+    """Retourne la répartition globale des quotients (valeurs par défaut sinon)."""
+    raw = get_setting(_TARIF_REPARTITION_SETTING_KEY)
+    if not raw:
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+
+    if not isinstance(parsed, list):
+        return [dict(x) for x in _DEFAULT_TARIF_REPARTITION]
+
+    parsed_map = {}
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        tranche_id = item.get('id')
+        pct = item.get('pct')
+        if not isinstance(tranche_id, str):
+            continue
+        try:
+            pct_val = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if pct_val < 0:
+            continue
+        parsed_map[tranche_id] = pct_val
+
+    result = []
+    for item in _DEFAULT_TARIF_REPARTITION:
+        result.append({
+            'id': item['id'],
+            'pct': parsed_map.get(item['id'], item['pct'])
+        })
+    return result
 
 
 def _detecter_type_vacances(nom):
@@ -196,9 +261,49 @@ def api_alsh_config():
         return jsonify({
             'tranches': [dict(r) for r in tranches],
             'periodes': [dict(r) for r in periodes],
+            'tarif_repartition_quotients': _get_tarif_repartition_quotients(),
         })
     finally:
         conn.close()
+
+
+@alsh_bp.route('/api/alsh/tarif-repartition', methods=['POST'])
+@login_required
+def api_alsh_save_tarif_repartition():
+    """Sauvegarde la répartition globale des quotients pour le tarif optimal ALSH."""
+    if not _peut_acceder():
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.json or {}
+    values = data.get('tarif_repartition_quotients')
+    if not isinstance(values, list):
+        return jsonify({'error': 'Format invalide.'}), 400
+
+    allowed_ids = {item['id'] for item in _DEFAULT_TARIF_REPARTITION}
+    parsed_map = {}
+    for item in values:
+        if not isinstance(item, dict):
+            return jsonify({'error': 'Format invalide.'}), 400
+        tranche_id = item.get('id')
+        if tranche_id not in allowed_ids:
+            return jsonify({'error': 'Tranche de quotient inconnue.'}), 400
+        try:
+            pct_val = float(item.get('pct'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Pourcentage invalide.'}), 400
+        if pct_val < 0:
+            return jsonify({'error': 'Pourcentage invalide.'}), 400
+        parsed_map[tranche_id] = pct_val
+
+    normalized_values = []
+    for item in _DEFAULT_TARIF_REPARTITION:
+        normalized_values.append({
+            'id': item['id'],
+            'pct': parsed_map.get(item['id'], item['pct'])
+        })
+
+    save_setting(_TARIF_REPARTITION_SETTING_KEY, json.dumps(normalized_values))
+    return jsonify({'success': True, 'tarif_repartition_quotients': normalized_values})
 
 
 # ── Configuration : tranches d'age ───────────────────────────────────────────
@@ -486,6 +591,9 @@ def _build_tableau(conn, annee):
     # Info par periode : (mois_filter, label, nb_jours)
     periode_info = _build_periode_info(conn, periodes, annee)
 
+    taux_logistique_global = _get_taux_logistique_global(conn, annee)
+    coeff_logistique = 1 + ((taux_logistique_global or 0.0) / 100.0)
+
     # Collecter tous les codes analytiques utilises pour cette annee
     tous_les_codes = set()
     for codes in codes_map.values():
@@ -495,6 +603,7 @@ def _build_tableau(conn, annee):
     charges_by_code_mois = {}  # {(code, mois): total}  – pour les charges filtrées
     charges_by_code = {}       # {code: total annee}    – pour les périodes sans filtre
     produits_by_code = {}      # {code: total annee}    – les produits ne sont pas filtrés
+    subventions_by_code = {}   # {code: total annee}    – produits de subventions (hors 7064xx)
 
     if tous_les_codes:
         codes_list = list(tous_les_codes)
@@ -515,16 +624,21 @@ def _build_tableau(conn, annee):
             c = r['code_analytique']
             charges_by_code[c] = charges_by_code.get(c, 0.0) + r['total']
 
+        produits_subventions_params = [f'{_FAMILY_PAYMENTS_ACCOUNT_PREFIX}%', annee] + codes_list
         produits_rows = conn.execute(
-            'SELECT code_analytique, COALESCE(SUM(montant), 0) as total'
+            'SELECT code_analytique, '
+            '       COALESCE(SUM(montant), 0) as total, '
+            "       COALESCE(SUM(CASE WHEN compte_num LIKE '7%' AND compte_num NOT LIKE ? "
+            '                         THEN montant ELSE 0 END), 0) as total_subventions '
             ' FROM bilan_fec_donnees'
             " WHERE annee = ? AND compte_num LIKE '7%'"
             ' AND code_analytique IN (' + placeholders + ')'
             ' GROUP BY code_analytique',
-            params
+            produits_subventions_params
         ).fetchall()
         for r in produits_rows:
             produits_by_code[r['code_analytique']] = r['total']
+            subventions_by_code[r['code_analytique']] = r['total_subventions']
 
     # ── Pro-rata des produits pour les vacances partageant un meme code ────────
     # Pour chaque (code, tranche_id), recenser les periodes de vacances qui
@@ -545,28 +659,35 @@ def _build_tableau(conn, annee):
                     code_tid_vacances.setdefault(key, []).append((p['id'], nb_jours))
 
     produits_prorata = {}  # {(code, tid, pid): montant}
+    subventions_prorata = {}  # {(code, tid, pid): montant}
     for (code, tid), vac_list in code_tid_vacances.items():
         total_p = produits_by_code.get(code, 0.0)
+        total_subv = subventions_by_code.get(code, 0.0)
         if len(vac_list) == 1:
             # Code utilise par une seule periode : elle recoit tout
             pid, _ = vac_list[0]
             produits_prorata[(code, tid, pid)] = total_p
+            subventions_prorata[(code, tid, pid)] = total_subv
         elif any(j is None for _, j in vac_list):
             # Au moins une duree inconnue → repartition egale entre toutes
             for pid, _ in vac_list:
                 produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+                subventions_prorata[(code, tid, pid)] = total_subv / len(vac_list)
         else:
             total_jours = sum(j for _, j in vac_list)
             for pid, nb_j in vac_list:
                 if total_jours > 0:
                     produits_prorata[(code, tid, pid)] = total_p * nb_j / total_jours
+                    subventions_prorata[(code, tid, pid)] = total_subv * nb_j / total_jours
                 else:
                     produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+                    subventions_prorata[(code, tid, pid)] = total_subv / len(vac_list)
 
     # ── Construction des lignes ────────────────────────────────────────────────
     lignes = []
     total_charges = 0.0
     total_produits = 0.0
+    total_subventions = 0.0
     total_heures = 0.0
     total_enfants = 0
 
@@ -581,13 +702,14 @@ def _build_tableau(conn, annee):
 
             # Charges : filtrees par mois pour les vacances avec dates connues
             if mois_filter is not None:
-                charges = round(sum(
+                charges_brutes = sum(
                     charges_by_code_mois.get((c, m), 0.0)
                     for c in codes_valides
                     for m in mois_filter
-                ), 2)
+                )
             else:
-                charges = round(sum(charges_by_code.get(c, 0.0) for c in codes_valides), 2)
+                charges_brutes = sum(charges_by_code.get(c, 0.0) for c in codes_valides)
+            charges = round(round(charges_brutes, 6) * coeff_logistique, 2)
 
             # Produits : pro-rata pour les vacances, total annuel sinon
             if periode['type'] == 'vacances' and any(
@@ -597,12 +719,18 @@ def _build_tableau(conn, annee):
                     produits_prorata.get((c, tranche['id'], periode['id']), 0.0)
                     for c in codes_valides
                 ), 2)
+                subventions = round(sum(
+                    subventions_prorata.get((c, tranche['id'], periode['id']), 0.0)
+                    for c in codes_valides
+                ), 2)
             else:
                 produits = round(sum(produits_by_code.get(c, 0.0) for c in codes_valides), 2)
+                subventions = round(sum(subventions_by_code.get(c, 0.0) for c in codes_valides), 2)
 
             resultat = produits - charges
             cout_heure = (charges / heures) if heures > 0 else None
             cout_enfant = (charges / enfants) if enfants > 0 else None
+            a_charge_enfant = ((charges - subventions) / enfants) if enfants > 0 else None
             taux_couverture = ((produits / charges) * 100) if charges > 0 else None
 
             ligne = {
@@ -618,8 +746,10 @@ def _build_tableau(conn, annee):
                 'charges': charges,
                 'produits': produits,
                 'resultat': round(resultat, 2),
+                'reste_a_charge': round(charges - subventions, 2),
                 'cout_heure': round(cout_heure, 2) if cout_heure is not None else None,
                 'cout_enfant': round(cout_enfant, 2) if cout_enfant is not None else None,
+                'a_charge_enfant': round(a_charge_enfant, 2) if a_charge_enfant is not None else None,
                 'taux_couverture': round(taux_couverture, 1) if taux_couverture is not None else None,
                 # Données pour le détail des charges (identifiants pour la requête)
                 'charges_mois_filter': sorted(mois_filter) if mois_filter is not None else None,
@@ -627,14 +757,21 @@ def _build_tableau(conn, annee):
             lignes.append(ligne)
             total_charges += charges
             total_produits += produits
+            total_subventions += subventions
             total_heures += heures
             total_enfants += enfants
 
     total_resultat = total_produits - total_charges
+    total_reste_a_charge = total_charges - total_subventions
+    total_a_charge_enfant = (total_reste_a_charge / total_enfants) if total_enfants > 0 else None
     total_taux = ((total_produits / total_charges) * 100) if total_charges > 0 else None
 
     return {
         'annee': annee,
+        'taux_logistique_global': taux_logistique_global,
+        'taux_logistique_manquant': (
+            taux_logistique_global is None or taux_logistique_global == 0
+        ),
         'periodes': [dict(p) for p in periodes],
         'tranches': [dict(t) for t in tranches],
         'lignes': lignes,
@@ -644,6 +781,8 @@ def _build_tableau(conn, annee):
             'charges': round(total_charges, 2),
             'produits': round(total_produits, 2),
             'resultat': round(total_resultat, 2),
+            'reste_a_charge': round(total_reste_a_charge, 2),
+            'a_charge_enfant': round(total_a_charge_enfant, 2) if total_a_charge_enfant is not None else None,
             'taux_couverture': round(total_taux, 1) if total_taux is not None else None,
         },
     }
