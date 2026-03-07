@@ -27,10 +27,11 @@
                     <td>{{ p.date_debut }}</td>
                     <td>{{ p.date_fin }}</td>
                     <td>
-                        {% set debut = p.date_debut %}
-                        {% set fin = p.date_fin %}
-                        {# Calcul approximatif - à améliorer #}
-                        {{ ((fin|string).split('-')|last|int - (debut|string).split('-')|last|int + 1) }} jours
+                        {% if p.duree_jours is not none %}
+                        {{ p.duree_jours }} jours
+                        {% else %}
+                        —
+                        {% endif %}
                     </td>
                     <td>
                         <form method="POST" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette période ?');">
