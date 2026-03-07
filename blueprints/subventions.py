@@ -11,15 +11,12 @@ import unicodedata
 from datetime import datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify, send_file)
-from database import get_db
+from database import get_db, DATA_DIR
 from utils import login_required
 
 subventions_bp = Blueprint('subventions_bp', __name__)
 
-DOCUMENTS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    'documents', 'subventions'
-)
+DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents', 'subventions')
 
 GROUPES = [
     {'key': 'nouveau_projet', 'label': 'Nouveau projet', 'color': '#579bfc'},

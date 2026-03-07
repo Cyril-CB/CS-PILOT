@@ -12,14 +12,14 @@ import os
 import io
 from datetime import datetime
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, Response, send_file
-from database import get_db
+from database import get_db, DATA_DIR
 from utils import login_required
 
 exportation_bp = Blueprint('exportation_bp', __name__)
 
 PROFILS_AUTORISES = ['directeur', 'comptable']
 
-ARCHIVES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'exports')
+ARCHIVES_DIR = os.path.join(DATA_DIR, 'exports')
 
 
 def _ensure_archives_dir():

@@ -7,7 +7,7 @@ import json
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, current_app)
 from datetime import datetime, timedelta
-from database import get_db
+from database import get_db, DATA_DIR
 from utils import (login_required, get_user_info, get_heures_theoriques_jour,
                    get_type_periode, get_planning_valide_a_date)
 
@@ -26,7 +26,7 @@ MOTIFS_ABSENCE = [
     'Autre',
 ]
 
-DOCUMENTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'documents')
+DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')
 
 
 def _get_documents_dir():

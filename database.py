@@ -10,15 +10,15 @@ import sqlite3
 # - Windows : %LOCALAPPDATA%\cspilot  (AppData/Local/cspilot)
 # - Linux/Mac : ~/.local/share/cspilot
 if os.name == 'nt':
-    _base_dir = os.path.join(
+    DATA_DIR = os.path.join(
         os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
         'cspilot'
     )
 else:
-    _base_dir = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
+    DATA_DIR = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
 
-os.makedirs(_base_dir, exist_ok=True)
-DATABASE = os.path.join(_base_dir, 'cspilot.db')
+os.makedirs(DATA_DIR, exist_ok=True)
+DATABASE = os.path.join(DATA_DIR, 'cspilot.db')
 
 
 def get_db():
