@@ -57,24 +57,26 @@ ALL_MIGRATION_VERSIONS = [
     ('0022', 'Module comptable factures'),
     ('0023', 'Archivage exportations ecritures'),
     ('0024', 'Ajout module generation contrats'),
+    ('0025', 'Correctif colonnes contrats generes'),
     ('0026', 'Module comptabilite analytique'),
+    ('0027', 'Ajout gestion types secteur'),
 ]
 
 # Postes de depense par defaut (migration 0012)
 _POSTES_DEPENSE_DEFAUT = [
-    ('Alimentation', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Alimentation', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ("Fournitures d'activites", ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
-    ('Petit equipement', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Petit equipement', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ("Petit equipement d'activite", ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
-    ('Honoraires', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
+    ('Honoraires', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
     ('Mission/reception', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif']),
     ('Restauration', ['creche', 'accueil_loisirs']),
     ('Couches', ['creche']),
-    ('Reparation', ['creche']),
+    ('Reparation', ['creche', 'entretien']),
     ('Transport', ['famille', 'accueil_loisirs']),
     ('Sorties', ['famille', 'accueil_loisirs']),
     ('Fournitures de bureau', ['administratif']),
-    ("Produit d'entretien", ['administratif']),
+    ("Produit d'entretien", ['administratif', 'entretien']),
 ]
 
 
@@ -1049,6 +1051,17 @@ def init_db():
         )
     ''')
 
+    # ===== Table types de secteur (migration 0027) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS types_secteur (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            libelle TEXT NOT NULL,
+            ordre INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -1086,6 +1099,23 @@ def init_db():
                     'INSERT OR IGNORE INTO postes_depense_secteur_types (poste_depense_id, type_secteur) VALUES (?, ?)',
                     (poste_id, type_s)
                 )
+
+    # Inserer les types de secteur par defaut (migration 0027) si la table est vide
+    existing_types = cursor.execute('SELECT COUNT(*) FROM types_secteur').fetchone()[0]
+    if existing_types == 0:
+        types_defaut = [
+            ('creche', 'Crèche', 1),
+            ('accueil_loisirs', 'Accueil de loisirs', 2),
+            ('famille', 'Secteur famille', 3),
+            ('emploi_formation', 'Emploi/formation', 4),
+            ('administratif', 'Administratif', 5),
+            ('entretien', 'Entretien', 6),
+        ]
+        for code, libelle, ordre in types_defaut:
+            cursor.execute(
+                'INSERT OR IGNORE INTO types_secteur (code, libelle, ordre) VALUES (?, ?, ?)',
+                (code, libelle, ordre)
+            )
 
     # --- Migrations incrementales pour bases existantes ---
     # Ces blocs ne s'executent que si les colonnes manquent (anciennes installations).

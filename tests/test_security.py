@@ -4,6 +4,7 @@ Tests pour les nouvelles fonctionnalités de sécurité :
 - Protection CSRF (vérification de présence des tokens)
 - Rate limiting sur la route de login
 - Refus de démarrage si SECRET_KEY par défaut
+- Génération automatique du fichier .env au démarrage
 """
 import os
 import sys
@@ -196,3 +197,72 @@ class TestPathTraversalProtection:
         self._login_admin(client)
         response = client.get(f'/subventions/justificatif/{sub_id}', follow_redirects=False)
         assert response.status_code == 302
+
+
+class TestEnvFileGeneration:
+    """Tests pour la génération automatique du fichier .env."""
+
+    def test_generate_env_file_creates_file(self, tmp_path):
+        """La fonction generate_env_file doit créer le fichier .env."""
+        from app import generate_env_file
+
+        env_path = tmp_path / '.env'
+        result = generate_env_file(str(env_path))
+
+        assert result is True
+        assert env_path.exists()
+
+    def test_generate_env_file_contains_secret_key(self, tmp_path):
+        """Le fichier .env généré doit contenir une ligne SECRET_KEY."""
+        from app import generate_env_file
+
+        env_path = tmp_path / '.env'
+        generate_env_file(str(env_path))
+
+        content = env_path.read_text(encoding='utf-8')
+        assert 'SECRET_KEY=' in content
+        assert 'BEHIND_PROXY' in content
+
+    def test_generate_env_file_creates_random_key(self, tmp_path):
+        """Chaque génération doit créer une clé différente."""
+        from app import generate_env_file
+
+        env_path1 = tmp_path / '.env1'
+        env_path2 = tmp_path / '.env2'
+
+        generate_env_file(str(env_path1))
+        generate_env_file(str(env_path2))
+
+        content1 = env_path1.read_text(encoding='utf-8')
+        content2 = env_path2.read_text(encoding='utf-8')
+
+        # Extraire les SECRET_KEY de chaque fichier
+        key1 = [line for line in content1.split('\n') if line.startswith('SECRET_KEY=')][0]
+        key2 = [line for line in content2.split('\n') if line.startswith('SECRET_KEY=')][0]
+
+        # Les clés doivent être différentes
+        assert key1 != key2
+
+    def test_generate_env_file_key_length(self, tmp_path):
+        """La clé générée doit avoir au moins 64 caractères (32 bytes en hex)."""
+        from app import generate_env_file
+
+        env_path = tmp_path / '.env'
+        generate_env_file(str(env_path))
+
+        content = env_path.read_text(encoding='utf-8')
+        secret_line = [line for line in content.split('\n') if line.startswith('SECRET_KEY=')][0]
+        secret_key = secret_line.split('=', 1)[1]
+
+        # secrets.token_hex(32) génère une chaîne de 64 caractères hexadécimaux
+        assert len(secret_key) == 64
+
+    def test_generate_env_file_invalid_path(self):
+        """La fonction doit retourner False si le chemin est invalide."""
+        from app import generate_env_file
+
+        # Essayer d'écrire dans un répertoire qui n'existe pas
+        result = generate_env_file('/invalid/path/that/does/not/exist/.env')
+
+        assert result is False
+

@@ -10,19 +10,21 @@ Fonctionnalites :
 - Controle des droits : direction/comptable definissent le global,
   responsables ajustent la repartition sans depasser le global
 """
+import sqlite3
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from database import get_db
 from utils import login_required
 
 budget_bp = Blueprint('budget_bp', __name__)
 
-TYPES_SECTEUR_LABELS = {
+DEFAULT_TYPES_SECTEUR_LABELS = {
     'creche': 'Crèche',
     'accueil_loisirs': 'Accueil de loisirs',
     'famille': 'Secteur famille',
     'emploi_formation': 'Emploi/formation',
     'administratif': 'Administratif',
+    'entretien': 'Entretien',
 }
 
 # Ordre : Mercredis, puis vacances dans l'ordre chronologique d'une annee scolaire
@@ -44,6 +46,21 @@ _VACATION_KEYWORDS = {
     'toussaint': ['toussaint', 'automne'],
     'noel': ['noël', 'noel'],
 }
+
+
+def _get_types_secteur_labels(conn):
+    """Retourne le mapping {code: libellé} des types de secteur configurés."""
+    try:
+        rows = conn.execute('''
+            SELECT code, libelle FROM types_secteur
+            ORDER BY ordre, libelle
+        ''').fetchall()
+    except sqlite3.OperationalError:
+        current_app.logger.warning(
+            "Table types_secteur introuvable, fallback sur les libellés par défaut dans budget."
+        )
+        return DEFAULT_TYPES_SECTEUR_LABELS
+    return {row['code']: row['libelle'] for row in rows}
 
 
 def _match_vacation_category(nom_periode):
@@ -149,6 +166,7 @@ def gestion_budgets():
 
     annee = request.args.get('annee', type=int, default=datetime.now().year)
     conn = get_db()
+    types_labels = _get_types_secteur_labels(conn)
 
     # Recuperer tous les secteurs avec leur type
     secteurs = conn.execute('''
@@ -194,7 +212,7 @@ def gestion_budgets():
     secteurs_data = []
     for s in secteurs:
         sd = dict(s)
-        sd['type_label'] = TYPES_SECTEUR_LABELS.get(s['type_secteur'], 'Non défini')
+        sd['type_label'] = types_labels.get(s['type_secteur'], 'Non défini')
         sd['budget'] = budgets_map.get(s['id'])
         secteurs_data.append(sd)
 
@@ -203,7 +221,7 @@ def gestion_budgets():
     return render_template('gestion_budgets.html',
                            secteurs=secteurs_data,
                            annee=annee,
-                           types_labels=TYPES_SECTEUR_LABELS)
+                           types_labels=types_labels)
 
 
 # ============================================================
@@ -238,6 +256,7 @@ def budget_secteur(secteur_id):
 
     annee = request.args.get('annee', type=int, default=datetime.now().year)
     onglet = request.args.get('onglet', default='parametrage')
+    types_labels = _get_types_secteur_labels(conn)
     is_alp = secteur['type_secteur'] == 'accueil_loisirs'
     peut_modifier_global = profil in ['directeur', 'comptable']
     peut_modifier_reel = profil in ['directeur', 'comptable']
@@ -358,7 +377,7 @@ def budget_secteur(secteur_id):
                            peut_modifier_global=peut_modifier_global,
                            peut_modifier_reel=peut_modifier_reel,
                            has_depassement=has_depassement,
-                           types_labels=TYPES_SECTEUR_LABELS)
+                           types_labels=types_labels)
 
 
 # ============================================================
@@ -565,6 +584,7 @@ def gestion_postes_depense():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
+    types_labels = _get_types_secteur_labels(conn)
 
     if request.method == 'POST':
         action = request.form.get('action')
@@ -671,7 +691,7 @@ def gestion_postes_depense():
 
     return render_template('gestion_postes_depense.html',
                            postes=postes_data,
-                           types_labels=TYPES_SECTEUR_LABELS)
+                           types_labels=types_labels)
 
 
 # ============================================================

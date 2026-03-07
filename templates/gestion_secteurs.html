@@ -7,14 +7,6 @@
     <h1>🏢 Gestion des secteurs</h1>
     <p class="subtitle">Organisez vos équipes par secteur d'activité</p>
 
-    {% set types_labels = {
-        'creche': 'Crèche',
-        'accueil_loisirs': 'Accueil de loisirs',
-        'famille': 'Secteur famille',
-        'emploi_formation': 'Emploi/formation',
-        'administratif': 'Administratif'
-    } %}
-
     {% if secteurs %}
     <div class="section">
         <h2>Secteurs actuels</h2>
@@ -34,7 +26,12 @@
                     <td><strong>{{ s.nom }}</strong></td>
                     <td>
                         {% if s.type_secteur %}
-                        <span class="badge badge-info">{{ types_labels.get(s.type_secteur, s.type_secteur) }}</span>
+                        {% set type_found = types_secteur|selectattr('code', 'equalto', s.type_secteur)|list %}
+                        {% if type_found %}
+                        <span class="badge badge-info">{{ type_found[0].libelle }}</span>
+                        {% else %}
+                        <span class="badge badge-info">{{ s.type_secteur }}</span>
+                        {% endif %}
                         {% else %}
                         <span style="color: var(--warning); font-weight: 600;">⚠ Non défini</span>
                         {% endif %}
@@ -77,11 +74,9 @@
                 <label for="type_secteur">Type de secteur *</label>
                 <select id="type_secteur" name="type_secteur" required>
                     <option value="">-- Choisir un type --</option>
-                    <option value="creche">Crèche</option>
-                    <option value="accueil_loisirs">Accueil de loisirs</option>
-                    <option value="famille">Secteur famille</option>
-                    <option value="emploi_formation">Emploi/formation</option>
-                    <option value="administratif">Administratif</option>
+                    {% for type in types_secteur %}
+                    <option value="{{ type.code }}">{{ type.libelle }}</option>
+                    {% endfor %}
                 </select>
                 <p class="help-text">Le type détermine les postes de dépense disponibles pour ce secteur</p>
             </div>
@@ -99,6 +94,41 @@
         </form>
     </div>
 
+    <!-- Section gestion des types de secteur -->
+    <div class="section">
+        <h2>🏷️ Types de secteur disponibles</h2>
+        <p class="help-text">Les types de secteur déterminent les postes de dépense associés à chaque secteur.</p>
+
+        <div style="margin-bottom: 1rem;">
+            <button type="button" class="btn btn-primary" onclick="openAddTypeModal()">➕ Ajouter un type de secteur</button>
+        </div>
+
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Code</th>
+                    <th>Libellé</th>
+                    <th style="text-align: center;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for type in types_secteur %}
+                <tr>
+                    <td><code>{{ type.code }}</code></td>
+                    <td>{{ type.libelle }}</td>
+                    <td style="text-align: center;">
+                        <form method="POST" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce type de secteur ?');">
+                            <input type="hidden" name="action" value="supprimer_type">
+                            <input type="hidden" name="type_id" value="{{ type.id }}">
+                            <button type="submit" class="btn-icon" title="Supprimer">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
     <div class="help-box">
         <h4>💡 À quoi servent les secteurs ?</h4>
         <ul>
@@ -107,11 +137,10 @@
             <li>Faciliter la visualisation et les exports par secteur</li>
             <li><strong>Le type de secteur</strong> détermine les postes de dépense budgétaire associés</li>
         </ul>
-        <p><strong>Types disponibles :</strong> Crèche, Accueil de loisirs, Secteur famille, Emploi/formation, Administratif</p>
     </div>
 </div>
 
-<!-- Modale d'édition -->
+<!-- Modale d'édition de secteur -->
 <div id="editSecteurModal" class="budget-modal" style="display: none;">
     <div class="budget-modal-content">
         <h2>✏️ Modifier le secteur</h2>
@@ -128,11 +157,9 @@
                 <label for="edit_type_secteur">Type de secteur *</label>
                 <select id="edit_type_secteur" name="type_secteur" required>
                     <option value="">-- Choisir un type --</option>
-                    <option value="creche">Crèche</option>
-                    <option value="accueil_loisirs">Accueil de loisirs</option>
-                    <option value="famille">Secteur famille</option>
-                    <option value="emploi_formation">Emploi/formation</option>
-                    <option value="administratif">Administratif</option>
+                    {% for type in types_secteur %}
+                    <option value="{{ type.code }}">{{ type.libelle }}</option>
+                    {% endfor %}
                 </select>
                 <p class="help-text">Le type détermine les postes de dépense disponibles pour ce secteur</p>
             </div>
@@ -145,6 +172,36 @@
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeEditSecteur()">Annuler</button>
                 <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modale d'ajout de type de secteur -->
+<div id="addTypeModal" class="budget-modal" style="display: none;">
+    <div class="budget-modal-content">
+        <h2>➕ Ajouter un type de secteur</h2>
+        <form method="POST" action="{{ url_for('admin_bp.gestion_secteurs') }}">
+            <input type="hidden" name="action" value="ajouter_type">
+
+            <div class="form-group">
+                <label for="type_code">Code *</label>
+                <input type="text" id="type_code" name="code" required
+                       placeholder="Ex: entretien" pattern="[a-z_]+"
+                       title="Uniquement des lettres minuscules et underscores">
+                <p class="help-text">Utilisé en interne (lettres minuscules et underscores uniquement)</p>
+            </div>
+
+            <div class="form-group">
+                <label for="type_libelle">Libellé *</label>
+                <input type="text" id="type_libelle" name="libelle" required
+                       placeholder="Ex: Entretien">
+                <p class="help-text">Nom affiché à l'utilisateur</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeAddTypeModal()">Annuler</button>
+                <button type="submit" class="btn btn-primary">💾 Créer</button>
             </div>
         </form>
     </div>
@@ -163,8 +220,21 @@ function closeEditSecteur() {
     document.getElementById('editSecteurModal').style.display = 'none';
 }
 
+function openAddTypeModal() {
+    document.getElementById('addTypeModal').style.display = 'flex';
+}
+
+function closeAddTypeModal() {
+    document.getElementById('addTypeModal').style.display = 'none';
+}
+
+// Fermer les modales en cliquant à l'extérieur
 document.getElementById('editSecteurModal').addEventListener('click', function(e) {
     if (e.target === this) closeEditSecteur();
+});
+
+document.getElementById('addTypeModal').addEventListener('click', function(e) {
+    if (e.target === this) closeAddTypeModal();
 });
 </script>
 {% endblock %}
