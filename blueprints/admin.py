@@ -289,7 +289,7 @@ def gestion_secteurs():
 
                 if not code or not libelle:
                     flash('Le code et le libellé sont requis', 'error')
-                                    elif not re.match(r'^[a-z_]+$', code):
+                elif not re.match(r'^[a-z_]+$', code):
                     flash('Le code ne doit contenir que des lettres minuscules et des underscores', 'error')
                 elif len(code) > 50:
                     flash('Le code ne doit pas dépasser 50 caractères', 'error')
@@ -305,7 +305,7 @@ def gestion_secteurs():
                         ''', (code, libelle, ordre))
                         conn.commit()
                         flash(f'Type de secteur "{libelle}" créé avec succès', 'success')
-                                            except sqlite3.IntegrityError:
+                    except sqlite3.IntegrityError:
                         flash(f'Un type de secteur avec le code "{code}" existe déjà', 'error')
                     except Exception as e:
                         flash(f'Erreur: {str(e)}', 'error')
