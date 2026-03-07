@@ -77,16 +77,18 @@ def _mois_couverts_annee(date_debut_str, date_fin_str, annee):
     return mois
 
 
-def _build_periode_mois_filter(conn, periodes, annee):
+def _build_periode_info(conn, periodes, annee):
     """
-    Construit un dict {periode_id: (set_of_months_or_None, label_or_None)}.
+    Construit un dict {periode_id: (set_of_months_or_None, label_or_None, nb_jours_or_None)}.
 
     Pour chaque alsh_periode de type 'vacances' dont le nom correspond a une
-    periodes_vacances de la BD (via mots-cles), retourne les mois couverts
-    par cette vacation pour l'annee donnee.
+    periodes_vacances de la BD (via mots-cles), retourne :
+      - les mois couverts (pour le filtre des charges)
+      - le label de dates affiche dans l'UI
+      - le nombre de jours (pour le calcul pro-rata des produits)
 
     Pour les autres periodes (Mercredis, custom, ou vacances sans correspondance),
-    retourne (None, None) = pas de filtre de date.
+    retourne (None, None, None) = pas de filtre de date, pas de pro-rata.
     """
     # Chercher les periodes_vacances proches de l'annee (annee-1 a annee+1 pour
     # les vacances de Noel qui chevauchent deux annees civiles)
@@ -129,13 +131,15 @@ def _build_periode_mois_filter(conn, periodes, annee):
                         f"{d_debut.day:02d}/{d_debut.month:02d}"
                         f" – {d_fin.day:02d}/{d_fin.month:02d}/{d_fin.year}"
                     )
+                    nb_jours = (d_fin - d_debut).days + 1 if d_fin >= d_debut else None
                 except Exception:
                     label = None
-                result[p['id']] = (vd['mois'], label)
+                    nb_jours = None
+                result[p['id']] = (vd['mois'], label, nb_jours)
             else:
-                result[p['id']] = (None, None)
+                result[p['id']] = (None, None, None)
         else:
-            result[p['id']] = (None, None)
+            result[p['id']] = (None, None, None)
     return result
 
 
@@ -445,13 +449,16 @@ def api_alsh_save_noe():
 def _build_tableau(conn, annee):
     """Construit les donnees du tableau de bord pour une annee.
 
-    - Charge les filtres de mois par periode depuis periodes_vacances (si disponibles).
-    - Pour les periodes de type 'vacances' dont le nom correspond a une entree
-      periodes_vacances, les donnees FEC sont restreintes aux mois couverts,
-      ce qui evite le double-comptage quand le meme code analytique est partage
-      entre plusieurs periodes (ex. meme code pour hiver et printemps).
-    - Les periodes sans correspondance (Mercredis, custom) utilisent toute l'annee.
-    - Utilise deux requetes SQL pre-agregees (par code+mois) pour eviter le N+1.
+    Charges : filtrees par les mois couverts par chaque periode de vacances
+      (evite le double-comptage quand deux periodes partagent le meme code).
+
+    Produits : les subventions s'appliquent a la globalite des vacances, pas
+      mois par mois. Si plusieurs periodes de vacances partagent le meme code
+      analytique (pour la meme tranche d'age), le total annuel des produits est
+      reparti au prorata du nombre de jours de chaque vacation.
+      Si les codes sont distincts, chaque periode recoit le total de son code.
+
+    Mercredis / periodes custom : toujours le total annuel sans filtrage.
     """
     periodes = conn.execute(
         'SELECT id, nom, type, ordre FROM alsh_periodes WHERE active = 1 ORDER BY ordre, id'
@@ -476,19 +483,18 @@ def _build_tableau(conn, annee):
     noe_map = {(r['periode_id'], r['tranche_age_id']): (r['heures_presence'], r['nb_enfants'])
                for r in noe_rows}
 
-    # Calculer les filtres de mois par periode (vacances → mois scolaires)
-    periode_mois_filter = _build_periode_mois_filter(conn, periodes, annee)
+    # Info par periode : (mois_filter, label, nb_jours)
+    periode_info = _build_periode_info(conn, periodes, annee)
 
     # Collecter tous les codes analytiques utilises pour cette annee
     tous_les_codes = set()
     for codes in codes_map.values():
         tous_les_codes.update(c for c in codes if c)
 
-    # Agreger par (code_analytique, mois) ET par code seul (pour periodes sans filtre)
-    charges_by_code_mois = {}   # {(code, mois): total}
-    produits_by_code_mois = {}  # {(code, mois): total}
-    charges_by_code = {}        # {code: total annee}
-    produits_by_code = {}       # {code: total annee}
+    # Agreger les charges par (code, mois) et les produits par code (total annee)
+    charges_by_code_mois = {}  # {(code, mois): total}  – pour les charges filtrées
+    charges_by_code = {}       # {code: total annee}    – pour les périodes sans filtre
+    produits_by_code = {}      # {code: total annee}    – les produits ne sont pas filtrés
 
     if tous_les_codes:
         codes_list = list(tous_les_codes)
@@ -510,19 +516,54 @@ def _build_tableau(conn, annee):
             charges_by_code[c] = charges_by_code.get(c, 0.0) + r['total']
 
         produits_rows = conn.execute(
-            'SELECT code_analytique, mois, COALESCE(SUM(montant), 0) as total'
+            'SELECT code_analytique, COALESCE(SUM(montant), 0) as total'
             ' FROM bilan_fec_donnees'
             " WHERE annee = ? AND compte_num LIKE '7%'"
             ' AND code_analytique IN (' + placeholders + ')'
-            ' GROUP BY code_analytique, mois',
+            ' GROUP BY code_analytique',
             params
         ).fetchall()
         for r in produits_rows:
-            km = (r['code_analytique'], r['mois'])
-            produits_by_code_mois[km] = r['total']
-            c = r['code_analytique']
-            produits_by_code[c] = produits_by_code.get(c, 0.0) + r['total']
+            produits_by_code[r['code_analytique']] = r['total']
 
+    # ── Pro-rata des produits pour les vacances partageant un meme code ────────
+    # Pour chaque (code, tranche_id), recenser les periodes de vacances qui
+    # utilisent ce (code, tranche). Si elles sont plusieurs, distribuer le total
+    # des produits de ce code proportionnellement au nombre de jours.
+    #
+    # produits_prorata[(code, tid, pid)] = montant attribue a cette periode
+    code_tid_vacances = {}  # {(code, tid): [(pid, nb_jours_or_None), ...]}
+    for p in periodes:
+        _, _, nb_jours = periode_info.get(p['id'], (None, None, None))
+        if p['type'] != 'vacances':
+            continue
+        for t in tranches:
+            codes_cell = codes_map.get((p['id'], t['id']), [None, None, None])
+            for c in codes_cell:
+                if c:
+                    key = (c, t['id'])
+                    code_tid_vacances.setdefault(key, []).append((p['id'], nb_jours))
+
+    produits_prorata = {}  # {(code, tid, pid): montant}
+    for (code, tid), vac_list in code_tid_vacances.items():
+        total_p = produits_by_code.get(code, 0.0)
+        if len(vac_list) == 1:
+            # Code utilise par une seule periode : elle recoit tout
+            pid, _ = vac_list[0]
+            produits_prorata[(code, tid, pid)] = total_p
+        elif any(j is None for _, j in vac_list):
+            # Au moins une duree inconnue → repartition egale entre toutes
+            for pid, _ in vac_list:
+                produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+        else:
+            total_jours = sum(j for _, j in vac_list)
+            for pid, nb_j in vac_list:
+                if total_jours > 0:
+                    produits_prorata[(code, tid, pid)] = total_p * nb_j / total_jours
+                else:
+                    produits_prorata[(code, tid, pid)] = total_p / len(vac_list)
+
+    # ── Construction des lignes ────────────────────────────────────────────────
     lignes = []
     total_charges = 0.0
     total_produits = 0.0
@@ -530,30 +571,33 @@ def _build_tableau(conn, annee):
     total_enfants = 0
 
     for periode in periodes:
-        mois_filter, date_label = periode_mois_filter.get(periode['id'], (None, None))
+        mois_filter, date_label, _ = periode_info.get(periode['id'], (None, None, None))
         for tranche in tranches:
             key = (periode['id'], tranche['id'])
             codes = codes_map.get(key, [None, None, None])
             heures, enfants = noe_map.get(key, (0.0, 0))
 
-            # Sommer les montants depuis les dicts pre-calcules
             codes_valides = [c for c in codes if c]
 
+            # Charges : filtrees par mois pour les vacances avec dates connues
             if mois_filter is not None:
-                # Filtrer par mois : evite le double-comptage sur code partage
                 charges = round(sum(
                     charges_by_code_mois.get((c, m), 0.0)
                     for c in codes_valides
                     for m in mois_filter
                 ), 2)
+            else:
+                charges = round(sum(charges_by_code.get(c, 0.0) for c in codes_valides), 2)
+
+            # Produits : pro-rata pour les vacances, total annuel sinon
+            if periode['type'] == 'vacances' and any(
+                (c, tranche['id'], periode['id']) in produits_prorata for c in codes_valides
+            ):
                 produits = round(sum(
-                    produits_by_code_mois.get((c, m), 0.0)
+                    produits_prorata.get((c, tranche['id'], periode['id']), 0.0)
                     for c in codes_valides
-                    for m in mois_filter
                 ), 2)
             else:
-                # Pas de filtre de date (Mercredis, custom, ou vacances sans dates connues)
-                charges = round(sum(charges_by_code.get(c, 0.0) for c in codes_valides), 2)
                 produits = round(sum(produits_by_code.get(c, 0.0) for c in codes_valides), 2)
 
             resultat = produits - charges
@@ -568,7 +612,7 @@ def _build_tableau(conn, annee):
                 'periode_date_label': date_label,
                 'tranche_id': tranche['id'],
                 'tranche_libelle': tranche['libelle'],
-                'codes': [c for c in codes if c],
+                'codes': codes_valides,
                 'heures_presence': heures,
                 'nb_enfants': enfants,
                 'charges': charges,
@@ -577,6 +621,8 @@ def _build_tableau(conn, annee):
                 'cout_heure': round(cout_heure, 2) if cout_heure is not None else None,
                 'cout_enfant': round(cout_enfant, 2) if cout_enfant is not None else None,
                 'taux_couverture': round(taux_couverture, 1) if taux_couverture is not None else None,
+                # Données pour le détail des charges (identifiants pour la requête)
+                'charges_mois_filter': sorted(mois_filter) if mois_filter is not None else None,
             }
             lignes.append(ligne)
             total_charges += charges
@@ -601,6 +647,7 @@ def _build_tableau(conn, annee):
             'taux_couverture': round(total_taux, 1) if total_taux is not None else None,
         },
     }
+
 
 
 @alsh_bp.route('/api/alsh/tableau')
@@ -684,5 +731,77 @@ def api_alsh_codes_disponibles():
                 ORDER BY code_analytique
             ''').fetchall()
         return jsonify({'codes': [r['code_analytique'] for r in rows]})
+    finally:
+        conn.close()
+
+
+# ── Détail des charges (pour la modale) ──────────────────────────────────────
+
+@alsh_bp.route('/api/alsh/charges-detail')
+@login_required
+def api_alsh_charges_detail():
+    """Retourne les lignes FEC individuelles de charges pour affichage en détail.
+
+    Paramètres GET :
+      - annee  : int (obligatoire)
+      - codes  : codes analytiques séparés par des virgules (obligatoire)
+      - mois   : mois séparés par des virgules (optionnel, filtrage pour vacances)
+
+    Retourne les lignes agrégées par (compte_num, libelle, code_analytique, mois)
+    ordonnées par mois puis compte, avec le montant total et le nb de lignes.
+    """
+    if not _peut_acceder():
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    annee = request.args.get('annee', type=int)
+    codes_param = request.args.get('codes', '').strip()
+    mois_param = request.args.get('mois', '').strip()
+
+    if not annee or not codes_param:
+        return jsonify({'error': 'Paramètres annee et codes requis.'}), 400
+
+    codes = [c.strip() for c in codes_param.split(',') if c.strip()]
+    if not codes:
+        return jsonify({'error': 'Au moins un code analytique est requis.'}), 400
+
+    mois_filter = []
+    if mois_param:
+        for m in mois_param.split(','):
+            try:
+                mois_filter.append(int(m.strip()))
+            except ValueError:
+                pass
+
+    conn = get_db()
+    try:
+        ph = ','.join('?' * len(codes))
+        params_base = [annee] + codes
+
+        if mois_filter:
+            ph_mois = ','.join('?' * len(mois_filter))
+            rows = conn.execute(
+                'SELECT compte_num, libelle, code_analytique, mois,'
+                ' COALESCE(SUM(montant), 0) AS montant_total, COUNT(*) AS nb_lignes'
+                ' FROM bilan_fec_donnees'
+                " WHERE annee = ? AND compte_num LIKE '6%'"
+                ' AND code_analytique IN (' + ph + ')'
+                ' AND mois IN (' + ph_mois + ')'
+                ' GROUP BY compte_num, libelle, code_analytique, mois'
+                ' ORDER BY mois, compte_num',
+                params_base + mois_filter
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                'SELECT compte_num, libelle, code_analytique, mois,'
+                ' COALESCE(SUM(montant), 0) AS montant_total, COUNT(*) AS nb_lignes'
+                ' FROM bilan_fec_donnees'
+                " WHERE annee = ? AND compte_num LIKE '6%'"
+                ' AND code_analytique IN (' + ph + ')'
+                ' GROUP BY compte_num, libelle, code_analytique, mois'
+                ' ORDER BY mois, compte_num',
+                params_base
+            ).fetchall()
+
+        return jsonify({'lignes': [dict(r) for r in rows]})
     finally:
         conn.close()
