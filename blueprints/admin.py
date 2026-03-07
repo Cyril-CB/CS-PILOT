@@ -396,9 +396,20 @@ def gestion_vacances():
                     flash(f'Erreur: {str(e)}', 'error')
 
         # Récupérer toutes les périodes
-        periodes = conn.execute('''
+        periodes_raw = conn.execute('''
             SELECT * FROM periodes_vacances ORDER BY date_debut
         ''').fetchall()
+
+        periodes = []
+        for p in periodes_raw:
+            periode_dict = dict(p)
+            try:
+                date_debut = datetime.strptime(periode_dict['date_debut'], '%Y-%m-%d').date()
+                date_fin = datetime.strptime(periode_dict['date_fin'], '%Y-%m-%d').date()
+                periode_dict['duree_jours'] = (date_fin - date_debut).days + 1
+            except (TypeError, ValueError):
+                periode_dict['duree_jours'] = None
+            periodes.append(periode_dict)
 
         return render_template('gestion_vacances.html', periodes=periodes)
     finally:

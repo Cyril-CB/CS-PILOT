@@ -190,3 +190,27 @@ class TestSetup:
         user = db.execute("SELECT profil FROM users WHERE login = 'jdupont'").fetchone()
         assert user is not None
         assert user['profil'] == 'directeur'
+
+
+class TestGestionVacances:
+    """Tests de la page /gestion_vacances."""
+
+    def test_duree_periode_vacances_calculee_sur_plage_complete(self, app, db, admin_client):
+        """La durée doit être calculée avec les dates complètes, même en changeant de mois."""
+        with app.app_context():
+            db.execute(
+                '''
+                INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
+                VALUES (?, ?, ?, ?)
+                ''',
+                ('Vacances d\'hiver 2024', '2024-02-19', '2024-03-01', 1)
+            )
+            db.commit()
+
+        response = admin_client.get('/gestion_vacances')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Vacances d&#39;hiver 2024' in html
+        assert '12 jours' in html
+        assert '-17 jours' not in html
