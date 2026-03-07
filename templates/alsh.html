@@ -277,7 +277,7 @@ function renderConfigLists() {
     tb.innerHTML = _config.tranches.map(t => `
         <tr>
             <td>${esc(t.libelle)}</td>
-            <td><button class="btn btn-sm btn-danger" onclick="supprimerTranche(${t.id},'${esc(t.libelle)}')">🗑</button></td>
+            <td><button class="btn btn-sm btn-danger" data-id="${t.id}" onclick="supprimerTrancheById(this)">🗑</button></td>
         </tr>`).join('');
 
     // Périodes
@@ -287,8 +287,20 @@ function renderConfigLists() {
         <tr>
             <td>${esc(p.nom)}</td>
             <td><span class="badge-code">${typeLabels[p.type] || p.type}</span></td>
-            <td><button class="btn btn-sm btn-danger" onclick="supprimerPeriode(${p.id},'${esc(p.nom)}')">🗑</button></td>
+            <td><button class="btn btn-sm btn-danger" data-id="${p.id}" onclick="supprimerPeriodeById(this)">🗑</button></td>
         </tr>`).join('');
+}
+
+function supprimerTrancheById(btn) {
+    const id = parseInt(btn.dataset.id);
+    const t = _config.tranches.find(x => x.id === id);
+    if (t) supprimerTranche(t.id, t.libelle);
+}
+
+function supprimerPeriodeById(btn) {
+    const id = parseInt(btn.dataset.id);
+    const p = _config.periodes.find(x => x.id === id);
+    if (p) supprimerPeriode(p.id, p.nom);
 }
 
 async function ajouterTranche() {
@@ -404,20 +416,32 @@ async function sauvegarderCodes() {
     const csrf = document.querySelector('meta[name=csrf-token]').content;
 
     let nb = 0;
+    let nbErrors = 0;
     for (const p of periodes) {
         for (const t of tranches) {
             const code1 = document.getElementById(`c1_${p.id}_${t.id}`)?.value.trim() || '';
             const code2 = document.getElementById(`c2_${p.id}_${t.id}`)?.value.trim() || '';
             const code3 = document.getElementById(`c3_${p.id}_${t.id}`)?.value.trim() || '';
-            await fetch('/api/alsh/codes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                body: JSON.stringify({ annee, periode_id: p.id, tranche_age_id: t.id, code1, code2, code3 })
-            });
-            nb++;
+            try {
+                const res = await fetch('/api/alsh/codes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ annee, periode_id: p.id, tranche_age_id: t.id, code1, code2, code3 })
+                });
+                if (!res.ok) { nbErrors++; continue; }
+                const data = await res.json();
+                if (data.success) nb++;
+                else nbErrors++;
+            } catch (e) {
+                nbErrors++;
+            }
         }
     }
-    alert(`✅ ${nb} configuration(s) enregistrée(s).`);
+    if (nbErrors > 0) {
+        alert(`⚠️ ${nb} configuration(s) enregistrée(s), ${nbErrors} erreur(s). Vérifiez votre connexion et réessayez.`);
+    } else {
+        alert(`✅ ${nb} configuration(s) enregistrée(s).`);
+    }
 }
 
 // ── Saisie NOÉ ─────────────────────────────────────────────────────────────────
@@ -472,20 +496,32 @@ async function sauvegarderNoe() {
     const csrf = document.querySelector('meta[name=csrf-token]').content;
 
     let nb = 0;
+    let nbErrors = 0;
     for (const p of periodes) {
         for (const t of tranches) {
             const heures = parseFloat(document.getElementById(`h_${p.id}_${t.id}`)?.value) || 0;
             const enfants = parseInt(document.getElementById(`e_${p.id}_${t.id}`)?.value) || 0;
-            await fetch('/api/alsh/noe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                body: JSON.stringify({ annee, periode_id: p.id, tranche_age_id: t.id,
-                                       heures_presence: heures, nb_enfants: enfants })
-            });
-            nb++;
+            try {
+                const res = await fetch('/api/alsh/noe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
+                    body: JSON.stringify({ annee, periode_id: p.id, tranche_age_id: t.id,
+                                           heures_presence: heures, nb_enfants: enfants })
+                });
+                if (!res.ok) { nbErrors++; continue; }
+                const data = await res.json();
+                if (data.success) nb++;
+                else nbErrors++;
+            } catch (e) {
+                nbErrors++;
+            }
         }
     }
-    alert(`✅ ${nb} saisie(s) enregistrée(s).`);
+    if (nbErrors > 0) {
+        alert(`⚠️ ${nb} saisie(s) enregistrée(s), ${nbErrors} erreur(s). Vérifiez votre connexion et réessayez.`);
+    } else {
+        alert(`✅ ${nb} saisie(s) enregistrée(s).`);
+    }
 }
 
 // ── Tableau de bord ────────────────────────────────────────────────────────────
@@ -566,8 +602,12 @@ function renderTableauPrincipal(data) {
             const resClass = l.resultat >= 0 ? 'positif' : 'negatif';
             const tauxClass = (l.taux_couverture||0) >= 100 ? 'positif' : 'negatif';
             const codesHtml = l.codes.map(c => `<span class="badge-code">${esc(c)}</span>`).join(' ') || '<em style="color:var(--text-muted)">—</em>';
+            // Show the date range used for filtering (when vacation period is date-filtered)
+            const dateLabelHtml = (idx === 0 && l.periode_date_label)
+                ? `<br><small style="color:var(--text-muted);font-size:0.78em;">📅 ${esc(l.periode_date_label)}</small>`
+                : '';
             html += `<tr>
-                ${idx === 0 ? `<td rowspan="${groupe.lignes.length}"><strong>${esc(groupe.lignes[0].periode_nom)}</strong></td>` : ''}
+                ${idx === 0 ? `<td rowspan="${groupe.lignes.length}"><strong>${esc(groupe.lignes[0].periode_nom)}</strong>${dateLabelHtml}</td>` : ''}
                 <td>${esc(l.tranche_libelle)}</td>
                 <td>${codesHtml}</td>
                 <td style="text-align:right;">${fmtH(l.heures_presence)}</td>
