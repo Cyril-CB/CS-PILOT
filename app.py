@@ -73,8 +73,9 @@ else:
 
 env_path = os.path.join(application_path, '.env')
 
-# Si le fichier .env n'existe pas, le générer automatiquement
-if not os.path.exists(env_path):
+# Si le fichier .env n'existe pas ET qu'aucune SECRET_KEY n'est définie dans l'environnement,
+# générer automatiquement un fichier .env avec une clé secrète.
+if not os.path.exists(env_path) and not os.environ.get('SECRET_KEY'):
     generate_env_file(env_path)
 
 load_dotenv(dotenv_path=env_path)
