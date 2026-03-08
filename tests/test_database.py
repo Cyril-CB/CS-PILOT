@@ -5,7 +5,15 @@ Tests pour le module database.py :
 - Marquage de toutes les migrations comme appliquées
 - Données initiales (postes de dépense)
 - Connexion et row_factory
+- Résolution conditionnelle de DATA_DIR (mode script vs mode frozen)
 """
+import importlib
+import os
+import sys
+
+import pytest
+
+import database
 from database import get_db, init_db, ALL_MIGRATION_VERSIONS
 
 
@@ -82,3 +90,61 @@ class TestGetDb:
             row = db.execute("SELECT id FROM _test_tmp").fetchone()
             assert row['id'] == 42
             db.execute("DROP TABLE _test_tmp")
+
+
+class TestDataDir:
+    """Vérifie la résolution conditionnelle de DATA_DIR selon sys.frozen."""
+
+    def _reload_database(self):
+        """Recharge le module database et retourne les nouvelles valeurs DATA_DIR / DATABASE."""
+        importlib.reload(database)
+        return database.DATA_DIR, database.DATABASE
+
+    def test_script_mode_utilise_dossier_projet(self, monkeypatch):
+        """En mode script (sys.frozen absent), DATA_DIR doit être le dossier du projet."""
+        monkeypatch.delattr(sys, 'frozen', raising=False)
+        try:
+            data_dir, db_path = self._reload_database()
+            projet_dir = os.path.dirname(os.path.abspath(database.__file__))
+            assert data_dir == projet_dir, (
+                f"En mode script, DATA_DIR devrait être le dossier du projet "
+                f"({projet_dir}), pas {data_dir}"
+            )
+            assert db_path == os.path.join(data_dir, 'cspilot.db')
+        finally:
+            importlib.reload(database)
+
+    @pytest.mark.skipif(os.name == 'nt', reason='Linux/Mac specific test')
+    def test_frozen_linux_utilise_local_share(self, monkeypatch):
+        """En mode frozen sur Linux/Mac, DATA_DIR doit être ~/.local/share/cspilot."""
+        monkeypatch.setattr(sys, 'frozen', True, raising=False)
+        try:
+            data_dir, db_path = self._reload_database()
+            attendu = os.path.join(os.path.expanduser('~'), '.local', 'share', 'cspilot')
+            assert data_dir == attendu, (
+                f"En mode frozen (Linux), DATA_DIR devrait être {attendu}, pas {data_dir}"
+            )
+            assert db_path == os.path.join(data_dir, 'cspilot.db')
+        finally:
+            importlib.reload(database)
+
+    def test_frozen_windows_utilise_localappdata(self, monkeypatch):
+        """En mode frozen sur Windows (simulé), DATA_DIR doit être %LOCALAPPDATA%\\cspilot."""
+        original_os_name = os.name
+        monkeypatch.setenv('LOCALAPPDATA', r'C:\Users\Test\AppData\Local')
+        monkeypatch.setattr(os, 'name', 'nt')
+        monkeypatch.setattr(sys, 'frozen', True, raising=False)
+        try:
+            data_dir, db_path = self._reload_database()
+            attendu = os.path.join(r'C:\Users\Test\AppData\Local', 'cspilot')
+            assert data_dir == attendu, (
+                f"En mode frozen (Windows), DATA_DIR devrait être {attendu}, pas {data_dir}"
+            )
+            assert db_path == os.path.join(data_dir, 'cspilot.db')
+        finally:
+            monkeypatch.setattr(os, 'name', original_os_name)
+            importlib.reload(database)
+
+    def test_database_dans_data_dir(self):
+        """DATABASE doit toujours être data_dir/cspilot.db."""
+        assert database.DATABASE == os.path.join(database.DATA_DIR, 'cspilot.db')
