@@ -16,7 +16,7 @@ import unicodedata
 from datetime import datetime
 from flask import (Blueprint, render_template, request, session, flash,
                    redirect, url_for, jsonify, send_file)
-from database import get_db
+from database import get_db, DATA_DIR
 from utils import login_required, get_setting
 from blueprints.pesee_alisfa import call_ai, _extract_json_from_response
 from blueprints.api_keys import get_available_models
@@ -27,7 +27,7 @@ factures_bp = Blueprint('factures_bp', __name__)
 PROFILS_GESTION = ['directeur', 'comptable']
 PROFILS_CONSULTATION = ['directeur', 'comptable', 'responsable']
 
-FACTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'factures')
+FACTURES_DIR = os.path.join(DATA_DIR, 'factures')
 
 
 def _ensure_factures_dir():

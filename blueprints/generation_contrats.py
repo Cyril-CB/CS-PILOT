@@ -11,7 +11,7 @@ import unicodedata
 from io import BytesIO
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
-from database import get_db
+from database import get_db, DATA_DIR
 from utils import login_required, get_setting, save_setting
 from blueprints.pesee_alisfa import CRITERES_ALISFA as _CRITERES_ALISFA
 
@@ -23,13 +23,9 @@ _POINTS_PAR_CRITERE = [
 
 generation_contrats_bp = Blueprint('generation_contrats_bp', __name__)
 
-MODELES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'modeles_contrats'
-)
+MODELES_DIR = os.path.join(DATA_DIR, 'modeles_contrats')
 
-CONTRATS_GENERES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'contrats_generes'
-)
+CONTRATS_GENERES_DIR = os.path.join(DATA_DIR, 'contrats_generes')
 
 TYPES_CONTRAT = [
     ('CDI', 'CDI'),

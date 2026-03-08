@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
-from database import init_db, get_db
+from database import init_db, get_db, DATA_DIR
 from extensions import csrf, limiter
 
 
@@ -65,13 +65,10 @@ SECRET_KEY={secret_key}
         return False
 
 
-# Charger les variables d'environnement depuis .env (s'il existe)
-if getattr(sys, 'frozen', False):
-    application_path = os.path.dirname(sys.executable)
-else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
-
-env_path = os.path.join(application_path, '.env')
+# Charger les variables d'environnement depuis .env (s'il existe).
+# DATA_DIR pointe vers le dossier du projet en mode script, et vers AppData en mode .exe,
+# donc le .env est toujours au même endroit que la base de données.
+env_path = os.path.join(DATA_DIR, '.env')
 
 # Si le fichier .env n'existe pas ET qu'aucune SECRET_KEY n'est définie dans l'environnement,
 # générer automatiquement un fichier .env avec une clé secrète.
