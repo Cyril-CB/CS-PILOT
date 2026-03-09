@@ -74,5 +74,6 @@ def test_page_tresorerie_charge_les_graphiques_depuis_un_script_local(admin_clie
     html = resp.get_data(as_text=True)
 
     assert resp.status_code == 200
-    assert '/static/js/simple-charts.js?v=1' in html
+    assert '/static/js/vendor/chart-4.4.7.umd.js?v=4.4.7' in html
+    assert 'simple-charts.js' not in html
     assert 'cdn.jsdelivr.net/npm/chart.js' not in html

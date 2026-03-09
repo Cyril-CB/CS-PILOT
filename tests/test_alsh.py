@@ -141,7 +141,8 @@ def test_page_analyse_alsh_charge_les_graphiques_depuis_un_script_local(admin_cl
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert '/static/js/simple-charts.js?v=1' in html
+    assert '/static/js/vendor/chart-4.4.0.umd.js?v=4.4.0' in html
+    assert 'simple-charts.js' not in html
     assert 'cdn.jsdelivr.net/npm/chart.js' not in html
 
 
