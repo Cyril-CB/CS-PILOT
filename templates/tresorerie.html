@@ -828,8 +828,7 @@
     </div>
 </div>
 
-<!-- Chart.js CDN -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/simple-charts.js') }}?v=1"></script>
 
 <script>
 var ANNEE_DEBUT = {{ annee }};

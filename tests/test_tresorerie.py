@@ -67,3 +67,12 @@ def test_supprimer_tous_comptes_tresorerie_n_efface_pas_autres_modules(admin_cli
     assert nb_comptes_treso == 0
     assert nb_donnees_treso == 1
     assert nb_pcg == 1
+
+
+def test_page_tresorerie_charge_les_graphiques_depuis_un_script_local(admin_client):
+    resp = admin_client.get('/tresorerie')
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert '/static/js/simple-charts.js?v=1' in html
+    assert 'cdn.jsdelivr.net/npm/chart.js' not in html

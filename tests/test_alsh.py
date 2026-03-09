@@ -136,6 +136,15 @@ def test_page_analyse_alsh_affiche_section_tarif_optimal(admin_client):
     assert 'Évolution pluriannuelle' not in html
 
 
+def test_page_analyse_alsh_charge_les_graphiques_depuis_un_script_local(admin_client):
+    response = admin_client.get('/analyse-alsh')
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert '/static/js/simple-charts.js?v=1' in html
+    assert 'cdn.jsdelivr.net/npm/chart.js' not in html
+
+
 def test_api_tableau_alsh_indique_taux_logistique_manquant(admin_client):
     response = admin_client.get('/api/alsh/tableau?annee=2025')
     payload = response.get_json()
