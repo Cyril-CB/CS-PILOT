@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block title %}Budget prévisionnel - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+    <h2>💶 Budget prévisionnel</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
+        <button class="btn btn-danger" onclick="supprimerAnneeImport()">🗑️ Supprimer année importée</button>
+        <button class="btn btn-secondary" onclick="exporterPdf(false)">📄 Export PDF secteur</button>
+        {% if profil in ['directeur', 'comptable'] %}
+        <button class="btn btn-secondary" onclick="exporterPdf(true)">📄 Export PDF budget global</button>
+        {% endif %}
+    </div>
+</div>
+
+<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:16px 0;">
+    <div class="form-group" style="margin:0;">
+        <label>Type de budget</label>
+        <select id="typeBudget" class="form-select" onchange="chargerBudget()">
+            <option value="initial">Budget initial</option>
+            <option value="actualise">Budget actualisé</option>
+        </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label>Année du budget</label>
+        <select id="anneeBudget" class="form-select" onchange="chargerBudget()">
+            {% for a in annees_traitement %}
+            <option value="{{ a }}">{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label>Secteur</label>
+        <select id="secteurBudget" class="form-select" onchange="chargerBudget()">
+            {% for s in secteurs %}
+            <option value="{{ s.id }}" {% if s.id == secteur_id_defaut %}selected{% endif %}>{{ s.nom }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label>% inflation annuel (initial)</label>
+        <input id="inflation" class="form-control" type="number" step="0.1" value="2" onchange="chargerBudget()">
+    </div>
+</div>
+
+<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="switchTab('budget')">📊 Budget secteur</button>
+    {% if profil in ['directeur', 'comptable'] %}
+    <button class="btn btn-secondary" onclick="switchTab('global')">🌍 Budget général</button>
+    <button class="btn btn-secondary" onclick="switchTab('config')">⚙️ Configuration</button>
+    {% endif %}
+</div>
+
+<div style="margin-bottom:10px;color:var(--text-muted);">
+    Années BI disponibles : {% if annees_importees %}{{ annees_importees|join(', ') }}{% else %}Aucune{% endif %}.
+    Dernier mois importé pour l'année en cours : <strong>{{ dernier_mois_courant_label or 'Aucun' }}</strong>.
+</div>
+
+<div id="tab-budget">
+    <div id="budgetInfos" style="margin:10px 0;color:var(--text-muted);"></div>
+    <div id="budgetTables"></div>
+    <div id="budgetResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
+</div>
+
+{% if profil in ['directeur', 'comptable'] %}
+<div id="tab-global" style="display:none;">
+    <div id="globalTables"></div>
+    <div id="globalResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
+</div>
+
+<div id="tab-config" style="display:none;">
+    <div style="max-width:680px;">
+        <h3>Configuration des codes analytiques par secteur</h3>
+        <p style="color:var(--text-muted);">Configuration dédiée au budget prévisionnel (indépendante de l'analyse ALSH).</p>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+            <div class="form-group" style="margin:0;">
+                <label>Code analytique</label>
+                <input id="cfgCode" class="form-control" placeholder="Ex: ANA001">
+            </div>
+            <div class="form-group" style="margin:0;">
+                <label>Secteur</label>
+                <select id="cfgSecteur" class="form-select">
+                    {% for s in secteurs %}
+                    <option value="{{ s.id }}">{{ s.nom }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="saveConfigCode()">Ajouter / mettre à jour</button>
+        </div>
+        <table class="data-table" style="margin-top:14px;">
+            <thead><tr><th>Code analytique</th><th>Secteur</th><th></th></tr></thead>
+            <tbody id="cfgBody">
+                {% for c in codes_config %}
+                <tr data-id="{{ c.id }}">
+                    <td>{{ c.code_analytique }}</td>
+                    <td>{{ c.secteur_nom }}</td>
+                    <td style="text-align:right;"><button class="btn btn-danger btn-sm" onclick="deleteConfig({{ c.id }})">Supprimer</button></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:520px;">
+        <div class="modal-header">
+            <h3>📥 Import BI</h3>
+            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
+            <form id="importBiForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Fichier BI</label>
+                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
+                </div>
+                <div style="text-align:right;margin-top:12px;">
+                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
+var salaryMeta = null;
+var currentRows = [];
+
+function fmt(n){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function switchTab(tab){
+    document.getElementById('tab-budget').style.display = tab === 'budget' ? '' : 'none';
+    var tg = document.getElementById('tab-global'); if (tg) tg.style.display = tab === 'global' ? '' : 'none';
+    var tc = document.getElementById('tab-config'); if (tc) tc.style.display = tab === 'config' ? '' : 'none';
+    if (tab === 'global') chargerGlobal();
+}
+
+document.getElementById('importBiForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    const fd = new FormData(this);
+    fetch('/api/bilan/import-bi', {method:'POST', body:fd})
+      .then(r => r.json()).then(data => {
+        if (data.success) { alert(data.message); location.reload(); }
+        else alert(data.error || 'Erreur import');
+      });
+});
+
+function supprimerAnneeImport(){
+    const annee = prompt('Année à supprimer (import BI) :');
+    if (!annee) return;
+    if (!confirm('Confirmer la suppression des données BI ' + annee + ' ?')) return;
+    fetch('/api/bilan/annee/' + annee, {method:'DELETE'})
+      .then(r => r.json()).then(data => {
+        if (data.success) { alert(data.message); location.reload(); }
+        else alert(data.error || 'Erreur suppression');
+      });
+}
+
+function getParams(globalMode){
+    const t = document.getElementById('typeBudget').value;
+    const a = document.getElementById('anneeBudget').value;
+    const s = document.getElementById('secteurBudget').value;
+    const infl = document.getElementById('inflation').value || '0';
+    let url = '/api/budget-previsionnel/donnees?type_budget=' + encodeURIComponent(t) + '&annee=' + a + '&inflation=' + infl;
+    if (globalMode) url += '&global=1';
+    else url += '&secteur_id=' + s;
+    return url;
+}
+
+function chargerBudget(){
+    fetch(getParams(false)).then(r => r.json()).then(data => {
+        if (data.error) { alert(data.error); return; }
+        salaryMeta = data;
+        currentRows = (data.rows || []).map(r => Object.assign({}, r));
+        renderBudgetTable('budgetTables', currentRows, data, false);
+        renderResult('budgetResultat', data.totaux);
+        const type = document.getElementById('typeBudget').value;
+        const info = (type === 'actualise' && data.last_month)
+            ? ('Données année N disponibles jusqu’à <strong>' + data.last_month_label + '</strong>.')
+            : '';
+        document.getElementById('budgetInfos').innerHTML = info;
+    });
+}
+
+function chargerGlobal(){
+    fetch(getParams(true)).then(r => r.json()).then(data => {
+        if (data.error) { alert(data.error); return; }
+        renderBudgetTable('globalTables', data.rows || [], data, true);
+        renderResult('globalResultat', data.totaux);
+    });
+}
+
+function renderBudgetTable(targetId, rows, meta, globalMode){
+    const charges = rows.filter(r => r.nature === 'charges');
+    const produits = rows.filter(r => r.nature === 'produits');
+    const type = document.getElementById('typeBudget').value;
+    const nTemp = type === 'initial' ? 'N+1 Temp.' : 'N Temp.';
+    const nDef = type === 'initial' ? 'N+1 Déf.' : 'N Déf.';
+    const html = '<h3>Charges</h3>' + buildTable(charges, nTemp, nDef, globalMode) +
+                 '<h3 style="margin-top:18px;">Produits</h3>' + buildTable(produits, nTemp, nDef, globalMode);
+    document.getElementById(targetId).innerHTML = html;
+}
+
+function buildTable(rows, labelTemp, labelDef, globalMode){
+    if (!rows.length) return '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
+    let html = '<table class="data-table"><thead><tr>' +
+      '<th>Compte</th><th>Libellé</th><th>N-2</th><th>N-1</th><th>N</th><th>' + labelTemp + '</th><th>' + labelDef + '</th><th>Commentaire</th>' +
+      '</tr></thead><tbody>';
+    let currentCat = null, catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
+    function pushCatTotal(){
+        if (!currentCat) return;
+        html += '<tr style="font-weight:bold;background:var(--gray-100,#f0f0f0)"><td colspan="2">Total catégorie ' + currentCat + '</td>' +
+          '<td style="text-align:right;">' + fmt(catTotals.n2) + '</td><td style="text-align:right;">' + fmt(catTotals.n1) + '</td>' +
+          '<td style="text-align:right;">' + fmt(catTotals.n) + '</td><td style="text-align:right;">' + fmt(catTotals.temp) + '</td>' +
+          '<td style="text-align:right;">' + fmt(catTotals.def) + '</td><td></td></tr>';
+    }
+    for (const r of rows){
+        if (currentCat !== r.categorie){ pushCatTotal(); currentCat = r.categorie; catTotals = {n2:0,n1:0,n:0,temp:0,def:0}; }
+        catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
+        const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
+        const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
+        const tempInput = (!globalMode && !isReadOnly && isBrut)
+            ? '<input class="form-control" style="min-width:110px" type="number" step="0.01" value="' + r.temp + '" oninput="updateBrutTemp(this,\'' + r.compte_num + '\')">'
+            : '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
+        const defInput = (!globalMode && !isReadOnly)
+            ? '<input class="form-control" type="number" step="0.01" value="' + r.def + '" oninput="queueSave(\'' + r.compte_num + '\', this.value, null)">'
+            : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
+        const commentInput = (!globalMode && !isReadOnly)
+            ? '<input class="form-control" value="' + (r.commentaire || '').replace(/"/g, '&quot;') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
+            : (r.commentaire || '');
+        html += '<tr' + rowStyle + '>' +
+          '<td>' + r.compte_num + '</td><td>' + r.libelle + '</td>' +
+          '<td style="text-align:right;">' + fmt(r['N-2']) + '</td><td style="text-align:right;">' + fmt(r['N-1']) + '</td><td style="text-align:right;">' + fmt(r['N']) + '</td>' +
+          '<td>' + tempInput + '</td><td>' + defInput + '</td><td>' + commentInput + '</td></tr>';
+    }
+    pushCatTotal();
+    html += '</tbody></table>';
+    return html;
+}
+
+function renderResult(targetId, totaux){
+    document.getElementById(targetId).innerHTML =
+      '<strong>Compte de résultat</strong><br>' +
+      'Temporaire : Produits ' + fmt(totaux.produits_temp) + ' € - Charges ' + fmt(totaux.charges_temp) +
+      ' € = <strong>' + fmt(totaux.resultat_temp) + ' €</strong><br>' +
+      'Définitif : Produits ' + fmt(totaux.produits_def) + ' € - Charges ' + fmt(totaux.charges_def) +
+      ' € = <strong>' + fmt(totaux.resultat_def) + ' €</strong>';
+}
+
+const saveTimers = {};
+function queueSave(compte, valeurDef, commentaire){
+    if (isReadOnly) return;
+    const row = currentRows.find(r => r.compte_num === compte);
+    if (!row) return;
+    if (valeurDef !== null) row.def = Number(valeurDef || 0);
+    if (commentaire !== null) row.commentaire = commentaire || '';
+    clearTimeout(saveTimers[compte]);
+    saveTimers[compte] = setTimeout(() => saveLine(row), 300);
+}
+
+function saveLine(row){
+    fetch('/api/budget-previsionnel/save-line', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        type_budget: document.getElementById('typeBudget').value,
+        annee: parseInt(document.getElementById('anneeBudget').value),
+        secteur_id: parseInt(document.getElementById('secteurBudget').value),
+        compte_num: row.compte_num,
+        valeur_temp: row.temp,
+        valeur_def: row.def,
+        commentaire: row.commentaire || ''
+      })
+    }).then(r => r.json()).then(data => { if (!data.success) alert(data.error || 'Erreur sauvegarde'); });
+}
+
+function updateBrutTemp(input, compteNum){
+    const brut = Number(input.value || 0);
+    const ratios = (salaryMeta && salaryMeta.salary_ratios) || {};
+    for (const r of currentRows){
+        if (r.compte_num === compteNum) r.temp = brut;
+        else if (ratios[r.compte_num] !== undefined) r.temp = Number((brut * ratios[r.compte_num]).toFixed(2));
+    }
+    const brutRow = currentRows.find(r => r.compte_num === compteNum);
+    if (brutRow && !isReadOnly) saveLine(brutRow);
+    renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
+    const ch = currentRows.filter(r => r.nature === 'charges').reduce((s, r) => s + Number(r.temp || 0), 0);
+    const pr = currentRows.filter(r => r.nature === 'produits').reduce((s, r) => s + Number(r.temp || 0), 0);
+    const tot = Object.assign({}, salaryMeta.totaux, {charges_temp: ch, produits_temp: pr, resultat_temp: pr - ch});
+    renderResult('budgetResultat', tot);
+}
+
+function saveConfigCode(){
+    const code = document.getElementById('cfgCode').value.trim();
+    const secteur = document.getElementById('cfgSecteur').value;
+    if (!code) return alert('Code requis');
+    fetch('/api/budget-previsionnel/config', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({code_analytique:code, secteur_id:parseInt(secteur)})
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Erreur');
+    });
+}
+
+function deleteConfig(id){
+    fetch('/api/budget-previsionnel/config/' + id, {method:'DELETE'})
+      .then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert(data.error || 'Erreur');
+      });
+}
+
+function exporterPdf(globalMode){
+    let url = '/api/budget-previsionnel/export-pdf?type_budget=' + document.getElementById('typeBudget').value +
+      '&annee=' + document.getElementById('anneeBudget').value +
+      '&inflation=' + (document.getElementById('inflation').value || '0');
+    if (globalMode) url += '&global=1';
+    else url += '&secteur_id=' + document.getElementById('secteurBudget').value;
+    window.open(url, '_blank');
+}
+
+chargerBudget();
+</script>
+{% endblock %}

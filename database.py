@@ -66,6 +66,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0026', 'Module comptabilite analytique'),
     ('0027', 'Ajout gestion types secteur'),
     ('0028', 'Ajout module analyse ALSH'),
+    ('0029', 'Ajout module budget previsionnel'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -1127,6 +1128,35 @@ def init_db():
         )
     ''')
 
+    # ===== Tables module Budget Prévisionnel (migration 0029) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_prev_config_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code_analytique TEXT NOT NULL UNIQUE,
+            secteur_id INTEGER NOT NULL,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_prev_saisies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
+            annee INTEGER NOT NULL,
+            secteur_id INTEGER NOT NULL,
+            compte_num TEXT NOT NULL,
+            valeur_temp REAL,
+            valeur_def REAL DEFAULT 0,
+            commentaire TEXT,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id),
+            UNIQUE(type_budget, annee, secteur_id, compte_num)
+        )
+    ''')
+
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -1225,6 +1255,12 @@ def init_db():
             cursor.execute(f"SELECT {col} FROM users LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
+
+    # Migration : ajouter valeur_temp sur budget_prev_saisies
+    try:
+        cursor.execute("SELECT valeur_temp FROM budget_prev_saisies LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE budget_prev_saisies ADD COLUMN valeur_temp REAL")
 
     # Migration : ajouter date_debut_validite si n'existe pas
     try:
