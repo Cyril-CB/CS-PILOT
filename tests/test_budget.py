@@ -55,6 +55,15 @@ def test_budget_previsionnel_sans_onglet_configuration_analytique(admin_client):
     assert 'Configuration des codes analytiques par secteur' not in html
 
 
+def test_budget_previsionnel_rendu_contient_classes_mise_en_page_table(admin_client):
+    response = admin_client.get('/budget-previsionnel')
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'bp-col-input' in html
+    assert 'bp-cat-total' in html
+    assert 'bp-cat-header' in html
+
+
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):
     response = resp_client.get('/budget-previsionnel')
     html = response.get_data(as_text=True)

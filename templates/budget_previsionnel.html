@@ -9,12 +9,34 @@
 .budget-prev-table tbody tr:nth-child(even) { background: var(--gray-050, #fafbfc); }
 .budget-prev-table .bp-col-num { text-align: right; white-space: nowrap; }
 .budget-prev-table .bp-col-compte { width: 90px; }
-.budget-prev-table .bp-col-libelle { width: 300px; }
-.budget-prev-table .bp-col-comment { width: 260px; }
-.budget-prev-table .bp-cat-total { font-weight: 700; background: var(--gray-100, #f0f0f0) !important; }
-.budget-prev-table .bp-cat-header td { font-size: 0.8rem; color: var(--text-muted); background: var(--gray-100, #f0f0f0); }
-.bp-input-def { width: 130px; min-width: 130px; text-align: right; }
-.bp-input-comment { min-width: 220px; width: 100%; }
+.budget-prev-table .bp-col-libelle { width: 270px; }
+.budget-prev-table .bp-col-value { width: 95px; }
+.budget-prev-table .bp-col-input { width: 145px; }
+.budget-prev-table .bp-col-comment { width: 220px; }
+.budget-prev-table .bp-cat-total {
+    font-weight: 700;
+    background: #e5ebf1 !important;
+    border-top: 2px solid #c4ced9;
+    border-bottom: 2px solid #c4ced9;
+}
+.budget-prev-table .bp-cat-header td {
+    font-size: 0.78rem;
+    color: #556677;
+    background: #f2f6fb !important;
+    border-top: 1px solid #d9e2ec;
+}
+.bp-input-def {
+    width: 100%;
+    max-width: 135px;
+    text-align: right;
+    box-sizing: border-box;
+    margin-left: auto;
+}
+.bp-input-comment {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
 </style>
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
     <h2>💶 Budget prévisionnel</h2>
@@ -193,7 +215,7 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
 function buildTable(rows, labelTemp, labelDef, globalMode){
     if (!rows.length) return '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
     let html = '<table class="data-table budget-prev-table"><colgroup>' +
-      '<col class="bp-col-compte"><col class="bp-col-libelle"><col><col><col><col><col><col class="bp-col-comment">' +
+      '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-input"><col class="bp-col-input"><col class="bp-col-comment">' +
       '</colgroup><thead><tr>' +
       '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th><th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th><th>Commentaire</th>' +
       '</tr></thead><tbody>';
