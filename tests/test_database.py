@@ -15,6 +15,7 @@ import pytest
 
 import database
 from database import get_db, init_db, ALL_MIGRATION_VERSIONS
+from migration_manager import lister_fichiers_migrations
 
 
 class TestInitDb:
@@ -31,6 +32,7 @@ class TestInitDb:
         'documents_salaries', 'prepa_paie_statut', 'conges_cloture_mensuelle',
         'postes_alisfa', 'postes_depense', 'postes_depense_secteur_types',
         'budgets', 'budget_lignes', 'budget_reel_lignes', 'frequentation_creche',
+        'budget_prev_config_codes', 'budget_prev_saisies',
     ]
 
     def test_tables_creees(self, app, db):
@@ -59,6 +61,11 @@ class TestInitDb:
                 ).fetchone()
                 assert migration is not None, f"Migration {version} non enregistrée"
                 assert migration['statut'] == 'ok', f"Migration {version} en erreur"
+
+    def test_fichier_migration_0029_present(self):
+        """La migration 0029 doit exister sous forme de fichier."""
+        versions = {m['version'] for m in lister_fichiers_migrations()}
+        assert '0029' in versions
 
     def test_postes_depense_initialises(self, app, db):
         """Les postes de dépense par défaut doivent être créés."""
