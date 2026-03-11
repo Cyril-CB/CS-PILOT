@@ -1256,12 +1256,6 @@ def init_db():
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {col_type}")
 
-    # Migration : ajouter valeur_temp sur budget_prev_saisies
-    try:
-        cursor.execute("SELECT valeur_temp FROM budget_prev_saisies LIMIT 1")
-    except sqlite3.OperationalError:
-        cursor.execute("ALTER TABLE budget_prev_saisies ADD COLUMN valeur_temp REAL")
-
     # Migration : ajouter date_debut_validite si n'existe pas
     try:
         cursor.execute("SELECT date_debut_validite FROM planning_theorique LIMIT 1")

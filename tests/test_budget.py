@@ -1,6 +1,6 @@
-TEST_SECTOR_TYPE_HIGH_ORDER = 999
 from datetime import datetime
 
+TEST_SECTOR_TYPE_HIGH_ORDER = 999
 
 def test_gestion_postes_depense_affiche_types_secteur_dynamiques(app, db, admin_client):
     """Les nouveaux types de secteur doivent être sélectionnables pour les postes de dépense."""
@@ -45,6 +45,20 @@ def test_budget_previsionnel_page_accessible_directeur(admin_client):
     assert response.status_code == 200
     assert 'Budget prévisionnel' in html
     assert 'Budget général' in html
+
+
+def test_budget_previsionnel_configuration_liste_comptes_analytiques(app, db, admin_client):
+    with app.app_context():
+        db.execute(
+            "INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (?, ?)",
+            ('ANA777', 'Analytique test')
+        )
+        db.commit()
+    response = admin_client.get('/budget-previsionnel')
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'ANA777' in html
+    assert 'Analytique test' in html
 
 
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):

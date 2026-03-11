@@ -73,11 +73,16 @@
     <div style="max-width:680px;">
         <h3>Configuration des codes analytiques par secteur</h3>
         <p style="color:var(--text-muted);">Configuration dédiée au budget prévisionnel (indépendante de l'analyse ALSH).</p>
-        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-            <div class="form-group" style="margin:0;">
-                <label>Code analytique</label>
-                <input id="cfgCode" class="form-control" placeholder="Ex: ANA001">
-            </div>
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="margin:0;">
+                    <label>Code analytique</label>
+                    <select id="cfgCode" class="form-select">
+                        <option value="">— Sélectionner —</option>
+                        {% for c in codes_analytiques %}
+                        <option value="{{ c.code|e }}">{{ c.code|e }}{% if c.label %} — {{ c.label|e }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             <div class="form-group" style="margin:0;">
                 <label>Secteur</label>
                 <select id="cfgSecteur" class="form-select">
@@ -93,8 +98,8 @@
             <tbody id="cfgBody">
                 {% for c in codes_config %}
                 <tr data-id="{{ c.id }}">
-                    <td>{{ c.code_analytique }}</td>
-                    <td>{{ c.secteur_nom }}</td>
+                    <td>{{ c.code_analytique|e }}</td>
+                    <td>{{ c.secteur_nom|e }}</td>
                     <td style="text-align:right;"><button class="btn btn-danger btn-sm" onclick="deleteConfig({{ c.id }})">Supprimer</button></td>
                 </tr>
                 {% endfor %}
@@ -131,6 +136,14 @@ var salaryMeta = null;
 var currentRows = [];
 
 function fmt(n){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function escapeHtml(value){
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+}
 function switchTab(tab){
     document.getElementById('tab-budget').style.display = tab === 'budget' ? '' : 'none';
     var tg = document.getElementById('tab-global'); if (tg) tg.style.display = tab === 'global' ? '' : 'none';
@@ -229,10 +242,10 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
             ? '<input class="form-control" type="number" step="0.01" value="' + r.def + '" oninput="queueSave(\'' + r.compte_num + '\', this.value, null)">'
             : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
         const commentInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control" value="' + (r.commentaire || '').replace(/"/g, '&quot;') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
-            : (r.commentaire || '');
+            ? '<input class="form-control" value="' + escapeHtml(r.commentaire || '') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
+            : escapeHtml(r.commentaire || '');
         html += '<tr' + rowStyle + '>' +
-          '<td>' + r.compte_num + '</td><td>' + r.libelle + '</td>' +
+          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + '</td>' +
           '<td style="text-align:right;">' + fmt(r['N-2']) + '</td><td style="text-align:right;">' + fmt(r['N-1']) + '</td><td style="text-align:right;">' + fmt(r['N']) + '</td>' +
           '<td>' + tempInput + '</td><td>' + defInput + '</td><td>' + commentInput + '</td></tr>';
     }

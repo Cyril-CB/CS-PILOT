@@ -714,7 +714,6 @@ def mon_budget():
 
     return redirect(url_for('budget_bp.budget_secteur', secteur_id=user['secteur_id']))
 
-
 # ============================================================
 # MODULE BUDGET PREVISIONNEL
 # ============================================================
@@ -934,16 +933,35 @@ def budget_previsionnel():
             JOIN secteurs s ON s.id = bpc.secteur_id
             ORDER BY bpc.code_analytique
         ''').fetchall()
+        codes_analytiques_rows = conn.execute('''
+            SELECT DISTINCT compte_num, libelle
+            FROM comptabilite_comptes
+            ORDER BY compte_num
+        ''').fetchall()
+        configured_codes = {r['code_analytique'] for r in codes_config}
+        codes_analytiques = []
+        seen_codes = set()
+        for r in codes_analytiques_rows:
+            code = (r['compte_num'] or '').strip()
+            if not code or code in seen_codes:
+                continue
+            seen_codes.add(code)
+            codes_analytiques.append({'code': code, 'label': r['libelle'] or ''})
+        for code in sorted(configured_codes):
+            if code and code not in seen_codes:
+                codes_analytiques.append({'code': code, 'label': ''})
 
+        dernier_mois = (last_month_n['max_mois'] if last_month_n else None)
         return render_template(
             'budget_previsionnel.html',
             annees_traitement=annees_traitement,
             secteurs=secteurs,
             secteur_id_defaut=secteur_id_defaut,
             annees_importees=[r['annee'] for r in annees_importees],
-            dernier_mois_courant=(last_month_n['max_mois'] if last_month_n else 0) or 0,
-            dernier_mois_courant_label=NOMS_MOIS[(last_month_n['max_mois'] if last_month_n else 0) or 0],
+            dernier_mois_courant=dernier_mois or 0,
+            dernier_mois_courant_label=NOMS_MOIS[dernier_mois] if dernier_mois else '',
             codes_config=[dict(r) for r in codes_config],
+            codes_analytiques=codes_analytiques,
             profil=profil
         )
     finally:
