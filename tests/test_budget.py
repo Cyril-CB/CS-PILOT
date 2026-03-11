@@ -47,18 +47,12 @@ def test_budget_previsionnel_page_accessible_directeur(admin_client):
     assert 'Budget général' in html
 
 
-def test_budget_previsionnel_configuration_liste_comptes_analytiques(app, db, admin_client):
-    with app.app_context():
-        db.execute(
-            "INSERT INTO comptabilite_comptes (compte_num, libelle) VALUES (?, ?)",
-            ('ANA777', 'Analytique test')
-        )
-        db.commit()
+def test_budget_previsionnel_sans_onglet_configuration_analytique(admin_client):
     response = admin_client.get('/budget-previsionnel')
     html = response.get_data(as_text=True)
     assert response.status_code == 200
-    assert 'ANA777' in html
-    assert 'Analytique test' in html
+    assert "switchTab('config')" not in html
+    assert 'Configuration des codes analytiques par secteur' not in html
 
 
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):

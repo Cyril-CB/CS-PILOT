@@ -2,6 +2,20 @@
 {% block title %}Budget prévisionnel - CS-PILOT{% endblock %}
 
 {% block content %}
+<style>
+.budget-prev-table { width: 100%; table-layout: fixed; }
+.budget-prev-table th, .budget-prev-table td { border-right: 1px solid var(--gray-200, #d9dee3); }
+.budget-prev-table th:last-child, .budget-prev-table td:last-child { border-right: none; }
+.budget-prev-table tbody tr:nth-child(even) { background: var(--gray-050, #fafbfc); }
+.budget-prev-table .bp-col-num { text-align: right; white-space: nowrap; }
+.budget-prev-table .bp-col-compte { width: 90px; }
+.budget-prev-table .bp-col-libelle { width: 300px; }
+.budget-prev-table .bp-col-comment { width: 260px; }
+.budget-prev-table .bp-cat-total { font-weight: 700; background: var(--gray-100, #f0f0f0) !important; }
+.budget-prev-table .bp-cat-header td { font-size: 0.8rem; color: var(--text-muted); background: var(--gray-100, #f0f0f0); }
+.bp-input-def { width: 130px; min-width: 130px; text-align: right; }
+.bp-input-comment { min-width: 220px; width: 100%; }
+</style>
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
     <h2>💶 Budget prévisionnel</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -48,7 +62,6 @@
     <button class="btn btn-secondary" onclick="switchTab('budget')">📊 Budget secteur</button>
     {% if profil in ['directeur', 'comptable'] %}
     <button class="btn btn-secondary" onclick="switchTab('global')">🌍 Budget général</button>
-    <button class="btn btn-secondary" onclick="switchTab('config')">⚙️ Configuration</button>
     {% endif %}
 </div>
 
@@ -67,45 +80,6 @@
 <div id="tab-global" style="display:none;">
     <div id="globalTables"></div>
     <div id="globalResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
-</div>
-
-<div id="tab-config" style="display:none;">
-    <div style="max-width:680px;">
-        <h3>Configuration des codes analytiques par secteur</h3>
-        <p style="color:var(--text-muted);">Configuration dédiée au budget prévisionnel (indépendante de l'analyse ALSH).</p>
-            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
-                <div class="form-group" style="margin:0;">
-                    <label>Code analytique</label>
-                    <select id="cfgCode" class="form-select">
-                        <option value="">— Sélectionner —</option>
-                        {% for c in codes_analytiques %}
-                        <option value="{{ c.code|e }}">{{ c.code|e }}{% if c.label %} — {{ c.label|e }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-            <div class="form-group" style="margin:0;">
-                <label>Secteur</label>
-                <select id="cfgSecteur" class="form-select">
-                    {% for s in secteurs %}
-                    <option value="{{ s.id }}">{{ s.nom }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <button class="btn btn-primary" onclick="saveConfigCode()">Ajouter / mettre à jour</button>
-        </div>
-        <table class="data-table" style="margin-top:14px;">
-            <thead><tr><th>Code analytique</th><th>Secteur</th><th></th></tr></thead>
-            <tbody id="cfgBody">
-                {% for c in codes_config %}
-                <tr data-id="{{ c.id }}">
-                    <td>{{ c.code_analytique|e }}</td>
-                    <td>{{ c.secteur_nom|e }}</td>
-                    <td style="text-align:right;"><button class="btn btn-danger btn-sm" onclick="deleteConfig({{ c.id }})">Supprimer</button></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
 </div>
 {% endif %}
 
@@ -147,7 +121,6 @@ function escapeHtml(value){
 function switchTab(tab){
     document.getElementById('tab-budget').style.display = tab === 'budget' ? '' : 'none';
     var tg = document.getElementById('tab-global'); if (tg) tg.style.display = tab === 'global' ? '' : 'none';
-    var tc = document.getElementById('tab-config'); if (tc) tc.style.display = tab === 'config' ? '' : 'none';
     if (tab === 'global') chargerGlobal();
 }
 
@@ -219,35 +192,44 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
 
 function buildTable(rows, labelTemp, labelDef, globalMode){
     if (!rows.length) return '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
-    let html = '<table class="data-table"><thead><tr>' +
-      '<th>Compte</th><th>Libellé</th><th>N-2</th><th>N-1</th><th>N</th><th>' + labelTemp + '</th><th>' + labelDef + '</th><th>Commentaire</th>' +
+    let html = '<table class="data-table budget-prev-table"><colgroup>' +
+      '<col class="bp-col-compte"><col class="bp-col-libelle"><col><col><col><col><col><col class="bp-col-comment">' +
+      '</colgroup><thead><tr>' +
+      '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th><th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th><th>Commentaire</th>' +
       '</tr></thead><tbody>';
     let currentCat = null, catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
     function pushCatTotal(){
         if (!currentCat) return;
-        html += '<tr style="font-weight:bold;background:var(--gray-100,#f0f0f0)"><td colspan="2">Total catégorie ' + currentCat + '</td>' +
-          '<td style="text-align:right;">' + fmt(catTotals.n2) + '</td><td style="text-align:right;">' + fmt(catTotals.n1) + '</td>' +
-          '<td style="text-align:right;">' + fmt(catTotals.n) + '</td><td style="text-align:right;">' + fmt(catTotals.temp) + '</td>' +
-          '<td style="text-align:right;">' + fmt(catTotals.def) + '</td><td></td></tr>';
+        html += '<tr class="bp-cat-total"><td colspan="2">Total catégorie ' + currentCat + '</td>' +
+          '<td class="bp-col-num">' + fmt(catTotals.n2) + '</td><td class="bp-col-num">' + fmt(catTotals.n1) + '</td>' +
+          '<td class="bp-col-num">' + fmt(catTotals.n) + '</td><td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
+          '<td class="bp-col-num">' + fmt(catTotals.def) + '</td><td></td></tr>';
     }
     for (const r of rows){
-        if (currentCat !== r.categorie){ pushCatTotal(); currentCat = r.categorie; catTotals = {n2:0,n1:0,n:0,temp:0,def:0}; }
+        if (currentCat !== r.categorie){
+            pushCatTotal();
+            currentCat = r.categorie;
+            catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
+            html += '<tr class="bp-cat-header"><td><small>Compte</small></td><td><small>Libellé</small></td>' +
+              '<td class="bp-col-num"><small>N-2</small></td><td class="bp-col-num"><small>N-1</small></td><td class="bp-col-num"><small>N</small></td>' +
+              '<td class="bp-col-num"><small>' + labelTemp + '</small></td><td class="bp-col-num"><small>' + labelDef + '</small></td><td><small>Commentaire</small></td></tr>';
+        }
         catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
         const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
         const tempInput = (!globalMode && !isReadOnly && isBrut)
-            ? '<input class="form-control" style="min-width:110px" type="number" step="0.01" value="' + r.temp + '" oninput="updateBrutTemp(this,\'' + r.compte_num + '\')">'
+            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.temp + '" onchange="updateBrutTemp(this,\'' + r.compte_num + '\')">'
             : '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
         const defInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control" type="number" step="0.01" value="' + r.def + '" oninput="queueSave(\'' + r.compte_num + '\', this.value, null)">'
+            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.def + '" oninput="queueSave(\'' + r.compte_num + '\', this.value, null)">'
             : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
         const commentInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control" value="' + escapeHtml(r.commentaire || '') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
+            ? '<input class="form-control bp-input-comment" value="' + escapeHtml(r.commentaire || '') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
             : escapeHtml(r.commentaire || '');
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + '</td>' +
-          '<td style="text-align:right;">' + fmt(r['N-2']) + '</td><td style="text-align:right;">' + fmt(r['N-1']) + '</td><td style="text-align:right;">' + fmt(r['N']) + '</td>' +
-          '<td>' + tempInput + '</td><td>' + defInput + '</td><td>' + commentInput + '</td></tr>';
+          '<td class="bp-col-num">' + fmt(r['N-2']) + '</td><td class="bp-col-num">' + fmt(r['N-1']) + '</td><td class="bp-col-num">' + fmt(r['N']) + '</td>' +
+          '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td><td>' + commentInput + '</td></tr>';
     }
     pushCatTotal();
     html += '</tbody></table>';
@@ -291,6 +273,7 @@ function saveLine(row){
 }
 
 function updateBrutTemp(input, compteNum){
+    const scrollY = window.scrollY || window.pageYOffset || 0;
     const brut = Number(input.value || 0);
     const ratios = (salaryMeta && salaryMeta.salary_ratios) || {};
     for (const r of currentRows){
@@ -300,32 +283,11 @@ function updateBrutTemp(input, compteNum){
     const brutRow = currentRows.find(r => r.compte_num === compteNum);
     if (brutRow && !isReadOnly) saveLine(brutRow);
     renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
+    window.scrollTo(0, scrollY);
     const ch = currentRows.filter(r => r.nature === 'charges').reduce((s, r) => s + Number(r.temp || 0), 0);
     const pr = currentRows.filter(r => r.nature === 'produits').reduce((s, r) => s + Number(r.temp || 0), 0);
     const tot = Object.assign({}, salaryMeta.totaux, {charges_temp: ch, produits_temp: pr, resultat_temp: pr - ch});
     renderResult('budgetResultat', tot);
-}
-
-function saveConfigCode(){
-    const code = document.getElementById('cfgCode').value.trim();
-    const secteur = document.getElementById('cfgSecteur').value;
-    if (!code) return alert('Code requis');
-    fetch('/api/budget-previsionnel/config', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({code_analytique:code, secteur_id:parseInt(secteur)})
-    }).then(r => r.json()).then(data => {
-        if (data.success) location.reload();
-        else alert(data.error || 'Erreur');
-    });
-}
-
-function deleteConfig(id){
-    fetch('/api/budget-previsionnel/config/' + id, {method:'DELETE'})
-      .then(r => r.json()).then(data => {
-        if (data.success) location.reload();
-        else alert(data.error || 'Erreur');
-      });
 }
 
 function exporterPdf(globalMode){
