@@ -141,7 +141,7 @@ def test_api_budget_previsionnel_save_line_refuse_responsable(resp_client, sampl
     assert response.status_code == 403
 
 
-def test_api_budget_previsionnel_sauvegarde_seperee_par_type_et_annee(app, db, admin_client, sample_users):
+def test_api_budget_previsionnel_sauvegarde_separee_par_type_et_annee(app, db, admin_client, sample_users):
     secteur_id = sample_users['secteur_id']
     annee = datetime.now().year
     payload_base = {

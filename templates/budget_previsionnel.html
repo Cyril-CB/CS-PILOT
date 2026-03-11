@@ -179,7 +179,7 @@ function chargerBudget(){
         renderResult('budgetResultat', data.totaux);
         const type = document.getElementById('typeBudget').value;
         const info = (type === 'actualise' && data.last_month)
-            ? ('Données année N disponibles jusqu’à <strong>' + data.last_month_label + '</strong>.')
+            ? ('Données année N disponibles jusqu\'à <strong>' + data.last_month_label + '</strong>.')
             : '';
         document.getElementById('budgetInfos').innerHTML = info;
     });
