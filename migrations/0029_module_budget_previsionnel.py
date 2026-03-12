@@ -41,5 +41,3 @@ def upgrade(conn):
             UNIQUE(type_budget, annee, secteur_id, compte_num)
         )
     ''')
-
-    conn.commit()
