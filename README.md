@@ -4,6 +4,8 @@
 ![Databse : SQL Lite](https://img.shields.io/badge/sqlite-%2307405e.svg)
 ![Langage : Python](https://img.shields.io/badge/python-3670A0.svg)
 
+Demandez une démo gratuite en ligne : https://cs-pilot.fr/
+
 ## Description
 
 Application web de gestion RH, comptable et operationnelle, conçue pour les structures de type associatif ou collectivite. Elle couvre l'ensemble du cycle RH (planning, heures, paie), la comptabilite analytique, la tresorerie, la gestion des factures et des subventions, ainsi que des outils metier specifiques au secteur (ALSH, contrats, reservations de salles…).
