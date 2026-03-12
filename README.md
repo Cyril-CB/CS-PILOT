@@ -6,7 +6,7 @@
 
 ## Description
 
-Application web de gestion du temps de travail des salaries, conçue pour les structures de type associatif ou collectivite. Elle couvre l'ensemble du cycle : planning theorique, saisie des heures, demandes de recuperation, validation hierarchique, preparation de la paie et exports.
+Application web de gestion RH, comptable et operationnelle, conçue pour les structures de type associatif ou collectivite. Elle couvre l'ensemble du cycle RH (planning, heures, paie), la comptabilite analytique, la tresorerie, la gestion des factures et des subventions, ainsi que des outils metier specifiques au secteur (ALSH, contrats, reservations de salles…).
 
 ## Fonctionnalites
 
@@ -34,6 +34,7 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 - Module de preparation de paie avec statut par salarie
 - Variables de paie configurables
 - Informations complementaires salaries
+- Generation de contrats de travail a partir de modeles DOCX
 - Export Excel (openpyxl)
 
 ### Gestion des absences
@@ -43,6 +44,39 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 - Calendrier forfait jour
 - Tableau de bord dedie
 
+### Comptabilite & Finances
+- Plan comptable general avec import TXT
+- Plan comptable analytique avec affectation des comptes aux secteurs et actions
+- Saisie et gestion des ecritures comptables avec circuit de validation (Brouillon → Validee → Exportee)
+- Generation automatique d'ecritures via IA a partir des factures
+- Export des ecritures comptables au format TXT
+- Import et analyse des bilans comptables par secteur (compte de resultat detaille, export PDF)
+- Regles comptables pour la generation automatique d'ecritures (par type de depense ou fournisseur)
+- Trésorerie : import FEC, projection de solde multi-mois, gestion des comptes avec budget N ajustable
+
+### Gestion budgetaire
+- Budgets previsionnels par secteur avec repartition par postes de depense
+- Suivi des depenses reelles vs. budget par secteur
+
+### Gestion des factures et fournisseurs
+- Gestion des factures avec import PDF et extraction IA des informations
+- Circuit de validation des factures (responsable / direction)
+- Annuaire des fournisseurs avec aliases IA et codes comptables
+- Approbation des factures par les responsables
+
+### Subventions et benevoles
+- Gestion des dossiers de subventions en kanban (Nouveau → Envoye → Accepte / Refuse)
+- Gestion des benevoles avec suivi des heures assignees
+
+### Tableau de bord direction
+- Vue d'ensemble effectifs, absences, validations et anomalies
+- Demandes de recuperation en attente et top conges cumules
+
+### Reservations de salles
+- Gestion des reservations de salles avec recurrences
+- Exclusion automatique des vacances et jours feries
+- Calendrier visuel des reservations
+
 ### Notifications par email
 - Envoi de notifications via Gmail (SMTP)
 - Notifications automatiques sur les demandes de recuperation (creation, validation, refus)
@@ -50,6 +84,7 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 - Configuration via l'interface d'administration (identifiants chiffres en base)
 
 ### Outils specifiques
+- ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques)
 - Pesee ALISFA (avec integration IA Claude)
 - Assistant RH (avec integration IA Claude)
 - Planning enfance
@@ -58,6 +93,7 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 - Gestion des utilisateurs (creation, modification, secteurs, responsables hierarchiques)
 - Gestion des secteurs
 - Gestion des cles API
+- Parametres personnels (email, preferences de notifications)
 - Systeme de migration de base de donnees avec suivi des versions
 - Sauvegarde et restauration de la base de donnees (avec rotation automatique)
 - Page d'administration systeme
@@ -65,7 +101,7 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 ### Securite
 - Authentification par login/mot de passe
 - Migration automatique des anciens hash SHA256 vers werkzeug (bcrypt)
-- Cle secrete chargee depuis variable d'environnement
+- Cle secrete chargee depuis variable d'environnement (generee automatiquement au premier demarrage)
 - Protection contre le path traversal sur les sauvegardes
 - Validation stricte des noms de fichiers
 
@@ -75,31 +111,29 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 
 ## Installation
 
-### Prerequis
+### Option 1 : Executable Windows (recommande)
+
+Telechargez le dernier executable `.exe` depuis les releases GitHub. Aucune installation requise : Python, les dependances et les fichiers de l'application sont integres. La base de donnees et les documents sont stockes dans `%LOCALAPPDATA%\cspilot`.
+
+Double-cliquer sur l'executable pour lancer l'application.
+
+### Option 2 : Depuis les sources
+
+#### Prerequis
 
 - Python 3.8 ou superieur
 - pip (gestionnaire de paquets Python)
 
-### Mise en place
+#### Mise en place
 
-1. Placer le dossier du projet ou vous le souhaitez (ex: `C:\Apps\Centre-en-Commun`)
+1. Placer le dossier du projet ou vous le souhaitez (ex: `C:\Apps\CS-PILOT`)
 
 2. Installer les dependances :
    ```
    pip install -r requirements.txt
    ```
 
-3. Creer un fichier `.env` a la racine du projet :
-   ```
-   SECRET_KEY=votre_cle_secrete_generee
-   FLASK_DEBUG=0
-   ```
-   Pour generer une cle secrete :
-   ```
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
-
-### Lancement
+#### Lancement
 
 **Sous Windows** : double-cliquer sur `LANCER.bat`
 
@@ -107,6 +141,8 @@ Application web de gestion du temps de travail des salaries, conçue pour les st
 ```
 python app.py
 ```
+
+> **Note** : le fichier `.env` (contenant la cle secrete Flask) est genere automatiquement au premier demarrage si absent. Aucune configuration manuelle n'est necessaire.
 
 L'application est accessible sur `http://localhost:5000`.
 
@@ -123,7 +159,7 @@ Ce compte sera automatiquement de profil **Directeur** (acces complet). Le mot d
 ## Structure du projet
 
 ```
-Centre-en-Commun/
+CS-PILOT/
 ├── app.py                     # Point d'entree Flask
 ├── database.py                # Gestion de la base SQLite
 ├── backup_db.py               # Sauvegarde / restauration
@@ -131,17 +167,18 @@ Centre-en-Commun/
 ├── utils.py                   # Utilitaires (decorateurs, chiffrement)
 ├── requirements.txt           # Dependances Python
 ├── LANCER.bat                 # Script de lancement Windows
-├── .env                       # Variables d'environnement (non versionne)
 │
 ├── blueprints/                # Modules fonctionnels Flask
 │   ├── auth.py                # Authentification
-│   ├── dashboard.py           # Tableau de bord
+│   ├── dashboard.py           # Tableau de bord salarie
+│   ├── dashboard_direction.py # Tableau de bord direction
 │   ├── saisie.py              # Saisie des heures
 │   ├── planning.py            # Planning theorique
 │   ├── validation.py          # Validation mensuelle
 │   ├── recup.py               # Demandes de recuperation
 │   ├── suivi.py               # Suivi et anomalies
 │   ├── exports.py             # Exports Excel/PDF
+│   ├── exportation.py         # Export ecritures comptables (TXT)
 │   ├── admin.py               # Gestion des utilisateurs
 │   ├── administration.py      # Administration systeme
 │   ├── backup.py              # Sauvegardes
@@ -149,26 +186,43 @@ Centre-en-Commun/
 │   ├── variables_paie.py      # Variables de paie
 │   ├── infos_salaries.py      # Informations salaries
 │   ├── prepa_paie.py          # Preparation de la paie
+│   ├── generation_contrats.py # Generation de contrats (DOCX)
 │   ├── forfait.py             # Forfait jours
 │   ├── mon_equipe.py          # Vue equipe hebdomadaire
 │   ├── planning_enfance.py    # Planning enfance
+│   ├── alsh.py                # Pilotage ALSH
 │   ├── pesee_alisfa.py        # Pesee ALISFA (IA)
 │   ├── assistant_rh.py        # Assistant RH (IA)
+│   ├── tresorerie.py          # Tresorerie (import FEC, projection)
+│   ├── comptabilite_analytique.py # Plan comptable analytique
+│   ├── plan_comptable_general.py  # Plan comptable general
+│   ├── ecritures.py           # Ecritures comptables (IA + validation)
+│   ├── regles_comptables.py   # Regles comptables pour l'IA
+│   ├── bilan_secteurs.py      # Bilans comptables par secteur
+│   ├── budget.py              # Budgets previsionnels par secteur
+│   ├── factures.py            # Gestion des factures (import PDF, IA)
+│   ├── fournisseurs.py        # Annuaire des fournisseurs
+│   ├── subventions.py         # Gestion des subventions (kanban)
+│   ├── benevoles.py           # Gestion des benevoles
+│   ├── salles.py              # Reservations de salles
+│   ├── parametres.py          # Parametres personnels
 │   ├── api_keys.py            # Gestion des cles API
 │   └── notifications.py       # Notifications email
 │
 ├── migrations/                # Fichiers de migration SQL
 ├── templates/                 # Templates HTML (Jinja2)
-├── static/                    # CSS, images
+├── static/                    # CSS, JS, images
 └── tests/                     # Tests pytest
 ```
 
 ## Configuration
 
+Le fichier `.env` est genere automatiquement au premier demarrage dans le meme dossier que la base de donnees. Vous pouvez l'editer manuellement si besoin.
+
 | Variable | Description | Defaut |
 |---|---|---|
-| `SECRET_KEY` | Cle secrete Flask pour les sessions | cle de developpement |
-| `FLASK_DEBUG` | Mode debug (`1` = actif, `0` = inactif) | `0` |
+| `SECRET_KEY` | Cle secrete Flask pour les sessions (generee automatiquement) | — |
+| `BEHIND_PROXY` | Mettre `true` si l'application est derriere un proxy/tunnel (ngrok, Cloudflare…) | `false` |
 
 ## Configuration des notifications email (Gmail)
 
