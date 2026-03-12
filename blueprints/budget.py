@@ -1091,6 +1091,8 @@ def api_budget_previsionnel_export_pdf():
     secteur_id = request.args.get('secteur_id', type=int)
     inflation = request.args.get('inflation', type=float, default=0)
     global_mode = request.args.get('global') == '1'
+    if type_budget not in ('initial', 'actualise'):
+        return jsonify({'error': 'Type de budget invalide'}), 400
     if not annee:
         return jsonify({'error': 'Année requise'}), 400
     if global_mode and profil not in ['directeur', 'comptable']:
