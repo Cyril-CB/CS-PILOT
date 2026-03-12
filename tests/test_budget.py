@@ -62,6 +62,10 @@ def test_budget_previsionnel_rendu_contient_classes_mise_en_page_table(admin_cli
     assert 'bp-col-input' in html
     assert 'bp-cat-total' in html
     assert 'bp-cat-header' in html
+    assert 'data-bp-def-compte=' in html
+    assert 'data-bp-comment-compte=' in html
+    assert 'oninput="queueSave(' not in html
+    assert 'onchange="updateBrutTemp(' not in html
 
 
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):

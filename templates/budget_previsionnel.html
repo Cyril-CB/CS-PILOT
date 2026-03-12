@@ -210,6 +210,29 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
     const html = '<h3>Charges</h3>' + buildTable(charges, nTemp, nDef, globalMode) +
                  '<h3 style="margin-top:18px;">Produits</h3>' + buildTable(produits, nTemp, nDef, globalMode);
     document.getElementById(targetId).innerHTML = html;
+    bindBudgetInputHandlers(targetId);
+}
+
+function bindBudgetInputHandlers(targetId){
+    if (isReadOnly) return;
+    const root = document.getElementById(targetId);
+    if (!root) return;
+
+    root.querySelectorAll('input[data-bp-temp-compte]').forEach((input) => {
+        input.addEventListener('change', function(){
+            updateBrutTemp(this, this.dataset.bpTempCompte || '');
+        });
+    });
+    root.querySelectorAll('input[data-bp-def-compte]').forEach((input) => {
+        input.addEventListener('input', function(){
+            queueSave(this.dataset.bpDefCompte || '', this.value, null);
+        });
+    });
+    root.querySelectorAll('input[data-bp-comment-compte]').forEach((input) => {
+        input.addEventListener('input', function(){
+            queueSave(this.dataset.bpCommentCompte || '', null, this.value);
+        });
+    });
 }
 
 function buildTable(rows, labelTemp, labelDef, globalMode){
@@ -240,13 +263,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
         const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
         const tempInput = (!globalMode && !isReadOnly && isBrut)
-            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.temp + '" onchange="updateBrutTemp(this,\'' + r.compte_num + '\')">'
+            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.temp + '" data-bp-temp-compte="' + escapeHtml(r.compte_num) + '">'
             : '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
         const defInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.def + '" oninput="queueSave(\'' + r.compte_num + '\', this.value, null)">'
+            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.def + '" data-bp-def-compte="' + escapeHtml(r.compte_num) + '">'
             : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
         const commentInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control bp-input-comment" value="' + escapeHtml(r.commentaire || '') + '" oninput="queueSave(\'' + r.compte_num + '\', null, this.value)">'
+            ? '<input class="form-control bp-input-comment" value="' + escapeHtml(r.commentaire || '') + '" data-bp-comment-compte="' + escapeHtml(r.compte_num) + '">'
             : escapeHtml(r.commentaire || '');
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + '</td>' +
