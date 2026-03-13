@@ -87,8 +87,8 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 
 ### Outils specifiques
 - ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques)
-- Pesee ALISFA (avec integration IA Claude)
-- Assistant RH (avec integration IA Claude)
+- Pesee ALISFA (avec integration IA)
+- Assistant RH (avec integration IA)
 - Planning enfance
 
 ### Administration
