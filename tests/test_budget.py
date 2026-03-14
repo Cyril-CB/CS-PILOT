@@ -68,6 +68,18 @@ def test_budget_previsionnel_rendu_contient_classes_mise_en_page_table(admin_cli
     assert 'onchange="updateBrutTemp(' not in html
 
 
+def test_budget_previsionnel_sauvegarde_liee_au_contexte_edite(admin_client):
+    response = admin_client.get('/budget-previsionnel')
+    html = response.get_data(as_text=True)
+    assert response.status_code == 200
+    assert 'function getCurrentBudgetContext()' in html
+    assert 'const saveKey = getSaveKey(compte, context);' in html
+    assert 'saveTimers[saveKey] = setTimeout(() => saveLine(row, context, saveKey), 300);' in html
+    assert 'type_budget: context.type_budget' in html
+    assert 'annee: context.annee' in html
+    assert 'secteur_id: context.secteur_id' in html
+
+
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):
     response = resp_client.get('/budget-previsionnel')
     html = response.get_data(as_text=True)
