@@ -291,30 +291,48 @@ function renderResult(targetId, totaux){
 }
 
 const saveTimers = {};
+function getCurrentBudgetContext(){
+    return {
+        type_budget: document.getElementById('typeBudget').value,
+        annee: parseInt(document.getElementById('anneeBudget').value),
+        secteur_id: parseInt(document.getElementById('secteurBudget').value),
+    };
+}
+
+function getSaveKey(compte, context){
+    return [context.type_budget, context.annee, context.secteur_id, compte].join(':');
+}
+
 function queueSave(compte, valeurDef, commentaire){
     if (isReadOnly) return;
+    const context = getCurrentBudgetContext();
     const row = currentRows.find(r => r.compte_num === compte);
     if (!row) return;
     if (valeurDef !== null) row.def = Number(valeurDef || 0);
     if (commentaire !== null) row.commentaire = commentaire || '';
-    clearTimeout(saveTimers[compte]);
-    saveTimers[compte] = setTimeout(() => saveLine(row), 300);
+    const saveKey = getSaveKey(compte, context);
+    clearTimeout(saveTimers[saveKey]);
+    saveTimers[saveKey] = setTimeout(() => saveLine(row, context, saveKey), 300);
 }
 
-function saveLine(row){
+function saveLine(row, context, saveKey){
+    if (!context) return;
     fetch('/api/budget-previsionnel/save-line', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        type_budget: document.getElementById('typeBudget').value,
-        annee: parseInt(document.getElementById('anneeBudget').value),
-        secteur_id: parseInt(document.getElementById('secteurBudget').value),
+        type_budget: context.type_budget,
+        annee: context.annee,
+        secteur_id: context.secteur_id,
         compte_num: row.compte_num,
         valeur_temp: row.temp,
         valeur_def: row.def,
         commentaire: row.commentaire || ''
       })
-    }).then(r => r.json()).then(data => { if (!data.success) alert(data.error || 'Erreur sauvegarde'); });
+    }).then(r => r.json()).then(data => {
+        if (saveKey) delete saveTimers[saveKey];
+        if (!data.success) alert(data.error || 'Erreur sauvegarde');
+    });
 }
 
 function updateBrutTemp(input, compteNum){
@@ -326,7 +344,7 @@ function updateBrutTemp(input, compteNum){
         else if (ratios[r.compte_num] !== undefined) r.temp = Number((brut * ratios[r.compte_num]).toFixed(2));
     }
     const brutRow = currentRows.find(r => r.compte_num === compteNum);
-    if (brutRow && !isReadOnly) saveLine(brutRow);
+    if (brutRow && !isReadOnly) saveLine(brutRow, getCurrentBudgetContext());
     renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
     window.scrollTo(0, scrollY);
     const ch = currentRows.filter(r => r.nature === 'charges').reduce((s, r) => s + Number(r.temp || 0), 0);
