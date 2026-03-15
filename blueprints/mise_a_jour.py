@@ -64,9 +64,9 @@ def _get_current_version():
     try:
         from migration_manager import get_version_actuelle
         version_db = get_version_actuelle()
-        return f'1.0.{version_db}'
+        return f'1.0.{int(version_db)}'
     except Exception:
-        return '1.0.0000'
+        return '1.0.0'
 
 
 def _fetch_latest_release():
