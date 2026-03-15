@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+
+{% block title %}Mise a jour application{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Mise a jour de l'application</h1>
+    <p class="subtitle">Verifiez et installez les nouvelles versions depuis GitHub</p>
+
+    <!-- Informations systeme -->
+    <div class="section">
+        <h2>Etat actuel</h2>
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 15px;">
+            <div class="stat-card">
+                <div class="stat-value">{{ current_version }}</div>
+                <div class="stat-label">Version installee</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="latest-version">—</div>
+                <div class="stat-label">Derniere version</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ 'Executable' if mode == 'exe' else 'Script' }}</div>
+                <div class="stat-label">Mode</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">{{ systeme }}</div>
+                <div class="stat-label">Systeme</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Verification -->
+    <div class="section">
+        <h2>Verifier les mises a jour</h2>
+        <div class="help-box" style="margin-bottom: 15px;">
+            <strong>Procedure recommandee :</strong>
+            <ol style="margin: 5px 0 0 20px;">
+                <li>Allez dans <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">Sauvegardes</a> et creez une sauvegarde de la base de donnees</li>
+                <li>Cliquez sur "Verifier les mises a jour" pour consulter la derniere version disponible</li>
+                <li>Si une mise a jour est disponible, cliquez sur "Lancer la mise a jour"</li>
+                <li>Redemarrez l'application apres la mise a jour</li>
+                <li>Allez dans <a href="{{ url_for('administration_bp.administration') }}">Administration</a> pour appliquer les eventuelles migrations de base de donnees</li>
+            </ol>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-verifier" onclick="verifierMiseAJour()">
+            Verifier les mises a jour
+        </button>
+    </div>
+
+    <!-- Resultat de la verification (cache par defaut) -->
+    <div class="section" id="section-resultat" style="display:none;">
+        <h2>Resultat</h2>
+        <div id="resultat-contenu"></div>
+    </div>
+
+    <!-- Notes de version (cache par defaut) -->
+    <div class="section" id="section-notes" style="display:none;">
+        <h2>Notes de version</h2>
+        <div id="notes-contenu" style="white-space: pre-wrap; background: var(--card-bg, #f8fafc); border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 15px; max-height: 400px; overflow-y: auto;"></div>
+    </div>
+
+    <!-- Informations complementaires -->
+    <div class="help-box">
+        <h4>Informations sur la mise a jour</h4>
+        <ul>
+            <li><strong>Depot GitHub :</strong> <a href="{{ github_url }}" target="_blank" rel="noopener">{{ github_url }}</a></li>
+            {% if mode == 'exe' %}
+            <li><strong>Mode executable :</strong> le fichier .exe sera remplace par la derniere version. La base de donnees et vos documents sont conserves.</li>
+            {% else %}
+            <li><strong>Mode script :</strong> les fichiers source seront mis a jour depuis la branche principale. La base de donnees, le fichier .env et vos documents sont conserves.</li>
+            {% endif %}
+            <li><strong>Securite :</strong> vos donnees (base de donnees, documents uploades, sauvegardes, contrats generes) ne sont jamais modifiees par la mise a jour.</li>
+            <li><strong>Apres la mise a jour :</strong> pensez a redemarrer l'application et a verifier les migrations de base de donnees dans la page Administration.</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+    .stat-card {
+        background: var(--card-bg, #f8fafc);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        padding: 15px 25px;
+        text-align: center;
+        min-width: 140px;
+    }
+    .stat-value {
+        font-size: 1.8em;
+        font-weight: 700;
+        color: var(--primary-color, #2563eb);
+    }
+    .stat-label {
+        font-size: 0.85em;
+        color: var(--text-muted, #64748b);
+        margin-top: 4px;
+    }
+    .stat-card-success {
+        border-color: #16a34a;
+        background: #f0fdf4;
+    }
+    [data-theme="dark"] .stat-card-success {
+        background: #052e16;
+        border-color: #16a34a;
+    }
+    .stat-card-success .stat-value {
+        color: #16a34a;
+    }
+    .stat-card-warning {
+        border-color: #f59e0b;
+        background: #fffbeb;
+    }
+    [data-theme="dark"] .stat-card-warning {
+        background: #451a03;
+        border-color: #d97706;
+    }
+    .stat-card-warning .stat-value {
+        color: #d97706;
+    }
+    #resultat-contenu .update-progress {
+        margin: 15px 0;
+        padding: 15px;
+        background: var(--card-bg, #f8fafc);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+    }
+    #resultat-contenu .update-progress .spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid var(--border-color, #e2e8f0);
+        border-top: 3px solid var(--primary-color, #2563eb);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        vertical-align: middle;
+        margin-right: 10px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+
+<script>
+var csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+function verifierMiseAJour() {
+    var btn = document.getElementById('btn-verifier');
+    btn.disabled = true;
+    btn.textContent = 'Verification en cours...';
+
+    var sectionResultat = document.getElementById('section-resultat');
+    var contenu = document.getElementById('resultat-contenu');
+    sectionResultat.style.display = 'block';
+    contenu.innerHTML = '<div class="update-progress"><span class="spinner"></span> Connexion a GitHub en cours...</div>';
+
+    fetch('/api/mise-a-jour/verifier', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.textContent = 'Verifier les mises a jour';
+
+        if (data.error) {
+            contenu.innerHTML = '<div class="alert alert-error">' + escapeHtml(data.error) + '</div>';
+            return;
+        }
+
+        document.getElementById('latest-version').textContent = data.latest_version;
+
+        // Afficher les notes de version
+        if (data.release_notes) {
+            document.getElementById('section-notes').style.display = 'block';
+            document.getElementById('notes-contenu').textContent = data.release_notes;
+        }
+
+        var currentParts = data.current_version.replace('1.0.', '');
+        var latestParts = data.latest_version.replace('1.0.', '').replace('v', '');
+
+        var html = '<div style="margin-bottom: 15px;">';
+        html += '<strong>Version installee :</strong> ' + escapeHtml(data.current_version) + '<br>';
+        html += '<strong>Derniere version :</strong> ' + escapeHtml(data.latest_version);
+        if (data.release_name) {
+            html += ' — ' + escapeHtml(data.release_name);
+        }
+        html += '<br>';
+        if (data.published_at) {
+            html += '<strong>Publiee le :</strong> ' + new Date(data.published_at).toLocaleDateString('fr-FR') + '<br>';
+        }
+        html += '<strong>Mode :</strong> ' + escapeHtml(data.mode === 'exe' ? 'Executable' : 'Script') + '<br>';
+        if (data.html_url) {
+            html += '<a href="' + escapeHtml(data.html_url) + '" target="_blank" rel="noopener">Voir la release sur GitHub</a>';
+        }
+        html += '</div>';
+
+        // Mode exe sans asset
+        if (data.mode === 'exe' && !data.has_exe_asset) {
+            html += '<div class="alert alert-warning">';
+            html += 'La derniere release ne contient pas de fichier executable (.exe). ';
+            html += 'La mise a jour automatique n\'est pas disponible pour cette version. ';
+            html += 'Vous pouvez telecharger manuellement depuis <a href="' + escapeHtml(data.html_url) + '" target="_blank" rel="noopener">GitHub</a>.';
+            html += '</div>';
+        } else {
+            html += '<button type="button" class="btn btn-primary" id="btn-lancer" onclick="lancerMiseAJour()">';
+            html += 'Lancer la mise a jour vers ' + escapeHtml(data.latest_version);
+            html += '</button>';
+        }
+
+        contenu.innerHTML = html;
+    })
+    .catch(function(e) {
+        btn.disabled = false;
+        btn.textContent = 'Verifier les mises a jour';
+        contenu.innerHTML = '<div class="alert alert-error">Erreur reseau : ' + escapeHtml(e.message) + '</div>';
+    });
+}
+
+
+function lancerMiseAJour() {
+    if (!confirm('Etes-vous sur de vouloir lancer la mise a jour ?\n\nAssurez-vous d\'avoir fait une sauvegarde de la base de donnees.')) {
+        return;
+    }
+
+    var btn = document.getElementById('btn-lancer');
+    btn.disabled = true;
+    btn.textContent = 'Mise a jour en cours...';
+
+    var contenu = document.getElementById('resultat-contenu');
+    contenu.innerHTML += '<div class="update-progress" id="update-status"><span class="spinner"></span> Telechargement et installation en cours... Veuillez patienter.</div>';
+
+    fetch('/api/mise-a-jour/lancer', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        var statusDiv = document.getElementById('update-status');
+
+        if (data.success) {
+            statusDiv.innerHTML = '<div class="alert alert-success">' + escapeHtml(data.message) + '</div>';
+        } else {
+            statusDiv.innerHTML = '<div class="alert alert-error">' + escapeHtml(data.error) + '</div>';
+            btn.disabled = false;
+            btn.textContent = 'Relancer la mise a jour';
+        }
+    })
+    .catch(function(e) {
+        var statusDiv = document.getElementById('update-status');
+        statusDiv.innerHTML = '<div class="alert alert-error">Erreur reseau : ' + escapeHtml(e.message) + '</div>';
+        btn.disabled = false;
+        btn.textContent = 'Relancer la mise a jour';
+    });
+}
+
+
+function escapeHtml(text) {
+    var div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+</script>
+{% endblock %}
