@@ -1,10 +1,9 @@
 # CS-PILOT
 
 ![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)
-![Databse : SQL Lite](https://img.shields.io/badge/sqlite-%2307405e.svg)
+![Database : SQLite](https://img.shields.io/badge/sqlite-%2307405e.svg)
 ![Langage : Python](https://img.shields.io/badge/python-3670A0.svg)
-
-Demandez une démo gratuite en ligne : https://cs-pilot.fr/
+[![Site web](https://img.shields.io/badge/site-cs--pilot.fr-brightgreen)](https://cs-pilot.fr/)
 
 ## Description
 
