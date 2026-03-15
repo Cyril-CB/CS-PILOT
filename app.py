@@ -187,6 +187,7 @@ from blueprints.comptabilite_analytique import comptabilite_analytique_bp
 from blueprints.plan_comptable_general import plan_comptable_general_bp
 from blueprints.bilan_secteurs import bilan_secteurs_bp
 from blueprints.alsh import alsh_bp
+from blueprints.rh_statistiques import rh_statistiques_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -227,6 +228,7 @@ app.register_blueprint(comptabilite_analytique_bp)
 app.register_blueprint(plan_comptable_general_bp)
 app.register_blueprint(bilan_secteurs_bp)
 app.register_blueprint(alsh_bp)
+app.register_blueprint(rh_statistiques_bp)
 
 
 # ==================== Context Processors ====================
