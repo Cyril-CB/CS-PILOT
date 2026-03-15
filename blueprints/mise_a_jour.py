@@ -134,14 +134,10 @@ def _download_file(url, dest_path):
 
 def _is_protected(rel_path):
     """Verifie si un chemin relatif est protege (ne doit pas etre ecrase)."""
-    # Normaliser le chemin
     parts = rel_path.replace('\\', '/').split('/')
     for part in parts:
         if part in PROTECTED_PATHS:
             return True
-    # Verifier le chemin complet aussi
-    if parts[0] in PROTECTED_PATHS:
-        return True
     return False
 
 
