@@ -266,6 +266,7 @@ def ajouter_contrat():
     date_fin = request.form.get('date_fin', '').strip() or None
     forfait = request.form.get('forfait', '').strip() or None
     nbr_jours = request.form.get('nbr_jours', type=float) if request.form.get('nbr_jours', '').strip() else None
+    temps_hebdo = request.form.get('temps_hebdo', type=float) if request.form.get('temps_hebdo', '').strip() else None
 
     if not user_id or not type_contrat or not date_debut:
         flash("Veuillez remplir les champs obligatoires du contrat.", 'error')
@@ -302,10 +303,10 @@ def ajouter_contrat():
     try:
         conn.execute('''
             INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin,
-                                  fichier_path, fichier_nom, saisi_par, forfait, nbr_jours)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                  fichier_path, fichier_nom, saisi_par, forfait, nbr_jours, temps_hebdo)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (user_id, type_contrat, date_debut, date_fin,
-              fichier_path, fichier_nom, session['user_id'], forfait, nbr_jours))
+              fichier_path, fichier_nom, session['user_id'], forfait, nbr_jours, temps_hebdo))
         conn.commit()
         flash(f"Contrat {type_contrat} ajoute avec succes.", 'success')
     except Exception as e:

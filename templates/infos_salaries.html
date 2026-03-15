@@ -113,6 +113,10 @@
                     <label for="date_fin_contrat">Date fin</label>
                     <input type="date" name="date_fin" id="date_fin_contrat">
                 </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="temps_hebdo_contrat">Temps Hebdo (h)</label>
+                    <input type="number" name="temps_hebdo" id="temps_hebdo_contrat" step="0.5" min="0" placeholder="Ex: 35" style="width: 90px;">
+                </div>
                 <div class="form-group cee-field" style="margin-bottom: 0; display: none;">
                     <label for="forfait_contrat">Forfait</label>
                     <input type="text" name="forfait" id="forfait_contrat" placeholder="Ex: Journalier" style="width: 120px;">
@@ -139,6 +143,7 @@
                     <th>Type</th>
                     <th>Date debut</th>
                     <th>Date fin</th>
+                    <th>Temps Hebdo</th>
                     <th>Forfait</th>
                     <th>Nbr. Jours</th>
                     <th>Fichier</th>
@@ -152,6 +157,7 @@
                     <td><span class="badge badge-info">{{ c.type_contrat }}</span></td>
                     <td>{{ c.date_debut }}</td>
                     <td>{{ c.date_fin or '-' }}</td>
+                    <td>{{ ("%.1f"|format(c.temps_hebdo) ~ 'h') if c.temps_hebdo else '-' }}</td>
                     <td>{{ c.forfait or '-' }}</td>
                     <td>{{ c.nbr_jours if c.nbr_jours else '-' }}</td>
                     <td>
