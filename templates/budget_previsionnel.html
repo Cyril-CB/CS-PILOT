@@ -41,8 +41,10 @@
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
     <h2>💶 Budget prévisionnel</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        {% if profil != 'responsable' %}
         <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
         <button class="btn btn-danger" onclick="supprimerAnneeImport()">🗑️ Supprimer année importée</button>
+        {% endif %}
         <button class="btn btn-secondary" onclick="exporterPdf(false)">📄 Export PDF secteur</button>
         {% if profil in ['directeur', 'comptable'] %}
         <button class="btn btn-secondary" onclick="exporterPdf(true)">📄 Export PDF budget global</button>

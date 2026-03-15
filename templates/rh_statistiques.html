@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Statistiques RH - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="direction-header">
+        <div>
+            <h1>📊 Statistiques RH</h1>
+            <p class="subtitle">Au {{ today.strftime('%d/%m/%Y') }} — Période maladie/heures sup : 12 derniers mois (depuis le {{ debut_12_mois[8:10] }}/{{ debut_12_mois[5:7] }}/{{ debut_12_mois[:4] }})</p>
+        </div>
+    </div>
+
+    {# ── KPI globaux ── #}
+    <div class="stats-grid stats-grid-4">
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-content">
+                <h3>Salariés actifs</h3>
+                <p class="stat-value">{{ total_nb_global }}</p>
+                <p class="stat-detail">
+                    {% for tc in types_contrat %}{{ tc }}:{{ stats_global[tc].nb }} {% endfor %}
+                </p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⚖️</div>
+            <div class="stat-content">
+                <h3>ETP total</h3>
+                <p class="stat-value">{{ "%.2f"|format(total_etp_global) }}</p>
+                <p class="stat-detail">Équivalents temps plein</p>
+            </div>
+        </div>
+        <div class="stat-card {{ 'stat-card-warning' if total_maladie_global > 0 }}">
+            <div class="stat-icon">🏥</div>
+            <div class="stat-content">
+                <h3>Jours maladie (12 mois)</h3>
+                <p class="stat-value">{{ "%.0f"|format(total_maladie_global) }}</p>
+                <p class="stat-detail">Arrêts maladie cumulés</p>
+            </div>
+        </div>
+        <div class="stat-card {{ 'stat-card-accent' if total_supp_global > 0 }}">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-content">
+                <h3>Heures sup (12 mois)</h3>
+                <p class="stat-value">{{ "%.1f"|format(total_supp_global) }}h</p>
+                <p class="stat-detail">À récupérer : {{ "%.1f"|format(total_recup_global) }}h</p>
+            </div>
+        </div>
+    </div>
+
+    {# ── Graphiques ── #}
+    <div class="direction-row direction-row-equal" style="margin-bottom:1.5rem;">
+        <div class="section">
+            <h2>📈 Répartition des effectifs par type de contrat</h2>
+            <div style="position:relative;height:260px;display:flex;align-items:center;justify-content:center;">
+                <canvas id="chartTypeContrat"></canvas>
+            </div>
+        </div>
+        <div class="section">
+            <h2>📉 Arrêts maladie et heures sup par secteur</h2>
+            <div style="position:relative;height:260px;">
+                <canvas id="chartSecteurs"></canvas>
+            </div>
+        </div>
+    </div>
+
+    {# ── Tableau récapitulatif global ── #}
+    <div class="section" style="margin-bottom:1.5rem;">
+        <h2>🌍 Récapitulatif global</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Type contrat</th>
+                    <th>Nb salariés actifs</th>
+                    <th>ETP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tc in types_contrat %}
+                {% if stats_global[tc].nb > 0 %}
+                <tr>
+                    <td><span class="badge badge-info">{{ tc }}</span></td>
+                    <td><strong>{{ stats_global[tc].nb }}</strong></td>
+                    <td>{{ "%.2f"|format(stats_global[tc].etp) }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+                <tr style="font-weight:700;border-top:2px solid var(--gray-300);">
+                    <td>Total</td>
+                    <td>{{ total_nb_global }}</td>
+                    <td>{{ "%.2f"|format(total_etp_global) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {# ── Tableau par secteur ── #}
+    <div class="section">
+        <h2>🏢 Détail par secteur</h2>
+        {% if secteurs_list %}
+        <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Secteur</th>
+                    {% for tc in types_contrat %}
+                    <th>{{ tc }}<br><small>Nb / ETP</small></th>
+                    {% endfor %}
+                    <th>Total<br><small>Nb / ETP</small></th>
+                    <th>🏥 Jours maladie<br><small>12 mois</small></th>
+                    <th>⏱️ Heures sup<br><small>12 mois</small></th>
+                    <th>🔄 À récupérer</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in secteurs_list %}
+                <tr>
+                    <td><strong>{{ s.nom }}</strong></td>
+                    {% for tc in types_contrat %}
+                    <td style="text-align:center;">
+                        {% if s.types[tc].nb > 0 %}
+                        {{ s.types[tc].nb }} / <span style="color:var(--primary);">{{ "%.2f"|format(s.types[tc].etp) }}</span>
+                        {% else %}
+                        <span style="color:var(--gray-400);">—</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td style="text-align:center;font-weight:600;">{{ s.total_nb }} / {{ "%.2f"|format(s.total_etp) }}</td>
+                    <td style="text-align:center;">
+                        {% if s.maladie_jours > 0 %}
+                        <span style="color:var(--danger);">{{ "%.0f"|format(s.maladie_jours) }} j</span>
+                        {% else %}<span style="color:var(--gray-400);">0</span>{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if s.supp_heures > 0 %}
+                        <span style="color:var(--warning);">{{ "%.1f"|format(s.supp_heures) }} h</span>
+                        {% else %}<span style="color:var(--gray-400);">0</span>{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if s.recup_heures > 0 %}
+                        <span style="color:var(--accent);">{{ "%.1f"|format(s.recup_heures) }} h</span>
+                        {% else %}<span style="color:var(--gray-400);">0</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                <tr style="font-weight:700;border-top:2px solid var(--gray-300);background:var(--gray-50);">
+                    <td>Total</td>
+                    {% for tc in types_contrat %}
+                    <td style="text-align:center;">{{ stats_global[tc].nb }} / {{ "%.2f"|format(stats_global[tc].etp) }}</td>
+                    {% endfor %}
+                    <td style="text-align:center;">{{ total_nb_global }} / {{ "%.2f"|format(total_etp_global) }}</td>
+                    <td style="text-align:center;">{{ "%.0f"|format(total_maladie_global) }} j</td>
+                    <td style="text-align:center;">{{ "%.1f"|format(total_supp_global) }} h</td>
+                    <td style="text-align:center;">{{ "%.1f"|format(total_recup_global) }} h</td>
+                </tr>
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <div class="direction-empty">
+            <p>Aucun salarié actif avec un contrat en cours.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/vendor/chart-4.4.0.umd.js') }}"></script>
+<script>
+(function() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#d1d5db' : '#374151';
+    const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+
+    const COLORS = ['#2f5d50', '#c56a2a', '#3f8a60', '#bf4444', '#6366f1', '#14b8a6'];
+
+    // Graphique 1 : Doughnut par type de contrat
+    const ctxType = document.getElementById('chartTypeContrat');
+    if (ctxType) {
+        const labels = {{ chart_labels_type | tojson }};
+        const dataEtp = {{ chart_etp_type | tojson }};
+        const dataNb = {{ chart_nb_type | tojson }};
+
+        // Ne garder que les types avec des salariés
+        const filtered = labels.map((l, i) => ({ label: l, etp: dataEtp[i], nb: dataNb[i] }))
+                               .filter(d => d.nb > 0);
+
+        new Chart(ctxType, {
+            type: 'doughnut',
+            data: {
+                labels: filtered.map(d => d.label + ' (' + d.nb + ')'),
+                datasets: [{
+                    data: filtered.map(d => d.etp),
+                    backgroundColor: COLORS.slice(0, filtered.length),
+                    borderWidth: 2,
+                    borderColor: isDark ? '#1f2937' : '#fff',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: textColor, padding: 12, font: { size: 12 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return ' ' + ctx.label + ' — ETP : ' + ctx.parsed.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Graphique 2 : Barres maladie + heures sup par secteur
+    const ctxSecteurs = document.getElementById('chartSecteurs');
+    if (ctxSecteurs) {
+        const labels = {{ chart_labels_secteur | tojson }};
+        const maladie = {{ chart_maladie_secteur | tojson }};
+        const supp = {{ chart_supp_secteur | tojson }};
+
+        new Chart(ctxSecteurs, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Jours maladie',
+                        data: maladie,
+                        backgroundColor: 'rgba(191,68,68,0.7)',
+                        borderColor: '#bf4444',
+                        borderWidth: 1,
+                        yAxisID: 'yJours',
+                    },
+                    {
+                        label: 'Heures sup',
+                        data: supp,
+                        backgroundColor: 'rgba(197,106,42,0.7)',
+                        borderColor: '#c56a2a',
+                        borderWidth: 1,
+                        yAxisID: 'yHeures',
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        ticks: { color: textColor },
+                        grid: { color: gridColor }
+                    },
+                    yJours: {
+                        type: 'linear',
+                        position: 'left',
+                        ticks: { color: '#bf4444' },
+                        grid: { color: gridColor },
+                        title: { display: true, text: 'Jours maladie', color: '#bf4444' }
+                    },
+                    yHeures: {
+                        type: 'linear',
+                        position: 'right',
+                        ticks: { color: '#c56a2a' },
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'Heures sup', color: '#c56a2a' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: textColor }
+                    }
+                }
+            }
+        });
+    }
+})();
+</script>
+
+<style>
+[data-theme="dark"] .rh-stats-table tbody tr:nth-child(even) {
+    background: var(--gray-800);
+}
+</style>
+{% endblock %}

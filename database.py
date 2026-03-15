@@ -420,6 +420,7 @@ def init_db():
             date_fin TEXT,
             forfait TEXT,
             nbr_jours REAL,
+            temps_hebdo REAL,
             fichier_path TEXT,
             fichier_nom TEXT,
             saisi_par INTEGER,
@@ -1291,6 +1292,12 @@ def init_db():
         cursor.execute("SELECT type_secteur FROM secteurs LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE secteurs ADD COLUMN type_secteur TEXT DEFAULT NULL")
+
+    # Migration : ajouter temps_hebdo si n'existe pas dans contrats
+    try:
+        cursor.execute("SELECT temps_hebdo FROM contrats LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE contrats ADD COLUMN temps_hebdo REAL")
 
     conn.commit()
     conn.close()
