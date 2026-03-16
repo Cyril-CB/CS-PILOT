@@ -61,3 +61,30 @@ def test_dashboard_redirect_responsable(resp_client):
     response = resp_client.get('/dashboard', follow_redirects=False)
     assert response.status_code == 302
     assert 'dashboard_responsable' in response.headers.get('Location', '')
+
+
+def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, sample_users):
+    """Un responsable sans secteur doit pouvoir rester sur /dashboard sans boucle de redirection."""
+    with app.app_context():
+        db.execute(
+            "UPDATE users SET secteur_id = NULL WHERE id = ?",
+            (sample_users['responsable_id'],)
+        )
+        db.commit()
+
+    response = resp_client.get('/dashboard', follow_redirects=False)
+    assert response.status_code == 200
+
+
+def test_dashboard_responsable_sans_secteur_redirige_vers_dashboard(resp_client, app, db, sample_users):
+    """Le dashboard responsable redirige vers /dashboard quand le responsable n'a pas de secteur."""
+    with app.app_context():
+        db.execute(
+            "UPDATE users SET secteur_id = NULL WHERE id = ?",
+            (sample_users['responsable_id'],)
+        )
+        db.commit()
+
+    response = resp_client.get('/dashboard_responsable', follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers.get('Location', '').endswith('/dashboard')
