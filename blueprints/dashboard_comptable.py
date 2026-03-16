@@ -101,10 +101,17 @@ def dashboard_comptable():
         ORDER BY u.nom, u.prenom
     ''', (today_str, today_str)).fetchall()
 
-    docs_existants = conn.execute('''
-        SELECT user_id, type_document
-        FROM documents_salaries
-    ''').fetchall()
+    # Ne charger que les documents des salaries ayant un contrat actif
+    user_ids = [sal['id'] for sal in salaries_avec_contrat]
+    if user_ids:
+        placeholders = ','.join('?' for _ in user_ids)
+        docs_existants = conn.execute(f'''
+            SELECT user_id, type_document
+            FROM documents_salaries
+            WHERE user_id IN ({placeholders})
+        ''', user_ids).fetchall()
+    else:
+        docs_existants = []
 
     docs_map = {}
     for d in docs_existants:
