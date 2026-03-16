@@ -6,6 +6,9 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 from datetime import datetime, timedelta
 from database import get_db
 from utils import login_required, NOMS_MOIS
+import logging
+
+logger = logging.getLogger(__name__)
 
 dashboard_direction_bp = Blueprint('dashboard_direction_bp', __name__)
 
@@ -381,6 +384,7 @@ def dashboard_direction():
                   annee, annee, mois)).fetchone()['total']
             solde_treso = round(solde_initial + cumul, 2)
     except Exception:
+        logger.exception("Erreur lors du calcul du solde de trésorerie")
         solde_treso = None
 
     conn.close()
