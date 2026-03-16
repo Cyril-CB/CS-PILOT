@@ -1214,6 +1214,16 @@ a.btn-icon:-webkit-any-link {
     grid-template-columns: repeat(4, 1fr);
 }
 
+.dd-kpi-grid {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.dd-subv-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
 .stat-card-warning {
     border-left: 4px solid var(--warning);
 }
@@ -1699,6 +1709,9 @@ a.btn-icon:-webkit-any-link {
     .stats-grid-4 {
         grid-template-columns: repeat(2, 1fr);
     }
+    .dd-kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
     .direction-row {
         grid-template-columns: 1fr;
     }
@@ -1709,6 +1722,9 @@ a.btn-icon:-webkit-any-link {
 
 @media (max-width: 640px) {
     .stats-grid-4 {
+        grid-template-columns: 1fr;
+    }
+    .dd-kpi-grid {
         grid-template-columns: 1fr;
     }
     .direction-mini-stats {

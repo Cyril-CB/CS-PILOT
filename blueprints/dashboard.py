@@ -15,10 +15,19 @@ dashboard_bp = Blueprint('dashboard_bp', __name__)
 @login_required
 def dashboard():
     """Tableau de bord selon le profil"""
-    if session.get('profil') == 'directeur':
+    profil = session.get('profil')
+    user = None
+    if profil == 'directeur':
         return redirect(url_for('dashboard_direction_bp.dashboard_direction'))
+    if profil == 'responsable':
+        user = get_user_info(session['user_id'])
+        if user and user['secteur_id']:
+            return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))
+    if profil == 'comptable':
+        return redirect(url_for('dashboard_comptable_bp.dashboard_comptable'))
 
-    user = get_user_info(session['user_id'])
+    if user is None:
+        user = get_user_info(session['user_id'])
     conn = get_db()
 
     try:

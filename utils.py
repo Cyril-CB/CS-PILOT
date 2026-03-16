@@ -68,6 +68,15 @@ NOMS_MOIS = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
              'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
 
+def calcul_etp(type_contrat, temps_hebdo):
+    """Calcule l'ETP d'un salarié selon son type de contrat."""
+    if type_contrat == 'CEE':
+        return 0.12
+    if temps_hebdo and temps_hebdo > 0:
+        return round(temps_hebdo / 35.0, 4)
+    return 1.0
+
+
 def validate_password_strength(password):
     """Valide la complexité d'un mot de passe.
 

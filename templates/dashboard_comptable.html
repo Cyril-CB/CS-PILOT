@@ -1,0 +1,401 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord Comptable{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="direction-header">
+        <div>
+            <h1>Tableau de bord Comptable</h1>
+            <p class="subtitle">{{ today.strftime('%A %d %B %Y')|capitalize }} — Suivi et taches</p>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 1 : KPI PRINCIPAUX (4 cartes)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="stats-grid stats-grid-4">
+        <div class="stat-card {{ 'stat-card-warning' if nb_saisies_mois == 0 }}">
+            <div class="stat-icon">✏️</div>
+            <div class="stat-content">
+                <h3>Ma fiche d'heures</h3>
+                <p class="stat-value">{{ nb_saisies_mois }}</p>
+                <p class="stat-detail">saisie{{ 's' if nb_saisies_mois != 1 }} en {{ nom_mois }}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-danger' if nb_docs_manquants > 0 else '' }}">
+            <div class="stat-icon">📁</div>
+            <div class="stat-content">
+                <h3>Documents manquants</h3>
+                <p class="stat-value">{{ nb_docs_manquants }}</p>
+                <p class="stat-detail">salarie{{ 's' if nb_docs_manquants != 1 }} incomplet{{ 's' if nb_docs_manquants != 1 }}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ '' if cloture_ok else 'stat-card-warning' }}">
+            <div class="stat-icon">🔒</div>
+            <div class="stat-content">
+                <h3>Cloture {{ nom_mois_cloture }}</h3>
+                <p class="stat-value">{{ nb_valide_cloture }}/{{ nb_total_cloture }}</p>
+                <p class="stat-detail">{% if cloture_ok %}✅ Completee{% else %}{{ nb_total_cloture - nb_valide_cloture }} restante{{ 's' if nb_total_cloture - nb_valide_cloture > 1 }}{% endif %}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-accent' if rappel_prepa_paie }}">
+            <div class="stat-icon">💰</div>
+            <div class="stat-content">
+                <h3>Prepa paie</h3>
+                <p class="stat-value">{% if rappel_prepa_paie %}⚠️{% else %}—{% endif %}</p>
+                <p class="stat-detail">{% if rappel_prepa_paie %}A verifier (apres le 18){% else %}RAS avant le 18{% endif %}</p>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 2 : MA FICHE D'HEURES + DOCUMENTS MANQUANTS
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-equal">
+        {# Ma fiche d'heures #}
+        <div class="section">
+            <h2>✏️ Ma fiche d'heures</h2>
+            <div class="direction-mini-stats" style="margin-bottom:1rem;">
+                <div class="direction-mini-stat">
+                    <span class="direction-mini-value">{{ "%.1f"|format(cp_solde) }}</span>
+                    <span class="direction-mini-label">CP solde (j)</span>
+                </div>
+                <div class="direction-mini-stat">
+                    <span class="direction-mini-value">{{ "%.1f"|format(cc_solde) }}</span>
+                    <span class="direction-mini-label">CC solde (j)</span>
+                </div>
+                <div class="direction-mini-stat">
+                    <span class="direction-mini-value">{{ "%.1f"|format(solde_recup) }}</span>
+                    <span class="direction-mini-label">Solde recup (h)</span>
+                </div>
+            </div>
+            {% if heures|length > 0 %}
+            <table class="data-table">
+                <thead><tr><th>Date</th><th>Reel</th><th>Theorique</th><th>Ecart</th></tr></thead>
+                <tbody>
+                    {% for h in heures %}
+                    <tr>
+                        <td>{{ h.date[8:10] }}/{{ h.date[5:7] }}/{{ h.date[0:4] }}</td>
+                        <td>{{ "%.1f"|format(h.total_reel) }}h</td>
+                        <td>{{ "%.1f"|format(h.total_theorique) }}h</td>
+                        <td style="color:{% if h.ecart > 0 %}var(--success){% elif h.ecart < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
+                            {{ "%+.1f"|format(h.ecart) }}h
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="direction-empty"><p>Aucune saisie recente</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('saisie_bp.saisie_heures') }}" class="btn btn-sm btn-primary">Saisir mes heures</a>
+            </div>
+        </div>
+
+        {# Documents obligatoires manquants #}
+        <div class="section">
+            <h2>📁 Documents obligatoires</h2>
+            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:0.75rem;">
+                Verification : contrat (PDF), carte d'identite, carte vitale pour chaque salarie sous contrat actif.
+            </p>
+            {% if salaries_docs_manquants|length > 0 %}
+            <table class="data-table">
+                <thead><tr><th>Salarie</th><th>Contrat</th><th>Manquant{{ 's' if salaries_docs_manquants|length > 1 }}</th></tr></thead>
+                <tbody>
+                    {% for s in salaries_docs_manquants %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('infos_salaries_bp.infos_salaries', user_id=s.id) }}" style="font-weight:600;">
+                                {{ s.nom }} {{ s.prenom }}
+                            </a>
+                        </td>
+                        <td><span class="badge {% if s.type_contrat == 'CDI' %}badge-success{% elif s.type_contrat == 'CDD' %}badge-info{% else %}badge-warning{% endif %}">{{ s.type_contrat }}</span></td>
+                        <td>
+                            {% for m in s.manquants %}
+                            <span class="badge badge-danger" style="font-size:0.75rem;">{{ m }}</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="direction-empty direction-empty-ok"><p>✅ Tous les documents sont a jour</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}" class="btn btn-sm btn-secondary">Fiches salaries</a>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 3 : COMPTABILITE (Factures + Ecritures)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-3">
+        {# Factures en attente #}
+        <div class="section">
+            <h2>🧾 Factures en attente</h2>
+            <div style="text-align:center;padding:1rem 0;">
+                <div style="font-size:2rem;font-weight:700;color:{% if nb_factures_attente > 0 %}var(--warning){% else %}var(--success){% endif %};">
+                    {{ nb_factures_attente }}
+                </div>
+                <div style="font-size:0.85rem;color:var(--gray-500);">facture{{ 's' if nb_factures_attente != 1 }} a approuver</div>
+                {% if montant_factures_attente > 0 %}
+                <div style="font-size:1.1rem;font-weight:600;margin-top:0.5rem;">
+                    {{ "{:,.0f}".format(montant_factures_attente).replace(",", " ") }} €
+                </div>
+                {% endif %}
+            </div>
+            <div style="text-align:right;">
+                <a href="{{ url_for('factures_bp.approbation_factures') }}" class="btn btn-sm btn-secondary">Approbation</a>
+            </div>
+        </div>
+
+        {# Ecritures brouillon #}
+        <div class="section">
+            <h2>📝 Ecritures brouillon</h2>
+            <div style="text-align:center;padding:1rem 0;">
+                <div style="font-size:2rem;font-weight:700;color:{% if nb_ecritures_brouillon > 0 %}var(--warning){% else %}var(--success){% endif %};">
+                    {{ nb_ecritures_brouillon }}
+                </div>
+                <div style="font-size:0.85rem;color:var(--gray-500);">ecriture{{ 's' if nb_ecritures_brouillon != 1 }} a valider</div>
+            </div>
+            <div style="text-align:right;">
+                <a href="{{ url_for('ecritures_bp.liste_ecritures') }}" class="btn btn-sm btn-secondary">Ecritures</a>
+            </div>
+        </div>
+
+        {# Ecritures pretes a exporter #}
+        <div class="section">
+            <h2>📤 Pretes a exporter</h2>
+            <div style="text-align:center;padding:1rem 0;">
+                <div style="font-size:2rem;font-weight:700;color:{% if nb_ecritures_a_exporter > 0 %}var(--primary){% else %}var(--gray-400){% endif %};">
+                    {{ nb_ecritures_a_exporter }}
+                </div>
+                <div style="font-size:0.85rem;color:var(--gray-500);">ecriture{{ 's' if nb_ecritures_a_exporter != 1 }} validee{{ 's' if nb_ecritures_a_exporter != 1 }}</div>
+            </div>
+            <div style="text-align:right;">
+                <a href="{{ url_for('exportation_bp.liste_exportation') }}" class="btn btn-sm btn-secondary">Exportation</a>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 4 : CLOTURE CONGES (M-1) + RAPPEL PREPA PAIE
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-equal">
+        {# Cloture M-1 #}
+        <div class="section">
+            <h2>🔒 Cloture {{ nom_mois_cloture }} {{ annee_cloture }}</h2>
+            {% if nb_total_cloture > 0 %}
+            <div class="direction-progress-section">
+                <div class="direction-progress-header">
+                    <span>Validation mois precedent</span>
+                    <span><strong>{{ nb_valide_cloture }}</strong> / {{ nb_total_cloture }} fiches completees</span>
+                </div>
+                <div class="direction-progress-bar-bg">
+                    <div class="direction-progress-bar direction-progress-complete"
+                         style="width: {{ (nb_valide_cloture / nb_total_cloture * 100)|round }}%;"
+                         title="Completees"></div>
+                    <div class="direction-progress-bar direction-progress-encours"
+                         style="width: {{ (nb_en_cours_cloture / nb_total_cloture * 100)|round }}%;"
+                         title="En cours"></div>
+                </div>
+                <div class="direction-progress-legend">
+                    <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--success);"></span> Completees ({{ nb_valide_cloture }})</span>
+                    <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--warning);"></span> En cours ({{ nb_en_cours_cloture }})</span>
+                    <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--gray-300);"></span> Non commencees ({{ nb_non_commence_cloture }})</span>
+                </div>
+            </div>
+            {% if cloture_ok %}
+            <div class="direction-empty direction-empty-ok" style="margin-top:1rem;">
+                <p>✅ Toutes les fiches de {{ nom_mois_cloture }} sont validees</p>
+            </div>
+            {% else %}
+            <details class="direction-details" style="margin-top:0.75rem;">
+                <summary>{{ fiches_non_validees|length }} fiche{{ 's' if fiches_non_validees|length > 1 }} non completee{{ 's' if fiches_non_validees|length > 1 }}</summary>
+                <table class="data-table">
+                    <thead><tr><th>Salarie</th><th>Secteur</th><th>Etapes manquantes</th></tr></thead>
+                    <tbody>
+                        {% for f in fiches_non_validees[:15] %}
+                        <tr>
+                            <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
+                            <td style="font-size:0.85rem;">{{ f.secteur }}</td>
+                            <td>
+                                {% for e in f.etapes_manquantes %}
+                                <span class="badge badge-warning">{{ e }}</span>
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if fiches_non_validees|length > 15 %}
+                        <tr><td colspan="3" style="text-align:center;color:var(--gray-500);">+ {{ fiches_non_validees|length - 15 }} autres</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </details>
+            {% endif %}
+            {% else %}
+            <div class="direction-empty"><p>Aucun salarie a valider</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="btn btn-sm btn-secondary">Vue ensemble validation</a>
+            </div>
+        </div>
+
+        {# Rappel prepa paie #}
+        <div class="section">
+            <h2>💰 Preparation de paie</h2>
+            {% if rappel_prepa_paie %}
+            <div style="background:var(--warning-bg, #fef3c7);border:1px solid var(--warning, #f59e0b);border-radius:8px;padding:1.25rem;text-align:center;margin-bottom:1rem;">
+                <div style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</div>
+                <div style="font-weight:600;color:var(--warning-dark, #92400e);">Rappel : verifier la prepa paie</div>
+                <div style="font-size:0.85rem;color:var(--gray-600);margin-top:0.5rem;">
+                    Nous sommes le {{ today.day }} {{ nom_mois }} — la prepa paie de {{ nom_mois }} doit etre verifiee.
+                </div>
+            </div>
+            {% else %}
+            <div style="text-align:center;padding:1.5rem 0;">
+                <div style="font-size:1.5rem;margin-bottom:0.5rem;">📅</div>
+                <div style="font-size:0.9rem;color:var(--gray-500);">
+                    Le rappel prepa paie s'affichera a partir du 18 {{ nom_mois }}.
+                </div>
+            </div>
+            {% endif %}
+            <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap;">
+                <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}" class="btn btn-sm btn-primary">Prepa paie</a>
+                <a href="{{ url_for('variables_paie_bp.variables_paie') }}" class="btn btn-sm btn-secondary">Variables paie</a>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 5 : DONNEES IMPORTEES (Bilan + Tresorerie)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="section">
+        <h2>📊 Donnees importees disponibles</h2>
+        <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:1rem;">
+            Suivi des imports FEC pour le Budget previsionnel et le Bilan secteurs/actions.
+        </p>
+        <div class="direction-row direction-row-equal" style="gap:1.5rem;">
+            {# Bilan secteurs #}
+            <div>
+                <h3 style="font-size:1rem;margin-bottom:0.5rem;">📊 Bilan secteurs / actions</h3>
+                {% if bilan_imports|length > 0 %}
+                <table class="data-table">
+                    <thead><tr><th>Annee</th><th>Mois disponibles</th><th>Ecritures</th></tr></thead>
+                    <tbody>
+                        {% for bi in bilan_imports %}
+                        <tr>
+                            <td><strong>{{ bi.annee }}</strong></td>
+                            <td>
+                                {% if bi.mois_min and bi.mois_max %}
+                                    {% if bi.mois_min == bi.mois_max %}
+                                    {{ bi.mois_min }}
+                                    {% else %}
+                                    {{ bi.mois_min }} a {{ bi.mois_max }}
+                                    {% endif %}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>{{ bi.nb_ecritures }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="direction-empty"><p>Aucun import Bilan</p></div>
+                {% endif %}
+                <div style="margin-top:0.5rem;text-align:right;">
+                    <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}" class="btn btn-sm btn-secondary">Bilan secteurs</a>
+                </div>
+            </div>
+
+            {# Tresorerie / Budget prev #}
+            <div>
+                <h3 style="font-size:1rem;margin-bottom:0.5rem;">📈 Tresorerie / Budget previsionnel</h3>
+                {% if treso_imports|length > 0 %}
+                <table class="data-table">
+                    <thead><tr><th>Annee</th><th>Mois disponibles</th><th>Lignes</th></tr></thead>
+                    <tbody>
+                        {% for ti in treso_imports %}
+                        <tr>
+                            <td><strong>{{ ti.annee }}</strong></td>
+                            <td>
+                                {% if ti.mois_min == ti.mois_max %}
+                                {{ ti.mois_min }}
+                                {% else %}
+                                {{ ti.mois_min }} a {{ ti.mois_max }}
+                                {% endif %}
+                            </td>
+                            <td>{{ ti.nb_lignes }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="direction-empty"><p>Aucun import Tresorerie</p></div>
+                {% endif %}
+                <div style="margin-top:0.5rem;text-align:right;">
+                    <a href="{{ url_for('budget_bp.budget_previsionnel') }}" class="btn btn-sm btn-secondary">Budget previsionnel</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 6 : ACCES RAPIDES
+       ════════════════════════════════════════════════════════════ #}
+    <div class="section">
+        <h2>🔗 Acces rapides</h2>
+        <div class="direction-quick-links">
+            <a href="{{ url_for('dashboard_direction_bp.dashboard_direction') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🏢</span>
+                <span>Vue Direction</span>
+            </a>
+            <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">💰</span>
+                <span>Prepa paie</span>
+            </a>
+            <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">✅</span>
+                <span>Vue ensemble validation</span>
+            </a>
+            <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📁</span>
+                <span>Fiches salaries</span>
+            </a>
+            <a href="{{ url_for('factures_bp.approbation_factures') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🧾</span>
+                <span>Approbation factures</span>
+            </a>
+            <a href="{{ url_for('ecritures_bp.liste_ecritures') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📝</span>
+                <span>Ecritures comptables</span>
+            </a>
+            <a href="{{ url_for('exportation_bp.liste_exportation') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📤</span>
+                <span>Exportation</span>
+            </a>
+            <a href="{{ url_for('budget_bp.budget_previsionnel') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📘</span>
+                <span>Budget previsionnel</span>
+            </a>
+            <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📊</span>
+                <span>Bilan secteurs</span>
+            </a>
+            <a href="{{ url_for('rh_statistiques_bp.rh_statistiques') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📊</span>
+                <span>Statistiques RH</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
