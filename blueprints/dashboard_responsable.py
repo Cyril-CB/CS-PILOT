@@ -5,22 +5,18 @@ Tableau de bord pour les responsables, scope au secteur.
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request
 from datetime import datetime, timedelta
 from database import get_db
-from utils import login_required, NOMS_MOIS
+from utils import login_required, NOMS_MOIS, calcul_etp
 
 dashboard_responsable_bp = Blueprint('dashboard_responsable_bp', __name__)
 
 
 def _calcul_etp(type_contrat, temps_hebdo):
-    """Calcule l'ETP d'un salarie selon son type de contrat.
+    """Calcule l'ETP d'un salarié via l'utilitaire partagé.
 
-    - CEE (Contrat d'Engagement Educatif) : forfait fixe 0.12 ETP
-    - Autres : temps_hebdo / 35h (duree legale hebdomadaire), defaut 1.0 ETP
+    Délègue le calcul à utils.calcul_etp afin d'assurer une règle unique
+    et cohérente entre les différents écrans (direction, responsables, etc.).
     """
-    if type_contrat == 'CEE':
-        return 0.12
-    if temps_hebdo and temps_hebdo > 0:
-        return round(temps_hebdo / 35.0, 4)
-    return 1.0
+    return calcul_etp(type_contrat=type_contrat, temps_hebdo=temps_hebdo)
 
 
 @dashboard_responsable_bp.route('/dashboard_responsable')
