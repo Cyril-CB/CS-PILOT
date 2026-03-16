@@ -31,7 +31,7 @@ def dashboard_comptable():
     user_id = session['user_id']
 
     # ── 1. Ma fiche d'heures (dernieres saisies) ──
-    user = get_user_info(user_id)
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
 
     heures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
