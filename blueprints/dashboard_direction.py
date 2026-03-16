@@ -341,11 +341,21 @@ def dashboard_direction():
 
     # ── 10. Budget de l'annee en cours ──
     budgets_annee = conn.execute('''
-        SELECT b.id, b.secteur_id, b.montant_global,
-               s.nom as secteur_nom
+        SELECT
+            b.id,
+            b.secteur_id,
+            b.montant_global,
+            s.nom AS secteur_nom,
+            COALESCE(SUM(brl.montant), 0) AS montant_reel
         FROM budgets b
         JOIN secteurs s ON b.secteur_id = s.id
+        LEFT JOIN budget_reel_lignes brl ON brl.budget_id = b.id
         WHERE b.annee = ?
+        GROUP BY
+            b.id,
+            b.secteur_id,
+            b.montant_global,
+            s.nom
         ORDER BY s.nom
     ''', (annee,)).fetchall()
 
@@ -353,16 +363,12 @@ def dashboard_direction():
     total_budget_reel = 0
     budget_par_secteur = []
     for b in budgets_annee:
-        reel = conn.execute(
-            'SELECT COALESCE(SUM(montant), 0) as total FROM budget_reel_lignes WHERE budget_id = ?',
-            (b['id'],)
-        ).fetchone()['total']
         total_budget_global += b['montant_global'] or 0
-        total_budget_reel += reel
+        total_budget_reel += b['montant_reel']
         budget_par_secteur.append({
             'secteur_nom': b['secteur_nom'],
             'montant_global': b['montant_global'] or 0,
-            'montant_reel': reel,
+            'montant_reel': b['montant_reel'],
         })
 
     # ── 11. Tresorerie (solde actuel) ──
