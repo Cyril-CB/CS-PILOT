@@ -84,16 +84,20 @@ def dashboard_comptable():
 
     # ── 2. Documents obligatoires manquants ──
     salaries_avec_contrat = conn.execute('''
-        SELECT DISTINCT u.id, u.nom, u.prenom,
-               c.type_contrat, c.fichier_path as contrat_fichier
+        WITH derniers_contrats AS (
+            SELECT user_id, MAX(id) AS contrat_id
+            FROM contrats
+            WHERE date_debut <= ?
+              AND (date_fin IS NULL OR date_fin >= ?)
+            GROUP BY user_id
+        )
+        SELECT u.id, u.nom, u.prenom,
+               c.type_contrat, c.fichier_path AS contrat_fichier
         FROM users u
-        JOIN contrats c ON c.user_id = u.id
+        JOIN derniers_contrats dc ON dc.user_id = u.id
+        JOIN contrats c ON c.id = dc.contrat_id
         WHERE u.actif = 1
           AND u.profil NOT IN ('directeur', 'prestataire')
-          AND c.date_debut <= ?
-          AND (c.date_fin IS NULL OR c.date_fin >= ?)
-        GROUP BY u.id
-        HAVING c.id = MAX(c.id)
         ORDER BY u.nom, u.prenom
     ''', (today_str, today_str)).fetchall()
 
