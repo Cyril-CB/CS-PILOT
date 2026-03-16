@@ -104,12 +104,15 @@ def dashboard_comptable():
     # Ne charger que les documents des salaries ayant un contrat actif
     user_ids = [sal['id'] for sal in salaries_avec_contrat]
     if user_ids:
-        placeholders = ','.join('?' for _ in user_ids)
+        user_placeholders = ','.join('?' for _ in user_ids)
+        doc_placeholders = ','.join('?' for _ in DOCS_OBLIGATOIRES)
+        params = list(user_ids) + list(DOCS_OBLIGATOIRES)
         docs_existants = conn.execute(f'''
             SELECT user_id, type_document
             FROM documents_salaries
-            WHERE user_id IN ({placeholders})
-        ''', user_ids).fetchall()
+            WHERE user_id IN ({user_placeholders})
+              AND type_document IN ({doc_placeholders})
+        ''', params).fetchall()
     else:
         docs_existants = []
 
