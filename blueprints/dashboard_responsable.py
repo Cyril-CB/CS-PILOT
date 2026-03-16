@@ -5,18 +5,33 @@ Tableau de bord pour les responsables, scope au secteur.
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request
 from datetime import datetime, timedelta
 from database import get_db
-from utils import login_required, NOMS_MOIS, calcul_etp
+from utils import login_required, NOMS_MOIS
 
 dashboard_responsable_bp = Blueprint('dashboard_responsable_bp', __name__)
 
 
 def _calcul_etp(type_contrat, temps_hebdo):
-    """Calcule l'ETP d'un salarié via l'utilitaire partagé.
+    """Calcule l'ETP (équivalent temps plein) d'un salarié.
 
-    Délègue le calcul à utils.calcul_etp afin d'assurer une règle unique
-    et cohérente entre les différents écrans (direction, responsables, etc.).
+    Cette implémentation est locale au tableau de bord des responsables
+    afin d'éviter toute dépendance à une fonction manquante dans utils.
+    Le calcul se base sur un temps plein de référence hebdomadaire.
     """
-    return calcul_etp(type_contrat=type_contrat, temps_hebdo=temps_hebdo)
+    if temps_hebdo is None:
+        return 0.0
+    try:
+        heures = float(temps_hebdo)
+    except (TypeError, ValueError):
+        return 0.0
+
+    # Valeur de référence pour un temps plein (heures hebdomadaires).
+    # On utilise 35h par défaut, ce qui est la norme la plus fréquente.
+    temps_plein_ref = 35.0
+    if temps_plein_ref <= 0:
+        return 0.0
+
+    etp = heures / temps_plein_ref
+    return round(etp, 2)
 
 
 @dashboard_responsable_bp.route('/dashboard_responsable')
