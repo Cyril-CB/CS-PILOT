@@ -86,6 +86,7 @@ def sample_users(app, db):
     - 'salarie_id'     : salarié de base
     - 'responsable_id' : responsable du même secteur
     - 'directeur_id'   : directeur (admin, créé par init_db)
+    - 'comptable_id'   : comptable
     - 'secteur_id'     : ID du secteur de test
     """
     from werkzeug.security import generate_password_hash
@@ -121,12 +122,20 @@ def sample_users(app, db):
         )
         salarie_id = cursor.lastrowid
 
+        # Créer un comptable
+        cursor.execute(
+            "INSERT INTO users (nom, prenom, login, password, profil) VALUES (?, ?, ?, ?, ?)",
+            ('Durand', 'Sophie', 'compta_test', generate_password_hash('compta123'), 'comptable')
+        )
+        comptable_id = cursor.lastrowid
+
         db.commit()
 
         return {
             'salarie_id': salarie_id,
             'responsable_id': responsable_id,
             'directeur_id': directeur_id,
+            'comptable_id': comptable_id,
             'secteur_id': secteur_id,
         }
 
@@ -157,6 +166,13 @@ def admin_client(client, sample_users):
 def resp_client(client, sample_users):
     """Client authentifié en tant que responsable."""
     _login(client, 'resp_test', 'resp123')
+    return client
+
+
+@pytest.fixture
+def comptable_client(client, sample_users):
+    """Client authentifie en tant que comptable."""
+    _login(client, 'compta_test', 'compta123')
     return client
 
 

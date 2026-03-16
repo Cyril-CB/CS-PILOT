@@ -1,35 +1,35 @@
 {% extends "base.html" %}
 
-{% block title %}Tableau de bord Direction{% endblock %}
+{% block title %}Tableau de bord — {{ secteur_nom }}{% endblock %}
 
 {% block content %}
 <div class="dashboard">
     <div class="direction-header">
         <div>
-            <h1>Tableau de bord Direction</h1>
-            <p class="subtitle">{{ today.strftime('%A %d %B %Y')|capitalize }} — Vue d'ensemble</p>
+            <h1>Tableau de bord — {{ secteur_nom }}</h1>
+            <p class="subtitle">{{ today.strftime('%A %d %B %Y')|capitalize }} — Mon secteur</p>
         </div>
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 1 : KPI PRINCIPAUX (6 cartes)
+       SECTION 1 : KPI PRINCIPAUX (5 cartes)
        ════════════════════════════════════════════════════════════ #}
     <div class="stats-grid dd-kpi-grid">
         <div class="stat-card">
             <div class="stat-icon">👥</div>
             <div class="stat-content">
-                <h3>Effectif actif</h3>
-                <p class="stat-value">{{ total_salaries }}</p>
-                <p class="stat-detail">CDI {{ contrats_dict.get('CDI', 0) }} · CDD {{ contrats_dict.get('CDD', 0) }} · CEE {{ contrats_dict.get('CEE', 0) }}</p>
+                <h3>Mon equipe</h3>
+                <p class="stat-value">{{ nb_salaries }}</p>
+                <p class="stat-detail">{% for t, n in contrats_dict.items() %}{{ t }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}{% if not contrats_dict %}&nbsp;{% endif %}</p>
             </div>
         </div>
 
         <div class="stat-card">
             <div class="stat-icon">⚖️</div>
             <div class="stat-content">
-                <h3>ETP Total</h3>
+                <h3>ETP Secteur</h3>
                 <p class="stat-value">{{ "%.1f"|format(total_etp) }}</p>
-                <p class="stat-detail">{% for t, v in etp_par_type.items() %}{{ t }} {{ "%.1f"|format(v) }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+                <p class="stat-detail">{% for t, v in etp_par_type.items() %}{{ t }} {{ "%.1f"|format(v) }}{% if not loop.last %} · {% endif %}{% endfor %}{% if not etp_par_type %}&nbsp;{% endif %}</p>
             </div>
         </div>
 
@@ -59,44 +59,43 @@
                 <p class="stat-detail">En attente de validation</p>
             </div>
         </div>
-
-        <div class="stat-card {{ 'stat-card-danger' if nb_anomalies > 0 }}">
-            <div class="stat-icon">⚠️</div>
-            <div class="stat-content">
-                <h3>Anomalies</h3>
-                <p class="stat-value">{{ nb_anomalies }}</p>
-                <p class="stat-detail">Non traitee{{ 's' if nb_anomalies != 1 }}</p>
-            </div>
-        </div>
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 2 : EFFECTIFS & ABSENCES
+       SECTION 2 : EQUIPE & ABSENCES
        ════════════════════════════════════════════════════════════ #}
     <div class="direction-row direction-row-equal">
-        {# Effectifs par secteur #}
+        {# Equipe du secteur #}
         <div class="section">
-            <h2>👥 Effectifs par secteur</h2>
-            {% if effectifs|length > 0 %}
-                {% set max_eff = effectifs|map(attribute='nb_salaries')|max %}
-                <div class="direction-chart">
-                    {% for eff in effectifs %}
-                    <div class="direction-chart-row">
-                        <div class="direction-chart-label">{{ eff.secteur_nom }}</div>
-                        <div class="direction-chart-bar-container">
-                            <div class="direction-chart-bar"
-                                 style="width: {{ (eff.nb_salaries / max_eff * 100)|round if max_eff > 0 else 0 }}%; background: var(--primary);">
-                            </div>
-                        </div>
-                        <div class="direction-chart-value">{{ eff.nb_salaries }}</div>
-                    </div>
+            <h2>👥 Mon equipe</h2>
+            {% if equipe|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr><th>Salarie</th><th>Contrat</th><th>Temps hebdo</th></tr>
+                </thead>
+                <tbody>
+                    {% for m in equipe %}
+                    <tr>
+                        <td><strong>{{ m.nom }} {{ m.prenom }}</strong></td>
+                        <td>
+                            {% if m.type_contrat %}
+                            <span class="badge {% if m.type_contrat == 'CDI' %}badge-success{% elif m.type_contrat == 'CDD' %}badge-info{% elif m.type_contrat == 'CEE' %}badge-warning{% else %}badge-info{% endif %}">{{ m.type_contrat }}</span>
+                            {% else %}
+                            <span class="badge badge-inactive">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.temps_hebdo %}{{ "%.0f"|format(m.temps_hebdo) }}h{% elif m.type_contrat == 'CEE' %}Forfait{% else %}—{% endif %}
+                        </td>
+                    </tr>
                     {% endfor %}
-                </div>
-                <div style="text-align:right;margin-top:0.75rem;font-size:0.85rem;color:var(--gray-500);">
-                    Total : <strong style="color:var(--primary-dark);">{{ total_salaries }}</strong> salaries · <strong style="color:var(--primary-dark);">{{ "%.1f"|format(total_etp) }}</strong> ETP
-                </div>
+                </tbody>
+            </table>
+            <div style="text-align:right;margin-top:0.75rem;font-size:0.85rem;color:var(--gray-500);">
+                Total : <strong style="color:var(--primary-dark);">{{ nb_salaries }}</strong> salarie{{ 's' if nb_salaries > 1 }} · <strong style="color:var(--primary-dark);">{{ "%.1f"|format(total_etp) }}</strong> ETP
+            </div>
             {% else %}
-                <div class="direction-empty"><p>Aucun secteur configure</p></div>
+            <div class="direction-empty"><p>Aucun salarie dans le secteur</p></div>
             {% endif %}
         </div>
 
@@ -135,41 +134,26 @@
                         {% endfor %}
                     </div>
                 {% endif %}
-                {% if absences_par_secteur|length > 0 %}
-                <details class="direction-details" style="margin-top:1rem;">
-                    <summary>Detail par secteur ({{ absences_en_cours|length }} absence{{ 's' if absences_en_cours|length > 1 }})</summary>
-                    <div style="padding:0.75rem;">
-                        {% for secteur, liste in absences_par_secteur.items() %}
-                        <div class="direction-secteur-block">
-                            <h4 class="direction-secteur-title">
-                                {{ secteur }}
-                                <span class="badge badge-warning">{{ liste|length }}</span>
-                            </h4>
-                            <table class="data-table">
-                                <thead>
-                                    <tr><th>Salarie</th><th>Motif</th><th>Du</th><th>Au</th><th>Jours</th></tr>
-                                </thead>
-                                <tbody>
-                                    {% for ab in liste %}
-                                    <tr>
-                                        <td><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
-                                        <td>
-                                            <span class="badge {% if ab.motif == 'Arret maladie' or ab.motif == 'Arrêt maladie' %}badge-danger{% elif 'Conge' in ab.motif or 'Congé' in ab.motif %}badge-info{% else %}badge-warning{% endif %}">
-                                                {{ ab.motif }}
-                                            </span>
-                                        </td>
-                                        <td>{{ ab.date_debut }}</td>
-                                        <td>{{ ab.date_fin }}</td>
-                                        <td><strong>{{ ab.jours_ouvres }}</strong></td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                <table class="data-table" style="margin-top:1rem;">
+                    <thead>
+                        <tr><th>Salarie</th><th>Motif</th><th>Du</th><th>Au</th><th>Jours</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for ab in absences_en_cours %}
+                        <tr>
+                            <td><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
+                            <td>
+                                <span class="badge {% if ab.motif == 'Arret maladie' or ab.motif == 'Arrêt maladie' %}badge-danger{% elif 'Conge' in ab.motif or 'Congé' in ab.motif %}badge-info{% else %}badge-warning{% endif %}">
+                                    {{ ab.motif }}
+                                </span>
+                            </td>
+                            <td>{{ ab.date_debut }}</td>
+                            <td>{{ ab.date_fin }}</td>
+                            <td><strong>{{ ab.jours_ouvres }}</strong></td>
+                        </tr>
                         {% endfor %}
-                    </div>
-                </details>
-                {% endif %}
+                    </tbody>
+                </table>
             {% else %}
                 <div class="direction-empty direction-empty-ok">
                     <p>✅ Aucune absence en cours aujourd'hui</p>
@@ -189,71 +173,41 @@
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 3 : FINANCIER (Budget + Tresorerie + Subventions)
+       SECTION 3 : FINANCIER (Budget secteur + Subventions)
        ════════════════════════════════════════════════════════════ #}
-    <div class="direction-row direction-row-3">
-        {# Budget ──────────────────────────── #}
+    <div class="direction-row direction-row-equal">
+        {# Budget du secteur ──────────────── #}
         <div class="section">
             <h2>💰 Budget {{ annee }}</h2>
-            {% if budget_par_secteur|length > 0 %}
-                {% set max_budget = budget_par_secteur|map(attribute='montant_global')|max %}
-                <div class="direction-chart">
-                    {% for b in budget_par_secteur %}
-                    <div class="direction-chart-row">
-                        <div class="direction-chart-label">{{ b.secteur_nom }}</div>
-                        <div class="direction-chart-bar-container" style="position:relative;">
-                            <div class="direction-chart-bar"
-                                 style="width: {{ (b.montant_global / max_budget * 100)|round if max_budget > 0 else 0 }}%; background: var(--primary-light); opacity: 0.35;">
-                            </div>
-                            <div class="direction-chart-bar"
-                                 style="width: {{ (b.montant_reel / max_budget * 100)|round if max_budget > 0 else 0 }}%; background: var(--primary); position:absolute;top:0;left:0;height:100%;">
-                            </div>
-                        </div>
-                        <div class="direction-chart-value" title="Reel / Budget">
-                            {{ "{:,.0f}".format(b.montant_reel).replace(",", " ") }}
-                        </div>
+            {% if budget_secteur %}
+                <div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;">{{ "{:,.0f}".format(budget_secteur.montant_global).replace(",", " ") }} €</span>
+                        <span class="direction-mini-label">budget alloue</span>
                     </div>
-                    {% endfor %}
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;color:{% if budget_secteur.montant_global > 0 and budget_secteur.montant_reel / budget_secteur.montant_global > 0.9 %}var(--danger){% else %}var(--primary-dark){% endif %};">
+                            {{ "{:,.0f}".format(budget_secteur.montant_reel).replace(",", " ") }} €
+                        </span>
+                        <span class="direction-mini-label">depense reel</span>
+                    </div>
                 </div>
-                <div class="direction-progress-legend" style="margin-top:0.75rem;">
-                    <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--primary);"></span> Reel {{ "{:,.0f}".format(total_budget_reel).replace(",", " ") }} €</span>
-                    <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--primary-light); opacity: 0.5;"></span> Budget {{ "{:,.0f}".format(total_budget_global).replace(",", " ") }} €</span>
-                </div>
-                {% if total_budget_global > 0 %}
-                <div class="direction-progress-bar-bg" style="height:8px;margin-top:0.5rem;">
+                {% if budget_secteur.montant_global > 0 %}
+                <div class="direction-progress-bar-bg" style="height:12px;">
                     <div class="direction-progress-bar"
-                         style="width: {{ (total_budget_reel / total_budget_global * 100)|round }}%; background: {% if total_budget_reel / total_budget_global > 0.9 %}var(--danger){% elif total_budget_reel / total_budget_global > 0.7 %}var(--warning){% else %}var(--success){% endif %};">
+                         style="width: {{ (budget_secteur.montant_reel / budget_secteur.montant_global * 100)|round }}%; background: {% if budget_secteur.montant_reel / budget_secteur.montant_global > 0.9 %}var(--danger){% elif budget_secteur.montant_reel / budget_secteur.montant_global > 0.7 %}var(--warning){% else %}var(--success){% endif %};">
                     </div>
                 </div>
                 <div style="text-align:right;font-size:0.8rem;color:var(--gray-500);margin-top:0.25rem;">
-                    {{ "%.0f"|format(total_budget_reel / total_budget_global * 100) }}% consomme
+                    {{ "%.0f"|format(budget_secteur.montant_reel / budget_secteur.montant_global * 100) }}% consomme
+                    · Reste {{ "{:,.0f}".format(budget_secteur.montant_global - budget_secteur.montant_reel).replace(",", " ") }} €
                 </div>
                 {% endif %}
             {% else %}
                 <div class="direction-empty"><p>Aucun budget defini pour {{ annee }}</p></div>
             {% endif %}
             <div style="margin-top:0.75rem;text-align:right;">
-                <a href="{{ url_for('budget_bp.gestion_budgets') }}" class="btn btn-sm btn-secondary">Voir les budgets</a>
-            </div>
-        </div>
-
-        {# Tresorerie ──────────────────────── #}
-        <div class="section">
-            <h2>📈 Tresorerie</h2>
-            {% if solde_treso is not none %}
-                <div style="text-align:center;padding:1rem 0;">
-                    <div style="font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--gray-500);margin-bottom:0.5rem;">Solde estime</div>
-                    <div style="font-size:2rem;font-weight:700;color:{% if solde_treso >= 0 %}var(--success){% else %}var(--danger){% endif %};">
-                        {{ "{:,.0f}".format(solde_treso).replace(",", " ") }} €
-                    </div>
-                </div>
-            {% else %}
-                <div class="direction-empty" style="margin-bottom:1rem;">
-                    <p>Tresorerie non configuree</p>
-                </div>
-            {% endif %}
-            <div style="margin-top:0.75rem;text-align:right;">
-                <a href="{{ url_for('tresorerie_bp.tresorerie') }}" class="btn btn-sm btn-secondary">Voir la tresorerie</a>
+                <a href="{{ url_for('budget_bp.mon_budget') }}" class="btn btn-sm btn-secondary">Voir le budget</a>
             </div>
         </div>
 
@@ -295,7 +249,7 @@
                 {% endfor %}
                 {% endif %}
             {% else %}
-                <div class="direction-empty"><p>Aucune subvention enregistree</p></div>
+                <div class="direction-empty"><p>Aucune subvention assignee</p></div>
             {% endif %}
             <div style="margin-top:0.75rem;text-align:right;">
                 <a href="{{ url_for('subventions_bp.gestion_subventions') }}" class="btn btn-sm btn-secondary">Voir les subventions</a>
@@ -310,17 +264,17 @@
         <div class="direction-validation-header">
             <h2>✅ Validations mensuelles</h2>
             <div class="direction-month-nav">
-                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction', val_mois=val_mois_prec, val_annee=val_annee_prec) }}"
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable', val_mois=val_mois_prec, val_annee=val_annee_prec) }}"
                    class="direction-month-btn" title="Mois precedent">◀</a>
                 <span class="direction-month-label">{{ nom_mois_validation }} {{ annee_validation }}</span>
                 {% if peut_avancer %}
-                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction', val_mois=val_mois_suiv, val_annee=val_annee_suiv) }}"
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable', val_mois=val_mois_suiv, val_annee=val_annee_suiv) }}"
                    class="direction-month-btn" title="Mois suivant">▶</a>
                 {% else %}
                 <span class="direction-month-btn direction-month-btn-disabled">▶</span>
                 {% endif %}
                 {% if not est_mois_courant %}
-                <a href="{{ url_for('dashboard_direction_bp.dashboard_direction') }}"
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable') }}"
                    class="btn btn-sm btn-secondary" style="margin-left: 0.5rem;">Mois en cours</a>
                 {% endif %}
             </div>
@@ -329,7 +283,7 @@
         {% if nb_total_a_valider > 0 %}
         <div class="direction-progress-section">
             <div class="direction-progress-header">
-                <span>Progression globale</span>
+                <span>Progression</span>
                 <span><strong>{{ nb_complet }}</strong> / {{ nb_total_a_valider }} fiches completees</span>
             </div>
             <div class="direction-progress-bar-bg">
@@ -346,27 +300,6 @@
                 <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--gray-300);"></span> Non commencees ({{ nb_non_commence }})</span>
             </div>
         </div>
-
-        <div class="direction-validation-grid">
-            {% for secteur, stats in validation_par_secteur.items() %}
-            <div class="direction-validation-card">
-                <h4>{{ secteur }}</h4>
-                <div class="direction-progress-bar-bg direction-progress-bar-sm">
-                    {% if stats.total > 0 %}
-                    <div class="direction-progress-bar direction-progress-complete"
-                         style="width: {{ (stats.complet / stats.total * 100)|round }}%;"></div>
-                    <div class="direction-progress-bar direction-progress-encours"
-                         style="width: {{ (stats.en_cours / stats.total * 100)|round }}%;"></div>
-                    {% endif %}
-                </div>
-                <div class="direction-validation-stats">
-                    <span class="badge badge-success">{{ stats.complet }} ok</span>
-                    <span class="badge badge-warning">{{ stats.en_cours }} en cours</span>
-                    <span class="badge badge-info">{{ stats.non_commence }} restant{{ 's' if stats.non_commence > 1 }}</span>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
         {% else %}
         <div class="direction-empty">
             <p>Aucun salarie a valider</p>
@@ -378,13 +311,12 @@
             <summary>Voir les {{ fiches_en_attente|length }} fiche{{ 's' if fiches_en_attente|length > 1 }} non completee{{ 's' if fiches_en_attente|length > 1 }}</summary>
             <table class="data-table">
                 <thead>
-                    <tr><th>Salarie</th><th>Secteur</th><th>Etapes manquantes</th><th>Actions</th></tr>
+                    <tr><th>Salarie</th><th>Etapes manquantes</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                     {% for f in fiches_en_attente %}
                     <tr>
                         <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
-                        <td>{{ f.secteur }}</td>
                         <td>
                             {% for e in f.etapes_manquantes %}
                             <span class="badge badge-warning">{{ e }}</span>
@@ -402,9 +334,9 @@
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 5 : ACTIONS EN ATTENTE (Factures + Recup + Anomalies)
+       SECTION 5 : ACTIONS EN ATTENTE (Factures + Recup)
        ════════════════════════════════════════════════════════════ #}
-    <div class="direction-row direction-row-3">
+    <div class="direction-row direction-row-equal">
         {# Factures en attente ─────────────── #}
         <div class="section">
             <h2>🧾 Factures a approuver</h2>
@@ -454,10 +386,7 @@
                 <tbody>
                     {% for d in demandes_recup %}
                     <tr>
-                        <td>
-                            <strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong>
-                            <br><small style="color:var(--gray-500);">{{ d.secteur_nom or '' }}</small>
-                        </td>
+                        <td><strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong></td>
                         <td><strong>{{ d.nb_jours }}</strong> j</td>
                         <td>
                             {% if d.statut == 'en_attente_responsable' %}
@@ -477,51 +406,22 @@
                 <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="btn btn-sm btn-secondary">Traiter les demandes</a>
             </div>
         </div>
-
-        {# Anomalies ──────────────────────── #}
-        <div class="section">
-            <h2>⚠️ Anomalies</h2>
-            {% if anomalies_non_traitees|length > 0 %}
-            <div class="direction-anomalies-list">
-                {% for a in anomalies_non_traitees %}
-                <div class="direction-anomaly-item {% if a.gravite == 'critique' %}direction-anomaly-haute{% elif a.gravite == 'alerte' %}direction-anomaly-moyenne{% else %}direction-anomaly-basse{% endif %}">
-                    <div class="direction-anomaly-header">
-                        <span class="badge {% if a.gravite == 'critique' %}badge-danger{% elif a.gravite == 'alerte' %}badge-warning{% else %}badge-info{% endif %}">{{ a.gravite }}</span>
-                        <small>{{ a.salarie_nom }} {{ a.salarie_prenom }}</small>
-                    </div>
-                    <div class="direction-anomaly-desc">{{ a.description }}</div>
-                </div>
-                {% endfor %}
-            </div>
-            {% if nb_anomalies > anomalies_non_traitees|length %}
-            <div style="text-align:center;font-size:0.85rem;color:var(--gray-500);margin-top:0.5rem;">
-                + {{ nb_anomalies - anomalies_non_traitees|length }} autre{{ 's' if nb_anomalies - anomalies_non_traitees|length > 1 }}
-            </div>
-            {% endif %}
-            {% else %}
-            <div class="direction-empty direction-empty-ok"><p>✅ Aucune anomalie</p></div>
-            {% endif %}
-            <div style="margin-top:0.75rem;text-align:right;">
-                <a href="{{ url_for('suivi_bp.suivi_anomalies') }}" class="btn btn-sm btn-secondary">Suivi anomalies</a>
-            </div>
-        </div>
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 6 : TOP CONGES CUMULES
+       SECTION 6 : CONGES DE L'EQUIPE
        ════════════════════════════════════════════════════════════ #}
     <div class="section">
-        <h2>🏖️ Top conges cumules</h2>
-        {% if top_conges|length > 0 %}
+        <h2>🏖️ Conges de l'equipe</h2>
+        {% if conges_equipe|length > 0 %}
         <table class="data-table">
             <thead>
-                <tr><th>Salarie</th><th>Secteur</th><th>CP solde</th><th>CC solde</th><th>Total</th></tr>
+                <tr><th>Salarie</th><th>CP solde</th><th>CC solde</th><th>Total</th></tr>
             </thead>
             <tbody>
-                {% for tc in top_conges %}
+                {% for tc in conges_equipe %}
                 <tr>
                     <td><strong>{{ tc.nom }} {{ tc.prenom }}</strong></td>
-                    <td style="font-size:0.85rem;">{{ tc.secteur_nom }}</td>
                     <td>
                         <span style="color:{% if (tc.cp_a_prendre - tc.cp_pris) > 10 %}var(--warning){% elif (tc.cp_a_prendre - tc.cp_pris) > 0 %}var(--success){% else %}var(--gray-500){% endif %};">
                             {{ "%.1f"|format(tc.cp_a_prendre - tc.cp_pris) }} j
@@ -556,21 +456,17 @@
                 <span class="direction-ql-icon">✅</span>
                 <span>Vue ensemble validation</span>
             </a>
-            <a href="{{ url_for('absences_bp.absences') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">🏥</span>
-                <span>Gestion absences</span>
-            </a>
             <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">🏖️</span>
                 <span>Validation recup</span>
             </a>
-            <a href="{{ url_for('budget_bp.gestion_budgets') }}" class="direction-quick-link">
+            <a href="{{ url_for('budget_bp.mon_budget') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">💰</span>
-                <span>Budgets</span>
+                <span>Mon budget</span>
             </a>
-            <a href="{{ url_for('tresorerie_bp.tresorerie') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">📈</span>
-                <span>Tresorerie</span>
+            <a href="{{ url_for('budget_bp.budget_previsionnel') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📘</span>
+                <span>Budget previsionnel</span>
             </a>
             <a href="{{ url_for('subventions_bp.gestion_subventions') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">📋</span>
@@ -580,25 +476,13 @@
                 <span class="direction-ql-icon">🧾</span>
                 <span>Approbation factures</span>
             </a>
-            <a href="{{ url_for('rh_statistiques_bp.rh_statistiques') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">📊</span>
-                <span>Statistiques RH</span>
-            </a>
-            <a href="{{ url_for('suivi_bp.suivi_anomalies') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">⚠️</span>
-                <span>Suivi anomalies</span>
-            </a>
-            <a href="{{ url_for('admin_bp.gestion_users') }}" class="direction-quick-link">
+            <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">👥</span>
-                <span>Gestion utilisateurs</span>
+                <span>Mon equipe</span>
             </a>
-            <a href="{{ url_for('suivi_bp.historique_modifications') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">📝</span>
-                <span>Historique modifications</span>
-            </a>
-            <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}" class="direction-quick-link">
-                <span class="direction-ql-icon">📊</span>
-                <span>Bilan secteurs</span>
+            <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🕐</span>
+                <span>Temps annualise</span>
             </a>
         </div>
     </div>

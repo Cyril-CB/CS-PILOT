@@ -10,6 +10,19 @@ from utils import login_required, NOMS_MOIS
 dashboard_direction_bp = Blueprint('dashboard_direction_bp', __name__)
 
 
+def _calcul_etp(type_contrat, temps_hebdo):
+    """Calcule l'ETP d'un salarie selon son type de contrat.
+
+    - CEE (Contrat d'Engagement Educatif) : forfait fixe 0.12 ETP
+    - Autres : temps_hebdo / 35h (duree legale hebdomadaire), defaut 1.0 ETP
+    """
+    if type_contrat == 'CEE':
+        return 0.12
+    if temps_hebdo and temps_hebdo > 0:
+        return round(temps_hebdo / 35.0, 4)
+    return 1.0
+
+
 @dashboard_direction_bp.route('/dashboard_direction')
 @login_required
 def dashboard_direction():
@@ -52,6 +65,27 @@ def dashboard_direction():
         ORDER BY c.type_contrat
     ''', (today_str, today_str)).fetchall()
     contrats_dict = {row['type_contrat']: row['nb'] for row in contrats_par_type}
+
+    # ── 1b. ETP par type de contrat ──
+    salaries_contrats = conn.execute('''
+        SELECT u.id, c.type_contrat, c.temps_hebdo
+        FROM users u
+        JOIN contrats c ON c.user_id = u.id
+        WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+          AND c.date_debut <= ?
+          AND (c.date_fin IS NULL OR c.date_fin >= ?)
+        GROUP BY u.id
+        HAVING c.id = MAX(c.id)
+    ''', (today_str, today_str)).fetchall()
+
+    total_etp = 0.0
+    etp_par_type = {}
+    for sc in salaries_contrats:
+        etp = _calcul_etp(sc['type_contrat'], sc['temps_hebdo'])
+        total_etp += etp
+        t = sc['type_contrat'] or 'Autre'
+        etp_par_type[t] = etp_par_type.get(t, 0.0) + etp
+    total_etp = round(total_etp, 2)
 
     # ── 2. Absences en cours (chevauchant aujourd'hui) ──
     absences_en_cours = conn.execute('''
@@ -207,7 +241,7 @@ def dashboard_direction():
         ORDER BY
             CASE a.gravite WHEN 'critique' THEN 1 WHEN 'alerte' THEN 2 WHEN 'suspect' THEN 3 ELSE 4 END,
             a.date_modification DESC
-        LIMIT 10
+        LIMIT 5
     ''').fetchall()
 
     nb_anomalies = conn.execute(
@@ -243,6 +277,112 @@ def dashboard_direction():
         WHERE date_debut <= ? AND date_fin >= ?
     ''', (dernier_jour_mois_str, premier_jour_mois)).fetchone()
 
+    # ── 8. Factures en attente d'approbation ──
+    factures_en_attente = conn.execute('''
+        SELECT f.id, f.numero_facture, f.date_facture, f.montant_ttc,
+               f.date_echeance, f.description,
+               fr.nom as fournisseur_nom,
+               s.nom as secteur_nom
+        FROM factures f
+        LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
+        LEFT JOIN secteurs s ON f.secteur_id = s.id
+        WHERE f.approbation = 'en_attente'
+        ORDER BY f.date_echeance ASC, f.date_facture ASC
+        LIMIT 8
+    ''').fetchall()
+
+    nb_factures_attente = conn.execute(
+        "SELECT COUNT(*) as nb FROM factures WHERE approbation = 'en_attente'"
+    ).fetchone()['nb']
+
+    montant_factures_attente = conn.execute(
+        "SELECT COALESCE(SUM(montant_ttc), 0) as total FROM factures WHERE approbation = 'en_attente'"
+    ).fetchone()['total']
+
+    # ── 9. Subventions (pipeline) ──
+    subventions_stats = conn.execute('''
+        SELECT groupe,
+               COUNT(*) as nb,
+               COALESCE(SUM(montant_demande), 0) as total_demande,
+               COALESCE(SUM(montant_accorde), 0) as total_accorde
+        FROM subventions
+        GROUP BY groupe
+    ''').fetchall()
+
+    subv_pipeline = {}
+    total_subv_demande = 0
+    total_subv_accorde = 0
+    for s in subventions_stats:
+        subv_pipeline[s['groupe']] = {
+            'nb': s['nb'],
+            'total_demande': s['total_demande'],
+            'total_accorde': s['total_accorde']
+        }
+        total_subv_demande += s['total_demande']
+        total_subv_accorde += s['total_accorde']
+
+    subventions_echeance = conn.execute('''
+        SELECT id, nom, groupe, montant_demande, montant_accorde, date_echeance
+        FROM subventions
+        WHERE date_echeance IS NOT NULL AND date_echeance != ''
+          AND date_echeance >= ?
+          AND groupe IN ('nouveau_projet', 'en_cours')
+        ORDER BY date_echeance ASC
+        LIMIT 5
+    ''', (today_str,)).fetchall()
+
+    # ── 10. Budget de l'annee en cours ──
+    budgets_annee = conn.execute('''
+        SELECT b.id, b.secteur_id, b.montant_global,
+               s.nom as secteur_nom
+        FROM budgets b
+        JOIN secteurs s ON b.secteur_id = s.id
+        WHERE b.annee = ?
+        ORDER BY s.nom
+    ''', (annee,)).fetchall()
+
+    total_budget_global = 0
+    total_budget_reel = 0
+    budget_par_secteur = []
+    for b in budgets_annee:
+        reel = conn.execute(
+            'SELECT COALESCE(SUM(montant), 0) as total FROM budget_reel_lignes WHERE budget_id = ?',
+            (b['id'],)
+        ).fetchone()['total']
+        total_budget_global += b['montant_global'] or 0
+        total_budget_reel += reel
+        budget_par_secteur.append({
+            'secteur_nom': b['secteur_nom'],
+            'montant_global': b['montant_global'] or 0,
+            'montant_reel': reel,
+        })
+
+    # ── 11. Tresorerie (solde actuel) ──
+    solde_treso = None
+    try:
+        solde_row = conn.execute(
+            'SELECT montant, annee_ref, mois_ref FROM tresorerie_solde_initial ORDER BY id DESC LIMIT 1'
+        ).fetchone()
+        if solde_row:
+            solde_initial = solde_row['montant']
+            # Cumuler les donnees depuis le mois de reference
+            cumul = conn.execute('''
+                SELECT COALESCE(SUM(td.montant), 0) as total
+                FROM tresorerie_donnees td
+                JOIN tresorerie_comptes tc ON td.compte_num = tc.compte_num
+                WHERE tc.actif = 1
+                  AND td.compte_num NOT LIKE '512%'
+                  AND td.compte_num NOT LIKE '531%'
+                  AND td.compte_num NOT LIKE '580%'
+                  AND td.compte_num NOT LIKE '471%'
+                  AND (td.annee > ? OR (td.annee = ? AND td.mois >= ?))
+                  AND (td.annee < ? OR (td.annee = ? AND td.mois <= ?))
+            ''', (solde_row['annee_ref'], solde_row['annee_ref'], solde_row['mois_ref'],
+                  annee, annee, mois)).fetchone()['total']
+            solde_treso = round(solde_initial + cumul, 2)
+    except Exception:
+        solde_treso = None
+
     conn.close()
 
     return render_template('dashboard_direction.html',
@@ -252,6 +392,8 @@ def dashboard_direction():
                            nom_mois=NOMS_MOIS[mois],
                            total_salaries=total_salaries,
                            contrats_dict=contrats_dict,
+                           total_etp=total_etp,
+                           etp_par_type=etp_par_type,
                            effectifs=effectifs,
                            absences_en_cours=absences_en_cours,
                            absences_par_secteur=absences_par_secteur,
@@ -275,4 +417,15 @@ def dashboard_direction():
                            anomalies_non_traitees=anomalies_non_traitees,
                            nb_anomalies=nb_anomalies,
                            top_conges=top_conges,
-                           absences_mois=absences_mois)
+                           absences_mois=absences_mois,
+                           factures_en_attente=factures_en_attente,
+                           nb_factures_attente=nb_factures_attente,
+                           montant_factures_attente=montant_factures_attente,
+                           subv_pipeline=subv_pipeline,
+                           total_subv_demande=total_subv_demande,
+                           total_subv_accorde=total_subv_accorde,
+                           subventions_echeance=subventions_echeance,
+                           budget_par_secteur=budget_par_secteur,
+                           total_budget_global=total_budget_global,
+                           total_budget_reel=total_budget_reel,
+                           solde_treso=solde_treso)
