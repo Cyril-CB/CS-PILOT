@@ -19,6 +19,8 @@ def dashboard():
         return redirect(url_for('dashboard_direction_bp.dashboard_direction'))
     if session.get('profil') == 'responsable':
         return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))
+    if session.get('profil') == 'comptable':
+        return redirect(url_for('dashboard_comptable_bp.dashboard_comptable'))
 
     user = get_user_info(session['user_id'])
     conn = get_db()
