@@ -85,7 +85,7 @@ def sample_users(app, db):
     Retourne un dict avec les IDs :
     - 'salarie_id'     : salarié de base
     - 'responsable_id' : responsable du même secteur
-    - 'directeur_id'   : directeur (admin, créé par init_db)
+    - 'directeur_id'   : directeur (admin, créé explicitement dans ce fixture)
     - 'comptable_id'   : comptable
     - 'secteur_id'     : ID du secteur de test
     """
