@@ -17,6 +17,8 @@ def dashboard():
     """Tableau de bord selon le profil"""
     if session.get('profil') == 'directeur':
         return redirect(url_for('dashboard_direction_bp.dashboard_direction'))
+    if session.get('profil') == 'responsable':
+        return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))
 
     user = get_user_info(session['user_id'])
     conn = get_db()

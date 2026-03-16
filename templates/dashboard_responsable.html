@@ -1,0 +1,490 @@
+{% extends "base.html" %}
+
+{% block title %}Tableau de bord — {{ secteur_nom }}{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="direction-header">
+        <div>
+            <h1>Tableau de bord — {{ secteur_nom }}</h1>
+            <p class="subtitle">{{ today.strftime('%A %d %B %Y')|capitalize }} — Mon secteur</p>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 1 : KPI PRINCIPAUX (5 cartes)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="stats-grid dd-kpi-grid">
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-content">
+                <h3>Mon equipe</h3>
+                <p class="stat-value">{{ nb_salaries }}</p>
+                <p class="stat-detail">{% for t, n in contrats_dict.items() %}{{ t }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}{% if not contrats_dict %}&nbsp;{% endif %}</p>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">⚖️</div>
+            <div class="stat-content">
+                <h3>ETP Secteur</h3>
+                <p class="stat-value">{{ "%.1f"|format(total_etp) }}</p>
+                <p class="stat-detail">{% for t, v in etp_par_type.items() %}{{ t }} {{ "%.1f"|format(v) }}{% if not loop.last %} · {% endif %}{% endfor %}{% if not etp_par_type %}&nbsp;{% endif %}</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-warning' if absences_en_cours|length > 0 }}">
+            <div class="stat-icon">🏥</div>
+            <div class="stat-content">
+                <h3>Absences aujourd'hui</h3>
+                <p class="stat-value">{{ absences_en_cours|length }}</p>
+                <p class="stat-detail">{{ absences_mois.nb }} absence{{ 's' if absences_mois.nb != 1 }} ce mois</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-accent' if nb_factures_attente > 0 }}">
+            <div class="stat-icon">🧾</div>
+            <div class="stat-content">
+                <h3>Factures en attente</h3>
+                <p class="stat-value">{{ nb_factures_attente }}</p>
+                <p class="stat-detail">{{ "{:,.0f}".format(montant_factures_attente).replace(",", " ") }} € a approuver</p>
+            </div>
+        </div>
+
+        <div class="stat-card {{ 'stat-card-accent' if demandes_recup|length > 0 }}">
+            <div class="stat-icon">📋</div>
+            <div class="stat-content">
+                <h3>Demandes recup</h3>
+                <p class="stat-value">{{ demandes_recup|length }}</p>
+                <p class="stat-detail">En attente de validation</p>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 2 : EQUIPE & ABSENCES
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-equal">
+        {# Equipe du secteur #}
+        <div class="section">
+            <h2>👥 Mon equipe</h2>
+            {% if equipe|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr><th>Salarie</th><th>Contrat</th><th>Temps hebdo</th></tr>
+                </thead>
+                <tbody>
+                    {% for m in equipe %}
+                    <tr>
+                        <td><strong>{{ m.nom }} {{ m.prenom }}</strong></td>
+                        <td>
+                            {% if m.type_contrat %}
+                            <span class="badge {% if m.type_contrat == 'CDI' %}badge-success{% elif m.type_contrat == 'CDD' %}badge-info{% elif m.type_contrat == 'CEE' %}badge-warning{% else %}badge-info{% endif %}">{{ m.type_contrat }}</span>
+                            {% else %}
+                            <span class="badge badge-inactive">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if m.temps_hebdo %}{{ "%.0f"|format(m.temps_hebdo) }}h{% elif m.type_contrat == 'CEE' %}Forfait{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <div style="text-align:right;margin-top:0.75rem;font-size:0.85rem;color:var(--gray-500);">
+                Total : <strong style="color:var(--primary-dark);">{{ nb_salaries }}</strong> salarie{{ 's' if nb_salaries > 1 }} · <strong style="color:var(--primary-dark);">{{ "%.1f"|format(total_etp) }}</strong> ETP
+            </div>
+            {% else %}
+            <div class="direction-empty"><p>Aucun salarie dans le secteur</p></div>
+            {% endif %}
+        </div>
+
+        {# Absences en cours #}
+        <div class="section">
+            <h2>🏥 Absences en cours</h2>
+            {% if absences_en_cours|length > 0 %}
+                <div class="direction-mini-stats" style="margin-bottom:1rem;">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ absences_en_cours|length }}</span>
+                        <span class="direction-mini-label">aujourd'hui</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ absences_mois.nb }}</span>
+                        <span class="direction-mini-label">ce mois</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ "%.0f"|format(absences_mois.total_jours) }}</span>
+                        <span class="direction-mini-label">jours cumules</span>
+                    </div>
+                </div>
+                {% if repartition_motifs|length > 0 %}
+                    {% set total_absences = absences_en_cours|length %}
+                    {% set colors = ['#2563eb', '#f97316', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f59e0b'] %}
+                    <div class="direction-chart">
+                        {% for motif in repartition_motifs %}
+                        <div class="direction-chart-row">
+                            <div class="direction-chart-label">{{ motif.motif }}</div>
+                            <div class="direction-chart-bar-container">
+                                <div class="direction-chart-bar"
+                                     style="width: {{ (motif.nb / total_absences * 100)|round }}%; background: {{ colors[loop.index0 % colors|length] }};">
+                                </div>
+                            </div>
+                            <div class="direction-chart-value">{{ motif.nb }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <table class="data-table" style="margin-top:1rem;">
+                    <thead>
+                        <tr><th>Salarie</th><th>Motif</th><th>Du</th><th>Au</th><th>Jours</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for ab in absences_en_cours %}
+                        <tr>
+                            <td><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
+                            <td>
+                                <span class="badge {% if ab.motif == 'Arret maladie' or ab.motif == 'Arrêt maladie' %}badge-danger{% elif 'Conge' in ab.motif or 'Congé' in ab.motif %}badge-info{% else %}badge-warning{% endif %}">
+                                    {{ ab.motif }}
+                                </span>
+                            </td>
+                            <td>{{ ab.date_debut }}</td>
+                            <td>{{ ab.date_fin }}</td>
+                            <td><strong>{{ ab.jours_ouvres }}</strong></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="direction-empty direction-empty-ok">
+                    <p>✅ Aucune absence en cours aujourd'hui</p>
+                </div>
+                <div class="direction-mini-stats" style="margin-top:1rem;">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ absences_mois.nb }}</span>
+                        <span class="direction-mini-label">absence{{ 's' if absences_mois.nb != 1 }} en {{ nom_mois }}</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value">{{ "%.0f"|format(absences_mois.total_jours) }}</span>
+                        <span class="direction-mini-label">jours ouvres cumules</span>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 3 : FINANCIER (Budget secteur + Subventions)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-equal">
+        {# Budget du secteur ──────────────── #}
+        <div class="section">
+            <h2>💰 Budget {{ annee }}</h2>
+            {% if budget_secteur %}
+                <div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;">{{ "{:,.0f}".format(budget_secteur.montant_global).replace(",", " ") }} €</span>
+                        <span class="direction-mini-label">budget alloue</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;color:{% if budget_secteur.montant_global > 0 and budget_secteur.montant_reel / budget_secteur.montant_global > 0.9 %}var(--danger){% else %}var(--primary-dark){% endif %};">
+                            {{ "{:,.0f}".format(budget_secteur.montant_reel).replace(",", " ") }} €
+                        </span>
+                        <span class="direction-mini-label">depense reel</span>
+                    </div>
+                </div>
+                {% if budget_secteur.montant_global > 0 %}
+                <div class="direction-progress-bar-bg" style="height:12px;">
+                    <div class="direction-progress-bar"
+                         style="width: {{ (budget_secteur.montant_reel / budget_secteur.montant_global * 100)|round }}%; background: {% if budget_secteur.montant_reel / budget_secteur.montant_global > 0.9 %}var(--danger){% elif budget_secteur.montant_reel / budget_secteur.montant_global > 0.7 %}var(--warning){% else %}var(--success){% endif %};">
+                    </div>
+                </div>
+                <div style="text-align:right;font-size:0.8rem;color:var(--gray-500);margin-top:0.25rem;">
+                    {{ "%.0f"|format(budget_secteur.montant_reel / budget_secteur.montant_global * 100) }}% consomme
+                    · Reste {{ "{:,.0f}".format(budget_secteur.montant_global - budget_secteur.montant_reel).replace(",", " ") }} €
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="direction-empty"><p>Aucun budget defini pour {{ annee }}</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('budget_bp.mon_budget') }}" class="btn btn-sm btn-secondary">Voir le budget</a>
+            </div>
+        </div>
+
+        {# Subventions ─────────────────────── #}
+        <div class="section">
+            <h2>📋 Subventions</h2>
+            {% set subv_labels = {'nouveau_projet': 'Nouveau', 'en_cours': 'En cours', 'acceptee': 'Acceptee', 'refusee': 'Refusee'} %}
+            {% set subv_badges = {'nouveau_projet': 'badge-info', 'en_cours': 'badge-warning', 'acceptee': 'badge-success', 'refusee': 'badge-danger'} %}
+            {% if subv_pipeline|length > 0 %}
+                <div style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;">
+                    {% for grp in ['nouveau_projet', 'en_cours', 'acceptee', 'refusee'] %}
+                    {% if grp in subv_pipeline %}
+                    <div class="dd-subv-pill">
+                        <span class="badge {{ subv_badges[grp] }}">{{ subv_pipeline[grp].nb }}</span>
+                        <span style="font-size:0.8rem;color:var(--gray-700);">{{ subv_labels[grp] }}</span>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% if total_subv_accorde > 0 or total_subv_demande > 0 %}
+                <div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;">
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;">{{ "{:,.0f}".format(total_subv_demande).replace(",", " ") }} €</span>
+                        <span class="direction-mini-label">demande</span>
+                    </div>
+                    <div class="direction-mini-stat">
+                        <span class="direction-mini-value" style="font-size:1.3rem;color:var(--success);">{{ "{:,.0f}".format(total_subv_accorde).replace(",", " ") }} €</span>
+                        <span class="direction-mini-label">accorde</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if subventions_echeance|length > 0 %}
+                <div style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.5rem;font-weight:600;">Prochaines echeances :</div>
+                {% for se in subventions_echeance %}
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.35rem 0;border-bottom:1px solid var(--gray-100);font-size:0.85rem;">
+                    <span style="color:var(--gray-700);">{{ se.nom }}</span>
+                    <span class="badge {{ subv_badges.get(se.groupe, 'badge-info') }}" style="font-size:0.7rem;">{{ se.date_echeance }}</span>
+                </div>
+                {% endfor %}
+                {% endif %}
+            {% else %}
+                <div class="direction-empty"><p>Aucune subvention assignee</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('subventions_bp.gestion_subventions') }}" class="btn btn-sm btn-secondary">Voir les subventions</a>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 4 : VALIDATIONS MENSUELLES
+       ════════════════════════════════════════════════════════════ #}
+    <div class="section">
+        <div class="direction-validation-header">
+            <h2>✅ Validations mensuelles</h2>
+            <div class="direction-month-nav">
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable', val_mois=val_mois_prec, val_annee=val_annee_prec) }}"
+                   class="direction-month-btn" title="Mois precedent">◀</a>
+                <span class="direction-month-label">{{ nom_mois_validation }} {{ annee_validation }}</span>
+                {% if peut_avancer %}
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable', val_mois=val_mois_suiv, val_annee=val_annee_suiv) }}"
+                   class="direction-month-btn" title="Mois suivant">▶</a>
+                {% else %}
+                <span class="direction-month-btn direction-month-btn-disabled">▶</span>
+                {% endif %}
+                {% if not est_mois_courant %}
+                <a href="{{ url_for('dashboard_responsable_bp.dashboard_responsable') }}"
+                   class="btn btn-sm btn-secondary" style="margin-left: 0.5rem;">Mois en cours</a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if nb_total_a_valider > 0 %}
+        <div class="direction-progress-section">
+            <div class="direction-progress-header">
+                <span>Progression</span>
+                <span><strong>{{ nb_complet }}</strong> / {{ nb_total_a_valider }} fiches completees</span>
+            </div>
+            <div class="direction-progress-bar-bg">
+                <div class="direction-progress-bar direction-progress-complete"
+                     style="width: {{ (nb_complet / nb_total_a_valider * 100)|round }}%;"
+                     title="Completees : {{ nb_complet }}"></div>
+                <div class="direction-progress-bar direction-progress-encours"
+                     style="width: {{ (nb_en_cours / nb_total_a_valider * 100)|round }}%;"
+                     title="En cours : {{ nb_en_cours }}"></div>
+            </div>
+            <div class="direction-progress-legend">
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--success);"></span> Completees ({{ nb_complet }})</span>
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--warning);"></span> En cours ({{ nb_en_cours }})</span>
+                <span class="direction-legend-item"><span class="direction-legend-dot" style="background: var(--gray-300);"></span> Non commencees ({{ nb_non_commence }})</span>
+            </div>
+        </div>
+        {% else %}
+        <div class="direction-empty">
+            <p>Aucun salarie a valider</p>
+        </div>
+        {% endif %}
+
+        {% if fiches_en_attente|length > 0 %}
+        <details class="direction-details">
+            <summary>Voir les {{ fiches_en_attente|length }} fiche{{ 's' if fiches_en_attente|length > 1 }} non completee{{ 's' if fiches_en_attente|length > 1 }}</summary>
+            <table class="data-table">
+                <thead>
+                    <tr><th>Salarie</th><th>Etapes manquantes</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    {% for f in fiches_en_attente %}
+                    <tr>
+                        <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
+                        <td>
+                            {% for e in f.etapes_manquantes %}
+                            <span class="badge badge-warning">{{ e }}</span>
+                            {% endfor %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=f.user_id, mois=mois_validation, annee=annee_validation) }}" class="btn btn-sm btn-primary">Voir</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </details>
+        {% endif %}
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 5 : ACTIONS EN ATTENTE (Factures + Recup)
+       ════════════════════════════════════════════════════════════ #}
+    <div class="direction-row direction-row-equal">
+        {# Factures en attente ─────────────── #}
+        <div class="section">
+            <h2>🧾 Factures a approuver</h2>
+            {% if factures_en_attente|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr><th>Fournisseur</th><th>Montant</th><th>Echeance</th></tr>
+                </thead>
+                <tbody>
+                    {% for f in factures_en_attente %}
+                    <tr>
+                        <td>
+                            <strong>{{ f.fournisseur_nom or 'N/A' }}</strong>
+                            {% if f.numero_facture %}<br><small style="color:var(--gray-500);">{{ f.numero_facture }}</small>{% endif %}
+                        </td>
+                        <td style="font-weight:600;">{{ "{:,.2f}".format(f.montant_ttc).replace(",", " ") }} €</td>
+                        <td>
+                            {% if f.date_echeance %}
+                            <span class="badge {% if f.date_echeance < today.strftime('%Y-%m-%d') %}badge-danger{% else %}badge-info{% endif %}">{{ f.date_echeance }}</span>
+                            {% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% if nb_factures_attente > factures_en_attente|length %}
+            <div style="text-align:center;font-size:0.85rem;color:var(--gray-500);margin-top:0.5rem;">
+                + {{ nb_factures_attente - factures_en_attente|length }} autre{{ 's' if nb_factures_attente - factures_en_attente|length > 1 }}
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="direction-empty direction-empty-ok"><p>✅ Aucune facture en attente</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('factures_bp.approbation_factures') }}" class="btn btn-sm btn-secondary">Approbation factures</a>
+            </div>
+        </div>
+
+        {# Demandes de recuperation ────────── #}
+        <div class="section">
+            <h2>🏖️ Demandes de recuperation</h2>
+            {% if demandes_recup|length > 0 %}
+            <table class="data-table">
+                <thead>
+                    <tr><th>Demandeur</th><th>Jours</th><th>Statut</th></tr>
+                </thead>
+                <tbody>
+                    {% for d in demandes_recup %}
+                    <tr>
+                        <td><strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong></td>
+                        <td><strong>{{ d.nb_jours }}</strong> j</td>
+                        <td>
+                            {% if d.statut == 'en_attente_responsable' %}
+                            <span class="badge badge-warning">Resp.</span>
+                            {% elif d.statut == 'en_attente_direction' %}
+                            <span class="badge badge-info">Direction</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="direction-empty direction-empty-ok"><p>✅ Aucune demande en attente</p></div>
+            {% endif %}
+            <div style="margin-top:0.75rem;text-align:right;">
+                <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="btn btn-sm btn-secondary">Traiter les demandes</a>
+            </div>
+        </div>
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 6 : CONGES DE L'EQUIPE
+       ════════════════════════════════════════════════════════════ #}
+    <div class="section">
+        <h2>🏖️ Conges de l'equipe</h2>
+        {% if conges_equipe|length > 0 %}
+        <table class="data-table">
+            <thead>
+                <tr><th>Salarie</th><th>CP solde</th><th>CC solde</th><th>Total</th></tr>
+            </thead>
+            <tbody>
+                {% for tc in conges_equipe %}
+                <tr>
+                    <td><strong>{{ tc.nom }} {{ tc.prenom }}</strong></td>
+                    <td>
+                        <span style="color:{% if (tc.cp_a_prendre - tc.cp_pris) > 10 %}var(--warning){% elif (tc.cp_a_prendre - tc.cp_pris) > 0 %}var(--success){% else %}var(--gray-500){% endif %};">
+                            {{ "%.1f"|format(tc.cp_a_prendre - tc.cp_pris) }} j
+                        </span>
+                    </td>
+                    <td>
+                        <span style="color:{% if tc.cc_solde > 4 %}var(--warning){% elif tc.cc_solde > 0 %}var(--success){% else %}var(--gray-500){% endif %};">
+                            {{ "%.1f"|format(tc.cc_solde) }} j
+                        </span>
+                    </td>
+                    <td>
+                        <strong style="color:{% if tc.total_conges > 15 %}var(--danger){% elif tc.total_conges > 10 %}var(--warning){% else %}var(--success){% endif %};">
+                            {{ "%.1f"|format(tc.total_conges) }} j
+                        </strong>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="direction-empty"><p>Aucun solde de conges</p></div>
+        {% endif %}
+    </div>
+
+    {# ════════════════════════════════════════════════════════════
+       SECTION 7 : ACCES RAPIDES
+       ════════════════════════════════════════════════════════════ #}
+    <div class="section">
+        <h2>🔗 Acces rapides</h2>
+        <div class="direction-quick-links">
+            <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">✅</span>
+                <span>Vue ensemble validation</span>
+            </a>
+            <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🏖️</span>
+                <span>Validation recup</span>
+            </a>
+            <a href="{{ url_for('budget_bp.mon_budget') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">💰</span>
+                <span>Mon budget</span>
+            </a>
+            <a href="{{ url_for('budget_bp.budget_previsionnel') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📘</span>
+                <span>Budget previsionnel</span>
+            </a>
+            <a href="{{ url_for('subventions_bp.gestion_subventions') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">📋</span>
+                <span>Subventions</span>
+            </a>
+            <a href="{{ url_for('factures_bp.approbation_factures') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🧾</span>
+                <span>Approbation factures</span>
+            </a>
+            <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">👥</span>
+                <span>Mon equipe</span>
+            </a>
+            <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}" class="direction-quick-link">
+                <span class="direction-ql-icon">🕐</span>
+                <span>Temps annualise</span>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

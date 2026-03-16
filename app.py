@@ -189,9 +189,11 @@ from blueprints.bilan_secteurs import bilan_secteurs_bp
 from blueprints.alsh import alsh_bp
 from blueprints.mise_a_jour import mise_a_jour_bp
 from blueprints.rh_statistiques import rh_statistiques_bp
+from blueprints.dashboard_responsable import dashboard_responsable_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
+app.register_blueprint(dashboard_responsable_bp)
 app.register_blueprint(saisie_bp)
 app.register_blueprint(planning_bp)
 app.register_blueprint(admin_bp)
