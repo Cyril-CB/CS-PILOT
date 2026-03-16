@@ -71,14 +71,19 @@ def dashboard_direction():
 
     # ── 1b. ETP par type de contrat ──
     salaries_contrats = conn.execute('''
+        WITH last_active_contract AS (
+            SELECT c.user_id, MAX(c.id) AS last_contract_id
+            FROM contrats c
+            JOIN users u ON c.user_id = u.id
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+              AND c.date_debut <= ?
+              AND (c.date_fin IS NULL OR c.date_fin >= ?)
+            GROUP BY c.user_id
+        )
         SELECT u.id, c.type_contrat, c.temps_hebdo
         FROM users u
-        JOIN contrats c ON c.user_id = u.id
-        WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
-          AND c.date_debut <= ?
-          AND (c.date_fin IS NULL OR c.date_fin >= ?)
-        GROUP BY u.id
-        HAVING c.id = MAX(c.id)
+        JOIN last_active_contract lac ON lac.user_id = u.id
+        JOIN contrats c ON c.id = lac.last_contract_id
     ''', (today_str, today_str)).fetchall()
 
     total_etp = 0.0
