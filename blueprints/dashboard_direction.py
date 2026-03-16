@@ -11,7 +11,11 @@ dashboard_direction_bp = Blueprint('dashboard_direction_bp', __name__)
 
 
 def _calcul_etp(type_contrat, temps_hebdo):
-    """Calcule l'ETP d'un salarie selon son type de contrat."""
+    """Calcule l'ETP d'un salarie selon son type de contrat.
+
+    - CEE (Contrat d'Engagement Educatif) : forfait fixe 0.12 ETP
+    - Autres : temps_hebdo / 35h (duree legale hebdomadaire), defaut 1.0 ETP
+    """
     if type_contrat == 'CEE':
         return 0.12
     if temps_hebdo and temps_hebdo > 0:
