@@ -274,20 +274,18 @@ def dashboard_responsable():
 
     # ── 7. Budget du secteur ──
     budget_secteur = None
-    budget_reel = 0
     budget_row = conn.execute('''
-        SELECT b.id, b.montant_global
+        SELECT b.montant_global,
+               COALESCE(SUM(brl.montant), 0) AS montant_reel
         FROM budgets b
+        LEFT JOIN budget_reel_lignes brl ON brl.budget_id = b.id
         WHERE b.secteur_id = ? AND b.annee = ?
+        GROUP BY b.montant_global
     ''', (secteur_id, annee)).fetchone()
     if budget_row:
-        budget_reel = conn.execute(
-            'SELECT COALESCE(SUM(montant), 0) as total FROM budget_reel_lignes WHERE budget_id = ?',
-            (budget_row['id'],)
-        ).fetchone()['total']
         budget_secteur = {
             'montant_global': budget_row['montant_global'] or 0,
-            'montant_reel': budget_reel,
+            'montant_reel': budget_row['montant_reel'],
         }
 
     # ── 8. Subventions ──
@@ -361,7 +359,6 @@ def dashboard_responsable():
                            nb_factures_attente=nb_factures_attente,
                            montant_factures_attente=montant_factures_attente,
                            budget_secteur=budget_secteur,
-                           budget_reel=budget_reel,
                            subv_pipeline=subv_pipeline,
                            total_subv_demande=total_subv_demande,
                            total_subv_accorde=total_subv_accorde,
