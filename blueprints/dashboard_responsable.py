@@ -11,11 +11,7 @@ dashboard_responsable_bp = Blueprint('dashboard_responsable_bp', __name__)
 
 
 def _calcul_etp(type_contrat, temps_hebdo):
-    """Calcule l'ETP d'un salarié via l'utilitaire partagé.
-
-    Délègue le calcul à utils.calcul_etp afin d'assurer une règle unique
-    et cohérente entre les différents écrans (direction, responsables, etc.).
-    """
+    """Calcule l'ETP en déléguant à l'utilitaire partagé."""
     return calcul_etp(type_contrat=type_contrat, temps_hebdo=temps_hebdo)
 
 
