@@ -31,7 +31,7 @@ def dashboard_comptable():
     user_id = session['user_id']
 
     # ── 1. Ma fiche d'heures (dernieres saisies) ──
-    user = get_user_info(user_id)
+    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
 
     heures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
@@ -104,12 +104,15 @@ def dashboard_comptable():
     # Ne charger que les documents des salaries ayant un contrat actif
     user_ids = [sal['id'] for sal in salaries_avec_contrat]
     if user_ids:
-        placeholders = ','.join('?' for _ in user_ids)
+        user_placeholders = ','.join('?' for _ in user_ids)
+        doc_placeholders = ','.join('?' for _ in DOCS_OBLIGATOIRES)
+        params = list(user_ids) + list(DOCS_OBLIGATOIRES)
         docs_existants = conn.execute(f'''
             SELECT user_id, type_document
             FROM documents_salaries
-            WHERE user_id IN ({placeholders})
-        ''', user_ids).fetchall()
+            WHERE user_id IN ({user_placeholders})
+              AND type_document IN ({doc_placeholders})
+        ''', params).fetchall()
     else:
         docs_existants = []
 
