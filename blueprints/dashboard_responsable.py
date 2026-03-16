@@ -54,14 +54,20 @@ def dashboard_responsable():
         SELECT u.id, u.nom, u.prenom, u.profil,
                c.type_contrat, c.temps_hebdo, c.date_debut, c.date_fin
         FROM users u
-        LEFT JOIN contrats c ON c.user_id = u.id
-          AND c.date_debut <= ?
-          AND (c.date_fin IS NULL OR c.date_fin >= ?)
+        LEFT JOIN (
+            SELECT c.*
+            FROM contrats c
+            JOIN (
+                SELECT user_id, MAX(id) AS max_id
+                FROM contrats
+                WHERE date_debut <= ?
+                  AND (date_fin IS NULL OR date_fin >= ?)
+                GROUP BY user_id
+            ) mc ON mc.user_id = c.user_id AND mc.max_id = c.id
+        ) c ON c.user_id = u.id
         WHERE u.actif = 1 AND u.secteur_id = ?
           AND u.profil NOT IN ('directeur', 'prestataire')
           AND u.id != ?
-        GROUP BY u.id
-        HAVING c.id IS NULL OR c.id = MAX(c.id)
         ORDER BY u.nom, u.prenom
     ''', (today_str, today_str, secteur_id, session['user_id'])).fetchall()
 
