@@ -134,8 +134,6 @@
                             </td>
                             {# ── Bénévoles ── #}
                             <td class="sv-col-select" onclick="editBenevoles(this, {{ sub.id }})">
-                                {% set ben_ids = (sub.benevoles_ids or '[]') | tojson %}
-                                {% set ben_parsed = (sub.benevoles_ids or '[]') %}
                                 <span class="sv-benevoles-display" data-ids="{{ sub.benevoles_ids or '[]' }}">
                                     {% set ns_ben = namespace(found=false) %}
                                     {% for b in benevoles_list %}
@@ -201,7 +199,7 @@
                                                 {% endif %}
                                                 <label class="sv-file-upload" title="Charger un PDF">
                                                     📎
-                                                    <input type="file" accept=".pdf" onchange="uploadSEDoc(this, {{ se.id }}, {{ sub.id }})" hidden>
+                                                    <input type="file" accept=".pdf" onchange="uploadSEDoc(this, {{ se.id }})" hidden>
                                                 </label>
                                             </td>
                                             <td>
@@ -667,7 +665,7 @@ function editBenevoles(el, id) {
 }
 
 /* ── Upload document sous-élément ── */
-function uploadSEDoc(input, seId, subId) {
+function uploadSEDoc(input, seId) {
     if (!input.files.length) return;
     var fd = new FormData();
     fd.append('fichier', input.files[0]);
