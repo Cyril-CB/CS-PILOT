@@ -67,6 +67,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0027', 'Ajout gestion types secteur'),
     ('0028', 'Ajout module analyse ALSH'),
     ('0029', 'Ajout module budget previsionnel'),
+    ('0030', 'Ameliorations subventions'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -612,12 +613,18 @@ def init_db():
             analytique_id INTEGER,
             contact_email TEXT,
             compte_comptable TEXT,
+            annee_action TEXT,
+            compte_comptable_1_id INTEGER,
+            compte_comptable_2_id INTEGER,
+            benevoles_ids TEXT DEFAULT '[]',
             ordre INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (assignee_1_id) REFERENCES users(id),
             FOREIGN KEY (assignee_2_id) REFERENCES users(id),
-            FOREIGN KEY (analytique_id) REFERENCES subventions_analytiques(id)
+            FOREIGN KEY (analytique_id) REFERENCES subventions_analytiques(id),
+            FOREIGN KEY (compte_comptable_1_id) REFERENCES comptabilite_comptes(id),
+            FOREIGN KEY (compte_comptable_2_id) REFERENCES comptabilite_comptes(id)
         )
     ''')
 
@@ -629,6 +636,8 @@ def init_db():
             assignee_id INTEGER,
             statut TEXT NOT NULL DEFAULT 'non_commence',
             date_echeance TEXT,
+            document_path TEXT,
+            document_nom TEXT,
             ordre INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (subvention_id) REFERENCES subventions(id) ON DELETE CASCADE,
