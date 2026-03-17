@@ -40,7 +40,9 @@
                             <th class="sv-col-file">Justificatif</th>
                             <th class="sv-col-select">Analytique</th>
                             <th class="sv-col-text">Contact email</th>
-                            <th class="sv-col-text">Compte comptable</th>
+                            <th class="sv-col-select">Compte analytique 1</th>
+                            <th class="sv-col-select">Compte analytique 2</th>
+                            <th class="sv-col-select">Bénévoles</th>
                             {% if not is_responsable %}
                             <th class="sv-col-actions"></th>
                             {% endif %}
@@ -114,9 +116,36 @@
                             <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ sub.id }}, 'contact_email')">
                                 {{ sub.contact_email if sub.contact_email else '—' }}
                             </td>
-                            {# ── Compte comptable ── #}
-                            <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ sub.id }}, 'compte_comptable')">
-                                {{ sub.compte_comptable if sub.compte_comptable else '—' }}
+                            {# ── Compte analytique 1 ── #}
+                            <td class="sv-col-select" onclick="editCompteComptable(this, {{ sub.id }}, 'compte_comptable_1_id')">
+                                {% if sub.compte_comptable_1_id %}
+                                    {% for cc in comptes_comptables %}{% if cc.id == sub.compte_comptable_1_id %}{{ cc.compte_num }} - {{ cc.libelle }}{% endif %}{% endfor %}
+                                {% else %}
+                                    <span class="sv-placeholder">Choisir…</span>
+                                {% endif %}
+                            </td>
+                            {# ── Compte analytique 2 ── #}
+                            <td class="sv-col-select" onclick="editCompteComptable(this, {{ sub.id }}, 'compte_comptable_2_id')">
+                                {% if sub.compte_comptable_2_id %}
+                                    {% for cc in comptes_comptables %}{% if cc.id == sub.compte_comptable_2_id %}{{ cc.compte_num }} - {{ cc.libelle }}{% endif %}{% endfor %}
+                                {% else %}
+                                    <span class="sv-placeholder">Choisir…</span>
+                                {% endif %}
+                            </td>
+                            {# ── Bénévoles ── #}
+                            <td class="sv-col-select" onclick="editBenevoles(this, {{ sub.id }})">
+                                {% set ben_ids = (sub.benevoles_ids or '[]') | tojson %}
+                                {% set ben_parsed = (sub.benevoles_ids or '[]') %}
+                                <span class="sv-benevoles-display" data-ids="{{ sub.benevoles_ids or '[]' }}">
+                                    {% set ns_ben = namespace(found=false) %}
+                                    {% for b in benevoles_list %}
+                                        {% if b.id|string in (sub.benevoles_ids or '') %}
+                                            {% set ns_ben.found = true %}
+                                            <span class="sv-tag">{{ b.nom }}</span>
+                                        {% endif %}
+                                    {% endfor %}
+                                    {% if not ns_ben.found %}—{% endif %}
+                                </span>
                             </td>
                             {% if not is_responsable %}
                             <td class="sv-col-actions">
@@ -128,7 +157,7 @@
                         {# ── Sous-éléments (masqués par défaut) ── #}
                         <tr class="sv-sub-row" id="se-row-{{ sub.id }}" style="display:none;">
                             <td class="sv-sub-spacer"><span class="sv-left-color" style="background:{{ groupe.color }};"></span></td>
-                            <td colspan="{% if not is_responsable %}13{% else %}12{% endif %}" class="sv-sub-td">
+                            <td colspan="{% if not is_responsable %}15{% else %}14{% endif %}" class="sv-sub-td">
                                 <table class="sv-sub-table">
                                     <thead>
                                         <tr>
@@ -136,6 +165,7 @@
                                             <th style="width:120px;">Assigné</th>
                                             <th style="width:140px;">Statut</th>
                                             <th style="width:130px;">Échéance</th>
+                                            <th style="width:120px;">Document</th>
                                             <th style="width:40px;"></th>
                                         </tr>
                                     </thead>
@@ -165,6 +195,15 @@
                                             <td class="sv-cell-date" onclick="editSEDate(this, {{ se.id }})">
                                                 {% if se.date_echeance %}{{ se.date_echeance[8:10] }}/{{ se.date_echeance[5:7] }}/{{ se.date_echeance[0:4] }}{% else %}—{% endif %}
                                             </td>
+                                            <td class="sv-col-file">
+                                                {% if se.document_path %}
+                                                <a href="{{ url_for('subventions_bp.telecharger_se_document', se_id=se.id) }}" class="sv-file-link" title="{{ se.document_nom }}">📄</a>
+                                                {% endif %}
+                                                <label class="sv-file-upload" title="Charger un PDF">
+                                                    📎
+                                                    <input type="file" accept=".pdf" onchange="uploadSEDoc(this, {{ se.id }}, {{ sub.id }})" hidden>
+                                                </label>
+                                            </td>
                                             <td>
                                                 <button class="sv-del-btn-sm" onclick="deleteSE({{ se.id }}, {{ sub.id }})" title="Supprimer">✕</button>
                                             </td>
@@ -179,7 +218,7 @@
 
                     {% if not groupe.lignes %}
                         <tr>
-                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-empty">
+                            <td colspan="{% if not is_responsable %}16{% else %}15{% endif %}" class="sv-empty">
                                 Aucune subvention dans ce groupe
                             </td>
                         </tr>
@@ -202,6 +241,16 @@ USERS[{{ u.id }}] = {nom: "{{ u.nom }}", prenom: "{{ u.prenom }}", initiales: "{
 var ANALYTIQUES = {};
 {% for a in analytiques %}
 ANALYTIQUES[{{ a.id }}] = "{{ a.nom }}";
+{% endfor %}
+
+var COMPTES_COMPTABLES = {};
+{% for cc in comptes_comptables %}
+COMPTES_COMPTABLES[{{ cc.id }}] = "{{ cc.compte_num }} - {{ cc.libelle }}";
+{% endfor %}
+
+var BENEVOLES = {};
+{% for b in benevoles_list %}
+BENEVOLES[{{ b.id }}] = "{{ b.nom }}";
 {% endfor %}
 
 var GROUPES = [
@@ -283,7 +332,9 @@ function toggleSubElements(subId, btn) {
 function promptAdd(groupe) {
     var nom = prompt('Nom de la subvention :');
     if (!nom || !nom.trim()) return;
-    apiCall('/api/subventions/ajouter', {nom: nom.trim(), groupe: groupe}).then(function(r) {
+    var annee = prompt('Année de l\'action :', new Date().getFullYear());
+    if (annee === null) return;
+    apiCall('/api/subventions/ajouter', {nom: nom.trim(), groupe: groupe, annee_action: annee.trim()}).then(function(r) {
         if (r.ok) location.reload();
         else alert(r.error || 'Erreur');
     });
@@ -507,6 +558,120 @@ function uploadFile(input, id) {
     var fd = new FormData();
     fd.append('fichier', input.files[0]);
     apiUpload('/api/subventions/' + id + '/justificatif', fd).then(function(r) {
+        if (r.ok) location.reload();
+        else alert(r.error || 'Erreur');
+    });
+}
+
+/* ── Edition inline : compte comptable (dropdown) ── */
+function editCompteComptable(el, id, field) {
+    if (el.querySelector('select')) return;
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    Object.keys(COMPTES_COMPTABLES).forEach(function(cid) {
+        sel.innerHTML += '<option value="'+cid+'">'+COMPTES_COMPTABLES[cid]+'</option>';
+    });
+    el.textContent = '';
+    el.appendChild(sel);
+    sel.focus();
+
+    var saved = false;
+    function save() {
+        if (saved) return;
+        saved = true;
+        var val = sel.value;
+        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            el.textContent = '';
+            if (val && COMPTES_COMPTABLES[val]) {
+                el.textContent = COMPTES_COMPTABLES[val];
+            } else {
+                var sp = document.createElement('span');
+                sp.className = 'sv-placeholder';
+                sp.textContent = 'Choisir…';
+                el.appendChild(sp);
+            }
+        });
+    }
+    sel.addEventListener('blur', save);
+    sel.addEventListener('change', save);
+}
+
+/* ── Edition inline : bénévoles (multi-select) ── */
+function editBenevoles(el, id) {
+    if (el.querySelector('.sv-benevoles-panel')) return;
+    var display = el.querySelector('.sv-benevoles-display');
+    var currentIds = [];
+    try {
+        currentIds = JSON.parse(display.getAttribute('data-ids') || '[]');
+    } catch(e) { currentIds = []; }
+
+    var panel = document.createElement('div');
+    panel.className = 'sv-benevoles-panel';
+    panel.style.cssText = 'background:#fff;border:1px solid #ddd;border-radius:6px;padding:8px;max-height:200px;overflow-y:auto;min-width:180px;';
+
+    var keys = Object.keys(BENEVOLES);
+    if (keys.length === 0) {
+        panel.innerHTML = '<em style="color:#999;">Aucun bénévole</em>';
+    } else {
+        keys.forEach(function(bid) {
+            var label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:0.9em;';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = bid;
+            if (currentIds.indexOf(parseInt(bid)) !== -1) cb.checked = true;
+            label.appendChild(cb);
+            label.appendChild(document.createTextNode(BENEVOLES[bid]));
+            panel.appendChild(label);
+        });
+    }
+
+    var btnBar = document.createElement('div');
+    btnBar.style.cssText = 'margin-top:6px;text-align:right;';
+    var btnOk = document.createElement('button');
+    btnOk.textContent = '✓ OK';
+    btnOk.className = 'btn btn-sm';
+    btnOk.style.cssText = 'font-size:0.8em;padding:2px 10px;background:#00c875;color:#fff;border:none;border-radius:4px;cursor:pointer;';
+    btnBar.appendChild(btnOk);
+    panel.appendChild(btnBar);
+
+    display.style.display = 'none';
+    el.appendChild(panel);
+
+    function saveBenevoles() {
+        var cbs = panel.querySelectorAll('input[type=checkbox]:checked');
+        var ids = [];
+        cbs.forEach(function(c) { ids.push(parseInt(c.value)); });
+        var idsJson = JSON.stringify(ids);
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'benevoles_ids', value: idsJson}).then(function(r) {
+            if (panel.parentNode) panel.parentNode.removeChild(panel);
+            display.setAttribute('data-ids', idsJson);
+            display.innerHTML = '';
+            if (ids.length) {
+                ids.forEach(function(bid) {
+                    if (BENEVOLES[bid]) {
+                        var tag = document.createElement('span');
+                        tag.className = 'sv-tag';
+                        tag.textContent = BENEVOLES[bid];
+                        display.appendChild(tag);
+                    }
+                });
+            } else {
+                display.textContent = '—';
+            }
+            display.style.display = '';
+        });
+    }
+    btnOk.addEventListener('click', function(e) { e.stopPropagation(); saveBenevoles(); });
+}
+
+/* ── Upload document sous-élément ── */
+function uploadSEDoc(input, seId, subId) {
+    if (!input.files.length) return;
+    var fd = new FormData();
+    fd.append('fichier', input.files[0]);
+    apiUpload('/api/subventions/sous-elements/' + seId + '/document', fd).then(function(r) {
         if (r.ok) location.reload();
         else alert(r.error || 'Erreur');
     });
