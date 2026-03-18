@@ -80,12 +80,19 @@ def _normalize_sous_element_statut(statut):
 
 
 def _parse_benevoles_ids(raw_value):
-    """Retourne une liste d'IDs bénévoles (int) à partir du JSON stocké."""
+    """Retourne une liste d'IDs bénévoles (int) à partir du JSON stocké.
+
+    Args:
+        raw_value (str | None): Valeur JSON issue de `subventions.benevoles_ids`.
+
+    Returns:
+        list[int]: Liste d'identifiants parsés, ou liste vide si invalide.
+    """
     if not raw_value:
         return []
     try:
         parsed = json.loads(raw_value)
-    except (TypeError, ValueError, json.JSONDecodeError):
+    except (TypeError, json.JSONDecodeError):
         return []
     if not isinstance(parsed, list):
         return []

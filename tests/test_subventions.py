@@ -1,7 +1,7 @@
 import re
 
 
-def test_subventions_affiche_benevoles_par_id_exact(admin_client, app, db):
+def test_subventions_displays_benevoles_by_exact_id(admin_client, app, db):
     with app.app_context():
         db.execute(
             "INSERT INTO benevoles (id, nom, groupe) VALUES (?, ?, ?)",
@@ -28,6 +28,6 @@ def test_subventions_affiche_benevoles_par_id_exact(admin_client, app, db):
     )
     assert match is not None
 
-    benevoles_cell = match.group(1)
-    assert 'BenTen' in benevoles_cell
-    assert 'BenOne' not in benevoles_cell
+    benevoles_content = match.group(1)
+    assert 'BenTen' in benevoles_content
+    assert 'BenOne' not in benevoles_content
