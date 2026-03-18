@@ -79,6 +79,26 @@ def _normalize_sous_element_statut(statut):
     return SOUS_ELEMENT_STATUTS_ALIASES.get(statut_str, 'non_commence')
 
 
+def _parse_benevoles_ids(raw_value):
+    """Retourne une liste d'IDs bénévoles (int) à partir du JSON stocké."""
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+
+    ids = []
+    for value in parsed:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
 # ── Vue principale ──
 
 @subventions_bp.route('/subventions')
@@ -125,6 +145,11 @@ def gestion_subventions():
                 'SELECT * FROM subventions ORDER BY ordre, id'
             ).fetchall()
 
+        benevoles_ids_map = {
+            s['id']: _parse_benevoles_ids(s['benevoles_ids'])
+            for s in subventions
+        }
+
         sub_ids = [s['id'] for s in subventions]
         sous_elements = {}
         if sub_ids:
@@ -160,6 +185,7 @@ def gestion_subventions():
         analytiques=analytiques,
         comptes_comptables=comptes_comptables,
         benevoles_list=benevoles_list,
+        benevoles_ids_map=benevoles_ids_map,
         groupes_config=GROUPES,
         statuts_config=SOUS_ELEMENT_STATUTS,
         is_responsable=is_responsable,
