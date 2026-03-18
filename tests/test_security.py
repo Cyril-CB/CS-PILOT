@@ -9,6 +9,7 @@ Tests pour les nouvelles fonctionnalités de sécurité :
 import os
 import sys
 import io
+import re
 from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -223,6 +224,7 @@ class TestPathTraversalProtection:
             db.commit()
             se_id = db.execute('SELECT MAX(id) as id FROM subventions_sous_elements').fetchone()['id']
 
+        expected_year = datetime.now().strftime('%Y')
         data = {'fichier': (io.BytesIO(b'%PDF-1.4\n%test\n'), 'piece.pdf')}
         response = comptable_client.post(
             f'/api/subventions/sous-elements/{se_id}/document',
@@ -233,9 +235,13 @@ class TestPathTraversalProtection:
 
         payload = response.get_json()
         assert payload['ok'] is True
-        assert payload['nom'].startswith(f"{datetime.now().strftime('%Y')}_")
+        assert payload['nom'].startswith(f"{expected_year}_")
+        assert re.match(r'^\d{4}_[^/]+\.pdf$', payload['nom'])
+        assert '../../documents_evil' not in payload['nom']
         assert '..' not in payload['nom']
         assert '/' not in payload['nom']
+        assert '\\' not in payload['nom']
+        assert '\x00' not in payload['nom']
         assert (docs_dir / payload['nom']).exists()
 
 

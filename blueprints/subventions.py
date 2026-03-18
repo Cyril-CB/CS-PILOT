@@ -436,7 +436,11 @@ def api_upload_se_document(se_id):
         chemin_complet = os.path.join(DOCUMENTS_DIR, nom_fichier)
         chemin_reel = os.path.realpath(chemin_complet)
         dossier_reel = os.path.realpath(DOCUMENTS_DIR)
-        if not chemin_reel.startswith(dossier_reel + os.sep):
+        try:
+            est_dans_documents = os.path.commonpath([chemin_reel, dossier_reel]) == dossier_reel
+        except ValueError:
+            est_dans_documents = False
+        if not est_dans_documents:
             return jsonify({'ok': False, 'error': 'Nom de fichier invalide'}), 400
 
         # Supprimer l'ancien document s'il existe
