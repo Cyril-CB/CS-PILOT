@@ -104,6 +104,14 @@ def gestion_subventions():
             'SELECT id, nom FROM subventions_analytiques ORDER BY nom'
         ).fetchall()
 
+        comptes_comptables = conn.execute(
+            'SELECT id, compte_num, libelle FROM comptabilite_comptes ORDER BY compte_num'
+        ).fetchall()
+
+        benevoles_list = conn.execute(
+            'SELECT id, nom FROM benevoles ORDER BY nom'
+        ).fetchall()
+
         is_responsable = session.get('profil') == 'responsable'
         user_id = session.get('user_id')
 
@@ -150,6 +158,8 @@ def gestion_subventions():
         users=users,
         users_map=users_map,
         analytiques=analytiques,
+        comptes_comptables=comptes_comptables,
+        benevoles_list=benevoles_list,
         groupes_config=GROUPES,
         statuts_config=SOUS_ELEMENT_STATUTS,
         is_responsable=is_responsable,
@@ -167,6 +177,7 @@ def api_ajouter_subvention():
     data = request.get_json(silent=True) or {}
     nom = (data.get('nom') or '').strip()
     groupe = data.get('groupe', 'nouveau_projet')
+    annee_action = (data.get('annee_action') or '').strip()
 
     if not nom:
         return jsonify({'ok': False, 'error': 'Nom requis'}), 400
@@ -176,8 +187,8 @@ def api_ajouter_subvention():
     conn = get_db()
     try:
         cursor = conn.execute(
-            'INSERT INTO subventions (nom, groupe) VALUES (?, ?)',
-            (nom, groupe)
+            'INSERT INTO subventions (nom, groupe, annee_action) VALUES (?, ?, ?)',
+            (nom, groupe, annee_action or None)
         )
         sub_id = cursor.lastrowid
 
@@ -207,13 +218,16 @@ def api_modifier_subvention(sub_id):
         'nom', 'groupe', 'assignee_1_id', 'assignee_2_id',
         'date_echeance', 'montant_demande', 'montant_accorde',
         'date_notification', 'analytique_id', 'contact_email',
-        'compte_comptable',
+        'compte_comptable', 'annee_action',
+        'compte_comptable_1_id', 'compte_comptable_2_id',
+        'benevoles_ids',
     }
 
     if field not in allowed_fields:
         return jsonify({'ok': False, 'error': f'Champ non autorisé: {field}'}), 400
 
-    if field in ('assignee_1_id', 'assignee_2_id', 'analytique_id'):
+    if field in ('assignee_1_id', 'assignee_2_id', 'analytique_id',
+                 'compte_comptable_1_id', 'compte_comptable_2_id'):
         value = int(value) if value else None
     elif field in ('montant_demande', 'montant_accorde'):
         try:
@@ -325,6 +339,13 @@ def api_supprimer_sous_element(se_id):
 
     conn = get_db()
     try:
+        se = conn.execute('SELECT document_path FROM subventions_sous_elements WHERE id = ?', (se_id,)).fetchone()
+        if se and se['document_path']:
+            chemin = os.path.join(DOCUMENTS_DIR, se['document_path'])
+            chemin_reel = os.path.realpath(chemin)
+            dossier_reel = os.path.realpath(DOCUMENTS_DIR)
+            if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
+                os.remove(chemin)
         conn.execute('DELETE FROM subventions_sous_elements WHERE id = ?', (se_id,))
         conn.commit()
         return jsonify({'ok': True})
@@ -360,6 +381,120 @@ def api_ajouter_analytique():
         return jsonify({'ok': True, 'id': cursor.lastrowid})
     finally:
         conn.close()
+
+
+def _normalize_filename(text):
+    """Normalise un texte pour l'utiliser dans un nom de fichier."""
+    text = unicodedata.normalize('NFD', text)
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    text = re.sub(r'[^a-zA-Z0-9]', '_', text)
+    text = re.sub(r'_+', '_', text).strip('_')
+    return text
+
+
+def _sanitize_year_for_filename(year_value):
+    """Retourne une année sûre (4 chiffres) pour un nom de fichier."""
+    year_text = str(year_value or '').strip()
+    if re.fullmatch(r'\d{4}', year_text):
+        return year_text
+    return datetime.now().strftime('%Y')
+
+
+# ── Document sous-élément (upload / download) ──
+
+@subventions_bp.route('/api/subventions/sous-elements/<int:se_id>/document', methods=['POST'])
+@login_required
+def api_upload_se_document(se_id):
+    if not _peut_modifier():
+        return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
+
+    fichier = request.files.get('fichier')
+    if not fichier or not fichier.filename:
+        return jsonify({'ok': False, 'error': 'Fichier requis'}), 400
+
+    ext = os.path.splitext(fichier.filename)[1].lower()
+    if ext != '.pdf':
+        return jsonify({'ok': False, 'error': 'Seuls les fichiers PDF sont acceptés'}), 400
+
+    os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+
+    conn = get_db()
+    try:
+        se = conn.execute(
+            'SELECT se.*, s.nom as sub_nom, s.annee_action '
+            'FROM subventions_sous_elements se '
+            'JOIN subventions s ON se.subvention_id = s.id '
+            'WHERE se.id = ?', (se_id,)
+        ).fetchone()
+        if not se:
+            return jsonify({'ok': False, 'error': 'Sous-élément introuvable'}), 404
+
+        annee = _sanitize_year_for_filename(se['annee_action'])
+        nom_sub = _normalize_filename(se['sub_nom'] or 'subvention')
+        nom_se = _normalize_filename(se['nom'] or 'etape')
+        nom_fichier = f"{annee}_{nom_sub}_{nom_se}_{se_id}{ext}"
+        chemin_complet = os.path.join(DOCUMENTS_DIR, nom_fichier)
+        chemin_reel = os.path.realpath(chemin_complet)
+        dossier_reel = os.path.realpath(DOCUMENTS_DIR)
+        try:
+            est_dans_documents = os.path.commonpath([chemin_reel, dossier_reel]) == dossier_reel
+        except ValueError:
+            est_dans_documents = False
+        if not est_dans_documents:
+            return jsonify({'ok': False, 'error': 'Nom de fichier invalide'}), 400
+
+        # Supprimer l'ancien document s'il existe
+        if se['document_path']:
+            old_path = os.path.join(DOCUMENTS_DIR, se['document_path'])
+            old_path_reel = os.path.realpath(old_path)
+            dossier_reel = os.path.realpath(DOCUMENTS_DIR)
+            if old_path_reel.startswith(dossier_reel + os.sep) and os.path.exists(old_path):
+                os.remove(old_path)
+
+        fichier.save(chemin_complet)
+
+        conn.execute(
+            'UPDATE subventions_sous_elements SET document_path = ?, document_nom = ? WHERE id = ?',
+            (nom_fichier, nom_fichier, se_id)
+        )
+        conn.commit()
+        return jsonify({'ok': True, 'nom': nom_fichier})
+    finally:
+        conn.close()
+
+
+@subventions_bp.route('/subventions/sous-element-document/<int:se_id>')
+@login_required
+def telecharger_se_document(se_id):
+    if not _peut_voir():
+        flash("Accès non autorisé.", "error")
+        return redirect(url_for('subventions_bp.gestion_subventions'))
+
+    conn = get_db()
+    try:
+        se = conn.execute(
+            'SELECT document_path, document_nom FROM subventions_sous_elements WHERE id = ?',
+            (se_id,)
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not se or not se['document_path']:
+        flash("Aucun document.", "error")
+        return redirect(url_for('subventions_bp.gestion_subventions'))
+
+    chemin = os.path.join(DOCUMENTS_DIR, se['document_path'])
+    chemin_reel = os.path.realpath(chemin)
+    dossier_reel = os.path.realpath(DOCUMENTS_DIR)
+    if not chemin_reel.startswith(dossier_reel + os.sep):
+        flash("Accès non autorisé.", "error")
+        return redirect(url_for('subventions_bp.gestion_subventions'))
+
+    if not os.path.exists(chemin):
+        flash("Fichier introuvable.", "error")
+        return redirect(url_for('subventions_bp.gestion_subventions'))
+
+    return send_file(chemin, as_attachment=True, download_name=se['document_nom'] or 'document.pdf')
 
 
 # ── Justificatif (upload / download) ──

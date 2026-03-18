@@ -8,6 +8,9 @@ Tests pour les nouvelles fonctionnalités de sécurité :
 """
 import os
 import sys
+import io
+import re
+from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -198,6 +201,49 @@ class TestPathTraversalProtection:
         response = client.get(f'/subventions/justificatif/{sub_id}', follow_redirects=False)
         assert response.status_code == 302
 
+    def test_subventions_sous_element_upload_sanitise_annee_action(
+        self, app, db, comptable_client, monkeypatch, tmp_path
+    ):
+        from blueprints import subventions as subventions_module
+        docs_dir = tmp_path / 'documents'
+        docs_dir.mkdir()
+        monkeypatch.setattr(subventions_module, 'DOCUMENTS_DIR', str(docs_dir))
+
+        with app.app_context():
+            db.execute(
+                '''INSERT INTO subventions (nom, annee_action)
+                   VALUES (?, ?)''',
+                ('Subvention test', '../../documents_evil')
+            )
+            sub_id = db.execute('SELECT MAX(id) as id FROM subventions').fetchone()['id']
+            db.execute(
+                '''INSERT INTO subventions_sous_elements (subvention_id, nom)
+                   VALUES (?, ?)''',
+                (sub_id, 'Étape 1')
+            )
+            db.commit()
+            se_id = db.execute('SELECT MAX(id) as id FROM subventions_sous_elements').fetchone()['id']
+
+        expected_year = datetime.now().strftime('%Y')
+        data = {'fichier': (io.BytesIO(b'%PDF-1.4\n%test\n'), 'piece.pdf')}
+        response = comptable_client.post(
+            f'/api/subventions/sous-elements/{se_id}/document',
+            data=data,
+            content_type='multipart/form-data'
+        )
+        assert response.status_code == 200
+
+        payload = response.get_json()
+        assert payload['ok'] is True
+        assert payload['nom'].startswith(f"{expected_year}_")
+        assert re.match(r'^\d{4}_[^/]+\.pdf$', payload['nom'])
+        assert '../../documents_evil' not in payload['nom']
+        assert '..' not in payload['nom']
+        assert '/' not in payload['nom']
+        assert '\\' not in payload['nom']
+        assert '\x00' not in payload['nom']
+        assert (docs_dir / payload['nom']).exists()
+
 
 class TestEnvFileGeneration:
     """Tests pour la génération automatique du fichier .env."""
@@ -265,4 +311,3 @@ class TestEnvFileGeneration:
         result = generate_env_file('/invalid/path/that/does/not/exist/.env')
 
         assert result is False
-

@@ -2373,6 +2373,18 @@ a.btn-icon:-webkit-any-link {
 .sv-col-actions { width: 44px; min-width: 44px; text-align: center; }
 .sv-col-name-end { min-width: 200px; font-weight: 600; color: var(--gray-900); white-space: nowrap; }
 
+.sv-tag {
+    display: inline-block;
+    background: var(--primary-light, #e0edff);
+    color: var(--primary, #2f6ea6);
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin: 1px 2px;
+    white-space: nowrap;
+}
+
 /* ── Avatars (initiales) ── */
 .sv-avatar {
     display: inline-flex;

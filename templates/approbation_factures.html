@@ -42,7 +42,7 @@
                         {% endif %}
                     </td>
                     <td style="white-space:nowrap;">
-                        <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}" class="btn btn-sm btn-secondary">Détail</a>
+                        <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id, from='approbation') }}" class="btn btn-sm btn-secondary">Détail</a>
                         <form method="POST" action="{{ url_for('factures_bp.approuver_facture', facture_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Approuver cette facture ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn btn-sm btn-primary">Approuver</button>
