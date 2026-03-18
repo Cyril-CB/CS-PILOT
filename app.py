@@ -191,6 +191,7 @@ from blueprints.mise_a_jour import mise_a_jour_bp
 from blueprints.rh_statistiques import rh_statistiques_bp
 from blueprints.dashboard_responsable import dashboard_responsable_bp
 from blueprints.dashboard_comptable import dashboard_comptable_bp
+from blueprints.chatbot import chatbot_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -235,6 +236,7 @@ app.register_blueprint(bilan_secteurs_bp)
 app.register_blueprint(alsh_bp)
 app.register_blueprint(mise_a_jour_bp)
 app.register_blueprint(rh_statistiques_bp)
+app.register_blueprint(chatbot_bp)
 
 
 # ==================== Context Processors ====================
@@ -264,7 +266,7 @@ def invalidate_version_cache():
 def inject_pending_counts():
     """Injecte le nombre de demandes en attente dans tous les templates."""
     if 'user_id' not in session:
-        return {'pending_count': 0}
+        return {'pending_count': 0, 'chatbot_enabled': False}
 
     profil = session.get('profil', '')
     conn = None
@@ -291,9 +293,15 @@ def inject_pending_counts():
             row = {'nb': 0}
 
         count = row['nb'] if row else 0
-        return {'pending_count': count}
+        chatbot_on = False
+        try:
+            from utils import get_setting as _gs
+            chatbot_on = _gs('chatbot_model') is not None
+        except Exception:
+            pass
+        return {'pending_count': count, 'chatbot_enabled': chatbot_on}
     except Exception:
-        return {'pending_count': 0}
+        return {'pending_count': 0, 'chatbot_enabled': False}
     finally:
         if conn:
             conn.close()

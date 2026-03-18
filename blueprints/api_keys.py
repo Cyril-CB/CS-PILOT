@@ -160,7 +160,13 @@ def gestion_cles_api():
             'key_prefix': info['key_prefix'],
         }
 
-    return render_template('gestion_cles_api.html', providers=AI_PROVIDERS, providers_status=providers_status)
+    chatbot_model = get_setting('chatbot_model')
+    available_models = get_available_models()
+
+    return render_template('gestion_cles_api.html', providers=AI_PROVIDERS,
+                           providers_status=providers_status,
+                           chatbot_model=chatbot_model,
+                           available_models=available_models)
 
 
 @api_keys_bp.route('/api/api_keys/save', methods=['POST'])
