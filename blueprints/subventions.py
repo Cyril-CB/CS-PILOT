@@ -424,7 +424,7 @@ def api_upload_se_document(se_id):
         annee = se['annee_action'] or datetime.now().strftime('%Y')
         nom_sub = _normalize_filename(se['sub_nom'] or 'subvention')
         nom_se = _normalize_filename(se['nom'] or 'etape')
-        nom_fichier = f"{annee}_{nom_sub}_{nom_se}{ext}"
+        nom_fichier = f"{annee}_{nom_sub}_{nom_se}_{se_id}{ext}"
         chemin_complet = os.path.join(DOCUMENTS_DIR, nom_fichier)
 
         # Supprimer l'ancien document s'il existe
