@@ -134,7 +134,7 @@
                             </td>
                             {# ── Bénévoles ── #}
                             <td class="sv-col-select" onclick="editBenevoles(this, {{ sub.id }})">
-                                <span class="sv-benevoles-display" data-ids="{{ sub.benevoles_ids or '[]' }}">
+                                <span class="sv-benevoles-display" data-ids="{{ sub.benevoles_ids_json or '[]' }}">
                                     {% set ns_ben = namespace(found=false) %}
                                     {% for b in benevoles_list %}
                                         {% if b.id in (sub.benevoles_ids_parsed or []) %}

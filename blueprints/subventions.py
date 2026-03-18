@@ -95,12 +95,14 @@ def _parse_benevoles_ids(raw_value):
         return []
 
     ids = []
+    seen_ids = set()
     for value in values:
         try:
             ben_id = int(value)
         except (TypeError, ValueError):
             continue
-        if ben_id not in ids:
+        if ben_id not in seen_ids:
+            seen_ids.add(ben_id)
             ids.append(ben_id)
     return ids
 
@@ -155,7 +157,7 @@ def gestion_subventions():
         for s in subventions:
             s_dict = dict(s)
             parsed_benevoles_ids = _parse_benevoles_ids(s_dict.get('benevoles_ids'))
-            s_dict['benevoles_ids'] = json.dumps(parsed_benevoles_ids)
+            s_dict['benevoles_ids_json'] = json.dumps(parsed_benevoles_ids)
             s_dict['benevoles_ids_parsed'] = parsed_benevoles_ids
             subventions_data.append(s_dict)
 
