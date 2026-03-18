@@ -96,3 +96,28 @@ class TestSousElementDocumentNaming:
 
         assert not (tmp_path / se1['document_path']).exists()
         assert (tmp_path / se2['document_path']).exists()
+
+
+class TestSubventionsBenevolesRendering:
+    def test_benevoles_ids_sont_compares_exactement(self, app, db, admin_client, sample_users):
+        with app.app_context():
+            db.execute(
+                'INSERT INTO benevoles (id, nom, groupe) VALUES (?, ?, ?)',
+                (1, 'Benevole 1', 'nouveau')
+            )
+            db.execute(
+                'INSERT INTO benevoles (id, nom, groupe) VALUES (?, ?, ?)',
+                (10, 'Benevole 10', 'nouveau')
+            )
+            db.execute(
+                'INSERT INTO subventions (nom, benevoles_ids) VALUES (?, ?)',
+                ('Subvention test', '[10]')
+            )
+            db.commit()
+
+        response = admin_client.get('/subventions')
+        assert response.status_code == 200
+
+        html = response.get_data(as_text=True)
+        assert '<span class="sv-tag">Benevole 10</span>' in html
+        assert '<span class="sv-tag">Benevole 1</span>' not in html
