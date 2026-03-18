@@ -392,6 +392,14 @@ def _normalize_filename(text):
     return text
 
 
+def _sanitize_year_for_filename(year_value):
+    """Retourne une année sûre (4 chiffres) pour un nom de fichier."""
+    year_text = str(year_value or '').strip()
+    if re.fullmatch(r'\d{4}', year_text):
+        return year_text
+    return datetime.now().strftime('%Y')
+
+
 # ── Document sous-élément (upload / download) ──
 
 @subventions_bp.route('/api/subventions/sous-elements/<int:se_id>/document', methods=['POST'])
@@ -421,11 +429,19 @@ def api_upload_se_document(se_id):
         if not se:
             return jsonify({'ok': False, 'error': 'Sous-élément introuvable'}), 404
 
-        annee = se['annee_action'] or datetime.now().strftime('%Y')
+        annee = _sanitize_year_for_filename(se['annee_action'])
         nom_sub = _normalize_filename(se['sub_nom'] or 'subvention')
         nom_se = _normalize_filename(se['nom'] or 'etape')
         nom_fichier = f"{annee}_{nom_sub}_{nom_se}_{se_id}{ext}"
         chemin_complet = os.path.join(DOCUMENTS_DIR, nom_fichier)
+        chemin_reel = os.path.realpath(chemin_complet)
+        dossier_reel = os.path.realpath(DOCUMENTS_DIR)
+        try:
+            est_dans_documents = os.path.commonpath([chemin_reel, dossier_reel]) == dossier_reel
+        except ValueError:
+            est_dans_documents = False
+        if not est_dans_documents:
+            return jsonify({'ok': False, 'error': 'Nom de fichier invalide'}), 400
 
         # Supprimer l'ancien document s'il existe
         if se['document_path']:
