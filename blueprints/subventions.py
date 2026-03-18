@@ -79,6 +79,32 @@ def _normalize_sous_element_statut(statut):
     return SOUS_ELEMENT_STATUTS_ALIASES.get(statut_str, 'non_commence')
 
 
+def _parse_benevoles_ids(raw_value):
+    """Parse une liste JSON d'IDs de bénévoles en IDs entiers dédupliqués."""
+    if raw_value is None:
+        return []
+
+    values = raw_value
+    if isinstance(raw_value, str):
+        try:
+            values = json.loads(raw_value)
+        except (TypeError, ValueError):
+            return []
+
+    if not isinstance(values, list):
+        return []
+
+    ids = []
+    for value in values:
+        try:
+            ben_id = int(value)
+        except (TypeError, ValueError):
+            continue
+        if ben_id not in ids:
+            ids.append(ben_id)
+    return ids
+
+
 # ── Vue principale ──
 
 @subventions_bp.route('/subventions')
@@ -125,7 +151,15 @@ def gestion_subventions():
                 'SELECT * FROM subventions ORDER BY ordre, id'
             ).fetchall()
 
-        sub_ids = [s['id'] for s in subventions]
+        subventions_data = []
+        for s in subventions:
+            s_dict = dict(s)
+            parsed_benevoles_ids = _parse_benevoles_ids(s_dict.get('benevoles_ids'))
+            s_dict['benevoles_ids'] = json.dumps(parsed_benevoles_ids)
+            s_dict['benevoles_ids_parsed'] = parsed_benevoles_ids
+            subventions_data.append(s_dict)
+
+        sub_ids = [s['id'] for s in subventions_data]
         sous_elements = {}
         if sub_ids:
             placeholders = ','.join('?' * len(sub_ids))
@@ -140,7 +174,7 @@ def gestion_subventions():
 
         groupes_data = []
         for g in GROUPES:
-            lignes = [s for s in subventions if s['groupe'] == g['key']]
+            lignes = [s for s in subventions_data if s['groupe'] == g['key']]
             groupes_data.append({
                 'key': g['key'],
                 'label': g['label'],
