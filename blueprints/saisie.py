@@ -188,6 +188,34 @@ def saisie_heures():
                               'modification_apres_validation', 'suspect',
                               f"Modification après validation par {validation['validation_responsable']}",
                               anciennes_valeurs, nouvelles_valeurs))
+            else:
+                # 4. Détection gros écart à la création (vs planning théorique)
+                if type_saisie != 'recup_journee' and not declaration_conforme_val:
+                    date_saisie = datetime.strptime(date, '%Y-%m-%d')
+                    total_theorique = 0
+
+                    if date_saisie.weekday() != 6:  # Exclure dimanche
+                        type_periode = get_type_periode(date)
+                        planning = get_planning_valide_a_date(user_id_cible, type_periode, date)
+                        if planning:
+                            total_theorique = get_heures_theoriques_jour(planning, date_saisie.weekday())
+
+                    heures_apres = 0
+                    if heure_debut_matin and heure_fin_matin:
+                        heures_apres += calculer_heures(heure_debut_matin, heure_fin_matin)
+                    if heure_debut_aprem and heure_fin_aprem:
+                        heures_apres += calculer_heures(heure_debut_aprem, heure_fin_aprem)
+
+                    ecart = abs(heures_apres - total_theorique)
+                    if ecart > 3:
+                        conn.execute('''
+                            INSERT INTO anomalies 
+                            (user_id, date_modification, date_concernee, type_anomalie, gravite, description, ancienne_valeur, nouvelle_valeur)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (user_id_cible, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), date,
+                              'gros_changement_heures', 'alerte',
+                              f"Écart important à la création : {total_theorique:.2f}h théoriques → {heures_apres:.2f}h saisies (écart: {ecart:.2f}h)",
+                              anciennes_valeurs, nouvelles_valeurs))
             
             # Enregistrer la modification
             conn.execute('''
