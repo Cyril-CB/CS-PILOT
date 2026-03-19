@@ -10,6 +10,7 @@ from utils import (login_required, get_user_info, calculer_heures,
                    calculer_solde_recup)
 
 saisie_bp = Blueprint('saisie_bp', __name__)
+SEUIL_ECART_ANOMALIE_HEURES = 3
 
 
 @saisie_bp.route('/saisie_heures', methods=['GET', 'POST'])
@@ -160,7 +161,7 @@ def saisie_heures():
                         heures_apres += calculer_heures(heure_debut_aprem, heure_fin_aprem)
                     
                     ecart = abs(heures_apres - heures_avant)
-                    if ecart > 3:
+                    if ecart > SEUIL_ECART_ANOMALIE_HEURES:
                         # ANOMALIE ALERTE : Gros changement d'heures
                         conn.execute('''
                             INSERT INTO anomalies 
@@ -190,7 +191,8 @@ def saisie_heures():
                               anciennes_valeurs, nouvelles_valeurs))
             else:
                 # 4. Détection gros écart à la création (vs planning théorique)
-                if type_saisie != 'recup_journee' and not declaration_conforme_val:
+                est_declaration_conforme = declaration_conforme_val == 1
+                if type_saisie != 'recup_journee' and not est_declaration_conforme:
                     date_saisie = datetime.strptime(date, '%Y-%m-%d')
                     total_theorique = 0
 
@@ -207,7 +209,7 @@ def saisie_heures():
                         heures_apres += calculer_heures(heure_debut_aprem, heure_fin_aprem)
 
                     ecart = abs(heures_apres - total_theorique)
-                    if ecart > 3:
+                    if ecart > SEUIL_ECART_ANOMALIE_HEURES:
                         conn.execute('''
                             INSERT INTO anomalies 
                             (user_id, date_modification, date_concernee, type_anomalie, gravite, description, ancienne_valeur, nouvelle_valeur)
