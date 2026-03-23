@@ -308,14 +308,29 @@ def api_bilan_donnees():
         pcg = _get_libelles_pcg(conn)
         data_n = _bilan_for_year(conn, annee, pcg)
         data_n1 = _bilan_for_year(conn, annee - 1, pcg)
+
+        # has_bilan = True uniquement s'il y a des comptes de bilan réels (1x-5x)
+        # dans le BI importé — évalué avant l'injection du résultat synthétique.
         has_n = bool(
-            data_n['actif_immo'] or data_n['passif_capitaux']
-            or data_n['actif_tresorerie']
+            data_n['actif_immo'] or data_n['actif_stocks']
+            or data_n['actif_tiers'] or data_n['actif_tresorerie']
+            or data_n['passif_capitaux'] or data_n['passif_dettes_expl']
         )
         has_n1 = bool(
-            data_n1['actif_immo'] or data_n1['passif_capitaux']
-            or data_n1['actif_tresorerie']
+            data_n1['actif_immo'] or data_n1['actif_stocks']
+            or data_n1['actif_tiers'] or data_n1['actif_tresorerie']
+            or data_n1['passif_capitaux'] or data_n1['passif_dettes_expl']
         )
+
+        # Injecter le résultat de l'exercice dans le passif (compte 12x)
+        # pour équilibrer actif = passif — seulement si le bilan existe.
+        if has_n:
+            cr_n = _cr_for_year(conn, annee, pcg)
+            _inject_resultat_exercice(data_n, cr_n['resultat'])
+        if has_n1:
+            cr_n1 = _cr_for_year(conn, annee - 1, pcg)
+            _inject_resultat_exercice(data_n1, cr_n1['resultat'])
+
         return jsonify({
             'annee': annee,
             'n': data_n,

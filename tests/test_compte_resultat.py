@@ -151,9 +151,15 @@ class TestApiCrBilanDonnees:
         data = resp.get_json()
         assert data['has_bilan'] is True
         n = data['n']
-        assert n['total_passif_capitaux'] == pytest.approx(80000.0)
+        # Le résultat (produits 60 000 − charges 55 000 = +5 000) doit être injecté
+        # en compte 120000 dans passif_capitaux (classe 12).
+        assert n['total_passif_capitaux'] == pytest.approx(85000.0)  # 80000 + 5000
+        assert n['total_passif'] == pytest.approx(85000.0)
         assert n['total_actif_immo'] == pytest.approx(30000.0)
         assert n['total_actif_tresorerie'] == pytest.approx(25000.0)
+        # Vérifier que le compte 120000 est présent dans passif_capitaux['12']
+        assert '12' in n['passif_capitaux']
+        assert '120000' in n['passif_capitaux']['12']['comptes']
 
 
 # ── Tests page indicateurs-financiers ────────────────────────────────────────
@@ -186,9 +192,10 @@ class TestApiIndicateursDonnees:
         assert len(data['indicateurs']) == 1
         indic = data['indicateurs'][0]
         assert indic['annee'] == annee
-        assert indic['capitaux_permanents'] == pytest.approx(80000.0)
+        # capitaux permanents = comptes 1x (80 000) + résultat (60 000 − 55 000 = +5 000)
+        assert indic['capitaux_permanents'] == pytest.approx(85000.0)
         assert indic['immobilisations_nettes'] == pytest.approx(30000.0)
-        assert indic['fonds_roulement'] == pytest.approx(50000.0)
+        assert indic['fonds_roulement'] == pytest.approx(55000.0)  # 85000 − 30000
         assert indic['tresorerie'] == pytest.approx(25000.0)
         assert indic['masse_salariale'] == pytest.approx(50000.0)
         assert indic['pct_masse_salariale'] == pytest.approx(90.9, abs=0.1)
@@ -196,6 +203,50 @@ class TestApiIndicateursDonnees:
     def test_indicateurs_acces_refuse(self, app, db, auth_client, sample_users):
         resp = auth_client.get('/api/indicateurs/donnees')
         assert resp.status_code == 403
+
+    def test_masse_salariale_inclut_tous_comptes_64(self, app, db, comptable_client, sample_users):
+        """Tous les comptes 64xxxx (brut 641, cotisations sociales 645, etc.)
+        doivent être inclus dans la masse salariale."""
+        annee = datetime.now().year
+        with app.app_context():
+            import database
+            conn = database.get_db()
+            conn.execute(
+                "INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES (?, ?, ?)",
+                (f'bi_{annee}.txt', annee, 3)
+            )
+            import_id = conn.execute(
+                'SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1'
+            ).fetchone()['id']
+            # 641xxx : salaires bruts
+            conn.execute(
+                "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('641000', 'Salaires bruts', '', annee, 1, 40000.0, import_id)
+            )
+            # 645xxx : cotisations sociales patronales
+            conn.execute(
+                "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('645000', 'Cotisations sociales', '', annee, 1, 15000.0, import_id)
+            )
+            # 622xxx : honoraires (hors masse salariale)
+            conn.execute(
+                "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('622000', 'Honoraires', '', annee, 1, 5000.0, import_id)
+            )
+            conn.commit()
+            conn.close()
+        resp = comptable_client.get('/api/indicateurs/donnees')
+        data = resp.get_json()
+        indic = data['indicateurs'][0]
+        # masse salariale = 641000 (40 000) + 645000 (15 000) = 55 000
+        assert indic['masse_salariale'] == pytest.approx(55000.0)
+        # total charges = 40 000 + 15 000 + 5 000 = 60 000
+        assert indic['total_charges'] == pytest.approx(60000.0)
+        # pct = 55000 / 60000 * 100 ≈ 91.7 %
+        assert indic['pct_masse_salariale'] == pytest.approx(91.7, abs=0.1)
 
 
 class TestApiFondsRoulementDetail:
@@ -211,12 +262,16 @@ class TestApiFondsRoulementDetail:
         assert resp.status_code == 200
         data = resp.get_json()
         assert data['annee'] == annee
-        assert data['total_capitaux'] == pytest.approx(80000.0)
+        # total_capitaux = comptes 1x (80 000) + résultat (5 000) = 85 000
+        assert data['total_capitaux'] == pytest.approx(85000.0)
         assert data['total_immos'] == pytest.approx(30000.0)
-        assert data['fonds_roulement'] == pytest.approx(50000.0)
+        assert data['fonds_roulement'] == pytest.approx(55000.0)  # 85000 − 30000
         assert data['fr_mois'] is not None
-        assert data['fr_mois'] == pytest.approx(50000 / (55000 / 12), abs=0.1)
-        assert len(data['capitaux_rows']) >= 1
+        # fr_mois = 55000 / (55000 / 12) = 12.0
+        assert data['fr_mois'] == pytest.approx(12.0, abs=0.1)
+        # La ligne synthétique résultat (120000) doit figurer dans capitaux_rows
+        comptes_cap = [r['compte_num'] for r in data['capitaux_rows']]
+        assert '120000' in comptes_cap
         assert len(data['immo_rows']) >= 1
 
     def test_fr_acces_refuse(self, app, db, auth_client, sample_users):

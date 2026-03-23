@@ -38,6 +38,7 @@ def _compute_indicateurs(conn, annee):
     immos = 0.0
     tresorerie = 0.0
     total_charges = 0.0
+    total_produits = 0.0
     masse_salariale = 0.0
 
     for r in rows:
@@ -54,8 +55,15 @@ def _compute_indicateurs(conn, annee):
             tresorerie += montant        # débit-normal  : positif = disponibilités
         elif premier == '6':
             total_charges += montant     # débit-normal  : positif = charge
-            if compte.startswith('641'):
+            if compte.startswith('64'):
                 masse_salariale += montant
+        elif premier == '7':
+            total_produits += montant    # crédit-normal : positif = produit
+
+    # Le résultat de l'exercice (7x − 6x) appartient aux capitaux permanents (12x).
+    # Il n'est pas dans les comptes 1x du BI (entrée de clôture), on l'injecte ici.
+    resultat = total_produits - total_charges
+    capitaux += resultat
 
     charges_mensuelles = total_charges / 12 if total_charges else 0
     fonds_roulement = capitaux - immos
@@ -172,15 +180,36 @@ def api_fonds_roulement_detail():
 
         total_capitaux = round(sum(r['montant'] for r in capitaux_rows), 2)
         total_immos = round(sum(r['montant'] for r in immo_rows), 2)
-        fonds_roulement = round(total_capitaux - total_immos, 2)
 
-        # Charges totales pour le ratio en mois
+        # Charges et produits pour le résultat de l'exercice
         row_charges = conn.execute(
             "SELECT SUM(montant) as total FROM bilan_fec_donnees "
             "WHERE annee = ? AND compte_num LIKE '6%'",
             (annee,)
         ).fetchone()
         total_charges = float(row_charges['total'] or 0)
+
+        row_produits = conn.execute(
+            "SELECT SUM(montant) as total FROM bilan_fec_donnees "
+            "WHERE annee = ? AND compte_num LIKE '7%'",
+            (annee,)
+        ).fetchone()
+        total_produits = float(row_produits['total'] or 0)
+
+        # Le résultat (7x − 6x) s'ajoute aux capitaux permanents (compte 12x)
+        resultat = round(total_produits - total_charges, 2)
+        if resultat != 0:
+            compte_res = '120000' if resultat > 0 else '129000'
+            lib_res = ('Résultat exercice créditeur' if resultat > 0
+                       else 'Résultat exercice débiteur')
+            capitaux_rows.append({
+                'compte_num': compte_res,
+                'libelle': lib_res,
+                'montant': resultat,
+            })
+            total_capitaux = round(total_capitaux + resultat, 2)
+
+        fonds_roulement = round(total_capitaux - total_immos, 2)
         charges_mensuelles = round(total_charges / 12, 2) if total_charges else 0
         fr_mois = (round(fonds_roulement / charges_mensuelles, 2)
                    if charges_mensuelles else None)
