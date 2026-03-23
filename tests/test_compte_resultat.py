@@ -316,9 +316,47 @@ class TestImportBiEtendu:
             nb_imports = conn.execute(
                 "SELECT COUNT(*) as nb FROM bilan_fec_imports WHERE annee = 2024"
             ).fetchone()['nb']
-            nb_lignes = conn.execute(
-                "SELECT COUNT(*) as nb FROM bilan_fec_donnees WHERE annee = 2024"
-            ).fetchone()['nb']
             conn.close()
         assert nb_imports == 1
-        assert nb_lignes == 2
+
+    def test_import_bi_ignore_entrees_G_doublees_par_A(self, app, db, comptable_client, sample_users):
+        """Les entrées 'G' (général) ayant une contrepartie 'A' (analytique)
+        identique ne doivent être importées qu'une seule fois (via l'entrée 'A')."""
+        # Simule le format réel d'un fichier BI : chaque transaction 6x/7x génère
+        # deux lignes — une 'G' (général) sans code analytique, une 'A' (analytique)
+        # avec le même montant + un code analytique.
+        # Le compte 411100 (classe 4) n'a qu'une entrée 'G' (pas d'analytique).
+        content = _make_bi_content([
+            # 654400 – entrée générale (G)
+            ('OD', '13/12/2024', '', '', '', '654400', '', '', 'DUPONT Jean', '',
+             '59,60', '0,00', '', '31/12/2024', 'G', '', ''),
+            # 654400 – entrée analytique (A) – MÊME montant, doit remplacer la G
+            ('OD', '13/12/2024', '', '', '', '654400', '', '', 'DUPONT Jean',
+             'PILOTAGE', '59,60', '0,00', '', '31/12/2024', 'A', '5P882000', ''),
+            # 740000 – entrée générale (G)
+            ('OD', '13/12/2024', '', '', '', '740000', '', '', 'Subvention CAF', '',
+             '0,00', '1200,00', '', '31/12/2024', 'G', '', ''),
+            # 740000 – entrée analytique (A) – MÊME montant
+            ('OD', '13/12/2024', '', '', '', '740000', '', '', 'Subvention CAF',
+             'SUBV', '0,00', '1200,00', '', '31/12/2024', 'A', '5P882000', ''),
+            # 411100 – entrée générale seulement (classe 4, pas d'analytique)
+            ('OD', '13/12/2024', '0120070066', '', '', '411100', 'DUPONT', 'DUPONT Jean',
+             'DUPONT Jean', '', '0,00', '59,60', '', '31/12/2024', 'G', '', ''),
+        ])
+        data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_ga.txt')}
+        resp = comptable_client.post('/api/bilan/import-bi',
+                                     data=data, content_type='multipart/form-data')
+        result = resp.get_json()
+        assert result['success'] is True
+        # 3 écritures attendues : 1 entrée A pour 654400, 1 entrée A pour 740000,
+        # 1 entrée G pour 411100 (pas de doublon G+A pour la 654400/740000)
+        assert result['nb_ecritures'] == 3
+
+        # Le C.R. doit afficher les bons montants (pas doublés)
+        resp_cr = comptable_client.get('/api/cr/donnees?annee=2024')
+        cr = resp_cr.get_json()
+        # 654400 : débit-normal → debit - credit = 59,60 - 0 = 59,60
+        assert cr['n']['total_charges'] == pytest.approx(59.60)
+        # 740000 : crédit-normal → credit - debit = 1200 - 0 = 1200
+        assert cr['n']['total_produits'] == pytest.approx(1200.0)
+

@@ -133,7 +133,41 @@ def api_import_bi():
     else:
         delimiter = '\t'
 
-    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+    # Lire toutes les lignes en mémoire pour le traitement en deux passes.
+    # Les fichiers BI contiennent deux lignes par écriture 6x/7x :
+    #   - type 'G' (général)    : pas de code analytique
+    #   - type 'A' (analytique) : même montant + code analytique
+    # Importer les deux doublerait les totaux du Compte de Résultat.
+    # Solution : on ignore les entrées 'G' qui ont une contrepartie 'A'
+    # identique (même compte, date, montants, libellé).
+    all_rows_raw = list(csv.DictReader(io.StringIO(content), delimiter=delimiter))
+
+    def _type_ecriture(row):
+        return (row.get("Type d'écriture")
+                or row.get("Type d ecriture")
+                or row.get("Type d'ecriture")
+                or '').strip().upper()
+
+    def _cle_ga(row):
+        """Clé de correspondance G↔A : compte + date + montants bruts + libellé."""
+        return (
+            (row.get('Numéro de compte général')
+             or row.get('Numero de compte general') or '').strip(),
+            (row.get('Date de pièce')
+             or row.get('Date de piece') or '').strip(),
+            (row.get('Montant Débit')
+             or row.get('Montant Debit') or '').strip(),
+            (row.get('Montant Crédit')
+             or row.get('Montant Credit') or '').strip(),
+            (row.get('Libellé écriture')
+             or row.get('Libelle ecriture') or '').strip(),
+        )
+
+    # Première passe : collecter les clés de toutes les entrées analytiques ('A')
+    cles_analytiques = set()
+    for row in all_rows_raw:
+        if _type_ecriture(row) == 'A':
+            cles_analytiques.add(_cle_ga(row))
 
     conn = get_db()
     try:
@@ -141,7 +175,12 @@ def api_import_bi():
         annee_val = None
         rows_to_insert = []
 
-        for row in reader:
+        # Deuxième passe : traiter les lignes en ignorant les entrées générales
+        # ('G') qui ont une contrepartie analytique ('A') pour éviter les doublons.
+        for row in all_rows_raw:
+            if _type_ecriture(row) == 'G' and _cle_ga(row) in cles_analytiques:
+                continue
+
             # Colonnes BI
             compte_num = (row.get('Numéro de compte général')
                           or row.get('Numero de compte general')
