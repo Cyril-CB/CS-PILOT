@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Import BI - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+.bi-table { width:100%; border-collapse:collapse; font-size:.93em; }
+.bi-table th, .bi-table td { padding:10px 12px; border-bottom:1px solid var(--gray-200,#e9ecef); vertical-align:middle; }
+.bi-table th { background:var(--bg-secondary,#f8f9fa); font-weight:600; white-space:nowrap; }
+.bi-table tr:hover td { background:var(--gray-050,#fafbfc); }
+.bi-table .num { text-align:right; white-space:nowrap; }
+.badge-complet { display:inline-block; padding:3px 10px; border-radius:12px; background:rgba(25,135,84,.15); color:var(--success,#198754); font-weight:600; font-size:.88em; }
+.badge-partiel { display:inline-block; padding:3px 10px; border-radius:12px; background:rgba(255,193,7,.2); color:#856404; font-weight:600; font-size:.88em; }
+.no-data-msg { text-align:center; color:var(--text-muted,#6c757d); padding:40px 0; }
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2>📥 Import BI</h2>
+    <button class="btn btn-primary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer un fichier BI</button>
+</div>
+
+<p style="margin:12px 0 20px;color:var(--text-muted,#6c757d);">
+    Importez les exports BI de votre logiciel comptable (CSV/TSV).
+    Les comptes <strong>6x/7x</strong> (compte de résultat) et <strong>1x–5x</strong> (bilan) sont extraits automatiquement.
+    Un import sur une année déjà existante remplace les données précédentes.
+</p>
+
+{# ── Tableau des années importées ── #}
+{% if annees_importees %}
+<div style="overflow-x:auto;">
+<table class="bi-table">
+    <thead>
+        <tr>
+            <th>Année</th>
+            <th>Couverture</th>
+            <th class="num">Écritures</th>
+            <th>Dernier import</th>
+            <th style="width:80px;"></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for a in annees_importees %}
+    <tr id="row-{{ a.annee }}">
+        <td><strong>{{ a.annee }}</strong></td>
+        <td>
+            {% if a.periode == 'Complet' %}
+                <span class="badge-complet">✅ Complet</span>
+            {% else %}
+                <span class="badge-partiel">📅 {{ a.periode }}</span>
+            {% endif %}
+        </td>
+        <td class="num">{{ '{:,}'.format(a.nb_ecritures or 0).replace(',', '\u202f') }}</td>
+        <td style="color:var(--text-muted,#6c757d);font-size:.9em;">{{ a.date_import or '—' }}</td>
+        <td style="text-align:center;">
+            <button class="btn btn-danger btn-sm" onclick="supprimerAnnee({{ a.annee }})"
+                    title="Supprimer les données {{ a.annee }}">🗑️</button>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="no-data-msg">
+    <p style="font-size:1.1em;">Aucun import BI disponible.</p>
+    <p>Cliquez sur <strong>Importer un fichier BI</strong> pour commencer.</p>
+</div>
+{% endif %}
+
+{# ── Modal Import BI ── #}
+<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:520px;">
+        <div class="modal-header">
+            <h3>📥 Importer un export BI</h3>
+            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
+            <p>Importez un export BI de la comptabilité (CSV/TSV).<br>
+            Les comptes <strong>6x/7x</strong> (compte de résultat) et
+            <strong>1x–5x</strong> (bilan) seront extraits automatiquement.<br>
+            <em style="color:var(--text-muted);">Si l'année existe déjà, les données seront remplacées.</em></p>
+            <form id="importBiForm" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label>Fichier BI</label>
+                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
+                </div>
+                <div id="importProgress" style="display:none;margin-top:10px;color:var(--text-muted);">
+                    ⏳ Import en cours…
+                </div>
+                <div style="margin-top:16px;text-align:right;">
+                    <button type="button" class="btn btn-secondary"
+                            onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="btnImporter">Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('importBiForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    document.getElementById('importProgress').style.display = 'block';
+    document.getElementById('btnImporter').disabled = true;
+    var fd = new FormData(this);
+    fetch('/api/bilan/import-bi', {method: 'POST', body: fd})
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('importProgress').style.display = 'none';
+            document.getElementById('btnImporter').disabled = false;
+            if (data.success) {
+                alert('✅ ' + data.message);
+                location.reload();
+            } else {
+                alert('❌ ' + (data.error || 'Erreur lors de l\'import.'));
+            }
+        })
+        .catch(() => {
+            document.getElementById('importProgress').style.display = 'none';
+            document.getElementById('btnImporter').disabled = false;
+            alert('❌ Erreur réseau.');
+        });
+});
+
+function supprimerAnnee(annee) {
+    if (!confirm('Supprimer toutes les données BI de l\'année ' + annee + ' ?\nCette action est irréversible.')) return;
+    fetch('/api/bilan/annee/' + annee, {method: 'DELETE'})
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('✅ ' + data.message);
+                var row = document.getElementById('row-' + annee);
+                if (row) row.remove();
+                // Si le tableau est vide, recharger
+                var tbody = document.querySelector('.bi-table tbody');
+                if (tbody && tbody.querySelectorAll('tr').length === 0) location.reload();
+            } else {
+                alert('❌ ' + (data.error || 'Erreur lors de la suppression.'));
+            }
+        })
+        .catch(() => alert('❌ Erreur réseau.'));
+}
+</script>
+{% endblock %}

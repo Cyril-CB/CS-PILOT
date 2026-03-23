@@ -43,8 +43,7 @@
                 <option value="{{ annee_courante }}">{{ annee_courante }}</option>
             {% endif %}
         </select>
-        <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
-        <button class="btn btn-secondary" onclick="window.print()">📄 Export PDF</button>
+        <a id="btnExportPdf" href="#" class="btn btn-secondary">📄 Export PDF</a>
     </div>
 </div>
 
@@ -68,32 +67,6 @@
 {# ── Onglet Bilan ── #}
 <div id="tab-bilan" style="display:none;padding-top:20px;">
     <div id="bilanContent"><p class="no-data-msg">Chargement…</p></div>
-</div>
-
-{# ── Modal Import BI ── #}
-<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
-    <div class="modal-content" style="max-width:500px;">
-        <div class="modal-header">
-            <h3>📥 Importer un export BI</h3>
-            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
-        </div>
-        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
-            <p>Importez un export BI de la comptabilité (CSV/TSV).<br>
-            Les comptes <strong>6x/7x</strong> (compte de résultat) et
-            <strong>1x–5x</strong> (bilan) seront extraits automatiquement.</p>
-            <form id="importBiForm" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label>Fichier BI</label>
-                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
-                </div>
-                <div style="margin-top:16px;text-align:right;">
-                    <button type="button" class="btn btn-secondary"
-                            onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Importer</button>
-                </div>
-            </form>
-        </div>
-    </div>
 </div>
 
 <script>
@@ -378,20 +351,11 @@ function buildBilanHtml(data) {
     return html;
 }
 
-// ── Import BI ────────────────────────────────────────────────────────────────
-document.getElementById('importBiForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var fd = new FormData(this);
-    fetch('/api/bilan/import-bi', {method:'POST', body:fd})
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) { alert(data.message); location.reload(); }
-            else alert(data.error || 'Erreur import.');
-        })
-        .catch(() => alert('Erreur réseau.'));
-});
-
 // ── Init ─────────────────────────────────────────────────────────────────────
+document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + document.getElementById('filtreAnnee').value;
+document.getElementById('filtreAnnee').addEventListener('change', function() {
+    document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + this.value;
+});
 chargerCR();
 </script>
 {% endblock %}

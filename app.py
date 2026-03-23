@@ -194,6 +194,7 @@ from blueprints.dashboard_comptable import dashboard_comptable_bp
 from blueprints.chatbot import chatbot_bp
 from blueprints.compte_resultat import compte_resultat_bp
 from blueprints.indicateurs_financiers import indicateurs_financiers_bp
+from blueprints.import_bi import import_bi_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -241,6 +242,7 @@ app.register_blueprint(rh_statistiques_bp)
 app.register_blueprint(chatbot_bp)
 app.register_blueprint(compte_resultat_bp)
 app.register_blueprint(indicateurs_financiers_bp)
+app.register_blueprint(import_bi_bp)
 
 
 # ==================== Context Processors ====================
