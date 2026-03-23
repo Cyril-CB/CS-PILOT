@@ -229,17 +229,27 @@ class TestApiFondsRoulementDetail:
 
 class TestImportBiEtendu:
     def test_import_comptes_1x_captures(self, app, db, comptable_client, sample_users):
+        # Comptes 1x/2x/5x : pas de code analytique (G seulement) → importés tels quels.
+        # Comptes 6x/7x : seules les lignes avec code analytique sont importées.
         content = _make_bi_content([
             ('OD', '31/12/2024', 'OD001', '', '', '106000', '', '', 'Réserves', '',
-             '0', '50000', '', '', '', '', ''),
+             '0', '50000', '', '', 'G', '', ''),
             ('OD', '31/12/2024', 'OD002', '', '', '215000', '', '', 'Matériel bureau', '',
-             '20000', '0', '', '', '', '', ''),
+             '20000', '0', '', '', 'G', '', ''),
             ('OD', '31/12/2024', 'OD003', '', '', '512000', '', '', 'Banque', '',
-             '15000', '0', '', '', '', '', ''),
+             '15000', '0', '', '', 'G', '', ''),
+            # Ligne G pour 641000 → ignorée (6x sans code analytique)
             ('OD', '31/12/2024', 'OD004', '', '', '641000', '', '', 'Salaires', '',
-             '30000', '0', '', '', '', '', ''),
+             '30000', '0', '', '', 'G', '', ''),
+            # Ligne A pour 641000 → importée (6x avec code analytique)
+            ('OD', '31/12/2024', 'OD004', '', '', '641000', '', '', 'Salaires',
+             'PILOTAGE', '30000', '0', '', '', 'A', 'ANA001', ''),
+            # Ligne G pour 740000 → ignorée (7x sans code analytique)
             ('OD', '31/12/2024', 'OD005', '', '', '740000', '', '', 'Subvention', '',
-             '0', '35000', '', '', '', '', ''),
+             '0', '35000', '', '', 'G', '', ''),
+            # Ligne A pour 740000 → importée (7x avec code analytique)
+            ('OD', '31/12/2024', 'OD005', '', '', '740000', '', '', 'Subvention',
+             'SUBV', '0', '35000', '', '', 'A', 'ANA002', ''),
         ])
         data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_2024.txt')}
         resp = comptable_client.post('/api/bilan/import-bi',
@@ -247,6 +257,7 @@ class TestImportBiEtendu:
         assert resp.status_code == 200
         result = resp.get_json()
         assert result['success'] is True
+        # 3 lignes bilan (1x/2x/5x) + 1 ligne analytique 641000 + 1 ligne analytique 740000 = 5
         assert result['nb_ecritures'] == 5
         # Vérifier les montants en base
         with app.app_context():
@@ -271,9 +282,10 @@ class TestImportBiEtendu:
     def test_import_ignore_classes_89(self, app, db, comptable_client, sample_users):
         content = _make_bi_content([
             ('OD', '31/12/2024', 'OD001', '', '', '890000', '', '', 'Bilan ouverture', '',
-             '0', '100000', '', '', '', '', ''),
-            ('OD', '31/12/2024', 'OD002', '', '', '641000', '', '', 'Salaires', '',
-             '40000', '0', '', '', '', '', ''),
+             '0', '100000', '', '', 'G', '', ''),
+            # 641000 avec code analytique → importé
+            ('OD', '31/12/2024', 'OD002', '', '', '641000', '', '', 'Salaires',
+             'PILOTAGE', '40000', '0', '', '', 'A', 'ANA001', ''),
         ])
         data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_test.txt')}
         resp = comptable_client.post('/api/bilan/import-bi',
@@ -287,10 +299,12 @@ class TestImportBiEtendu:
     def test_reimport_meme_annee_ne_double_pas(self, app, db, comptable_client, sample_users):
         """Un ré-import pour la même année remplace les données (pas de doublon)."""
         content = _make_bi_content([
-            ('OD', '31/12/2024', 'OD001', '', '', '641000', '', '', 'Salaires', '',
-             '40000', '0', '', '', '', '', ''),
-            ('OD', '31/12/2024', 'OD002', '', '', '740000', '', '', 'Subvention', '',
-             '0', '50000', '', '', '', '', ''),
+            # 641000 avec code analytique (seule forme acceptée pour les 6x)
+            ('OD', '31/12/2024', 'OD001', '', '', '641000', '', '', 'Salaires',
+             'PILOTAGE', '40000', '0', '', '', 'A', 'ANA001', ''),
+            # 740000 avec code analytique (seule forme acceptée pour les 7x)
+            ('OD', '31/12/2024', 'OD002', '', '', '740000', '', '', 'Subvention',
+             'SUBV', '0', '50000', '', '', 'A', 'ANA002', ''),
         ])
         data1 = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_2024_v1.txt')}
         resp1 = comptable_client.post('/api/bilan/import-bi',
@@ -319,27 +333,24 @@ class TestImportBiEtendu:
             conn.close()
         assert nb_imports == 1
 
-    def test_import_bi_ignore_entrees_G_doublees_par_A(self, app, db, comptable_client, sample_users):
-        """Les entrées 'G' (général) ayant une contrepartie 'A' (analytique)
-        identique ne doivent être importées qu'une seule fois (via l'entrée 'A')."""
-        # Simule le format réel d'un fichier BI : chaque transaction 6x/7x génère
-        # deux lignes — une 'G' (général) sans code analytique, une 'A' (analytique)
-        # avec le même montant + un code analytique.
-        # Le compte 411100 (classe 4) n'a qu'une entrée 'G' (pas d'analytique).
+    def test_import_bi_ignore_entrees_6x7x_sans_analytique(self, app, db, comptable_client, sample_users):
+        """Les entrées 6x/7x sans code analytique (lignes 'G') sont ignorées.
+        Seules les lignes 6x/7x avec un code analytique (lignes 'A') sont importées.
+        Les comptes 1x-5x sans code analytique sont toujours importés."""
         content = _make_bi_content([
-            # 654400 – entrée générale (G)
+            # 654400 – ligne G (sans code analytique) → IGNORÉE
             ('OD', '13/12/2024', '', '', '', '654400', '', '', 'DUPONT Jean', '',
              '59,60', '0,00', '', '31/12/2024', 'G', '', ''),
-            # 654400 – entrée analytique (A) – MÊME montant, doit remplacer la G
+            # 654400 – ligne A (avec code analytique) → IMPORTÉE
             ('OD', '13/12/2024', '', '', '', '654400', '', '', 'DUPONT Jean',
-             'PILOTAGE', '59,60', '0,00', '', '31/12/2024', 'A', '5P882000', ''),
-            # 740000 – entrée générale (G)
+             'PILOTAGE NON ELIGIBLE', '59,60', '0,00', '', '31/12/2024', 'A', '5P882000', ''),
+            # 740000 – ligne G (sans code analytique) → IGNORÉE
             ('OD', '13/12/2024', '', '', '', '740000', '', '', 'Subvention CAF', '',
              '0,00', '1200,00', '', '31/12/2024', 'G', '', ''),
-            # 740000 – entrée analytique (A) – MÊME montant
+            # 740000 – ligne A (avec code analytique) → IMPORTÉE
             ('OD', '13/12/2024', '', '', '', '740000', '', '', 'Subvention CAF',
              'SUBV', '0,00', '1200,00', '', '31/12/2024', 'A', '5P882000', ''),
-            # 411100 – entrée générale seulement (classe 4, pas d'analytique)
+            # 411100 (classe 4) – ligne G seulement, pas d'analytique → IMPORTÉE
             ('OD', '13/12/2024', '0120070066', '', '', '411100', 'DUPONT', 'DUPONT Jean',
              'DUPONT Jean', '', '0,00', '59,60', '', '31/12/2024', 'G', '', ''),
         ])
@@ -348,8 +359,7 @@ class TestImportBiEtendu:
                                      data=data, content_type='multipart/form-data')
         result = resp.get_json()
         assert result['success'] is True
-        # 3 écritures attendues : 1 entrée A pour 654400, 1 entrée A pour 740000,
-        # 1 entrée G pour 411100 (pas de doublon G+A pour la 654400/740000)
+        # 1 ligne A pour 654400 + 1 ligne A pour 740000 + 1 ligne G pour 411100 = 3
         assert result['nb_ecritures'] == 3
 
         # Le C.R. doit afficher les bons montants (pas doublés)

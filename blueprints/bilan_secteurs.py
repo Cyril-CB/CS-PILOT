@@ -133,41 +133,7 @@ def api_import_bi():
     else:
         delimiter = '\t'
 
-    # Lire toutes les lignes en mémoire pour le traitement en deux passes.
-    # Les fichiers BI contiennent deux lignes par écriture 6x/7x :
-    #   - type 'G' (général)    : pas de code analytique
-    #   - type 'A' (analytique) : même montant + code analytique
-    # Importer les deux doublerait les totaux du Compte de Résultat.
-    # Solution : on ignore les entrées 'G' qui ont une contrepartie 'A'
-    # identique (même compte, date, montants, libellé).
-    all_rows_raw = list(csv.DictReader(io.StringIO(content), delimiter=delimiter))
-
-    def _type_ecriture(row):
-        return (row.get("Type d'écriture")
-                or row.get("Type d ecriture")
-                or row.get("Type d'ecriture")
-                or '').strip().upper()
-
-    def _cle_ga(row):
-        """Clé de correspondance G↔A : compte + date + montants bruts + libellé."""
-        return (
-            (row.get('Numéro de compte général')
-             or row.get('Numero de compte general') or '').strip(),
-            (row.get('Date de pièce')
-             or row.get('Date de piece') or '').strip(),
-            (row.get('Montant Débit')
-             or row.get('Montant Debit') or '').strip(),
-            (row.get('Montant Crédit')
-             or row.get('Montant Credit') or '').strip(),
-            (row.get('Libellé écriture')
-             or row.get('Libelle ecriture') or '').strip(),
-        )
-
-    # Première passe : collecter les clés de toutes les entrées analytiques ('A')
-    cles_analytiques = set()
-    for row in all_rows_raw:
-        if _type_ecriture(row) == 'A':
-            cles_analytiques.add(_cle_ga(row))
+    reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
 
     conn = get_db()
     try:
@@ -175,12 +141,7 @@ def api_import_bi():
         annee_val = None
         rows_to_insert = []
 
-        # Deuxième passe : traiter les lignes en ignorant les entrées générales
-        # ('G') qui ont une contrepartie analytique ('A') pour éviter les doublons.
-        for row in all_rows_raw:
-            if _type_ecriture(row) == 'G' and _cle_ga(row) in cles_analytiques:
-                continue
-
+        for row in reader:
             # Colonnes BI
             compte_num = (row.get('Numéro de compte général')
                           or row.get('Numero de compte general')
@@ -232,6 +193,15 @@ def api_import_bi():
             code_analytique = (row.get('Compte analytique')
                                or row.get('Compte Analytique')
                                or '').strip()
+
+            # Règle métier : les comptes 6x/7x ont toujours une double entrée
+            # dans le BI — une ligne 'G' (général, sans code analytique) et une
+            # ligne 'A' (analytique, avec code analytique et même montant).
+            # On n'importe que la ligne analytique ('A') pour éviter le doublon.
+            # Les comptes 1x-5x n'ont jamais de code analytique : on les importe
+            # tels quels.
+            if premier in ('6', '7') and not code_analytique:
+                continue
 
             if annee_val is None:
                 annee_val = annee
