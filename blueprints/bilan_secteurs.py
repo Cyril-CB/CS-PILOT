@@ -149,9 +149,10 @@ def api_import_bi():
             if not compte_num:
                 continue
 
-            # Ne garder que les comptes 6x (charges) et 7x (produits)
+            # Classes 1-7 : bilan (1-5) et compte de résultat (6-7)
+            # Les classes 8, 9 et 0 sont ignorées (analytique, hors bilan)
             premier = compte_num[0] if compte_num else ''
-            if premier not in ('6', '7'):
+            if premier not in ('1', '2', '3', '4', '5', '6', '7'):
                 continue
 
             date_str = (row.get('Date de pièce')
@@ -178,12 +179,13 @@ def api_import_bi():
                 debit = 0
                 credit = 0
 
-            # Pour les charges (6x) : montant = debit - credit (positif = charge)
-            # Pour les produits (7x) : montant = credit - debit (positif = produit)
-            if premier == '6':
-                montant = debit - credit
-            else:
+            # Calcul du montant selon la nature du compte :
+            # - Comptes débit-normal (2, 3, 4, 5, 6) : debit - credit
+            # - Comptes crédit-normal (1, 7)          : credit - debit
+            if premier in ('1', '7'):
                 montant = credit - debit
+            else:
+                montant = debit - credit
 
             libelle = (row.get('Libellé écriture')
                        or row.get('Libelle ecriture')
@@ -206,7 +208,7 @@ def api_import_bi():
             nb_ecritures += 1
 
         if nb_ecritures == 0:
-            return jsonify({'error': 'Aucune écriture 6x/7x trouvée dans le fichier.'}), 400
+            return jsonify({'error': 'Aucune écriture trouvée dans le fichier (classes 1 à 7 attendues).'}), 400
 
         # Enregistrer l'import
         cursor = conn.cursor()

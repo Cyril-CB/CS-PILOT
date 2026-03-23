@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Indicateurs financiers - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+.indic-table { width:100%; border-collapse:collapse; font-size:.93em; }
+.indic-table th, .indic-table td { padding:7px 10px; border-bottom:1px solid var(--gray-200,#e9ecef); }
+.indic-table th { background:var(--bg-secondary,#f8f9fa); font-weight:600; white-space:nowrap; }
+.indic-table tr:hover td { background:var(--gray-050,#fafbfc); }
+.indic-table .num { text-align:right; white-space:nowrap; }
+.indic-table .year-col { font-weight:700; }
+.badge-pos { display:inline-block; padding:2px 8px; border-radius:12px; background:rgba(25,135,84,.15); color:var(--success,#198754); font-weight:600; }
+.badge-neg { display:inline-block; padding:2px 8px; border-radius:12px; background:rgba(220,53,69,.12); color:var(--danger,#dc3545); font-weight:600; }
+.badge-na  { display:inline-block; padding:2px 8px; border-radius:12px; background:var(--gray-200,#e9ecef); color:var(--text-muted,#6c757d); }
+.fr-table { width:100%; border-collapse:collapse; font-size:.93em; margin-bottom:16px; }
+.fr-table th, .fr-table td { padding:6px 10px; border-bottom:1px solid var(--gray-200,#e9ecef); }
+.fr-table th { background:var(--bg-secondary,#f8f9fa); font-weight:600; }
+.fr-table .num { text-align:right; white-space:nowrap; }
+.fr-table .total-row td { font-weight:700; border-top:2px solid var(--gray-400,#adb5bd); }
+.fr-result-box { padding:14px 20px; border-radius:10px; font-size:1.05em; font-weight:600; margin-top:16px; }
+.no-data-msg { text-align:center; color:var(--text-muted,#6c757d); padding:40px 0; }
+@media print {
+  .sidebar, nav, button, .btn { display:none !important; }
+  .indic-table { font-size:.82em; }
+}
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2>📉 Indicateurs financiers</h2>
+    <button class="btn btn-secondary" onclick="window.print()">📄 Export PDF</button>
+</div>
+
+{% if not annees_importees %}
+<div class="alert" style="background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:16px;margin-top:16px;">
+    ℹ️ Aucun import BI disponible.
+    <a href="/compte-resultat" style="font-weight:600;">Importer un BI depuis la page C.R. &amp; Bilan</a> pour afficher les indicateurs.
+</div>
+{% endif %}
+
+{# ── Onglets ── #}
+<div style="display:flex;gap:0;margin:16px 0 0;border-bottom:2px solid var(--gray-300,#dee2e6);">
+    <button id="tabTableBtn" class="tab-btn active" onclick="switchTab('tableau')"
+            style="padding:8px 22px;border:none;background:none;cursor:pointer;font-weight:600;border-bottom:2px solid var(--primary,#0d6efd);margin-bottom:-2px;color:var(--primary,#0d6efd);">
+        📊 Tableau des indicateurs
+    </button>
+    <button id="tabFrBtn" class="tab-btn" onclick="switchTab('fr')"
+            style="padding:8px 22px;border:none;background:none;cursor:pointer;color:var(--text-muted,#6c757d);border-bottom:2px solid transparent;margin-bottom:-2px;">
+        🔄 Fonds de roulement
+    </button>
+</div>
+
+{# ── Onglet Tableau ── #}
+<div id="tab-tableau" style="padding-top:20px;">
+    <div id="indicContent"><p class="no-data-msg">Chargement…</p></div>
+</div>
+
+{# ── Onglet Fonds de roulement ── #}
+<div id="tab-fr" style="display:none;padding-top:20px;">
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
+        <div class="form-group" style="margin:0;">
+            <label>Année</label>
+            <select id="filtreFrAnnee" class="form-select" style="width:120px;" onchange="chargerFR()">
+                {% for a in annees_importees %}
+                <option value="{{ a }}">{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div id="frContent"><p class="no-data-msg">Sélectionnez une année.</p></div>
+</div>
+
+<script>
+var currentTab = 'tableau';
+var indicLoaded = false;
+
+function fmt(n) {
+    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtMois(n) {
+    if (n === null || n === undefined) return '<span class="badge-na">N/D</span>';
+    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1});
+}
+function fmtPct(n) {
+    if (n === null || n === undefined) return '<span class="badge-na">N/D</span>';
+    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' %';
+}
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function badgeFR(v) {
+    if (v === null || v === undefined) return '<span class="badge-na">N/D</span>';
+    const cls = v >= 0 ? 'badge-pos' : 'badge-neg';
+    return '<span class="'+cls+'">'+fmt(v)+' €</span>';
+}
+function badgeMois(v) {
+    if (v === null || v === undefined) return '<span class="badge-na">N/D</span>';
+    const cls = v >= 1 ? 'badge-pos' : 'badge-neg';
+    return '<span class="'+cls+'">'+fmtMois(v)+' mois</span>';
+}
+
+// ── Gestion onglets ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-tableau').style.display = tab==='tableau' ? '' : 'none';
+    document.getElementById('tab-fr').style.display      = tab==='fr'      ? '' : 'none';
+    document.getElementById('tabTableBtn').style.borderBottomColor = tab==='tableau' ? 'var(--primary,#0d6efd)' : 'transparent';
+    document.getElementById('tabTableBtn').style.color             = tab==='tableau' ? 'var(--primary,#0d6efd)' : 'var(--text-muted,#6c757d)';
+    document.getElementById('tabTableBtn').style.fontWeight        = tab==='tableau' ? '600' : '400';
+    document.getElementById('tabFrBtn').style.borderBottomColor    = tab==='fr'      ? 'var(--primary,#0d6efd)' : 'transparent';
+    document.getElementById('tabFrBtn').style.color                = tab==='fr'      ? 'var(--primary,#0d6efd)' : 'var(--text-muted,#6c757d)';
+    document.getElementById('tabFrBtn').style.fontWeight           = tab==='fr'      ? '600' : '400';
+    if (tab === 'fr') chargerFR();
+}
+
+// ── Tableau des indicateurs ──────────────────────────────────────────────────
+function chargerIndicateurs() {
+    document.getElementById('indicContent').innerHTML = '<p class="no-data-msg">Chargement…</p>';
+    fetch('/api/indicateurs/donnees')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { document.getElementById('indicContent').innerHTML = '<p class="no-data-msg">'+escHtml(data.error)+'</p>'; return; }
+            indicLoaded = true;
+            if (!data.indicateurs || data.indicateurs.length === 0) {
+                document.getElementById('indicContent').innerHTML = '<p class="no-data-msg">Aucune donnée disponible.</p>';
+                return;
+            }
+            document.getElementById('indicContent').innerHTML = buildIndicateursHtml(data.indicateurs);
+        })
+        .catch(() => { document.getElementById('indicContent').innerHTML = '<p class="no-data-msg">Erreur de chargement.</p>'; });
+}
+
+function buildIndicateursHtml(rows) {
+    // Vérifier si on a des données de bilan (comptes 1x, 2x, 5x)
+    const hasBilan = rows.some(r =>
+        Math.abs(r.capitaux_permanents) > 0.01 ||
+        Math.abs(r.immobilisations_nettes) > 0.01 ||
+        Math.abs(r.tresorerie) > 0.01
+    );
+
+    let html = '<div style="overflow-x:auto;">';
+    html += '<table class="indic-table">';
+    html += '<thead><tr>'+
+            '<th>Année</th>'+
+            '<th class="num" title="Comptes 1x : fonds propres + dettes LT">Capitaux<br>permanents</th>'+
+            '<th class="num" title="Comptes 2x : immobilisations brutes − amortissements">Immobilisations<br>nettes</th>'+
+            '<th class="num" title="Capitaux permanents − Immobilisations nettes">Fonds de<br>roulement</th>'+
+            '<th class="num" title="Fonds de roulement / (charges annuelles / 12)">FR en mois<br>de charges</th>'+
+            '<th class="num" title="Comptes 5x : disponibilités bancaires et caisse">Trésorerie</th>'+
+            '<th class="num" title="Trésorerie / (charges annuelles / 12)">Tréso en mois<br>de charges</th>'+
+            '<th class="num" title="Charges 641xxx / Total charges 6x × 100">% Masse<br>salariale</th>'+
+            '</tr></thead><tbody>';
+
+    for (const r of rows.slice().reverse()) {  // plus récent en premier
+        const fr = r.fonds_roulement;
+        const frBadge = badgeFR(r.capitaux_permanents !== 0 || r.immobilisations_nettes !== 0 ? fr : null);
+        const frMois  = badgeMois(r.fr_mois);
+        const tresBadge = Math.abs(r.tresorerie) > 0.01
+            ? (r.tresorerie >= 0
+                ? '<span class="badge-pos">'+fmt(r.tresorerie)+' €</span>'
+                : '<span class="badge-neg">'+fmt(r.tresorerie)+' €</span>')
+            : '<span class="badge-na">N/D</span>';
+        const tresMois = badgeMois(r.tresorerie_mois);
+        const pctMs = fmtPct(r.pct_masse_salariale);
+        const capStr = Math.abs(r.capitaux_permanents) > 0.01 ? fmt(r.capitaux_permanents)+' €' : '<span class="badge-na">N/D</span>';
+        const immoStr = Math.abs(r.immobilisations_nettes) > 0.01 ? fmt(r.immobilisations_nettes)+' €' : '<span class="badge-na">N/D</span>';
+
+        html += '<tr>'+
+                '<td class="year-col">'+r.annee+'</td>'+
+                '<td class="num">'+capStr+'</td>'+
+                '<td class="num">'+immoStr+'</td>'+
+                '<td class="num">'+frBadge+'</td>'+
+                '<td class="num">'+frMois+'</td>'+
+                '<td class="num">'+tresBadge+'</td>'+
+                '<td class="num">'+tresMois+'</td>'+
+                '<td class="num">'+pctMs+'</td>'+
+                '</tr>';
+    }
+    html += '</tbody></table></div>';
+
+    if (!hasBilan) {
+        html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(255,193,7,.15);'+
+                'border:1px solid rgba(255,193,7,.4);font-size:.9em;color:#856404;">'+
+                '⚠️ Certains indicateurs (capitaux, immobilisations, trésorerie) nécessitent un import BI incluant '+
+                'les comptes 1x–5x. <a href="/compte-resultat" style="color:#856404;font-weight:600;">'+
+                'Importer un BI complet</a></div>';
+    }
+
+    // Légende
+    html += '<div style="margin-top:16px;font-size:.85em;color:var(--text-muted,#6c757d);">'+
+            '<strong>Légende :</strong> N/D = donnée non disponible (import BI sans comptes de bilan). '+
+            'Les indicateurs de fonds de roulement et trésorerie nécessitent les comptes 1x–5x.</div>';
+    return html;
+}
+
+// ── Fonds de roulement détail ────────────────────────────────────────────────
+function chargerFR() {
+    const annee = document.getElementById('filtreFrAnnee').value;
+    if (!annee) return;
+    document.getElementById('frContent').innerHTML = '<p class="no-data-msg">Chargement…</p>';
+    fetch('/api/indicateurs/fonds-roulement?annee=' + annee)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { document.getElementById('frContent').innerHTML = '<p class="no-data-msg">'+escHtml(data.error)+'</p>'; return; }
+            document.getElementById('frContent').innerHTML = buildFRHtml(data);
+        })
+        .catch(() => { document.getElementById('frContent').innerHTML = '<p class="no-data-msg">Erreur de chargement.</p>'; });
+}
+
+function buildFRHtml(data) {
+    const annee = data.annee;
+    let html = '<h3>Calcul du Fonds de Roulement – '+annee+'</h3>';
+
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px;">';
+
+    // Capitaux permanents (1x)
+    html += '<div>';
+    html += '<h4 style="color:var(--success,#198754);">🏦 Capitaux permanents (comptes 1x)</h4>';
+    html += '<table class="fr-table"><thead><tr><th>Compte</th><th>Libellé</th><th class="num">Montant</th></tr></thead><tbody>';
+    if (data.capitaux_rows.length === 0) {
+        html += '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune donnée (comptes 1x non importés)</td></tr>';
+    } else {
+        for (const r of data.capitaux_rows) {
+            html += '<tr><td>'+escHtml(r.compte_num)+'</td><td>'+escHtml(r.libelle)+'</td>'+
+                    '<td class="num">'+fmt(r.montant)+' €</td></tr>';
+        }
+    }
+    html += '<tr class="total-row"><td colspan="2">Total capitaux permanents</td>'+
+            '<td class="num">'+fmt(data.total_capitaux)+' €</td></tr>';
+    html += '</tbody></table></div>';
+
+    // Immobilisations (2x)
+    html += '<div>';
+    html += '<h4 style="color:var(--primary,#0d6efd);">🏗️ Immobilisations nettes (comptes 2x)</h4>';
+    html += '<table class="fr-table"><thead><tr><th>Compte</th><th>Libellé</th><th class="num">Montant</th></tr></thead><tbody>';
+    if (data.immo_rows.length === 0) {
+        html += '<tr><td colspan="3" style="text-align:center;color:var(--text-muted);">Aucune donnée (comptes 2x non importés)</td></tr>';
+    } else {
+        for (const r of data.immo_rows) {
+            html += '<tr><td>'+escHtml(r.compte_num)+'</td><td>'+escHtml(r.libelle)+'</td>'+
+                    '<td class="num">'+fmt(r.montant)+' €</td></tr>';
+        }
+    }
+    html += '<tr class="total-row"><td colspan="2">Total immobilisations nettes</td>'+
+            '<td class="num">'+fmt(data.total_immos)+' €</td></tr>';
+    html += '</tbody></table></div>';
+
+    html += '</div>'; // fin grid
+
+    // Résultat FR
+    const fr = data.fonds_roulement;
+    const frCls = fr >= 0 ? 'background:rgba(25,135,84,.1);color:var(--success,#198754);border:1px solid rgba(25,135,84,.25);'
+                           : 'background:rgba(220,53,69,.08);color:var(--danger,#dc3545);border:1px solid rgba(220,53,69,.2);';
+    const frIcon = fr >= 0 ? '✅' : '⚠️';
+    html += '<div class="fr-result-box" style="'+frCls+'">'+frIcon+
+            ' Fonds de roulement '+annee+' : <strong>'+fmt(fr)+'</strong> €'+
+            '<br><small style="font-weight:400;opacity:.85;">= Capitaux permanents ('+fmt(data.total_capitaux)+' €) – '+
+            'Immobilisations nettes ('+fmt(data.total_immos)+' €)</small></div>';
+
+    // Ratio en mois
+    if (data.fr_mois !== null) {
+        const frMCls = data.fr_mois >= 1 ? 'background:rgba(25,135,84,.07);color:var(--success,#198754);border:1px solid rgba(25,135,84,.2);'
+                                          : 'background:rgba(220,53,69,.07);color:var(--danger,#dc3545);border:1px solid rgba(220,53,69,.15);';
+        html += '<div class="fr-result-box" style="'+frMCls+'margin-top:8px;">'+
+                '📅 Fonds de roulement en mois de charges : <strong>'+
+                fmtMois(data.fr_mois)+'</strong> mois'+
+                '<br><small style="font-weight:400;opacity:.85;">= FR ('+fmt(fr)+' €) / charges mensuelles ('+fmt(data.charges_mensuelles)+' €/mois)</small></div>';
+    } else {
+        html += '<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:var(--bg-secondary,#f8f9fa);'+
+                'font-size:.9em;color:var(--text-muted,#6c757d);">'+
+                'Ratio en mois : non calculable (aucune charge 6x importée pour '+annee+')</div>';
+    }
+
+    return html;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+chargerIndicateurs();
+</script>
+{% endblock %}
