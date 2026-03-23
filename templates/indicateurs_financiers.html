@@ -33,7 +33,7 @@
 {% if not annees_importees %}
 <div class="alert" style="background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:16px;margin-top:16px;">
     ℹ️ Aucun import BI disponible.
-    <a href="/compte-resultat" style="font-weight:600;">Importer un BI depuis la page C.R. &amp; Bilan</a> pour afficher les indicateurs.
+    <a href="{{ url_for('compte_resultat_bp.compte_resultat') }}" style="font-weight:600;">Importer un BI depuis la page C.R. &amp; Bilan</a> pour afficher les indicateurs.
 </div>
 {% endif %}
 
@@ -72,6 +72,7 @@
 <script>
 var currentTab = 'tableau';
 var indicLoaded = false;
+var URL_CR_BILAN = "{{ url_for('compte_resultat_bp.compte_resultat') }}";
 
 function fmt(n) {
     return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -181,7 +182,7 @@ function buildIndicateursHtml(rows) {
         html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(255,193,7,.15);'+
                 'border:1px solid rgba(255,193,7,.4);font-size:.9em;color:#856404;">'+
                 '⚠️ Certains indicateurs (capitaux, immobilisations, trésorerie) nécessitent un import BI incluant '+
-                'les comptes 1x–5x. <a href="/compte-resultat" style="color:#856404;font-weight:600;">'+
+                'les comptes 1x–5x. <a href="'+URL_CR_BILAN+'" style="color:#856404;font-weight:600;">'+
                 'Importer un BI complet</a></div>';
     }
 

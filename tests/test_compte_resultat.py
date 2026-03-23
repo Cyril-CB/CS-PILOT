@@ -283,7 +283,3 @@ class TestImportBiEtendu:
         # 890000 (classe 8) ignoré ; seul 641000 importé
         assert result['nb_ecritures'] == 1
 
-
-
-# ── Fixtures helpers ──────────────────────────────────────────────────────────
-

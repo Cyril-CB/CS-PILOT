@@ -229,6 +229,7 @@ def compte_resultat():
             'compte_resultat.html',
             annee_courante=annee_courante,
             annees_importees=annees_list,
+            noms_cat_json={**NOMS_CAT_CR, **NOMS_CAT_BILAN},
         )
     finally:
         conn.close()

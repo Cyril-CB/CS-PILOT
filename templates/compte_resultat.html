@@ -101,35 +101,7 @@ var currentTab = 'cr';
 var crLoaded = false;
 var bilanLoaded = false;
 
-var NOMS_CAT = {
-    '60':'Achats et variations de stocks','61':'Services extérieurs',
-    '62':'Autres services extérieurs','63':'Impôts, taxes et vers. assim.',
-    '64':'Charges de personnel','65':'Autres charges de gestion',
-    '66':'Charges financières','67':'Charges exceptionnelles',
-    '68':'Dotations aux amortissements','69':'Participation / Impôt sociétés',
-    '70':'Ventes de produits / services','71':'Production stockée',
-    '72':'Production immobilisée','73':'Produits des activités annexes',
-    '74':"Subventions d'exploitation",'75':'Autres produits de gestion',
-    '76':'Produits financiers','77':'Produits exceptionnels',
-    '78':'Reprises sur amortissements','79':'Transferts de charges',
-    '20':'Immob. incorporelles','21':'Immob. corporelles',
-    '22':'Immob. en concession','23':'Immob. en cours',
-    '26':'Participations','27':'Autres immob. financières',
-    '28':'Amortissements des immob.','29':'Dépréciations immob.',
-    '30':'Stocks – mat. premières','31':'Stocks – en cours production',
-    '35':'Stocks – produits finis','37':'Stocks – marchandises',
-    '40':'Fournisseurs et cptes rattachés','41':'Clients et cptes rattachés',
-    '42':'Personnel et cptes rattachés','43':'Organismes sociaux',
-    '44':'État et collectivités','45':'Groupe et associés',
-    '46':'Débiteurs / créditeurs divers','47':'Cptes transitoires',
-    '48':'Cptes de régularisation',
-    '50':'Valeurs mobilières de placement','51':'Banques, CCP',
-    '53':'Caisses','54':'Régies d\'avance',
-    '10':'Capital et réserves','11':'Report à nouveau',
-    '12':'Résultat de l\'exercice','13':'Subventions d\'investissement',
-    '14':'Provisions réglementées','15':'Provisions pour risques',
-    '16':'Emprunts et dettes financières','17':'Dettes rattachées participations',
-};
+var NOMS_CAT = {{ noms_cat_json | tojson }};
 
 function fmt(n) {
     return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
