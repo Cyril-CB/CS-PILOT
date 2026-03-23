@@ -146,6 +146,32 @@ def _cr_for_year(conn, annee, pcg):
     }
 
 
+def _inject_resultat_exercice(bilan, resultat):
+    """Injecte le résultat de l'exercice (compte 12x) dans le passif du bilan.
+
+    120000 – Résultat exercice créditeur (bénéfice) : montant positif → augmente le passif.
+    129000 – Résultat exercice débiteur  (déficit)  : montant négatif → réduit le passif.
+    Les deux sont dans la catégorie '12' (capitaux permanents).
+    """
+    if resultat == 0:
+        return
+    compte = '120000' if resultat > 0 else '129000'
+    libelle = ('Résultat exercice créditeur' if resultat > 0
+               else 'Résultat exercice débiteur')
+    cat = '12'
+    if cat not in bilan['passif_capitaux']:
+        bilan['passif_capitaux'][cat] = {'comptes': {}, 'total': 0.0}
+    bilan['passif_capitaux'][cat]['comptes'][compte] = {
+        'libelle': libelle,
+        'total': round(resultat, 2),
+    }
+    bilan['passif_capitaux'][cat]['total'] = round(
+        bilan['passif_capitaux'][cat]['total'] + resultat, 2
+    )
+    bilan['total_passif_capitaux'] = round(bilan['total_passif_capitaux'] + resultat, 2)
+    bilan['total_passif'] = round(bilan['total_passif'] + resultat, 2)
+
+
 def _bilan_for_year(conn, annee, pcg):
     """Calcule le Bilan simplifié pour une année."""
     rows = conn.execute(
