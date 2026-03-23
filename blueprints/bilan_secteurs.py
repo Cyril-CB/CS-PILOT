@@ -210,8 +210,16 @@ def api_import_bi():
         if nb_ecritures == 0:
             return jsonify({'error': 'Aucune écriture trouvée dans le fichier (classes 1 à 7 attendues).'}), 400
 
-        # Enregistrer l'import
+        # Supprimer les données existantes pour cette année (évite les doublons en cas de ré-import)
         cursor = conn.cursor()
+        anciens_imports = conn.execute(
+            'SELECT id FROM bilan_fec_imports WHERE annee = ?', (annee_val,)
+        ).fetchall()
+        for imp in anciens_imports:
+            cursor.execute('DELETE FROM bilan_fec_donnees WHERE import_id = ?', (imp['id'],))
+        cursor.execute('DELETE FROM bilan_fec_imports WHERE annee = ?', (annee_val,))
+
+        # Enregistrer le nouvel import
         cursor.execute('''
             INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures, importe_par)
             VALUES (?, ?, ?, ?)

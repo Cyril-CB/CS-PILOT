@@ -283,3 +283,42 @@ class TestImportBiEtendu:
         # 890000 (classe 8) ignoré ; seul 641000 importé
         assert result['nb_ecritures'] == 1
 
+
+    def test_reimport_meme_annee_ne_double_pas(self, app, db, comptable_client, sample_users):
+        """Un ré-import pour la même année remplace les données (pas de doublon)."""
+        content = _make_bi_content([
+            ('OD', '31/12/2024', 'OD001', '', '', '641000', '', '', 'Salaires', '',
+             '40000', '0', '', '', '', '', ''),
+            ('OD', '31/12/2024', 'OD002', '', '', '740000', '', '', 'Subvention', '',
+             '0', '50000', '', '', '', '', ''),
+        ])
+        data1 = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_2024_v1.txt')}
+        resp1 = comptable_client.post('/api/bilan/import-bi',
+                                      data=data1, content_type='multipart/form-data')
+        assert resp1.get_json()['success'] is True
+
+        # Ré-import de la même année avec le même contenu
+        data2 = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_2024_v2.txt')}
+        resp2 = comptable_client.post('/api/bilan/import-bi',
+                                      data=data2, content_type='multipart/form-data')
+        assert resp2.get_json()['success'] is True
+
+        # Les totaux ne doivent pas être doublés
+        resp_cr = comptable_client.get('/api/cr/donnees?annee=2024')
+        cr = resp_cr.get_json()
+        assert cr['n']['total_charges'] == pytest.approx(40000.0)
+        assert cr['n']['total_produits'] == pytest.approx(50000.0)
+
+        # Un seul import doit exister en base pour 2024
+        with app.app_context():
+            import database
+            conn = database.get_db()
+            nb_imports = conn.execute(
+                "SELECT COUNT(*) as nb FROM bilan_fec_imports WHERE annee = 2024"
+            ).fetchone()['nb']
+            nb_lignes = conn.execute(
+                "SELECT COUNT(*) as nb FROM bilan_fec_donnees WHERE annee = 2024"
+            ).fetchone()['nb']
+            conn.close()
+        assert nb_imports == 1
+        assert nb_lignes == 2
