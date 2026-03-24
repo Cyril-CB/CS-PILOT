@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}C.R. &amp; Bilan - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+.cr-table { width:100%; border-collapse:collapse; font-size:.93em; }
+.cr-table th, .cr-table td { padding:5px 8px; border-bottom:1px solid var(--gray-200,#e9ecef); }
+.cr-table th { background:var(--bg-secondary,#f8f9fa); font-weight:600; }
+.cr-table tr:hover td { background:var(--gray-050,#f8f9fa); }
+.cr-table .num { text-align:right; white-space:nowrap; }
+.cr-table .cat-row td { background:var(--bg-secondary,#f8f9fa); font-weight:600; font-size:.95em; }
+.cr-table .total-row td { font-weight:700; font-size:1.05em; border-top:2px solid var(--gray-400,#adb5bd); }
+.cr-col-label { width:55%; }
+.cr-col-n { width:22.5%; }
+.cr-col-n1 { width:22.5%; }
+.badge-n { display:inline-block; padding:2px 7px; border-radius:12px; background:var(--primary,#0d6efd); color:#fff; font-size:.8em; }
+.badge-n1 { display:inline-block; padding:2px 7px; border-radius:12px; background:var(--gray-500,#6c757d); color:#fff; font-size:.8em; }
+.resultat-box { padding:16px 20px; border-radius:10px; margin-top:8px; font-size:1.1em; font-weight:600; }
+.resultat-pos { background:rgba(25,135,84,.12); color:var(--success,#198754); border:1px solid rgba(25,135,84,.25); }
+.resultat-neg { background:rgba(220,53,69,.1); color:var(--danger,#dc3545); border:1px solid rgba(220,53,69,.2); }
+.resultat-zero { background:var(--bg-secondary,#f8f9fa); color:var(--text-muted,#6c757d); border:1px solid var(--gray-300,#dee2e6); }
+.bilan-grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+@media(max-width:700px){ .bilan-grid { grid-template-columns:1fr; } }
+.section-title { font-size:1em; font-weight:700; padding:6px 8px; border-radius:6px; margin-bottom:8px; }
+.section-actif { background:rgba(13,110,253,.1); color:var(--primary,#0d6efd); }
+.section-passif { background:rgba(25,135,84,.1); color:var(--success,#198754); }
+.no-data-msg { text-align:center; color:var(--text-muted,#6c757d); padding:40px 0; }
+@media print {
+  .sidebar, .page-header .btn, nav { display:none !important; }
+  .cr-table { font-size:.85em; }
+}
+</style>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2>📊 C.R. &amp; Bilan</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="filtreAnnee" class="form-select" style="width:120px;" onchange="charger()">
+            {% if annees_importees %}
+                {% for a in annees_importees %}
+                <option value="{{ a }}" {% if a == annee_courante %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            {% else %}
+                <option value="{{ annee_courante }}">{{ annee_courante }}</option>
+            {% endif %}
+        </select>
+        <a id="btnExportPdf" href="#" class="btn btn-secondary">📄 Export PDF</a>
+    </div>
+</div>
+
+{# ── Onglets ── #}
+<div style="display:flex;gap:0;margin:16px 0 0;border-bottom:2px solid var(--gray-300,#dee2e6);">
+    <button id="tabCrBtn" class="tab-btn active" onclick="switchTab('cr')"
+            style="padding:8px 22px;border:none;background:none;cursor:pointer;font-weight:600;border-bottom:2px solid var(--primary,#0d6efd);margin-bottom:-2px;color:var(--primary,#0d6efd);">
+        📈 Compte de Résultat
+    </button>
+    <button id="tabBilanBtn" class="tab-btn" onclick="switchTab('bilan')"
+            style="padding:8px 22px;border:none;background:none;cursor:pointer;color:var(--text-muted,#6c757d);border-bottom:2px solid transparent;margin-bottom:-2px;">
+        ⚖️ Bilan
+    </button>
+</div>
+
+{# ── Onglet CR ── #}
+<div id="tab-cr" style="padding-top:20px;">
+    <div id="crContent"><p class="no-data-msg">Chargement…</p></div>
+</div>
+
+{# ── Onglet Bilan ── #}
+<div id="tab-bilan" style="display:none;padding-top:20px;">
+    <div id="bilanContent"><p class="no-data-msg">Chargement…</p></div>
+</div>
+
+<script>
+var currentTab = 'cr';
+var crLoaded = false;
+var bilanLoaded = false;
+
+var NOMS_CAT = {{ noms_cat_json | tojson }};
+
+function fmt(n) {
+    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function escHtml(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Gestion onglets ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+    currentTab = tab;
+    document.getElementById('tab-cr').style.display    = tab==='cr'    ? '' : 'none';
+    document.getElementById('tab-bilan').style.display = tab==='bilan' ? '' : 'none';
+    document.getElementById('tabCrBtn').style.borderBottomColor    = tab==='cr'    ? 'var(--primary,#0d6efd)' : 'transparent';
+    document.getElementById('tabCrBtn').style.color                = tab==='cr'    ? 'var(--primary,#0d6efd)' : 'var(--text-muted,#6c757d)';
+    document.getElementById('tabCrBtn').style.fontWeight           = tab==='cr'    ? '600' : '400';
+    document.getElementById('tabBilanBtn').style.borderBottomColor = tab==='bilan' ? 'var(--primary,#0d6efd)' : 'transparent';
+    document.getElementById('tabBilanBtn').style.color             = tab==='bilan' ? 'var(--primary,#0d6efd)' : 'var(--text-muted,#6c757d)';
+    document.getElementById('tabBilanBtn').style.fontWeight        = tab==='bilan' ? '600' : '400';
+    if (tab === 'bilan' && !bilanLoaded) chargerBilan();
+}
+
+function charger() {
+    crLoaded = false;
+    bilanLoaded = false;
+    if (currentTab === 'cr') chargerCR();
+    else chargerBilan();
+}
+
+// ── Compte de Résultat ──────────────────────────────────────────────────────
+function chargerCR() {
+    const annee = document.getElementById('filtreAnnee').value;
+    document.getElementById('crContent').innerHTML = '<p class="no-data-msg">Chargement…</p>';
+    fetch('/api/cr/donnees?annee=' + annee)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { document.getElementById('crContent').innerHTML = '<p class="no-data-msg">'+escHtml(data.error)+'</p>'; return; }
+            crLoaded = true;
+            document.getElementById('crContent').innerHTML = buildCRHtml(data);
+        })
+        .catch(() => { document.getElementById('crContent').innerHTML = '<p class="no-data-msg">Erreur de chargement.</p>'; });
+}
+
+function buildCRHtml(data) {
+    const n  = data.n;
+    const n1 = data.n1;
+    const annee = data.annee;
+    const hasN1 = !!n1;
+
+    function headerN1() {
+        return hasN1 ? '<th class="num cr-col-n1"><span class="badge-n1">'+(annee-1)+'</span></th>' : '';
+    }
+    function buildSection(cats, label, colorClass, anneeLabel, showEmpty) {
+        const keys = Object.keys(cats).sort();
+        if (keys.length === 0 && !showEmpty) return '';
+        let html = '';
+        for (const cat of keys) {
+            const c = cats[cat];
+            const catsN1 = hasN1 ? (label==='charges' ? n1.charges : n1.produits) : {};
+            const mN1 = hasN1 && catsN1[cat] ? catsN1[cat].total : null;
+            const comptes = Object.entries(c.comptes).sort((a,b)=>a[0].localeCompare(b[0]));
+            html += '<tr class="cat-row"><td colspan="'+(hasN1?3:2)+'">'+escHtml(NOMS_CAT[cat]||cat)+
+                    ' <small style="color:var(--text-muted);">('+escHtml(cat)+'x)</small></td></tr>';
+            for (const [num, compte] of comptes) {
+                const mN1C = hasN1 && catsN1[cat] && catsN1[cat].comptes[num] ? catsN1[cat].comptes[num].total : null;
+                html += '<tr><td style="padding-left:20px;">'+escHtml(num)+' – '+escHtml(compte.libelle)+'</td>'+
+                        '<td class="num '+colorClass+'">'+fmt(compte.total)+' €</td>'+
+                        (hasN1 ? '<td class="num" style="color:var(--text-muted);">'+(mN1C!==null?fmt(mN1C)+' €':'—')+'</td>' : '')+
+                        '</tr>';
+            }
+            html += '<tr><td style="padding-left:20px;font-weight:600;font-style:italic;">Sous-total '+escHtml(cat)+'x</td>'+
+                    '<td class="num" style="font-weight:600;">'+fmt(c.total)+' €</td>'+
+                    (hasN1 ? '<td class="num" style="font-weight:600;color:var(--text-muted);">'+(mN1!==null?fmt(mN1)+' €':'—')+'</td>' : '')+
+                    '</tr>';
+        }
+        return html;
+    }
+
+    const totalN = label => label==='charges' ? n.total_charges : n.total_produits;
+    const totalN1 = label => hasN1 ? (label==='charges' ? n1.total_charges : n1.total_produits) : null;
+
+    let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">';
+
+    // Charges
+    html += '<div>';
+    html += '<h3 style="color:var(--danger,#dc3545);">Charges</h3>';
+    html += '<table class="cr-table"><thead><tr>'+
+            '<th class="cr-col-label">Compte</th>'+
+            '<th class="num cr-col-n"><span class="badge-n">'+annee+'</span></th>'+
+            headerN1()+'</tr></thead><tbody>';
+    html += buildSection(n.charges, 'charges', '', annee, true);
+    html += '<tr class="total-row"><td>Total charges</td><td class="num">'+fmt(n.total_charges)+' €</td>'+
+            (hasN1 ? '<td class="num" style="color:var(--text-muted);">'+fmt(n1.total_charges)+' €</td>' : '')+
+            '</tr>';
+    html += '</tbody></table></div>';
+
+    // Produits
+    html += '<div>';
+    html += '<h3 style="color:var(--success,#198754);">Produits</h3>';
+    html += '<table class="cr-table"><thead><tr>'+
+            '<th class="cr-col-label">Compte</th>'+
+            '<th class="num cr-col-n"><span class="badge-n">'+annee+'</span></th>'+
+            headerN1()+'</tr></thead><tbody>';
+    html += buildSection(n.produits, 'produits', '', annee, true);
+    html += '<tr class="total-row"><td>Total produits</td><td class="num">'+fmt(n.total_produits)+' €</td>'+
+            (hasN1 ? '<td class="num" style="color:var(--text-muted);">'+fmt(n1.total_produits)+' €</td>' : '')+
+            '</tr>';
+    html += '</tbody></table></div>';
+    html += '</div>';
+
+    // Résultat
+    const res = n.resultat;
+    const cls = res > 0 ? 'resultat-pos' : (res < 0 ? 'resultat-neg' : 'resultat-zero');
+    const sign = res > 0 ? '📈 Excédent' : (res < 0 ? '📉 Déficit' : '⚖️ Équilibre');
+    html += '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:24px;">';
+    html += '<div class="resultat-box '+cls+'" style="flex:1;min-width:220px;">'+sign+
+            ' '+annee+' : <strong>'+fmt(res)+'</strong> €</div>';
+    if (hasN1) {
+        const res1 = n1.resultat;
+        const cls1 = res1 > 0 ? 'resultat-pos' : (res1 < 0 ? 'resultat-neg' : 'resultat-zero');
+        const sign1 = res1 > 0 ? '📈 Excédent' : (res1 < 0 ? '📉 Déficit' : '⚖️ Équilibre');
+        html += '<div class="resultat-box '+cls1+'" style="flex:1;min-width:220px;opacity:.75;">'+sign1+
+                ' '+(annee-1)+' : <strong>'+fmt(res1)+'</strong> €</div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+// ── Bilan ────────────────────────────────────────────────────────────────────
+function chargerBilan() {
+    const annee = document.getElementById('filtreAnnee').value;
+    document.getElementById('bilanContent').innerHTML = '<p class="no-data-msg">Chargement…</p>';
+    fetch('/api/cr/bilan-donnees?annee=' + annee)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { document.getElementById('bilanContent').innerHTML = '<p class="no-data-msg">'+escHtml(data.error)+'</p>'; return; }
+            bilanLoaded = true;
+            if (!data.has_bilan) {
+                document.getElementById('bilanContent').innerHTML =
+                    '<p class="no-data-msg">Aucune donnée de bilan pour '+data.annee+
+                    '.<br><small>Importez un BI incluant les comptes 1x–5x pour afficher le bilan.</small></p>';
+                return;
+            }
+            document.getElementById('bilanContent').innerHTML = buildBilanHtml(data);
+        })
+        .catch(() => { document.getElementById('bilanContent').innerHTML = '<p class="no-data-msg">Erreur de chargement.</p>'; });
+}
+
+function buildBilanHtml(data) {
+    const n   = data.n;
+    const n1  = data.n1;
+    const annee = data.annee;
+    const hasN1 = !!n1;
+
+    function bilanCatRows(cats, labelColor, catsN1) {
+        let html = '';
+        for (const cat of Object.keys(cats).sort()) {
+            const c = cats[cat];
+            const c1 = (hasN1 && catsN1) ? (catsN1[cat] || null) : null;
+            html += '<tr class="cat-row"><td colspan="'+(hasN1?3:2)+'">'+
+                    escHtml(NOMS_CAT[cat]||cat)+
+                    ' <small style="color:var(--text-muted);">('+escHtml(cat)+'x)</small></td></tr>';
+            for (const [num, compte] of Object.entries(c.comptes).sort((a,b)=>a[0].localeCompare(b[0]))) {
+                const mN1 = (c1 && c1.comptes[num]) ? c1.comptes[num].total : null;
+                html += '<tr><td style="padding-left:20px;">'+escHtml(num)+' – '+escHtml(compte.libelle)+'</td>'+
+                        '<td class="num '+labelColor+'">'+fmt(compte.total)+' €</td>'+
+                        (hasN1 ? '<td class="num" style="color:var(--text-muted);">'+(mN1!==null?fmt(mN1)+' €':'—')+'</td>' : '')+
+                        '</tr>';
+            }
+            const subN1 = c1 ? c1.total : null;
+            html += '<tr><td style="padding-left:20px;font-weight:600;font-style:italic;">S-total '+escHtml(cat)+'x</td>'+
+                    '<td class="num" style="font-weight:600;">'+fmt(c.total)+' €</td>'+
+                    (hasN1 ? '<td class="num" style="font-weight:600;color:var(--text-muted);">'+(subN1!==null?fmt(subN1)+' €':'—')+'</td>' : '')+
+                    '</tr>';
+        }
+        return html;
+    }
+
+    function tableHdr(title, colorClass) {
+        return '<div class="section-title '+colorClass+'">'+title+'</div>'+
+               '<table class="cr-table"><thead><tr>'+
+               '<th class="cr-col-label">Compte</th>'+
+               '<th class="num cr-col-n"><span class="badge-n">'+annee+'</span></th>'+
+               (hasN1 ? '<th class="num cr-col-n1"><span class="badge-n1">'+(annee-1)+'</span></th>' : '')+
+               '</tr></thead><tbody>';
+    }
+    function totalRow(label, val, val1) {
+        return '<tr class="total-row"><td>'+escHtml(label)+'</td>'+
+               '<td class="num">'+fmt(val)+' €</td>'+
+               (hasN1 ? '<td class="num" style="color:var(--text-muted);">'+(val1!==null?fmt(val1)+' €':'—')+'</td>' : '')+
+               '</tr></tbody></table>';
+    }
+
+    const n1SafeImmo = hasN1 ? n1.actif_immo : null;
+    const n1SafeStocks = hasN1 ? n1.actif_stocks : null;
+    const n1SafeTiers = hasN1 ? n1.actif_tiers : null;
+    const n1SafeTreso = hasN1 ? n1.actif_tresorerie : null;
+    const n1SafeCap = hasN1 ? n1.passif_capitaux : null;
+    const n1SafeDettes = hasN1 ? n1.passif_dettes_expl : null;
+
+    let html = '<div class="bilan-grid">';
+
+    // ── ACTIF ──
+    html += '<div>';
+    html += '<h3 style="color:var(--primary,#0d6efd);">Actif</h3>';
+    // Actif immobilisé
+    html += tableHdr('🏗️ Actif immobilisé (2x)', 'section-actif');
+    html += bilanCatRows(n.actif_immo, '', n1SafeImmo);
+    html += totalRow('Total actif immobilisé', n.total_actif_immo, hasN1 ? n1.total_actif_immo : null);
+    // Stocks
+    if (Object.keys(n.actif_stocks).length > 0 || (hasN1 && Object.keys(n1.actif_stocks).length > 0)) {
+        html += '<div style="margin-top:12px;">';
+        html += tableHdr('📦 Stocks (3x)', 'section-actif');
+        html += bilanCatRows(n.actif_stocks, '', n1SafeStocks);
+        html += totalRow('Total stocks', n.total_actif_stocks, hasN1 ? n1.total_actif_stocks : null);
+        html += '</div>';
+    }
+    // Créances tiers
+    if (Object.keys(n.actif_tiers).length > 0 || (hasN1 && Object.keys(n1.actif_tiers).length > 0)) {
+        html += '<div style="margin-top:12px;">';
+        html += tableHdr('👥 Créances tiers (4x+)', 'section-actif');
+        html += bilanCatRows(n.actif_tiers, '', n1SafeTiers);
+        html += totalRow('Total créances', n.total_actif_tiers, hasN1 ? n1.total_actif_tiers : null);
+        html += '</div>';
+    }
+    // Trésorerie
+    html += '<div style="margin-top:12px;">';
+    html += tableHdr('💰 Trésorerie (5x)', 'section-actif');
+    html += bilanCatRows(n.actif_tresorerie, '', n1SafeTreso);
+    html += totalRow('Total trésorerie', n.total_actif_tresorerie, hasN1 ? n1.total_actif_tresorerie : null);
+    html += '</div>';
+    // Total actif
+    html += '<div class="resultat-box" style="margin-top:12px;background:rgba(13,110,253,.08);border:1px solid rgba(13,110,253,.2);">'+
+            '📊 Total Actif '+annee+' : <strong>'+fmt(n.total_actif)+'</strong> €'+
+            (hasN1 ? ' <span style="color:var(--text-muted);font-weight:400;margin-left:12px;">'+
+            (annee-1)+' : '+fmt(n1.total_actif)+' €</span>' : '')+
+            '</div>';
+    html += '</div>'; // fin actif
+
+    // ── PASSIF ──
+    html += '<div>';
+    html += '<h3 style="color:var(--success,#198754);">Passif</h3>';
+    // Capitaux
+    html += tableHdr('🏦 Capitaux permanents (1x)', 'section-passif');
+    html += bilanCatRows(n.passif_capitaux, '', n1SafeCap);
+    html += totalRow('Total capitaux', n.total_passif_capitaux, hasN1 ? n1.total_passif_capitaux : null);
+    // Dettes exploitation
+    if (Object.keys(n.passif_dettes_expl).length > 0 || (hasN1 && Object.keys(n1.passif_dettes_expl).length > 0)) {
+        html += '<div style="margin-top:12px;">';
+        html += tableHdr('📋 Dettes exploitation (4x–)', 'section-passif');
+        html += bilanCatRows(n.passif_dettes_expl, '', n1SafeDettes);
+        html += totalRow('Total dettes exploitation', n.total_passif_dettes, hasN1 ? n1.total_passif_dettes : null);
+        html += '</div>';
+    }
+    // Total passif
+    html += '<div class="resultat-box" style="margin-top:12px;background:rgba(25,135,84,.08);border:1px solid rgba(25,135,84,.2);">'+
+            '📊 Total Passif '+annee+' : <strong>'+fmt(n.total_passif)+'</strong> €'+
+            (hasN1 ? ' <span style="color:var(--text-muted);font-weight:400;margin-left:12px;">'+
+            (annee-1)+' : '+fmt(n1.total_passif)+' €</span>' : '')+
+            '</div>';
+    // Équilibre
+    const diff = Math.abs(n.total_actif - n.total_passif);
+    if (diff > 0.02) {
+        html += '<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(255,193,7,.15);'+
+                'color:#856404;border:1px solid rgba(255,193,7,.4);font-size:.9em;">'+
+                '⚠️ Écart Actif/Passif : '+fmt(diff)+' € (données incomplètes ou en cours d\'import)</div>';
+    } else {
+        html += '<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(25,135,84,.08);'+
+                'color:var(--success,#198754);border:1px solid rgba(25,135,84,.2);font-size:.9em;">'+
+                '✅ Bilan équilibré</div>';
+    }
+    html += '</div>'; // fin passif
+    html += '</div>'; // fin bilan-grid
+    return html;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + document.getElementById('filtreAnnee').value;
+document.getElementById('filtreAnnee').addEventListener('change', function() {
+    document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + this.value;
+});
+chargerCR();
+</script>
+{% endblock %}

@@ -192,6 +192,9 @@ from blueprints.rh_statistiques import rh_statistiques_bp
 from blueprints.dashboard_responsable import dashboard_responsable_bp
 from blueprints.dashboard_comptable import dashboard_comptable_bp
 from blueprints.chatbot import chatbot_bp
+from blueprints.compte_resultat import compte_resultat_bp
+from blueprints.indicateurs_financiers import indicateurs_financiers_bp
+from blueprints.import_bi import import_bi_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -237,6 +240,9 @@ app.register_blueprint(alsh_bp)
 app.register_blueprint(mise_a_jour_bp)
 app.register_blueprint(rh_statistiques_bp)
 app.register_blueprint(chatbot_bp)
+app.register_blueprint(compte_resultat_bp)
+app.register_blueprint(indicateurs_financiers_bp)
+app.register_blueprint(import_bi_bp)
 
 
 # ==================== Context Processors ====================
@@ -250,9 +256,9 @@ def inject_version():
         from migration_manager import get_version_actuelle
         version_db = get_version_actuelle()
         try:
-            _cached_app_version = f'1.0.{int(version_db)}'
+            _cached_app_version = f'1.1.{int(version_db)}'
         except (ValueError, TypeError):
-            _cached_app_version = '1.0.0'
+            _cached_app_version = '1.1.0'
     return {'app_version': _cached_app_version}
 
 

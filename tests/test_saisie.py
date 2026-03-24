@@ -114,6 +114,31 @@ class TestSaisieHistorique:
             assert historique['action'] == 'creation'
 
 
+class TestSaisieAnomalies:
+    """Tests de détection d'anomalies à la saisie."""
+
+    def test_creation_declenche_anomalie_si_ecart_superieur_a_3h(self, auth_client, app, db, sample_users, sample_planning):
+        """Une création avec +4h vs planning théorique doit créer une anomalie."""
+        date_test = '2025-01-06'  # Lundi, 7h théoriques via sample_planning
+
+        with app.app_context():
+            response = auth_client.post('/saisie_heures', data={
+                'date': date_test,
+                'heure_debut_matin': '08:00',
+                'heure_fin_matin': '12:00',
+                'heure_debut_aprem': '13:00',
+                'heure_fin_aprem': '20:00',  # 11h total -> écart 4h
+                'commentaire': 'Création test anomalie',
+            }, follow_redirects=True)
+            assert response.status_code == 200
+
+            anomalie = db.execute(
+                "SELECT * FROM anomalies WHERE user_id = ? AND date_concernee = ? AND type_anomalie = ?",
+                (sample_users['salarie_id'], date_test, 'gros_changement_heures')
+            ).fetchone()
+            assert anomalie is not None
+
+
 class TestSaisieDroits:
     """Tests des contrôles d'accès pour la saisie."""
 

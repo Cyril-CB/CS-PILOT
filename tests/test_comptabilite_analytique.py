@@ -196,7 +196,7 @@ class TestBilanSecteurs:
         assert row['annee'] == 2024
 
     def test_import_bi_filtre_comptes(self, admin_client, db):
-        """L'import BI ne garde que les comptes 6x et 7x."""
+        """L'import BI garde les comptes 1x–7x et ignore les classes 8 et 9."""
         bi_content = (
             "Code journal\tDate de pièce\tNuméro de compte général\tLibellé écriture\t"
             "Montant Débit\tMontant Crédit\tCompte analytique\n"
@@ -204,12 +204,13 @@ class TestBilanSecteurs:
             "BQ\t15/01/2025\t512000\tVirement\t100\t0\t\n"
             "HA\t15/01/2025\t601000\tAchat\t200\t0\tANA001\n"
             "OD\t15/01/2025\t401000\tPaiement\t0\t200\t\n"
+            "OD\t15/01/2025\t890000\tBilan\t0\t500\t\n"
         )
         data = {'fichier': (io.BytesIO(bi_content.encode('utf-8')), 'bi.txt')}
         resp = admin_client.post('/api/bilan/import-bi',
                                  data=data, content_type='multipart/form-data')
         result = resp.get_json()
-        assert result['nb_ecritures'] == 2  # 701000 + 601000 seulement
+        assert result['nb_ecritures'] == 4  # 701000 + 512000 + 601000 + 401000 (890000 ignoré)
 
     def test_suppression_annee(self, admin_client, db):
         """On peut supprimer les données d'une année."""
