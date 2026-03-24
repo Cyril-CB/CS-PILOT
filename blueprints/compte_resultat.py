@@ -350,13 +350,129 @@ def _fmt_pdf(v):
         n = float(v or 0)
     except (ValueError, TypeError):
         return '0,00'
-    return f'{n:,.2f}'.replace(',', ' ').replace('.', ',')
+    return f'{n:,.2f}'.replace(',', '\u202f').replace('.', ',')
+
+
+def _build_cr_table(cats, noms, color_hdr, total_label, total_val, col_widths):
+    """Construit un tableau ReportLab pour une section C.R. (charges ou produits).
+
+    Utilise toute la largeur disponible — jamais imbriqué → découpable sur plusieurs pages.
+    """
+    from reportlab.platypus import Table as RLTable, TableStyle
+    from reportlab.lib import colors
+
+    GRAY_HDR = colors.HexColor('#f0f3f7')
+    GRAY_CAT = colors.HexColor('#e8ecf0')
+
+    data = [['Compte / Libellé', 'Montant (€)']]
+    for cat_key in sorted(cats.keys()):
+        cat = cats[cat_key]
+        cat_name = noms.get(cat_key, cat_key)
+        data.append([f'{cat_key}x – {cat_name}', _fmt_pdf(cat['total'])])
+        for num in sorted(cat['comptes'].keys()):
+            cpt = cat['comptes'][num]
+            lib = cpt.get('libelle') or num
+            data.append([f'   {num}  {lib}', _fmt_pdf(cpt['total'])])
+    data.append([total_label, _fmt_pdf(total_val)])
+
+    t = RLTable(data, colWidths=col_widths, repeatRows=1, splitByRow=True)
+    cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), color_hdr),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ('BOX', (0, 0), (-1, -1), 0.8, color_hdr),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), GRAY_HDR),
+        ('LINEABOVE', (0, -1), (-1, -1), 1, color_hdr),
+    ]
+    # Lignes de catégorie en gras + fond gris clair
+    idx = 1
+    for cat_key in sorted(cats.keys()):
+        cmds.append(('FONTNAME', (0, idx), (-1, idx), 'Helvetica-Bold'))
+        cmds.append(('BACKGROUND', (0, idx), (-1, idx), GRAY_CAT))
+        idx += 1 + len(cats[cat_key]['comptes'])
+    t.setStyle(TableStyle(cmds))
+    return t
+
+
+def _build_bilan_table(sections, color_hdr, noms, total_label, total_val,
+                       col_widths, accent_color):
+    """Construit un tableau ReportLab pour une section bilan (actif ou passif).
+
+    Pleine largeur, découpable sur plusieurs pages.
+    """
+    from reportlab.platypus import Table as RLTable, TableStyle
+    from reportlab.lib import colors
+
+    GRAY_HDR = colors.HexColor('#f0f3f7')
+    GRAY_CAT = colors.HexColor('#e8ecf0')
+
+    data = [['Compte / Libellé', 'Montant (€)']]
+    section_rows = []   # indices des lignes de section (titre intermédiaire)
+    cat_rows = []       # indices des lignes de catégorie (sous-titre)
+
+    for sec_label, cats in sections:
+        if not cats:
+            continue
+        section_rows.append(len(data))
+        data.append([sec_label, ''])
+        for cat_key in sorted(cats.keys()):
+            cat = cats[cat_key]
+            cat_name = noms.get(cat_key, cat_key)
+            cat_rows.append(len(data))
+            data.append([f'  {cat_key}x – {cat_name}', _fmt_pdf(cat['total'])])
+            for num in sorted(cat['comptes'].keys()):
+                cpt = cat['comptes'][num]
+                lib = cpt.get('libelle') or num
+                data.append([f'    {num}  {lib}', _fmt_pdf(cpt['total'])])
+    data.append([total_label, _fmt_pdf(total_val)])
+
+    t = RLTable(data, colWidths=col_widths, repeatRows=1, splitByRow=True)
+    cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), color_hdr),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
+        ('BOX', (0, 0), (-1, -1), 0.8, color_hdr),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('BACKGROUND', (0, -1), (-1, -1), GRAY_HDR),
+        ('LINEABOVE', (0, -1), (-1, -1), 1, color_hdr),
+    ]
+    for r in section_rows:
+        cmds += [
+            ('BACKGROUND', (0, r), (-1, r), accent_color),
+            ('TEXTCOLOR', (0, r), (-1, r), colors.white),
+            ('FONTNAME', (0, r), (-1, r), 'Helvetica-Bold'),
+            ('SPAN', (0, r), (-1, r)),
+        ]
+    for r in cat_rows:
+        cmds += [
+            ('BACKGROUND', (0, r), (-1, r), GRAY_CAT),
+            ('FONTNAME', (0, r), (-1, r), 'Helvetica-Bold'),
+        ]
+    t.setStyle(TableStyle(cmds))
+    return t
 
 
 @compte_resultat_bp.route('/api/cr/export-pdf')
 @login_required
 def api_cr_export_pdf():
-    """Génère un PDF ReportLab professionnel du C.R. et du Bilan."""
+    """Génère un PDF ReportLab professionnel du C.R. et du Bilan.
+
+    Présentation séquentielle (jamais de tables imbriquées) pour permettre
+    le découpage automatique sur plusieurs pages par ReportLab.
+    """
     if not _peut_acceder():
         return jsonify({'error': 'Accès non autorisé'}), 403
 
@@ -386,7 +502,7 @@ def api_cr_export_pdf():
     from reportlab.platypus import (SimpleDocTemplate, Table as RLTable,
                                     TableStyle, Paragraph, Spacer, HRFlowable)
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -398,216 +514,87 @@ def api_cr_export_pdf():
     BLUE = colors.HexColor('#1a56a0')
     RED = colors.HexColor('#c0392b')
     GREEN = colors.HexColor('#27ae60')
-    GRAY_HDR = colors.HexColor('#f0f3f7')
-    GRAY_CAT = colors.HexColor('#e8ecf0')
 
+    col_widths = [W * 0.72, W * 0.28]
+
+    # ── Styles de paragraphe ──
     title_st = ParagraphStyle('T', parent=styles['Heading1'],
                               fontSize=16, textColor=BLUE, alignment=TA_CENTER,
                               spaceAfter=4)
     sub_st = ParagraphStyle('S', parent=styles['Normal'],
                             fontSize=10, textColor=colors.grey, alignment=TA_CENTER,
-                            spaceAfter=16)
-    section_st = ParagraphStyle('Sec', parent=styles['Heading2'],
-                                fontSize=12, textColor=colors.white,
-                                spaceBefore=14, spaceAfter=4)
-    normal_st = styles['Normal']
+                            spaceAfter=14)
+    section_label_st = ParagraphStyle('SL', parent=styles['Heading2'],
+                                      fontSize=12, textColor=BLUE,
+                                      spaceBefore=14, spaceAfter=6)
+    subsection_st = ParagraphStyle('SS', parent=styles['Normal'],
+                                   fontSize=10, textColor=colors.HexColor('#555555'),
+                                   spaceBefore=8, spaceAfter=4)
+    foot_st = ParagraphStyle('foot', parent=styles['Normal'],
+                             fontSize=7, textColor=colors.grey, alignment=TA_CENTER,
+                             spaceBefore=4)
 
     elements = []
 
     # ── En-tête ──
-    elements.append(Paragraph(f'Compte de Résultat &amp; Bilan', title_st))
+    elements.append(Paragraph('Compte de Résultat &amp; Bilan', title_st))
     elements.append(Paragraph(f'Exercice {annee}', sub_st))
     elements.append(HRFlowable(width='100%', thickness=1.5, color=BLUE, spaceAfter=12))
 
-    def _section_table(cats, noms, color_hdr, col_w=None):
-        """Construit une RLTable charges ou produits."""
-        if col_w is None:
-            col_w = [W * 0.55, W * 0.45]
-        data = [['Compte / Libellé', 'Montant (€)']]
-        for cat_key in sorted(cats.keys()):
-            cat = cats[cat_key]
-            cat_name = noms.get(cat_key, cat_key)
-            data.append([f'{cat_key}x – {cat_name}', _fmt_pdf(cat['total'])])
-            for num in sorted(cat['comptes'].keys()):
-                cpt = cat['comptes'][num]
-                data.append([f'   {num}  {cpt["libelle"]}', _fmt_pdf(cpt['total'])])
-        data.append(['Total', _fmt_pdf(sum(c['total'] for c in cats.values()))])
-
-        t = RLTable(data, colWidths=col_w, repeatRows=1)
-        cmds = [
-            ('BACKGROUND', (0, 0), (-1, 0), color_hdr),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-            ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
-            ('BOX', (0, 0), (-1, -1), 0.8, color_hdr),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), GRAY_HDR),
-            ('LINEABOVE', (0, -1), (-1, -1), 1, color_hdr),
-        ]
-        # Lignes de catégorie en gras + fond gris clair
-        idx = 1
-        for cat_key in sorted(cats.keys()):
-            cmds.append(('FONTNAME', (0, idx), (-1, idx), 'Helvetica-Bold'))
-            cmds.append(('BACKGROUND', (0, idx), (-1, idx), GRAY_CAT))
-            idx += 1 + len(cats[cat_key]['comptes'])
-        t.setStyle(TableStyle(cmds))
-        return t
-
     # ── Compte de Résultat ──
-    elements.append(Paragraph('COMPTE DE RÉSULTAT', ParagraphStyle(
-        'CRHead', parent=styles['Heading2'], fontSize=13, textColor=BLUE,
-        spaceBefore=4, spaceAfter=8)))
+    elements.append(Paragraph('COMPTE DE RÉSULTAT', section_label_st))
 
-    # Charges et produits côte à côte
-    half = (W - 0.5 * cm) / 2
+    # Charges (table pleine largeur, découpable)
+    elements.append(Paragraph('Charges', ParagraphStyle(
+        'CH', parent=styles['Normal'], fontSize=10, textColor=RED,
+        fontName='Helvetica-Bold', spaceBefore=4, spaceAfter=3)))
+    if cr['charges']:
+        elements.append(_build_cr_table(
+            cr['charges'], NOMS_CAT_CR, RED,
+            'Total charges', cr['total_charges'], col_widths))
+    else:
+        elements.append(Paragraph('Aucune charge.', styles['Normal']))
 
-    def _mini_table(cats, noms, color_hdr, total_label, total_val):
-        col_w = [half * 0.6, half * 0.4]
-        data = [['Libellé', 'Montant (€)']]
-        for cat_key in sorted(cats.keys()):
-            cat = cats[cat_key]
-            cat_name = noms.get(cat_key, cat_key)
-            data.append([f'{cat_key}x – {cat_name}', _fmt_pdf(cat['total'])])
-            for num in sorted(cat['comptes'].keys()):
-                cpt = cat['comptes'][num]
-                lib = f'   {num}'
-                data.append([lib, _fmt_pdf(cpt['total'])])
-        data.append([total_label, _fmt_pdf(total_val)])
-        t = RLTable(data, colWidths=col_w, repeatRows=1)
-        cmds = [
-            ('BACKGROUND', (0, 0), (-1, 0), color_hdr),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-            ('FONTSIZE', (0, 1), (-1, -1), 7.5),
-            ('TOPPADDING', (0, 0), (-1, -1), 2.5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
-            ('BOX', (0, 0), (-1, -1), 0.8, color_hdr),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('BACKGROUND', (0, -1), (-1, -1), GRAY_HDR),
-            ('LINEABOVE', (0, -1), (-1, -1), 1, color_hdr),
-        ]
-        idx = 1
-        for cat_key in sorted(cats.keys()):
-            cmds.append(('FONTNAME', (0, idx), (-1, idx), 'Helvetica-Bold'))
-            cmds.append(('BACKGROUND', (0, idx), (-1, idx), GRAY_CAT))
-            idx += 1 + len(cats[cat_key]['comptes'])
-        t.setStyle(TableStyle(cmds))
-        return t
+    elements.append(Spacer(1, 0.3 * cm))
 
-    t_charges = _mini_table(cr['charges'], NOMS_CAT_CR, RED,
-                             'Total charges', cr['total_charges'])
-    t_produits = _mini_table(cr['produits'], NOMS_CAT_CR, GREEN,
-                              'Total produits', cr['total_produits'])
+    # Produits (table pleine largeur, découpable)
+    elements.append(Paragraph('Produits', ParagraphStyle(
+        'PR', parent=styles['Normal'], fontSize=10, textColor=GREEN,
+        fontName='Helvetica-Bold', spaceBefore=4, spaceAfter=3)))
+    if cr['produits']:
+        elements.append(_build_cr_table(
+            cr['produits'], NOMS_CAT_CR, GREEN,
+            'Total produits', cr['total_produits'], col_widths))
+    else:
+        elements.append(Paragraph('Aucun produit.', styles['Normal']))
 
-    # Titres charges/produits
-    hdr_ch = RLTable([[
-        Paragraph('<b>CHARGES</b>', ParagraphStyle('ch', parent=styles['Normal'],
-                   textColor=RED, fontSize=10)),
-        Paragraph('<b>PRODUITS</b>', ParagraphStyle('pr', parent=styles['Normal'],
-                   textColor=GREEN, fontSize=10)),
-    ]], colWidths=[half, half])
-    hdr_ch.setStyle(TableStyle([('TOPPADDING', (0, 0), (-1, -1), 2),
-                                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
-    elements.append(hdr_ch)
-
-    side_by_side = RLTable([[t_charges, t_produits]],
-                           colWidths=[half, half])
-    side_by_side.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (0, -1), 0),
-        ('RIGHTPADDING', (0, 0), (0, -1), 6),
-        ('LEFTPADDING', (1, 0), (1, -1), 6),
-        ('RIGHTPADDING', (1, 0), (1, -1), 0),
-    ]))
-    elements.append(side_by_side)
-
-    # Résultat
+    # ── Résultat de l'exercice ──
+    elements.append(Spacer(1, 0.3 * cm))
     res = cr['resultat']
     res_color = GREEN if res >= 0 else RED
     res_label = 'Excédent' if res > 0 else ('Déficit' if res < 0 else 'Équilibre')
-    res_data = [[f'{res_label} {annee}', _fmt_pdf(res) + ' €']]
-    res_t = RLTable(res_data, colWidths=[W * 0.7, W * 0.3])
+    res_t = RLTable(
+        [[f'{res_label} {annee}', _fmt_pdf(res) + ' €']],
+        colWidths=col_widths)
     res_t.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), res_color),
         ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
         ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 11),
         ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
         ('LEFTPADDING', (0, 0), (0, -1), 10),
         ('BOX', (0, 0), (-1, -1), 1, res_color),
-        ('ROUNDEDCORNERS', [4]),
     ]))
-    elements.append(Spacer(1, 0.3 * cm))
     elements.append(res_t)
 
     # ── Bilan ──
     if has_bilan:
         elements.append(Spacer(1, 0.5 * cm))
-        elements.append(HRFlowable(width='100%', thickness=1, color=colors.lightgrey,
-                                   spaceAfter=8))
-        elements.append(Paragraph('BILAN', ParagraphStyle(
-            'BHead', parent=styles['Heading2'], fontSize=13, textColor=BLUE,
-            spaceBefore=4, spaceAfter=8)))
-
-        def _bilan_col(sections, color_hdr, total_label, total_val):
-            """Construit une colonne du bilan (actif ou passif)."""
-            col_w = [half * 0.6, half * 0.4]
-            data = [['Libellé', 'Montant (€)']]
-            for sec_label, cats in sections:
-                if not cats:
-                    continue
-                data.append([sec_label, ''])
-                for cat_key in sorted(cats.keys()):
-                    cat = cats[cat_key]
-                    cat_name = NOMS_CAT_BILAN.get(cat_key, cat_key)
-                    data.append([f'  {cat_key}x – {cat_name}', _fmt_pdf(cat['total'])])
-                    for num in sorted(cat['comptes'].keys()):
-                        cpt = cat['comptes'][num]
-                        data.append([f'    {num}', _fmt_pdf(cpt['total'])])
-            data.append([total_label, _fmt_pdf(total_val)])
-            t = RLTable(data, colWidths=col_w, repeatRows=1)
-
-            cmds = [
-                ('BACKGROUND', (0, 0), (-1, 0), color_hdr),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 8),
-                ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
-                ('FONTSIZE', (0, 1), (-1, -1), 7.5),
-                ('TOPPADDING', (0, 0), (-1, -1), 2.5),
-                ('BOTTOMPADDING', (0, 0), (-1, -1), 2.5),
-                ('GRID', (0, 0), (-1, -1), 0.3, colors.lightgrey),
-                ('BOX', (0, 0), (-1, -1), 0.8, color_hdr),
-                ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                ('BACKGROUND', (0, -1), (-1, -1), GRAY_HDR),
-                ('LINEABOVE', (0, -1), (-1, -1), 1, color_hdr),
-            ]
-            # Lignes de section (titres intermédiaires)
-            idx = 1
-            for sec_label, cats in sections:
-                if not cats:
-                    continue
-                cmds.append(('FONTNAME', (0, idx), (-1, idx), 'Helvetica-Bold'))
-                cmds.append(('BACKGROUND', (0, idx), (-1, idx), BLUE))
-                cmds.append(('TEXTCOLOR', (0, idx), (-1, idx), colors.white))
-                cmds.append(('SPAN', (0, idx), (-1, idx)))
-                idx += 1
-                for cat_key in sorted(cats.keys()):
-                    cmds.append(('FONTNAME', (0, idx), (-1, idx), 'Helvetica-Bold'))
-                    cmds.append(('BACKGROUND', (0, idx), (-1, idx), GRAY_CAT))
-                    idx += 1 + len(cats[cat_key]['comptes'])
-            t.setStyle(TableStyle(cmds))
-            return t
+        elements.append(HRFlowable(width='100%', thickness=1,
+                                   color=colors.lightgrey, spaceAfter=8))
+        elements.append(Paragraph('BILAN', section_label_st))
 
         actif_sections = [
             ('Actif immobilisé', bilan['actif_immo']),
@@ -620,61 +607,54 @@ def api_cr_export_pdf():
             ('Dettes exploitation', bilan['passif_dettes_expl']),
         ]
 
-        t_actif = _bilan_col(actif_sections, BLUE, 'Total Actif', bilan['total_actif'])
-        t_passif = _bilan_col(passif_sections, GREEN, 'Total Passif', bilan['total_passif'])
+        # Actif (table pleine largeur, découpable)
+        elements.append(Paragraph('Actif', ParagraphStyle(
+            'ACT', parent=styles['Normal'], fontSize=10, textColor=BLUE,
+            fontName='Helvetica-Bold', spaceBefore=4, spaceAfter=3)))
+        elements.append(_build_bilan_table(
+            actif_sections, BLUE, NOMS_CAT_BILAN,
+            'Total Actif', bilan['total_actif'], col_widths, BLUE))
 
-        hdr_bp = RLTable([[
-            Paragraph('<b>ACTIF</b>', ParagraphStyle('ac', parent=styles['Normal'],
-                       textColor=BLUE, fontSize=10)),
-            Paragraph('<b>PASSIF</b>', ParagraphStyle('pa', parent=styles['Normal'],
-                       textColor=GREEN, fontSize=10)),
-        ]], colWidths=[half, half])
-        hdr_bp.setStyle(TableStyle([('TOPPADDING', (0, 0), (-1, -1), 2),
-                                     ('BOTTOMPADDING', (0, 0), (-1, -1), 2)]))
-        elements.append(hdr_bp)
+        elements.append(Spacer(1, 0.3 * cm))
 
-        bilan_grid = RLTable([[t_actif, t_passif]], colWidths=[half, half])
-        bilan_grid.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('LEFTPADDING', (0, 0), (0, -1), 0),
-            ('RIGHTPADDING', (0, 0), (0, -1), 6),
-            ('LEFTPADDING', (1, 0), (1, -1), 6),
-            ('RIGHTPADDING', (1, 0), (1, -1), 0),
-        ]))
-        elements.append(bilan_grid)
+        # Passif (table pleine largeur, découpable)
+        elements.append(Paragraph('Passif', ParagraphStyle(
+            'PAS', parent=styles['Normal'], fontSize=10, textColor=GREEN,
+            fontName='Helvetica-Bold', spaceBefore=4, spaceAfter=3)))
+        elements.append(_build_bilan_table(
+            passif_sections, GREEN, NOMS_CAT_BILAN,
+            'Total Passif', bilan['total_passif'], col_widths, GREEN))
 
-        # Équilibre
+        # ── Ligne d'équilibre ──
+        elements.append(Spacer(1, 0.3 * cm))
         diff = round(abs(bilan['total_actif'] - bilan['total_passif']), 2)
         if diff <= 0.02:
             eq_color = GREEN
-            eq_text = f'✓ Bilan équilibré  –  Total Actif = Total Passif = {_fmt_pdf(bilan["total_actif"])} €'
+            eq_text = (f'\u2713 Bilan équilibré  –  '
+                       f'Total Actif = Total Passif = {_fmt_pdf(bilan["total_actif"])} \u20ac')
         else:
             eq_color = colors.HexColor('#e67e22')
-            eq_text = (f'⚠ Écart Actif / Passif : {_fmt_pdf(diff)} €  '
-                       f'(Actif {_fmt_pdf(bilan["total_actif"])} €  |  '
-                       f'Passif {_fmt_pdf(bilan["total_passif"])} €)')
-        eq_data = [[eq_text]]
-        eq_t = RLTable(eq_data, colWidths=[W])
+            eq_text = (f'\u26a0 Écart Actif / Passif : {_fmt_pdf(diff)} \u20ac  '
+                       f'(Actif {_fmt_pdf(bilan["total_actif"])} \u20ac  |  '
+                       f'Passif {_fmt_pdf(bilan["total_passif"])} \u20ac)')
+        eq_t = RLTable([[eq_text]], colWidths=[W])
         eq_t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), eq_color),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
             ('FONTSIZE', (0, 0), (-1, -1), 9),
-            ('TOPPADDING', (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
         ]))
-        elements.append(Spacer(1, 0.3 * cm))
         elements.append(eq_t)
 
     # ── Pied de page ──
-    elements.append(Spacer(1, 0.4 * cm))
+    elements.append(Spacer(1, 0.5 * cm))
     elements.append(HRFlowable(width='100%', thickness=0.5, color=colors.lightgrey))
     elements.append(Paragraph(
         f'Document généré le {datetime.now().strftime("%d/%m/%Y à %H:%M")} – CS-PILOT',
-        ParagraphStyle('foot', parent=styles['Normal'],
-                       fontSize=7, textColor=colors.grey, alignment=TA_CENTER,
-                       spaceBefore=4)))
+        foot_st))
 
     doc.build(elements)
     buf.seek(0)

@@ -149,8 +149,8 @@ class TestContratsTempsHebdo:
 
 class TestBudgetPrevisionnelBoutons:
 
-    def test_responsable_ne_voit_pas_importer_bi(self, client, users_with_contracts):
-        """Le responsable ne doit pas voir le bouton Importer BI."""
+    def test_responsable_ne_voit_pas_import_bi(self, client, users_with_contracts):
+        """Le responsable ne doit pas voir les boutons d'import BI (déplacés sur /import-bi)."""
         _login(client, 'resp_test2', 'Resp1234')
         resp = client.get('/budget-previsionnel')
         assert resp.status_code == 200
@@ -159,11 +159,15 @@ class TestBudgetPrevisionnelBoutons:
         assert 'Supprimer année importée' not in html
         assert 'Export PDF' in html
 
-    def test_directeur_voit_importer_bi(self, client, users_with_contracts):
-        """Le directeur doit voir le bouton Importer BI."""
+    def test_directeur_ne_voit_pas_import_bi_sur_budget(self, client, users_with_contracts):
+        """L'import BI a été déplacé sur /import-bi ; il ne doit plus apparaître sur /budget-previsionnel."""
         _login(client, 'dir_test', 'Dir1234')
         resp = client.get('/budget-previsionnel')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert 'Importer BI' in html
-        assert 'Supprimer année importée' in html
+        # Les boutons import/suppression BI ne sont plus sur cette page
+        assert 'importBiModal' not in html
+        assert 'supprimerAnneeImport' not in html
+        assert 'Supprimer année importée' not in html
+        # Les boutons PDF sont toujours là
+        assert 'Export PDF' in html

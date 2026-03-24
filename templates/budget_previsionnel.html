@@ -85,11 +85,6 @@
     {% endif %}
 </div>
 
-<div style="margin-bottom:10px;color:var(--text-muted);">
-    Années BI disponibles : {% if annees_importees %}{{ annees_importees|join(', ') }}{% else %}Aucune{% endif %}.
-    Dernier mois importé pour l'année en cours : <strong>{{ dernier_mois_courant_label or 'Aucun' }}</strong>.
-</div>
-
 <div id="tab-budget">
     <div id="budgetInfos" style="margin:10px 0;color:var(--text-muted);"></div>
     <div id="budgetTables"></div>
@@ -102,27 +97,6 @@
     <div id="globalResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
 </div>
 {% endif %}
-
-<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
-    <div class="modal-content" style="max-width:520px;">
-        <div class="modal-header">
-            <h3>📥 Import BI</h3>
-            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
-        </div>
-        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
-            <form id="importBiForm" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label>Fichier BI</label>
-                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
-                </div>
-                <div style="text-align:right;margin-top:12px;">
-                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Importer</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
 
 <script>
 var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
@@ -142,27 +116,6 @@ function switchTab(tab){
     document.getElementById('tab-budget').style.display = tab === 'budget' ? '' : 'none';
     var tg = document.getElementById('tab-global'); if (tg) tg.style.display = tab === 'global' ? '' : 'none';
     if (tab === 'global') chargerGlobal();
-}
-
-document.getElementById('importBiForm').addEventListener('submit', function(e){
-    e.preventDefault();
-    const fd = new FormData(this);
-    fetch('/api/bilan/import-bi', {method:'POST', body:fd})
-      .then(r => r.json()).then(data => {
-        if (data.success) { alert(data.message); location.reload(); }
-        else alert(data.error || 'Erreur import');
-      });
-});
-
-function supprimerAnneeImport(){
-    const annee = prompt('Année à supprimer (import BI) :');
-    if (!annee) return;
-    if (!confirm('Confirmer la suppression des données BI ' + annee + ' ?')) return;
-    fetch('/api/bilan/annee/' + annee, {method:'DELETE'})
-      .then(r => r.json()).then(data => {
-        if (data.success) { alert(data.message); location.reload(); }
-        else alert(data.error || 'Erreur suppression');
-      });
 }
 
 function getParams(globalMode){

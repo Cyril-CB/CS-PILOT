@@ -19,21 +19,17 @@
 .fr-table .total-row td { font-weight:700; border-top:2px solid var(--gray-400,#adb5bd); }
 .fr-result-box { padding:14px 20px; border-radius:10px; font-size:1.05em; font-weight:600; margin-top:16px; }
 .no-data-msg { text-align:center; color:var(--text-muted,#6c757d); padding:40px 0; }
-@media print {
-  .sidebar, nav, button, .btn { display:none !important; }
-  .indic-table { font-size:.82em; }
-}
 </style>
 
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <h2>📉 Indicateurs financiers</h2>
-    <button class="btn btn-secondary" onclick="window.print()">📄 Export PDF</button>
+    <a href="/api/indicateurs/export-pdf" class="btn btn-secondary">📄 Export PDF</a>
 </div>
 
 {% if not annees_importees %}
 <div class="alert" style="background:rgba(255,193,7,.15);border:1px solid rgba(255,193,7,.4);border-radius:8px;padding:16px;margin-top:16px;">
     ℹ️ Aucun import BI disponible.
-    <a href="{{ url_for('compte_resultat_bp.compte_resultat') }}" style="font-weight:600;">Importer un BI depuis la page C.R. &amp; Bilan</a> pour afficher les indicateurs.
+    <a href="{{ url_for('import_bi_bp.import_bi') }}" style="font-weight:600;">Importer un BI depuis la page Import BI</a> pour afficher les indicateurs.
 </div>
 {% endif %}
 
