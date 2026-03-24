@@ -71,11 +71,11 @@ def _get_annees_importees(conn):
 
         # Date du dernier import
         dernier_import = conn.execute(
-            '''SELECT date_import FROM bilan_fec_imports
-               WHERE annee = ? ORDER BY date_import DESC LIMIT 1''',
+            '''SELECT created_at FROM bilan_fec_imports
+               WHERE annee = ? ORDER BY created_at DESC LIMIT 1''',
             (annee,)
         ).fetchone()
-        date_import = dernier_import['date_import'] if dernier_import else None
+        date_import = dernier_import['created_at'] if dernier_import else None
 
         result.append({
             'annee': annee,

@@ -350,7 +350,7 @@ def _fmt_pdf(v):
         n = float(v or 0)
     except (ValueError, TypeError):
         return '0,00'
-    return f'{n:,.2f}'.replace(',', '\u202f').replace('.', ',')
+    return f'{n:,.2f}'.replace(',', ' ').replace('.', ',')
 
 
 def _build_cr_table(cats, noms, color_hdr, total_label, total_val, col_widths):

@@ -5,9 +5,8 @@
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <h2>📊 Bilan secteurs / actions</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-secondary" onclick="document.getElementById('importBiModal').style.display='flex'">📥 Importer BI</button>
+        <a href="{{ url_for('import_bi_bp.import_bi') }}" class="btn btn-secondary">📥 Importer BI</a>
         <button class="btn btn-secondary" id="btnExportPdf" style="display:none;" onclick="exporterPdf()">📄 Export PDF</button>
-        <button class="btn btn-danger" onclick="supprimerAnnee()" id="btnSuppAnnee" style="display:none;">🗑️ Supprimer données</button>
     </div>
 </div>
 
@@ -93,29 +92,6 @@
     </div>
 </div>
 
-{# ── Modal import BI ── #}
-<div id="importBiModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
-    <div class="modal-content" style="max-width:500px;">
-        <div class="modal-header">
-            <h3>📥 Importer un export BI</h3>
-            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
-        </div>
-        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
-            <p>Importez un export BI de la comptabilité (CSV/TSV). Les comptes 6x (charges) et 7x (produits) seront extraits avec leur code analytique. Les comptes 1x-5x (bilan) seront également importés si présents.</p>
-            <form id="importBiForm" enctype="multipart/form-data">
-                <div class="form-group">
-                    <label>Fichier BI</label>
-                    <input type="file" name="fichier" accept=".txt,.csv,.tsv" required class="form-control">
-                </div>
-                <div style="margin-top:16px;text-align:right;">
-                    <button type="button" class="btn btn-secondary" onclick="this.closest('.modal-overlay').style.display='none'">Annuler</button>
-                    <button type="submit" class="btn btn-primary">Importer</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
 {# ── Modal detail compte ── #}
 <div id="detailModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
     <div class="modal-content" style="max-width:700px;">
@@ -144,48 +120,11 @@ function fmt(n) { return n.toLocaleString('fr-FR', {minimumFractionDigits:2, max
 
 var bilanData = null;
 
-// Import BI
-document.getElementById('importBiForm').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var fd = new FormData(this);
-    fetch('/api/bilan/import-bi', {method:'POST', body:fd})
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                alert(data.message);
-                location.reload();
-            } else {
-                alert(data.error || 'Erreur.');
-            }
-        })
-        .catch(() => alert('Erreur réseau.'));
-});
-
-// Suppression annee
-function supprimerAnnee() {
-    var annee = document.getElementById('filtreAnnee').value;
-    if (!confirm('Supprimer toutes les données de ' + annee + ' ? Cette action est irréversible.')) return;
-    fetch('/api/bilan/annee/' + annee, {method:'DELETE'})
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) {
-                alert(data.message);
-                location.reload();
-            } else alert(data.error || 'Erreur.');
-        })
-        .catch(() => alert('Erreur réseau.'));
-}
-
 // Charger le bilan
 function chargerBilan() {
     var annee = document.getElementById('filtreAnnee').value;
     var secteur = document.getElementById('filtreSecteur').value;
     var action = document.getElementById('filtreAction').value;
-
-    // Afficher bouton suppression si annee importee
-    var anneesImportees = {{ annees_importees | tojson }};
-    document.getElementById('btnSuppAnnee').style.display =
-        anneesImportees.indexOf(parseInt(annee)) !== -1 ? '' : 'none';
 
     if (!secteur && !action) {
         document.getElementById('bilanContainer').style.display = 'none';
