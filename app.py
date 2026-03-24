@@ -256,9 +256,9 @@ def inject_version():
         from migration_manager import get_version_actuelle
         version_db = get_version_actuelle()
         try:
-            _cached_app_version = f'1.0.{int(version_db)}'
+            _cached_app_version = f'1.1.{int(version_db)}'
         except (ValueError, TypeError):
-            _cached_app_version = '1.0.0'
+            _cached_app_version = '1.1.0'
     return {'app_version': _cached_app_version}
 
 
