@@ -1,5 +1,5 @@
 def test_inject_version_utilise_prefix_1_1(app, monkeypatch):
-    """La version applicative doit utiliser le prefixe 1.1."""
+    """La version applicative doit utiliser le préfixe 1.1."""
     import app as app_module
     import migration_manager
 
