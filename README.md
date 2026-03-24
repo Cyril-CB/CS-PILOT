@@ -224,6 +224,7 @@ Le fichier `.env` est genere automatiquement au premier demarrage dans le meme d
 |---|---|---|
 | `SECRET_KEY` | Cle secrete Flask pour les sessions (generee automatiquement) | — |
 | `BEHIND_PROXY` | Mettre `true` si l'application est derriere un proxy/tunnel (ngrok, Cloudflare…) | `false` |
+| `UPLOAD_MAX_MB` | Limite d'upload (Mo) pour les imports BI/FEC | `10` |
 
 ## Configuration des notifications email (Gmail)
 
@@ -286,6 +287,10 @@ Les 4 premieres notifications sont envoyees automatiquement lors de l'action cor
 ### Erreur de base de donnees
 - Utiliser la page Administration pour verifier l'etat des migrations
 - Restaurer une sauvegarde depuis la page Sauvegardes
+
+### Erreur 413 (Nginx)
+- Dans le bloc `server` de votre reverse proxy Nginx, ajouter `client_max_body_size 10m;` (adapter à votre besoin).
+- Ajuster la limite applicative côté Flask via la variable `UPLOAD_MAX_MB` si nécessaire.
 
 ## Versionnement
 

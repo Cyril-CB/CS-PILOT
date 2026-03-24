@@ -107,6 +107,20 @@ Copiez la valeur affichée et remplacez `votre_cle_secrete_generee`.
 BEHIND_PROXY=true
 ```
 
+**Taille d'upload** — l'import BI accepte par défaut jusqu'à 10 Mo. Vous pouvez réduire/augmenter la limite côté application :
+
+```
+UPLOAD_MAX_MB=10
+```
+
+Si vous utilisez **Nginx** comme reverse proxy, ajoutez aussi dans votre bloc `server` pour éviter l'erreur **413 Request Entity Too Large** :
+
+```
+client_max_body_size 10m;
+proxy_read_timeout 300;
+proxy_connect_timeout 60;
+```
+
 > En développement local, `BEHIND_PROXY` n'est pas nécessaire.
 
 ---
