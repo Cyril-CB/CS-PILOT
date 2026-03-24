@@ -176,6 +176,26 @@ class TestBilanSecteurs:
         row = db.execute("SELECT code_analytique FROM bilan_fec_donnees WHERE compte_num = '601000'").fetchone()
         assert row['code_analytique'] == 'ANA001'
 
+    def test_import_bi_accepte_fichier_megabyte(self, admin_client, db):
+        """Un fichier BI d'environ 1 Mo ne doit pas être rejeté (413)."""
+        header = (
+            "Code journal\tDate de pièce\tNuméro de compte général\tLibellé écriture\t"
+            "Montant Débit\tMontant Crédit\tCompte analytique\n"
+        )
+        long_libelle = "Vente " + ("X" * 5000)
+        row = f"VE\t15/01/2025\t701000\t{long_libelle}\t0\t100\tANA001\n"
+        repetitions = 220  # ~1,1 Mo avec le libellé étendu
+        content = header + (row * repetitions)
+        assert len(content.encode('utf-8')) > 1_000_000
+
+        data = {'fichier': (io.BytesIO(content.encode('utf-8')), 'bi_gros.txt')}
+        resp = admin_client.post('/api/bilan/import-bi',
+                                 data=data, content_type='multipart/form-data')
+        assert resp.status_code == 200
+        result = resp.get_json()
+        assert result['success'] is True
+        assert result['nb_ecritures'] == repetitions
+
     def test_import_bi_annee_2_chiffres(self, admin_client, db):
         """L'import BI avec dates DD/MM/YY convertit l'année 2 chiffres en 4 chiffres."""
         bi_content = (

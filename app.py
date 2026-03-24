@@ -143,6 +143,21 @@ else:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = False
 
+# ==================== Taille maximale des requêtes ====================
+# Werkzeug limite par défaut la mémoire des formulaires (~500 Ko) ce qui bloque
+# l'import BI (fichiers ~3 Mo). On ouvre la limite à 10 Mo (surchargeable).
+_upload_limit_mb = os.environ.get('UPLOAD_MAX_MB', '10')
+try:
+    _upload_limit_mb_int = int(_upload_limit_mb)
+    if _upload_limit_mb_int <= 0:
+        raise ValueError()
+except ValueError:
+    _upload_limit_mb_int = 10
+
+_upload_limit_bytes = _upload_limit_mb_int * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = _upload_limit_bytes
+app.config['MAX_FORM_MEMORY_SIZE'] = _upload_limit_bytes
+
 # ==================== Initialisation des extensions ====================
 csrf.init_app(app)
 limiter.init_app(app)
