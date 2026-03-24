@@ -179,8 +179,8 @@ function verifierMiseAJour() {
             document.getElementById('notes-contenu').textContent = data.release_notes;
         }
 
-        var currentParts = data.current_version.replace('1.0.', '');
-        var latestParts = data.latest_version.replace('1.0.', '').replace('v', '');
+        var currentParts = data.current_version.replace('1.1.', '');
+        var latestParts = data.latest_version.replace('1.1.', '').replace('v', '');
 
         var html = '<div style="margin-bottom: 15px;">';
         html += '<strong>Version installee :</strong> ' + escapeHtml(data.current_version) + '<br>';

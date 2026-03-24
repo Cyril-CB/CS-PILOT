@@ -289,7 +289,7 @@ Les 4 premieres notifications sont envoyees automatiquement lors de l'action cor
 
 ## Versionnement
 
-Le numero de version suit le format `1.0.XXXX` ou `XXXX` correspond a la derniere migration de base de donnees appliquee. La version est calculee automatiquement et affichee sur la page Administration et dans le pied de page.
+Le numero de version suit le format `1.1.XXXX`, où `XXXX` correspond a la derniere migration de base de donnees appliquee. La version est calculee automatiquement et affichee sur la page Administration et dans le pied de page.
 
 ---
 
