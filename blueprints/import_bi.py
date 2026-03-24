@@ -8,8 +8,8 @@ Fonctionnalités :
 - Suppression d'une année importée (réutilise /api/bilan/annee/<annee>).
 - Accessible aux profils directeur et comptable.
 """
-from flask import (Blueprint, render_template, request, session,
-                   redirect, url_for, flash, jsonify)
+from flask import (Blueprint, render_template, session,
+                   redirect, url_for, flash)
 from database import get_db
 from utils import login_required
 
