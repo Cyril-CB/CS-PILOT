@@ -360,3 +360,22 @@ def lancer_mise_a_jour():
     else:
         logger.error("Mise a jour echouee: %s", message)
         return jsonify({'success': False, 'error': message}), 500
+
+# Redémarrage différé uniquement en mode script (VPS systemd)
+        if not _is_frozen():
+            import subprocess
+            subprocess.Popen(
+                ['bash', '-c', 'sleep 5 && sudo systemctl restart cspilot'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True
+            )
+            message = message.replace(
+                "Veuillez redemarrer l'application.",
+                "Redémarrage automatique dans 5 secondes..."
+            )
+
+        return jsonify({'success': True, 'message': message})
+    else:
+        logger.error("Mise a jour echouee: %s", message)
+        return jsonify({'success': False, 'error': message}), 500
