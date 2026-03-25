@@ -279,7 +279,16 @@
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                 </div>
             </div>
-            <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}" class="sidebar-link">🕐 Temps annualisé</a>
+            <div class="sidebar-section">
+                <button class="sidebar-section-toggle" onclick="toggleSection(this)">
+                    <span>💼 RH & Paie</span><span class="sidebar-arrow">&#9662;</span>
+                </button>
+                <div class="sidebar-section-menu">
+                    <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salariés</a>
+                    <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
+                    <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                </div>
+            </div>
             <a href="{{ url_for('factures_bp.approbation_factures') }}" class="sidebar-link">🧾 Approbation factures</a>
             <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
 
