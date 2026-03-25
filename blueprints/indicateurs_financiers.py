@@ -26,6 +26,11 @@ from utils import login_required
 
 indicateurs_financiers_bp = Blueprint('indicateurs_financiers_bp', __name__)
 
+SEUIL_SANTE_FONDS_ROULEMENT = 0
+SEUIL_SANTE_TRESORERIE = 0
+SEUIL_SANTE_CAF = 0
+SEUIL_SANTE_FR_MOIS = 1
+
 
 def _peut_acceder():
     return session.get('profil') in ('directeur', 'comptable')
@@ -93,15 +98,15 @@ def _compute_indicateurs(conn, annee):
     pct_masse_sal = (round(masse_salariale / total_charges * 100, 1)
                      if total_charges else None)
     sante_stars = 0
-    if fonds_roulement >= 0:
+    if fonds_roulement >= SEUIL_SANTE_FONDS_ROULEMENT:
         sante_stars += 1
-    if tresorerie >= 0:
+    if tresorerie >= SEUIL_SANTE_TRESORERIE:
         sante_stars += 1
     if bfr <= fonds_roulement:
         sante_stars += 1
-    if caf >= 0:
+    if caf >= SEUIL_SANTE_CAF:
         sante_stars += 1
-    if fr_mois is not None and fr_mois >= 1:
+    if fr_mois is not None and fr_mois >= SEUIL_SANTE_FR_MOIS:
         sante_stars += 1
     sante_stars = min(max(sante_stars, 1), 5)
 
@@ -412,7 +417,7 @@ def api_indicateurs_export_pdf():
             ('FONTSIZE', (0, 1), (-1, -1), 8.5),
             ('ALIGN', (0, 1), (0, -1), 'CENTER'),   # Année centré
             ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
-            ('ALIGN', (10, 1), (10, -1), 'CENTER'),
+            ('ALIGN', (10, 1), (10, -1), 'CENTER'),  # col 10 = Santé globale
             ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),  # Année en gras
             ('TOPPADDING', (0, 1), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
