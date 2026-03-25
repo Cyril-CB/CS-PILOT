@@ -196,9 +196,61 @@ class TestApiIndicateursDonnees:
         assert indic['capitaux_permanents'] == pytest.approx(85000.0)
         assert indic['immobilisations_nettes'] == pytest.approx(30000.0)
         assert indic['fonds_roulement'] == pytest.approx(55000.0)  # 85000 − 30000
+        assert indic['bfr'] == pytest.approx(0.0)
         assert indic['tresorerie'] == pytest.approx(25000.0)
+        assert indic['caf'] == pytest.approx(5000.0)
+        assert indic['sante_globale_stars'] == 5
         assert indic['masse_salariale'] == pytest.approx(50000.0)
         assert indic['pct_masse_salariale'] == pytest.approx(90.9, abs=0.1)
+
+    def test_indicateurs_bfr_et_caf(self, app, db, comptable_client, sample_users):
+        annee = datetime.now().year
+        with app.app_context():
+            import database
+            conn = database.get_db()
+            conn.execute(
+                "INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES (?, ?, ?)",
+                (f'bi_{annee}.txt', annee, 8)
+            )
+            import_id = conn.execute(
+                'SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1'
+            ).fetchone()['id']
+            # Résultat = (70 000 + 500 de reprises) - (60 000 + 3 000 de dotations) = +7 500
+            rows = [
+                ('106000', 'Réserves', '', annee, 12, 80000.0, import_id),   # 1x
+                ('215000', 'Immo', '', annee, 12, 30000.0, import_id),       # 2x
+                ('310000', 'Stocks', '', annee, 12, 7000.0, import_id),      # 3x
+                ('411000', 'Clients', '', annee, 12, 9000.0, import_id),     # 4x
+                ('512000', 'Banque', '', annee, 12, 12000.0, import_id),     # 5x
+                ('641000', 'Salaires', '', annee, 12, 60000.0, import_id),   # 6x
+                ('681000', 'Dotations', '', annee, 12, 3000.0, import_id),   # 68x
+                ('740000', 'Produits', '', annee, 12, 70000.0, import_id),   # 7x
+                ('781000', 'Reprises', '', annee, 12, 500.0, import_id),     # 78x
+            ]
+            for row in rows:
+                conn.execute(
+                    "INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    row
+                )
+            conn.commit()
+            conn.close()
+
+        resp = comptable_client.get('/api/indicateurs/donnees')
+        assert resp.status_code == 200
+        data = resp.get_json()
+        indic = data['indicateurs'][0]
+
+        # Capitaux permanents = 1x (80 000) + résultat (7 500) = 87 500
+        assert indic['capitaux_permanents'] == pytest.approx(87500.0)
+        assert indic['immobilisations_nettes'] == pytest.approx(30000.0)
+        assert indic['fonds_roulement'] == pytest.approx(57500.0)
+        # BFR = stocks (3x) + comptes de tiers (4x)
+        assert indic['bfr'] == pytest.approx(16000.0)
+        # CAF = résultat + dotations (68x) - reprises (78x)
+        assert indic['caf'] == pytest.approx(10000.0)
+        # Tous les critères sont au vert => 5 étoiles
+        assert indic['sante_globale_stars'] == 5
 
     def test_indicateurs_acces_refuse(self, app, db, auth_client, sample_users):
         resp = auth_client.get('/api/indicateurs/donnees')
@@ -424,4 +476,3 @@ class TestImportBiEtendu:
         assert cr['n']['total_charges'] == pytest.approx(59.60)
         # 740000 : crédit-normal → credit - debit = 1200 - 0 = 1200
         assert cr['n']['total_produits'] == pytest.approx(1200.0)
-
