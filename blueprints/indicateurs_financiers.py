@@ -6,9 +6,12 @@ Calcule, pour chaque année disponible en base (import BI) :
   - Immobilisations nettes       : somme des comptes 2x (débit-normal, amortiss. inclus)
   - Fonds de roulement (FR)      : capitaux permanents − immobilisations nettes
   - FR en mois de charges        : FR / (total charges annuelles / 12)
+  - Besoin en fonds de roulement : stocks (3x) + comptes de tiers (4x)
   - Trésorerie nette             : somme des comptes 5x (débit-normal)
   - Trésorerie en mois           : trésorerie / (total charges / 12)
+  - C.A.F.                       : résultat + dotations (68x) − reprises (78x)
   - % Masse salariale            : somme 64xxxx / total charges 6x × 100
+  - Santé globale                : score simplifié de 1 à 5 étoiles
 
 Onglet "Fonds de roulement" : détail du calcul pour une année sélectionnée.
 
@@ -42,6 +45,10 @@ def _compute_indicateurs(conn, annee):
     total_charges = 0.0
     total_produits = 0.0
     masse_salariale = 0.0
+    stocks = 0.0
+    comptes_tiers = 0.0
+    dotations = 0.0
+    reprises = 0.0
 
     for r in rows:
         compte = r['compte_num']
@@ -59,8 +66,16 @@ def _compute_indicateurs(conn, annee):
             total_charges += montant     # débit-normal  : positif = charge
             if compte.startswith('64'):
                 masse_salariale += montant
+            if compte.startswith('68'):
+                dotations += montant
         elif premier == '7':
             total_produits += montant    # crédit-normal : positif = produit
+            if compte.startswith('78'):
+                reprises += montant
+        elif premier == '3':
+            stocks += montant
+        elif premier == '4':
+            comptes_tiers += montant
 
     # Le résultat de l'exercice (7x − 6x) appartient aux capitaux permanents (12x).
     # Il n'est pas dans les comptes 1x du BI (entrée de clôture), on l'injecte ici.
@@ -73,8 +88,22 @@ def _compute_indicateurs(conn, annee):
                if charges_mensuelles else None)
     tres_mois = (round(tresorerie / charges_mensuelles, 2)
                  if charges_mensuelles else None)
+    bfr = stocks + comptes_tiers
+    caf = resultat + dotations - reprises
     pct_masse_sal = (round(masse_salariale / total_charges * 100, 1)
                      if total_charges else None)
+    sante_stars = 0
+    if fonds_roulement >= 0:
+        sante_stars += 1
+    if tresorerie >= 0:
+        sante_stars += 1
+    if bfr <= fonds_roulement:
+        sante_stars += 1
+    if caf >= 0:
+        sante_stars += 1
+    if fr_mois is not None and fr_mois >= 1:
+        sante_stars += 1
+    sante_stars = min(max(sante_stars, 1), 5)
 
     return {
         'annee': annee,
@@ -82,8 +111,11 @@ def _compute_indicateurs(conn, annee):
         'immobilisations_nettes': round(immos, 2),
         'fonds_roulement': round(fonds_roulement, 2),
         'fr_mois': fr_mois,
+        'bfr': round(bfr, 2),
         'tresorerie': round(tresorerie, 2),
         'tresorerie_mois': tres_mois,
+        'caf': round(caf, 2),
+        'sante_globale_stars': sante_stars,
         'pct_masse_salariale': pct_masse_sal,
         'total_charges': round(total_charges, 2),
         'masse_salariale': round(masse_salariale, 2),
@@ -238,7 +270,7 @@ def _fmt_pdf(v):
         n = float(v or 0)
     except (ValueError, TypeError):
         return '—'
-    return f'{n:,.2f}'.replace(',', ' ').replace('.', ',')
+    return f'{n:,.0f}'.replace(',', ' ').replace('.', ',')
 
 
 def _fmt_mois(v):
@@ -321,9 +353,12 @@ def api_indicateurs_export_pdf():
              'Immob.\nnettes (€)',
              'Fonds de\nroulement (€)',
              'FR en mois\nde charges',
+             'B.F.R.\n(€)',
              'Trésorerie\n(€)',
              'Tréso en\nmois',
-             '% Masse\nsalariale'],
+             'C.A.F.\n(€)',
+             '% Masse\nsalariale',
+             'Santé\nglobale'],
         ]
         # Données (plus récent en premier)
         for r in reversed(indicateurs):
@@ -331,31 +366,34 @@ def api_indicateurs_export_pdf():
             cap = r['capitaux_permanents']
             immo = r['immobilisations_nettes']
 
-            def _badge(val, is_pos):
-                return _fmt_pdf(val) if is_pos else f'({_fmt_pdf(abs(val))})'
-
             row = [
                 str(r['annee']),
                 _fmt_pdf(cap) if abs(cap) > 0.01 else 'N/D',
                 _fmt_pdf(immo) if abs(immo) > 0.01 else 'N/D',
                 _fmt_pdf(fr) if (abs(cap) > 0.01 or abs(immo) > 0.01) else 'N/D',
                 _fmt_mois(r['fr_mois']),
+                _fmt_pdf(r['bfr']),
                 _fmt_pdf(r['tresorerie']) if abs(r['tresorerie']) > 0.01 else 'N/D',
                 _fmt_mois(r['tresorerie_mois']),
+                _fmt_pdf(r['caf']),
                 _fmt_pct(r['pct_masse_salariale']),
+                ('★' * int(r.get('sante_globale_stars', 1))) + ('☆' * (5 - int(r.get('sante_globale_stars', 1)))),
             ]
             headers.append(row)
 
         # Largeurs colonnes adaptées à la largeur utile paysage
         col_widths = [
-            W * 0.07,   # Année
-            W * 0.14,   # Capitaux permanents
-            W * 0.12,   # Immob. nettes
-            W * 0.13,   # Fonds de roulement
-            W * 0.12,   # FR en mois
-            W * 0.13,   # Trésorerie
-            W * 0.12,   # Tréso en mois
-            W * 0.17,   # % Masse salariale
+            W * 0.06,   # Année
+            W * 0.11,   # Capitaux permanents
+            W * 0.10,   # Immob. nettes
+            W * 0.10,   # Fonds de roulement
+            W * 0.09,   # FR en mois
+            W * 0.10,   # BFR
+            W * 0.10,   # Trésorerie
+            W * 0.09,   # Tréso en mois
+            W * 0.10,   # CAF
+            W * 0.08,   # % Masse salariale
+            W * 0.07,   # Santé globale
         ]
 
         t = RLTable(headers, colWidths=col_widths, repeatRows=1)
@@ -374,6 +412,7 @@ def api_indicateurs_export_pdf():
             ('FONTSIZE', (0, 1), (-1, -1), 8.5),
             ('ALIGN', (0, 1), (0, -1), 'CENTER'),   # Année centré
             ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+            ('ALIGN', (10, 1), (10, -1), 'CENTER'),
             ('FONTNAME', (0, 1), (0, -1), 'Helvetica-Bold'),  # Année en gras
             ('TOPPADDING', (0, 1), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
@@ -402,6 +441,8 @@ def api_indicateurs_export_pdf():
         elements.append(Spacer(1, 0.5 * cm))
         legend = ('N/D = donnée non disponible (import BI sans comptes de bilan). '
                   'Capitaux permanents = comptes 1x + résultat de l\'exercice (12x). '
+                  'B.F.R. = stocks (3x) + comptes de tiers (4x). '
+                  'C.A.F. (capacité d\'autofinancement) = résultat + dotations (68x) − reprises (78x). '
                   'Masse salariale = comptes 64x (bruts + charges sociales).')
         elements.append(Paragraph(legend, ParagraphStyle(
             'leg', parent=styles['Normal'],
