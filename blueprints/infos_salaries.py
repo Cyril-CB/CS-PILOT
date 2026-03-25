@@ -39,7 +39,33 @@ def _get_documents_dir():
 
 
 def _peut_gerer():
-    return session.get('profil') in ['comptable', 'directeur']
+    return session.get('profil') in ['comptable', 'directeur', 'responsable']
+
+
+def _est_salarie_visible(conn, user_id):
+    """Vérifie si le salarié est visible par l'utilisateur connecté."""
+    profil = session.get('profil')
+    if profil in ['comptable', 'directeur']:
+        return conn.execute('''
+            SELECT 1 FROM users
+            WHERE id = ? AND actif = 1 AND profil != 'prestataire'
+        ''', (user_id,)).fetchone() is not None
+
+    if profil != 'responsable':
+        return False
+
+    user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    secteur_id = user['secteur_id'] if user else None
+
+    if secteur_id:
+        row = conn.execute('''
+            SELECT 1 FROM users
+            WHERE id = ? AND actif = 1 AND profil != 'prestataire'
+              AND (secteur_id = ? OR id = ?)
+        ''', (user_id, secteur_id, session['user_id'])).fetchone()
+        return row is not None
+
+    return user_id == session['user_id']
 
 
 def _nettoyer_nom(texte):
@@ -117,14 +143,37 @@ def infos_salaries():
 
     conn = get_db()
 
-    salaries = conn.execute('''
-        SELECT u.id, u.nom, u.prenom, u.profil, u.email,
-               COALESCE(s.nom, '') AS secteur_nom
-        FROM users u
-        LEFT JOIN secteurs s ON u.secteur_id = s.id
-        WHERE u.actif = 1 AND u.profil != 'prestataire'
-        ORDER BY u.nom, u.prenom
-    ''').fetchall()
+    if session.get('profil') == 'responsable':
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        secteur_id = user['secteur_id'] if user else None
+        if secteur_id:
+            salaries = conn.execute('''
+                SELECT u.id, u.nom, u.prenom, u.profil, u.email,
+                       COALESCE(s.nom, '') AS secteur_nom
+                FROM users u
+                LEFT JOIN secteurs s ON u.secteur_id = s.id
+                WHERE u.actif = 1 AND u.profil != 'prestataire'
+                  AND (u.secteur_id = ? OR u.id = ?)
+                ORDER BY u.nom, u.prenom
+            ''', (secteur_id, session['user_id'])).fetchall()
+        else:
+            salaries = conn.execute('''
+                SELECT u.id, u.nom, u.prenom, u.profil, u.email,
+                       COALESCE(s.nom, '') AS secteur_nom
+                FROM users u
+                LEFT JOIN secteurs s ON u.secteur_id = s.id
+                WHERE u.id = ? AND u.actif = 1 AND u.profil != 'prestataire'
+                ORDER BY u.nom, u.prenom
+            ''', (session['user_id'],)).fetchall()
+    else:
+        salaries = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, u.profil, u.email,
+                   COALESCE(s.nom, '') AS secteur_nom
+            FROM users u
+            LEFT JOIN secteurs s ON u.secteur_id = s.id
+            WHERE u.actif = 1 AND u.profil != 'prestataire'
+            ORDER BY u.nom, u.prenom
+        ''').fetchall()
 
     selected_id = request.args.get('user_id', type=int)
     salarie = None
@@ -132,6 +181,11 @@ def infos_salaries():
     documents = []
 
     if selected_id:
+        if not _est_salarie_visible(conn, selected_id):
+            conn.close()
+            flash("Acces non autorise.", 'error')
+            return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
         salarie = conn.execute('''
             SELECT u.*, COALESCE(s.nom, '') AS secteur_nom
             FROM users u
@@ -190,6 +244,10 @@ def modifier_email():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
     conn.execute('UPDATE users SET email = ? WHERE id = ?', (email, user_id))
     conn.commit()
     conn.close()
@@ -216,6 +274,10 @@ def modifier_infos_personnelles():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
     conn.execute(
         'UPDATE users SET adresse = ?, date_naissance = ?, numero_secu = ? WHERE id = ?',
         (adresse, date_naissance, numero_secu, user_id)
@@ -244,6 +306,10 @@ def modifier_pesee():
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
     conn.execute('UPDATE users SET pesee = ? WHERE id = ?', (pesee, user_id))
     conn.commit()
     conn.close()
@@ -277,6 +343,11 @@ def ajouter_contrat():
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
     salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
     if not salarie:
         flash("Salarie introuvable.", 'error')
@@ -347,6 +418,11 @@ def ajouter_document():
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
     salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
     if not salarie:
         flash("Salarie introuvable.", 'error')
@@ -406,11 +482,18 @@ def telecharger_document(doc_id):
         'SELECT fichier_path, fichier_nom, user_id FROM documents_salaries WHERE id = ?',
         (doc_id,)
     ).fetchone()
-    conn.close()
 
     if not doc or not doc['fichier_path']:
+        conn.close()
         flash("Document introuvable.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    if not _est_salarie_visible(conn, doc['user_id']):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    conn.close()
 
     chemin = os.path.join(_get_documents_dir(), doc['fichier_path'])
     chemin_reel = os.path.realpath(chemin)
@@ -438,6 +521,11 @@ def supprimer_document(doc_id):
         conn.close()
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
+    if not _est_salarie_visible(conn, doc['user_id']):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
     user_id = doc['user_id']
     _supprimer_fichier(doc['fichier_path'])
     conn.execute('DELETE FROM documents_salaries WHERE id = ?', (doc_id,))
@@ -461,11 +549,18 @@ def telecharger_contrat(contrat_id):
         'SELECT fichier_path, fichier_nom, user_id FROM contrats WHERE id = ?',
         (contrat_id,)
     ).fetchone()
-    conn.close()
 
     if not contrat or not contrat['fichier_path']:
+        conn.close()
         flash("Aucun fichier associe a ce contrat.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    if not _est_salarie_visible(conn, contrat['user_id']) and session.get('profil') != 'prestataire':
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    conn.close()
 
     chemin = os.path.join(_get_documents_dir(), contrat['fichier_path'])
     chemin_reel = os.path.realpath(chemin)
@@ -491,6 +586,11 @@ def supprimer_contrat(contrat_id):
     if not contrat:
         flash("Contrat introuvable.", 'error')
         conn.close()
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    if not _est_salarie_visible(conn, contrat['user_id']):
+        conn.close()
+        flash("Acces non autorise.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     user_id = contrat['user_id']
