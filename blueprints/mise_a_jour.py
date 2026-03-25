@@ -356,12 +356,8 @@ def lancer_mise_a_jour():
 
     if success:
         logger.info("Mise a jour reussie: %s", message)
-        return jsonify({'success': True, 'message': message})
-    else:
-        logger.error("Mise a jour echouee: %s", message)
-        return jsonify({'success': False, 'error': message}), 500
 
-# Redémarrage différé uniquement en mode script (VPS systemd)
+        # Redémarrage différé uniquement en mode script (VPS systemd)
         if not _is_frozen():
             import subprocess
             subprocess.Popen(
@@ -372,7 +368,7 @@ def lancer_mise_a_jour():
             )
             message = message.replace(
                 "Veuillez redemarrer l'application.",
-                "Redémarrage automatique dans 5 secondes..."
+                "Redemarrage automatique dans 5 secondes..."
             )
 
         return jsonify({'success': True, 'message': message})
