@@ -73,6 +73,35 @@ def _peut_gerer():
     return session.get('profil') in ['comptable', 'directeur']
 
 
+def _peut_acceder_module():
+    return session.get('profil') in ['comptable', 'directeur', 'responsable']
+
+
+def _est_salarie_visible(conn, user_id):
+    """Vérifie si le salarié est visible par l'utilisateur connecté."""
+    profil = session.get('profil')
+    if profil in ['comptable', 'directeur']:
+        return conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            (user_id,)
+        ).fetchone() is not None
+
+    if profil != 'responsable':
+        return False
+
+    user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+    secteur_id = user['secteur_id'] if user else None
+
+    if secteur_id:
+        return conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire' "
+            "AND (secteur_id = ? OR id = ?)",
+            (user_id, secteur_id, session['user_id'])
+        ).fetchone() is not None
+
+    return user_id == session['user_id']
+
+
 def _nettoyer_nom(texte):
     nfkd = unicodedata.normalize('NFKD', texte)
     sans_accents = ''.join(c for c in nfkd if not unicodedata.combining(c))
@@ -93,7 +122,7 @@ def _chemin_securise(chemin, dossier):
 @login_required
 def generation_contrats():
     """Page principale avec deux onglets."""
-    if not _peut_gerer():
+    if not _peut_acceder_module():
         flash("Acces non autorise.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
@@ -102,21 +131,60 @@ def generation_contrats():
     # Données pour l'onglet 1 (formulaire)
     # Robustesse : les colonnes adresse/date_naissance/numero_secu peuvent manquer
     # sur une installation existante avant application de la migration 0024.
-    try:
-        salaries = conn.execute('''
-            SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
-            FROM users u
-            WHERE u.actif = 1 AND u.profil != 'prestataire'
-            ORDER BY u.nom, u.prenom
-        ''').fetchall()
-    except Exception:
-        salaries = conn.execute('''
-            SELECT u.id, u.nom, u.prenom, u.profil,
-                   '' AS adresse, '' AS date_naissance, '' AS numero_secu
-            FROM users u
-            WHERE u.actif = 1 AND u.profil != 'prestataire'
-            ORDER BY u.nom, u.prenom
-        ''').fetchall()
+    profil = session.get('profil')
+    if profil == 'responsable':
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+        secteur_id = user['secteur_id'] if user else None
+        if secteur_id:
+            try:
+                salaries = conn.execute('''
+                    SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
+                    FROM users u
+                    WHERE u.actif = 1 AND u.profil != 'prestataire'
+                      AND (u.secteur_id = ? OR u.id = ?)
+                    ORDER BY u.nom, u.prenom
+                ''', (secteur_id, session['user_id'])).fetchall()
+            except Exception:
+                salaries = conn.execute('''
+                    SELECT u.id, u.nom, u.prenom, u.profil,
+                           '' AS adresse, '' AS date_naissance, '' AS numero_secu
+                    FROM users u
+                    WHERE u.actif = 1 AND u.profil != 'prestataire'
+                      AND (u.secteur_id = ? OR u.id = ?)
+                    ORDER BY u.nom, u.prenom
+                ''', (secteur_id, session['user_id'])).fetchall()
+        else:
+            try:
+                salaries = conn.execute('''
+                    SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
+                    FROM users u
+                    WHERE u.id = ? AND u.actif = 1 AND u.profil != 'prestataire'
+                    ORDER BY u.nom, u.prenom
+                ''', (session['user_id'],)).fetchall()
+            except Exception:
+                salaries = conn.execute('''
+                    SELECT u.id, u.nom, u.prenom, u.profil,
+                           '' AS adresse, '' AS date_naissance, '' AS numero_secu
+                    FROM users u
+                    WHERE u.id = ? AND u.actif = 1 AND u.profil != 'prestataire'
+                    ORDER BY u.nom, u.prenom
+                ''', (session['user_id'],)).fetchall()
+    else:
+        try:
+            salaries = conn.execute('''
+                SELECT u.id, u.nom, u.prenom, u.profil, u.adresse, u.date_naissance, u.numero_secu
+                FROM users u
+                WHERE u.actif = 1 AND u.profil != 'prestataire'
+                ORDER BY u.nom, u.prenom
+            ''').fetchall()
+        except Exception:
+            salaries = conn.execute('''
+                SELECT u.id, u.nom, u.prenom, u.profil,
+                       '' AS adresse, '' AS date_naissance, '' AS numero_secu
+                FROM users u
+                WHERE u.actif = 1 AND u.profil != 'prestataire'
+                ORDER BY u.nom, u.prenom
+            ''').fetchall()
 
     postes = conn.execute(
         'SELECT id, intitule, total_points, formation_niveau, complexite_niveau, '
@@ -142,6 +210,8 @@ def generation_contrats():
 
     # Salarié pré-sélectionné (venant de la page infos_salaries)
     preselect_user_id = request.args.get('user_id', type=int)
+    if preselect_user_id and not _est_salarie_visible(conn, preselect_user_id):
+        preselect_user_id = None
 
     # Dernier contrat généré pour re-téléchargement
     dernier_contrat = None
@@ -177,7 +247,7 @@ def generation_contrats():
 @login_required
 def generer_contrat():
     """Génère le contrat DOCX en remplaçant les placeholders."""
-    if not _peut_gerer():
+    if not _peut_acceder_module():
         flash("Acces non autorise.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
@@ -196,6 +266,11 @@ def generer_contrat():
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
 
     conn = get_db()
+
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
 
     # Récupérer le modèle
     modele = conn.execute('SELECT * FROM modeles_contrats WHERE id = ?', (modele_id,)).fetchone()
@@ -369,11 +444,16 @@ def generer_contrat():
 @login_required
 def retelecharger_contrat(user_id):
     """Re-télécharge le dernier contrat généré pour un salarié."""
-    if not _peut_gerer():
+    if not _peut_acceder_module():
         flash("Acces non autorise.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
+    if not _est_salarie_visible(conn, user_id):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
+
     contrat = conn.execute(
         'SELECT * FROM contrats_generes WHERE user_id = ? ORDER BY created_at DESC LIMIT 1',
         (user_id,)
