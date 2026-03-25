@@ -71,7 +71,7 @@ var indicLoaded = false;
 var URL_CR_BILAN = "{{ url_for('compte_resultat_bp.compte_resultat') }}";
 
 function fmt(n) {
-    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return (Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:0,maximumFractionDigits:0});
 }
 function fmtMois(n) {
     if (n === null || n === undefined) return '<span class="badge-na">N/D</span>';
@@ -93,6 +93,11 @@ function badgeMois(v) {
     if (v === null || v === undefined) return '<span class="badge-na">N/D</span>';
     const cls = v >= 1 ? 'badge-pos' : 'badge-neg';
     return '<span class="'+cls+'">'+fmtMois(v)+' mois</span>';
+}
+
+function stars(v) {
+    const n = Math.max(1, Math.min(5, Number(v) || 1));
+    return '★'.repeat(n) + '☆'.repeat(5 - n);
 }
 
 // ── Gestion onglets ──────────────────────────────────────────────────────────
@@ -142,9 +147,12 @@ function buildIndicateursHtml(rows) {
             '<th class="num" title="Comptes 2x : immobilisations brutes − amortissements">Immobilisations<br>nettes</th>'+
             '<th class="num" title="Capitaux permanents − Immobilisations nettes">Fonds de<br>roulement</th>'+
             '<th class="num" title="Fonds de roulement / (charges annuelles / 12)">FR en mois<br>de charges</th>'+
+            '<th class="num" title="Besoin en fonds de roulement = stocks (3x) + comptes de tiers (4x)">B.F.R.</th>'+
             '<th class="num" title="Comptes 5x : disponibilités bancaires et caisse">Trésorerie</th>'+
             '<th class="num" title="Trésorerie / (charges annuelles / 12)">Tréso en mois<br>de charges</th>'+
+            '<th class="num" title="Capacité d’autofinancement = résultat + dotations (68x) − reprises (78x)">C.A.F.</th>'+
             '<th class="num" title="Charges 641xxx / Total charges 6x × 100">% Masse<br>salariale</th>'+
+            '<th class="num" title="Indicateur synthétique (1 à 5 étoiles)">Santé<br>globale</th>'+
             '</tr></thead><tbody>';
 
     for (const r of rows.slice().reverse()) {  // plus récent en premier
@@ -158,8 +166,11 @@ function buildIndicateursHtml(rows) {
             : '<span class="badge-na">N/D</span>';
         const tresMois = badgeMois(r.tresorerie_mois);
         const pctMs = fmtPct(r.pct_masse_salariale);
+        const bfrBadge = badgeFR(r.bfr);
+        const cafBadge = badgeFR(r.caf);
         const capStr = Math.abs(r.capitaux_permanents) > 0.01 ? fmt(r.capitaux_permanents)+' €' : '<span class="badge-na">N/D</span>';
         const immoStr = Math.abs(r.immobilisations_nettes) > 0.01 ? fmt(r.immobilisations_nettes)+' €' : '<span class="badge-na">N/D</span>';
+        const sante = '<span title="'+(Number(r.sante_globale_stars)||1)+'/5">'+stars(r.sante_globale_stars)+'</span>';
 
         html += '<tr>'+
                 '<td class="year-col">'+r.annee+'</td>'+
@@ -167,9 +178,12 @@ function buildIndicateursHtml(rows) {
                 '<td class="num">'+immoStr+'</td>'+
                 '<td class="num">'+frBadge+'</td>'+
                 '<td class="num">'+frMois+'</td>'+
+                '<td class="num">'+bfrBadge+'</td>'+
                 '<td class="num">'+tresBadge+'</td>'+
                 '<td class="num">'+tresMois+'</td>'+
+                '<td class="num">'+cafBadge+'</td>'+
                 '<td class="num">'+pctMs+'</td>'+
+                '<td class="num">'+sante+'</td>'+
                 '</tr>';
     }
     html += '</tbody></table></div>';
@@ -185,7 +199,9 @@ function buildIndicateursHtml(rows) {
     // Légende
     html += '<div style="margin-top:16px;font-size:.85em;color:var(--text-muted,#6c757d);">'+
             '<strong>Légende :</strong> N/D = donnée non disponible (import BI sans comptes de bilan). '+
-            'Les indicateurs de fonds de roulement et trésorerie nécessitent les comptes 1x–5x.</div>';
+            'Les indicateurs de fonds de roulement et trésorerie nécessitent les comptes 1x–5x. '+
+            'C.A.F. (capacité d’autofinancement) = résultat + dotations (68x) − reprises (78x). '+
+            '</div>';
     return html;
 }
 
