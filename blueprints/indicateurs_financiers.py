@@ -26,6 +26,8 @@ from utils import login_required
 
 indicateurs_financiers_bp = Blueprint('indicateurs_financiers_bp', __name__)
 
+
+
 def _peut_acceder():
     return session.get('profil') in ('directeur', 'comptable')
 
@@ -95,15 +97,13 @@ def _compute_indicateurs(conn, annee):
     # Critères adaptés au contexte centres sociaux / ALISFA
     score = 0
 
-    # FR en mois (3 pts) — indicateur clé de solidité structurelle
+    # FR en mois (2 pts) — seuils élevés car financements publics en baisse
     if fr_mois is not None:
-        if fr_mois >= 3:
-            score += 3
-        elif fr_mois >= 2:
+        if fr_mois >= 4:
             score += 2
-        elif fr_mois >= 1:
+        elif fr_mois >= 3:
             score += 1
-        # < 1 mois = 0 pt (danger)
+        # < 3 mois = 0 pt
 
     # Trésorerie en mois (2 pts)
     if tres_mois is not None:
@@ -113,14 +113,16 @@ def _compute_indicateurs(conn, annee):
             score += 1
         # < 1 mois = 0 pt
 
-    # CAF rapportée aux charges (2 pts) — capacité à investir/rembourser
+    # CAF en % des charges (3 pts) — gradation pour distinguer -10 € de -179 k€
     if total_charges > 0:
         caf_pct = caf / total_charges * 100
-        if caf_pct >= 1.0:      # > 1 % des charges : sain
+        if caf_pct >= 1.0:      # saine et positive
+            score += 3
+        elif caf_pct >= 0:      # positive mais marginale
             score += 2
-        elif caf_pct >= 0:      # positive mais faible
+        elif caf_pct >= -2.0:   # légèrement négative (conjoncturelle)
             score += 1
-        # négative = 0 pt
+        # < -2 % = 0 pt (structurellement dégradée)
 
     # % Masse salariale (2 pts) — contexte ALISFA (charges patronales lourdes)
     if pct_masse_sal is not None:
@@ -134,14 +136,14 @@ def _compute_indicateurs(conn, annee):
     if bfr <= fonds_roulement:
         score += 1
 
-    # Mapping 0–10 → 1–5 étoiles
+    # Mapping 0–10 → 1–5 étoiles (seuils stricts, contexte financements publics)
     if score >= 9:
         sante_stars = 5
     elif score >= 7:
         sante_stars = 4
-    elif score >= 5:
+    elif score >= 6:
         sante_stars = 3
-    elif score >= 3:
+    elif score >= 4:
         sante_stars = 2
     else:
         sante_stars = 1
