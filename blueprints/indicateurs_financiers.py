@@ -26,12 +26,6 @@ from utils import login_required
 
 indicateurs_financiers_bp = Blueprint('indicateurs_financiers_bp', __name__)
 
-SEUIL_SANTE_FONDS_ROULEMENT = 0
-SEUIL_SANTE_TRESORERIE = 0
-SEUIL_SANTE_CAF = 0
-SEUIL_SANTE_FR_MOIS = 1
-
-
 def _peut_acceder():
     return session.get('profil') in ('directeur', 'comptable')
 
@@ -97,18 +91,60 @@ def _compute_indicateurs(conn, annee):
     caf = resultat + dotations - reprises
     pct_masse_sal = (round(masse_salariale / total_charges * 100, 1)
                      if total_charges else None)
-    sante_stars = 0
-    if fonds_roulement >= SEUIL_SANTE_FONDS_ROULEMENT:
-        sante_stars += 1
-    if tresorerie >= SEUIL_SANTE_TRESORERIE:
-        sante_stars += 1
+    # Scoring pondéré sur 10 points → 5 étoiles
+    # Critères adaptés au contexte centres sociaux / ALISFA
+    score = 0
+
+    # FR en mois (3 pts) — indicateur clé de solidité structurelle
+    if fr_mois is not None:
+        if fr_mois >= 3:
+            score += 3
+        elif fr_mois >= 2:
+            score += 2
+        elif fr_mois >= 1:
+            score += 1
+        # < 1 mois = 0 pt (danger)
+
+    # Trésorerie en mois (2 pts)
+    if tres_mois is not None:
+        if tres_mois >= 2:
+            score += 2
+        elif tres_mois >= 1:
+            score += 1
+        # < 1 mois = 0 pt
+
+    # CAF rapportée aux charges (2 pts) — capacité à investir/rembourser
+    if total_charges > 0:
+        caf_pct = caf / total_charges * 100
+        if caf_pct >= 1.0:      # > 1 % des charges : sain
+            score += 2
+        elif caf_pct >= 0:      # positive mais faible
+            score += 1
+        # négative = 0 pt
+
+    # % Masse salariale (2 pts) — contexte ALISFA (charges patronales lourdes)
+    if pct_masse_sal is not None:
+        if pct_masse_sal < 79:
+            score += 2
+        elif pct_masse_sal < 83:
+            score += 1
+        # >= 83 % = 0 pt (sous surveillance)
+
+    # BFR couvert par le FR (1 pt)
     if bfr <= fonds_roulement:
-        sante_stars += 1
-    if caf >= SEUIL_SANTE_CAF:
-        sante_stars += 1
-    if fr_mois is not None and fr_mois >= SEUIL_SANTE_FR_MOIS:
-        sante_stars += 1
-    sante_stars = min(max(sante_stars, 1), 5)
+        score += 1
+
+    # Mapping 0–10 → 1–5 étoiles
+    if score >= 9:
+        sante_stars = 5
+    elif score >= 7:
+        sante_stars = 4
+    elif score >= 5:
+        sante_stars = 3
+    elif score >= 3:
+        sante_stars = 2
+    else:
+        sante_stars = 1
 
     return {
         'annee': annee,
@@ -382,7 +418,7 @@ def api_indicateurs_export_pdf():
                 _fmt_mois(r['tresorerie_mois']),
                 _fmt_pdf(r['caf']),
                 _fmt_pct(r['pct_masse_salariale']),
-                ('★' * int(r.get('sante_globale_stars', 1))) + ('☆' * (5 - int(r.get('sante_globale_stars', 1)))),
+                ('★' * int(r.get('sante_globale_stars', 1))) + ('\xb7' * (5 - int(r.get('sante_globale_stars', 1)))),
             ]
             headers.append(row)
 
