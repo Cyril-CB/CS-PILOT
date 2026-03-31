@@ -16,6 +16,14 @@ from email_service import (
 recup_bp = Blueprint('recup_bp', __name__)
 
 
+def _safe_nb_heures(row):
+    """Retourne nb_heures d'un Row ou 0 si la colonne n'existe pas."""
+    try:
+        return row['nb_heures'] or 0
+    except (IndexError, KeyError):
+        return 0
+
+
 def _creer_absence_depuis_conge(conn, demande, demande_id, saisi_par):
     """Crée une entrée dans la table absences quand un congé est validé.
 
@@ -541,7 +549,7 @@ def historique_demandes_recup():
         'validees': sum(1 for d in demandes if d['statut'] == 'validee'),
         'refusees': sum(1 for d in demandes if d['statut'] == 'refusee'),
         'total_jours_valides': sum(d['nb_jours'] for d in demandes if d['statut'] == 'validee'),
-        'total_heures_valides': sum(d.get('nb_heures', 0) or 0 for d in demandes if d['statut'] == 'validee')
+        'total_heures_valides': sum(_safe_nb_heures(d) for d in demandes if d['statut'] == 'validee')
     }
     
     conn.close()
