@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Validation demandes de récupération{% endblock %}
+{% block title %}Validation des demandes{% endblock %}
 
 {% block content %}
 <div class="vue-ensemble">
-    <h1>Validation des demandes de récupération</h1>
+    <h1>Validation des demandes</h1>
     <p class="subtitle">
         {% if session.profil == 'responsable' %}
         Demandes de votre équipe en attente de validation
@@ -19,19 +19,114 @@
         {% endif %}
         <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour</a>
     </div>
+
+    {% set total_demandes = (demandes_recup|default([])|length) + (demandes_conges|default([])|length) %}
     
-    {% if demandes %}
-    <div class="section">
-        <div class="stats-grid" style="margin-bottom: 1.5rem;">
-            <div class="stat-card">
-                <div class="stat-icon">📋</div>
-                <div class="stat-content">
-                    <h3>En attente</h3>
-                    <p class="stat-value">{{ demandes|length }}</p>
-                </div>
+    {% if total_demandes > 0 %}
+    <div class="stats-grid" style="margin-bottom: 1.5rem;">
+        <div class="stat-card">
+            <div class="stat-icon">📋</div>
+            <div class="stat-content">
+                <h3>Total en attente</h3>
+                <p class="stat-value">{{ total_demandes }}</p>
             </div>
         </div>
-        
+        <div class="stat-card">
+            <div class="stat-icon">🏖️</div>
+            <div class="stat-content">
+                <h3>Récupérations</h3>
+                <p class="stat-value">{{ demandes_recup|default([])|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🌴</div>
+            <div class="stat-content">
+                <h3>Congés</h3>
+                <p class="stat-value">{{ demandes_conges|default([])|length }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Demandes de congés ── #}
+    {% if demandes_conges|default([])|length > 0 %}
+    <div class="section">
+        <h2>🌴 Demandes de congés</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Demandeur</th>
+                    <th>Type</th>
+                    <th>Date demande</th>
+                    <th>Période</th>
+                    <th>Durée</th>
+                    <th>Statut</th>
+                    <th>Motif</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in demandes_conges %}
+                <tr>
+                    <td>
+                        <strong>{{ d.demandeur_nom }}</strong><br>
+                        <span style="color: var(--gray-500); font-size: 0.85rem;">{{ d.secteur_nom or 'Sans secteur' }}</span>
+                    </td>
+                    <td>
+                        {% if d.type_conge == 'Congé payé' %}
+                        <span class="badge" style="background: #dbeafe; color: #1e40af;">CP</span>
+                        {% else %}
+                        <span class="badge" style="background: #fae8ff; color: #86198f;">CC</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.date_demande[:10] }}</td>
+                    <td>
+                        Du {{ d.date_debut }}<br>
+                        au {{ d.date_fin }}
+                    </td>
+                    <td>
+                        <strong>{{ "%.1f"|format(d.nb_jours) }} jour(s)</strong>
+                    </td>
+                    <td>
+                        {% if d.statut == 'en_attente_responsable' %}
+                        <span class="badge" style="background: #fef3c7; color: #92400e;">En attente responsable</span>
+                        {% elif d.statut == 'en_attente_direction' %}
+                        <span class="badge" style="background: #dbeafe; color: #1e40af;">En attente direction</span>
+                        {% endif %}
+                        
+                        {% if d.validation_responsable %}
+                        <div style="color: var(--success); font-size: 0.85rem; margin-top: 0.25rem;">
+                            ✓ {{ d.validation_responsable }}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.motif_demande or '-' }}</td>
+                    <td>
+                        <form method="POST" action="{{ url_for('recup_bp.validation_demandes_recup') }}" style="display: inline;">
+                            <input type="hidden" name="demande_id" value="{{ d.id }}">
+                            <input type="hidden" name="action" value="valider">
+                            <input type="hidden" name="demande_type" value="conge">
+                            <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;" 
+                                    onclick="return confirm('Valider cette demande de congé ?')">
+                                ✓ Valider
+                            </button>
+                        </form>
+                        
+                        <button onclick="refuserDemande({{ d.id }}, 'conge')" class="btn" style="background: var(--danger); color: white; font-size: 0.85rem; padding: 0.5rem 0.75rem; margin-top: 0.25rem;">
+                            ✗ Refuser
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    {# ── Demandes de récupération ── #}
+    {% if demandes_recup|default([])|length > 0 %}
+    <div class="section">
+        <h2>🏖️ Demandes de récupération</h2>
         <table class="data-table">
             <thead>
                 <tr>
@@ -45,7 +140,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for d in demandes %}
+                {% for d in demandes_recup %}
                 <tr>
                     <td>
                         <strong>{{ d.demandeur_nom }}</strong><br>
@@ -78,13 +173,14 @@
                         <form method="POST" action="{{ url_for('recup_bp.validation_demandes_recup') }}" style="display: inline;">
                             <input type="hidden" name="demande_id" value="{{ d.id }}">
                             <input type="hidden" name="action" value="valider">
+                            <input type="hidden" name="demande_type" value="recup">
                             <button type="submit" class="btn btn-primary" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;" 
                                     onclick="return confirm('Valider cette demande ?')">
                                 ✓ Valider
                             </button>
                         </form>
                         
-                        <button onclick="refuserDemande({{ d.id }})" class="btn" style="background: var(--danger); color: white; font-size: 0.85rem; padding: 0.5rem 0.75rem; margin-top: 0.25rem;">
+                        <button onclick="refuserDemande({{ d.id }}, 'recup')" class="btn" style="background: var(--danger); color: white; font-size: 0.85rem; padding: 0.5rem 0.75rem; margin-top: 0.25rem;">
                             ✗ Refuser
                         </button>
                     </td>
@@ -93,7 +189,9 @@
             </tbody>
         </table>
     </div>
-    {% else %}
+    {% endif %}
+
+    {% if total_demandes == 0 %}
     <div class="no-data">
         <p>Aucune demande en attente de validation</p>
     </div>
@@ -106,6 +204,7 @@
         <h3 style="margin-bottom: 1rem;">Refuser la demande</h3>
         <form method="POST" action="{{ url_for('recup_bp.validation_demandes_recup') }}" id="formRefus">
             <input type="hidden" name="demande_id" id="demande_id_refus">
+            <input type="hidden" name="demande_type" id="demande_type_refus" value="recup">
             <input type="hidden" name="action" value="refuser">
             
             <div class="form-group">
@@ -122,8 +221,9 @@
 </div>
 
 <script>
-function refuserDemande(demandeId) {
+function refuserDemande(demandeId, demandeType) {
     document.getElementById('demande_id_refus').value = demandeId;
+    document.getElementById('demande_type_refus').value = demandeType || 'recup';
     document.getElementById('motif_refus').value = '';
     document.getElementById('modalRefus').style.display = 'flex';
 }
