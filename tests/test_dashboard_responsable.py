@@ -16,7 +16,7 @@ def test_dashboard_responsable_affiche_sections(resp_client):
     assert 'ETP Secteur' in html
     assert 'Factures en attente' in html
     assert 'Factures a approuver' in html
-    assert 'Demandes de recuperation' in html
+    assert 'cup &' in html  # "Demandes récup & congés"
     assert 'Subventions' in html
     assert 'Budget' in html
     assert 'Conges de l&#39;equipe' in html or "Conges de l'equipe" in html

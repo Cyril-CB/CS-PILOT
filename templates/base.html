@@ -49,8 +49,8 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble</a>
-                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Demandes récup</a>
-                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes</a>
+                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique demandes</a>
                     <a href="{{ url_for('suivi_bp.historique_modifications') }}">📝 Historique modifs</a>
                     <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
                     <a href="{{ url_for('factures_bp.approbation_factures') }}">🧾 Approbation factures</a>
@@ -146,11 +146,13 @@
             </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>🏖️ Récupérations</span><span class="sidebar-arrow">&#9662;</span>
+                    <span>🏖️ Récup & Congés</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
-                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                    <a href="{{ url_for('recup_bp.demande_conge') }}">🌴 Demander un congé</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">📄 Mes demandes congés</a>
                 </div>
             </div>
             <div class="sidebar-section">
@@ -159,8 +161,8 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble</a>
-                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Demandes récup</a>
-                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique récup</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes</a>
+                    <a href="{{ url_for('recup_bp.historique_demandes_recup') }}">📜 Historique demandes</a>
                     <a href="{{ url_for('suivi_bp.suivi_anomalies') }}">⚠️ Suivi anomalies</a>
                 </div>
             </div>
@@ -253,11 +255,13 @@
             </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>🏖️ Récupérations</span><span class="sidebar-arrow">&#9662;</span>
+                    <span>🏖️ Récup & Congés</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
-                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                    <a href="{{ url_for('recup_bp.demande_conge') }}">🌴 Demander un congé</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">📄 Mes demandes congés</a>
                 </div>
             </div>
             <div class="sidebar-section">
@@ -266,7 +270,7 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble</a>
-                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Demandes récup</a>
+                    <a href="{{ url_for('recup_bp.validation_demandes_recup') }}">✔️ Validation demandes</a>
                 </div>
             </div>
             <div class="sidebar-section">
@@ -313,11 +317,13 @@
             </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
-                    <span>🏖️ Récupérations</span><span class="sidebar-arrow">&#9662;</span>
+                    <span>🏖️ Récup & Congés</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('recup_bp.demande_recup') }}">➕ Demander une récup</a>
-                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes</a>
+                    <a href="{{ url_for('recup_bp.demande_conge') }}">🌴 Demander un congé</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes récup</a>
+                    <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">📄 Mes demandes congés</a>
                 </div>
             </div>
             {% endif %}

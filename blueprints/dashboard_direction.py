@@ -238,6 +238,19 @@ def dashboard_direction():
         ORDER BY d.date_demande ASC
     ''').fetchall()
 
+    # ── 4b. Demandes de conges en attente ──
+    demandes_conges = conn.execute('''
+        SELECT d.id, d.type_conge, d.date_debut, d.date_fin, d.nb_jours,
+               d.statut, d.date_demande, d.motif_demande,
+               u.nom as demandeur_nom, u.prenom as demandeur_prenom,
+               s.nom as secteur_nom
+        FROM demandes_conges d
+        JOIN users u ON d.user_id = u.id
+        LEFT JOIN secteurs s ON u.secteur_id = s.id
+        WHERE d.statut IN ('en_attente_responsable', 'en_attente_direction')
+        ORDER BY d.date_demande ASC
+    ''').fetchall()
+
     # ── 5. Anomalies non traitees ──
     anomalies_non_traitees = conn.execute('''
         SELECT a.id, a.type_anomalie, a.gravite, a.description,
@@ -429,6 +442,7 @@ def dashboard_direction():
                            nb_non_commence=nb_non_commence,
                            fiches_en_attente=fiches_en_attente,
                            demandes_recup=demandes_recup,
+                           demandes_conges=demandes_conges,
                            anomalies_non_traitees=anomalies_non_traitees,
                            nb_anomalies=nb_anomalies,
                            top_conges=top_conges,
