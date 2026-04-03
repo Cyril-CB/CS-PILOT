@@ -867,6 +867,15 @@ def api_modifier_compte(compte_num):
     if field not in allowed_fields:
         return jsonify({'error': f'Champ non autorisé: {field}'}), 400
 
+    # Map logical field names to actual SQL column names (constants)
+    field_to_column = {
+        'libelle_affiche': 'libelle_affiche',
+        'type_compte': 'type_compte',
+        'ordre_affichage': 'ordre_affichage',
+        'actif': 'actif',
+    }
+    column_name = field_to_column[field]
+
     if field == 'type_compte' and value not in ('produit', 'charge', 'attente'):
         return jsonify({'error': 'Type de compte invalide'}), 400
 
@@ -883,7 +892,7 @@ def api_modifier_compte(compte_num):
     try:
         conn.execute(f'''
             UPDATE tresorerie_comptes
-            SET {field} = ?, updated_at = CURRENT_TIMESTAMP
+            SET {column_name} = ?, updated_at = CURRENT_TIMESTAMP
             WHERE compte_num = ?
         ''', (value, compte_num))
         conn.commit()
