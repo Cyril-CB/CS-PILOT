@@ -59,15 +59,11 @@ def login():
             password_ok = False
             if user:
                 stored = user['password']
-                # Détection d'un ancien hash SHA256 (64 caractères hexadécimaux)
+                # Détection d'un ancien hash SHA256 (64 caractères hexadécimaux).
+                # Ces anciens hashs ne sont plus acceptés pour des raisons de sécurité :
+                # l'utilisateur devra réinitialiser son mot de passe pour continuer.
                 if len(stored) == 64 and all(c in '0123456789abcdef' for c in stored):
-                    if hashlib.sha256(password.encode()).hexdigest() == stored:
-                        password_ok = True
-                        # Migration vers un hash sécurisé (werkzeug)
-                        new_hash = generate_password_hash(password)
-                        conn.execute('UPDATE users SET password = ? WHERE id = ?',
-                                     (new_hash, user['id']))
-                        conn.commit()
+                    password_ok = False
                 else:
                     password_ok = check_password_hash(stored, password)
         finally:
