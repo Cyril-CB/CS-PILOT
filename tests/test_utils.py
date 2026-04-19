@@ -94,6 +94,76 @@ class TestCalculerJoursOuvres:
             # 2025-01-11 = samedi, 2025-01-12 = dimanche
             assert calculer_jours_ouvres('2025-01-11', '2025-01-12') == 0
 
+    def test_exclut_jour_ferie(self, app, db):
+        """Exclut un jour férié de la semaine."""
+        with app.app_context():
+            from utils import calculer_jours_ouvres
+            # Ajouter un jour férié le mercredi 2025-01-08
+            db.execute('''
+                INSERT INTO jours_feries (annee, date, libelle)
+                VALUES (2025, '2025-01-08', 'Jour férié test')
+            ''')
+            db.commit()
+
+            # Du lundi 2025-01-06 au vendredi 2025-01-10 = 5 jours - 1 férié = 4 jours
+            assert calculer_jours_ouvres('2025-01-06', '2025-01-10') == 4
+
+    def test_exclut_plusieurs_jours_feries(self, app, db):
+        """Exclut plusieurs jours fériés."""
+        with app.app_context():
+            from utils import calculer_jours_ouvres
+            # Ajouter deux jours fériés
+            db.execute('''
+                INSERT INTO jours_feries (annee, date, libelle)
+                VALUES (2025, '2025-01-07', 'Férié 1'), (2025, '2025-01-09', 'Férié 2')
+            ''')
+            db.commit()
+
+            # Du lundi 2025-01-06 au vendredi 2025-01-10 = 5 jours - 2 fériés = 3 jours
+            assert calculer_jours_ouvres('2025-01-06', '2025-01-10') == 3
+
+    def test_ferie_weekend_non_compte(self, app, db):
+        """Un jour férié tombant un weekend ne change pas le décompte."""
+        with app.app_context():
+            from utils import calculer_jours_ouvres
+            # Ajouter un jour férié le samedi 2025-01-11
+            db.execute('''
+                INSERT INTO jours_feries (annee, date, libelle)
+                VALUES (2025, '2025-01-11', 'Férié weekend')
+            ''')
+            db.commit()
+
+            # Du lundi 2025-01-06 au dimanche 2025-01-12 = 5 jours (le férié du samedi ne change rien)
+            assert calculer_jours_ouvres('2025-01-06', '2025-01-12') == 5
+
+    def test_semaine_avec_ferie_debut(self, app, db):
+        """Un jour férié en début de période."""
+        with app.app_context():
+            from utils import calculer_jours_ouvres
+            # Jour férié le lundi 2025-01-06
+            db.execute('''
+                INSERT INTO jours_feries (annee, date, libelle)
+                VALUES (2025, '2025-01-06', 'Férié début')
+            ''')
+            db.commit()
+
+            # Du lundi 2025-01-06 (férié) au vendredi 2025-01-10 = 4 jours
+            assert calculer_jours_ouvres('2025-01-06', '2025-01-10') == 4
+
+    def test_semaine_avec_ferie_fin(self, app, db):
+        """Un jour férié en fin de période."""
+        with app.app_context():
+            from utils import calculer_jours_ouvres
+            # Jour férié le vendredi 2025-01-10
+            db.execute('''
+                INSERT INTO jours_feries (annee, date, libelle)
+                VALUES (2025, '2025-01-10', 'Férié fin')
+            ''')
+            db.commit()
+
+            # Du lundi 2025-01-06 au vendredi 2025-01-10 (férié) = 4 jours
+            assert calculer_jours_ouvres('2025-01-06', '2025-01-10') == 4
+
 
 class TestGetHeuresTheoriquesJour:
     """Tests de la fonction get_heures_theoriques_jour."""

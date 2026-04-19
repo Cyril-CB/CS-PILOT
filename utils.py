@@ -231,18 +231,30 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
 
 
 def calculer_jours_ouvres(date_debut_str, date_fin_str):
-    """Calcule le nombre de jours ouvrés entre deux dates (exclut weekends)"""
+    """Calcule le nombre de jours ouvrés entre deux dates (exclut weekends ET jours fériés)"""
     date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
     date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
 
     if date_debut > date_fin:
         return 0
 
+    # Récupérer tous les jours fériés entre les deux dates
+    conn = get_db()
+    feries_rows = conn.execute('''
+        SELECT date FROM jours_feries
+        WHERE date >= ? AND date <= ?
+    ''', (date_debut_str, date_fin_str)).fetchall()
+    conn.close()
+
+    jours_feries = {row['date'] for row in feries_rows}
+
     nb_jours = 0
     jour_actuel = date_debut
 
     while jour_actuel <= date_fin:
-        if jour_actuel.weekday() < 5:
+        date_str = jour_actuel.strftime('%Y-%m-%d')
+        # Compter uniquement les jours ouvrés (lundi-vendredi) qui ne sont pas fériés
+        if jour_actuel.weekday() < 5 and date_str not in jours_feries:
             nb_jours += 1
         jour_actuel += timedelta(days=1)
 
