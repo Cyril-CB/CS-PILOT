@@ -3,7 +3,10 @@ Tests des options applicatives et des personnalisations associées.
 """
 from datetime import datetime, timedelta
 
+from blueprints import mon_equipe as mon_equipe_module
 from app_options import get_option_bool, set_option_bool
+
+DATE_REFERENCE_MON_EQUIPE = datetime(2025, 1, 6, 12, 0, 0)
 
 
 def _creer_contrats_equipe(db, sample_users):
@@ -16,9 +19,26 @@ def _creer_contrats_equipe(db, sample_users):
     db.commit()
 
 
-def _ajouter_absence_semaine_courante(db, user_id, motif, saisi_par):
-    aujourd_hui = datetime.now().date()
-    lundi = aujourd_hui - timedelta(days=aujourd_hui.weekday())
+def _figer_semaine_mon_equipe(monkeypatch):
+    class DateTimeFigee(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(
+                DATE_REFERENCE_MON_EQUIPE.year,
+                DATE_REFERENCE_MON_EQUIPE.month,
+                DATE_REFERENCE_MON_EQUIPE.day,
+                DATE_REFERENCE_MON_EQUIPE.hour,
+                DATE_REFERENCE_MON_EQUIPE.minute,
+                DATE_REFERENCE_MON_EQUIPE.second,
+                tzinfo=tz
+            )
+
+    monkeypatch.setattr(mon_equipe_module, 'datetime', DateTimeFigee)
+    return DATE_REFERENCE_MON_EQUIPE.date()
+
+
+def _ajouter_absence_semaine(db, user_id, motif, saisi_par, date_reference):
+    lundi = date_reference - timedelta(days=date_reference.weekday())
     date_str = lundi.strftime('%Y-%m-%d')
     db.execute(
         """INSERT INTO absences
@@ -206,9 +226,10 @@ class TestMonEquipeVisibilitePresences:
 class TestOptionMonEquipeMotifsAbsence:
     """Tests de l'option de masquage des motifs d'absence."""
 
-    def test_salarie_voit_le_motif_si_option_desactivee(self, auth_client, app, db, sample_users):
+    def test_salarie_voit_le_motif_si_option_desactivee(self, auth_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
         _creer_contrats_equipe(db, sample_users)
-        _ajouter_absence_semaine_courante(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'])
+        _ajouter_absence_semaine(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'], date_reference)
 
         with app.app_context():
             set_option_bool('mon_equipe_masquer_motifs_absence_salaries', False)
@@ -220,9 +241,10 @@ class TestOptionMonEquipeMotifsAbsence:
         assert 'Arrêt maladie' in html
         assert '<span class="card-label">Absent</span>' not in html
 
-    def test_salarie_ne_voit_pas_le_motif_si_option_activee(self, auth_client, app, db, sample_users):
+    def test_salarie_ne_voit_pas_le_motif_si_option_activee(self, auth_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
         _creer_contrats_equipe(db, sample_users)
-        _ajouter_absence_semaine_courante(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'])
+        _ajouter_absence_semaine(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'], date_reference)
 
         with app.app_context():
             set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
@@ -234,9 +256,10 @@ class TestOptionMonEquipeMotifsAbsence:
         assert '<span class="card-label">Absent</span>' in html
         assert 'Arrêt maladie' not in html
 
-    def test_responsable_continue_de_voir_le_motif_si_option_activee(self, resp_client, app, db, sample_users):
+    def test_responsable_continue_de_voir_le_motif_si_option_activee(self, resp_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
         _creer_contrats_equipe(db, sample_users)
-        _ajouter_absence_semaine_courante(db, sample_users['salarie_id'], 'Congé payé', sample_users['directeur_id'])
+        _ajouter_absence_semaine(db, sample_users['salarie_id'], 'Congé payé', sample_users['directeur_id'], date_reference)
 
         with app.app_context():
             set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
@@ -247,7 +270,8 @@ class TestOptionMonEquipeMotifsAbsence:
         assert response.status_code == 200
         assert 'Congé payé' in html
 
-    def test_comptable_continue_de_voir_le_motif_si_option_activee(self, comptable_client, app, db, sample_users):
+    def test_comptable_continue_de_voir_le_motif_si_option_activee(self, comptable_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
         db.execute(
             "UPDATE users SET secteur_id = ? WHERE id = ?",
             (sample_users['secteur_id'], sample_users['comptable_id'])
@@ -257,7 +281,7 @@ class TestOptionMonEquipeMotifsAbsence:
             (sample_users['comptable_id'], 'CDI', '2024-01-01', 35.0, sample_users['directeur_id'])
         )
         _creer_contrats_equipe(db, sample_users)
-        _ajouter_absence_semaine_courante(db, sample_users['salarie_id'], 'Congé sans solde', sample_users['directeur_id'])
+        _ajouter_absence_semaine(db, sample_users['salarie_id'], 'Congé sans solde', sample_users['directeur_id'], date_reference)
 
         with app.app_context():
             set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
