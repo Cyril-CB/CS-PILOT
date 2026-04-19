@@ -182,7 +182,7 @@
         <span class="legend-item"><span class="legend-dot dot-ferie"></span> Ferie</span>
     </div>
 
-    {% if is_creche %}
+    {% if peut_voir_presences_horaires and is_creche %}
     <!-- ================================================ -->
     <!-- CRECHE : Frequentation moyenne + Taux encadrement -->
     <!-- ================================================ -->
@@ -309,7 +309,7 @@
         </div>
     </div>
 
-    {% else %}
+    {% elif peut_voir_presences_horaires %}
     <!-- ================================================ -->
     <!-- STANDARD : Presences par tranche horaire          -->
     <!-- ================================================ -->

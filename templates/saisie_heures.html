@@ -19,6 +19,7 @@
             <input type="date" id="date" name="date" value="{{ date_defaut }}" required>
         </div>
         
+        {% if declaration_conforme_active %}
         <div class="form-group" style="background: #e7f3ff; padding: 1rem; border-radius: 8px; border-left: 4px solid #3b82f6;">
             <label style="display: flex; align-items: center; flex-wrap: wrap;">
                 <input type="checkbox" id="declaration_conforme" name="declaration_conforme" value="1"
@@ -28,6 +29,7 @@
                 <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Cochez cette case si vous avez travaillé exactement selon votre planning théorique, sans écart. Aucune saisie d'heure n'est nécessaire — le système enregistre automatiquement vos horaires prévus. C'est le cas le plus courant.</span></span>
             </label>
         </div>
+        {% endif %}
         
         <div class="form-group">
             <label style="display: flex; align-items: center; flex-wrap: wrap;">
@@ -117,8 +119,13 @@
     <div class="help-box">
         <h4>💡 Principe de saisie</h4>
         <ul>
+            {% if declaration_conforme_active %}
             <li><strong>Pas de saisie nécessaire</strong> si vous avez suivi votre planning théorique</li>
             <li><strong>Saisissez uniquement les jours avec écart</strong> : heures supplémentaires ou récupération</li>
+            {% else %}
+            <li><strong>Saisissez vos heures réelles</strong> même si elles correspondent à votre planning théorique</li>
+            <li><strong>Chaque journée travaillée doit être enregistrée</strong> avant la validation du mois</li>
+            {% endif %}
             <li><strong>Récupération journée complète</strong> : cochez simplement la case</li>
             <li><strong>Récupération partielle</strong> : saisissez les heures travaillées (laissez vide la période en récup)</li>
             <li>En fin de mois, validez votre feuille de temps</li>
@@ -147,6 +154,10 @@
         const recupCheckbox = document.getElementById('recup_journee');
         const detailHeures = document.getElementById('saisie-heures-detail');
         const inputs = detailHeures.querySelectorAll('input[type="time"], textarea');
+
+        if (!declarationCheckbox) {
+            return;
+        }
         
         if (declarationCheckbox.checked) {
             // Désactiver la récupération et les champs d'heures
@@ -175,8 +186,10 @@
         
         if (checkbox.checked) {
             // Désactiver la déclaration conforme et les champs d'heures
-            declarationCheckbox.disabled = true;
-            declarationCheckbox.checked = false;
+            if (declarationCheckbox) {
+                declarationCheckbox.disabled = true;
+                declarationCheckbox.checked = false;
+            }
             detailHeures.style.opacity = '0.5';
             inputs.forEach(input => {
                 input.disabled = true;
@@ -184,7 +197,9 @@
             });
         } else {
             // Réactiver la déclaration conforme et les champs d'heures
-            declarationCheckbox.disabled = false;
+            if (declarationCheckbox) {
+                declarationCheckbox.disabled = false;
+            }
             detailHeures.style.opacity = '1';
             inputs.forEach(input => {
                 input.disabled = false;

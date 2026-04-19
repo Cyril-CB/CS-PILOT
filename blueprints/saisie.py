@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 import json
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
-                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                   calculer_solde_recup)
+                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
+                    calculer_solde_recup)
+from app_options import get_option_bool
 
 saisie_bp = Blueprint('saisie_bp', __name__)
 SEUIL_ECART_ANOMALIE_HEURES = 3
@@ -22,6 +23,7 @@ def saisie_heures():
     user_id_cible = user_id_param if user_id_param else session['user_id']
     
     conn = get_db()
+    declaration_conforme_active = get_option_bool('saisie_afficher_declaration_conforme')
     
     # Vérifier les droits de modification
     peut_modifier = False
@@ -68,7 +70,7 @@ def saisie_heures():
                 return redirect(url_for('dashboard_bp.dashboard'))
         
         recup_journee = request.form.get('recup_journee')
-        declaration_conforme = request.form.get('declaration_conforme')
+        declaration_conforme = request.form.get('declaration_conforme') if declaration_conforme_active else None
         commentaire = request.form.get('commentaire')
         
         # Si déclaration conforme, on ne stocke pas d'heures (appliquera le planning théo)
@@ -295,10 +297,11 @@ def saisie_heures():
     next_page = request.args.get('next', '')
 
     return render_template('saisie_heures.html',
-                         date_defaut=date_defaut,
-                         heures_existantes=heures_existantes,
-                         user_cible=dict(user_cible) if user_cible else None,
-                         user_id_cible=user_id_cible,
-                         next_page=next_page,
-                         solde_recup=solde_recup,
-                         mois_verrouille=mois_verrouille)
+                          date_defaut=date_defaut,
+                          heures_existantes=heures_existantes,
+                          user_cible=dict(user_cible) if user_cible else None,
+                          user_id_cible=user_id_cible,
+                          next_page=next_page,
+                          solde_recup=solde_recup,
+                          mois_verrouille=mois_verrouille,
+                          declaration_conforme_active=declaration_conforme_active)

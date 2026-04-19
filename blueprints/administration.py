@@ -6,6 +6,7 @@ Accessible uniquement aux directeurs et comptables.
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from utils import login_required
 from database import get_db, DATABASE
+from app_options import OPTION_DEFINITIONS, get_options_context, set_option_bool
 import os
 
 administration_bp = Blueprint('administration_bp', __name__)
@@ -39,6 +40,23 @@ def administration():
         db_info=db_info,
         version_app=version_app
     )
+
+
+@administration_bp.route('/administration/options', methods=['GET', 'POST'])
+@login_required
+def options():
+    """Page des options applicatives personnalisables."""
+    if not _check_admin():
+        flash('Acces non autorise', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    if request.method == 'POST':
+        for key in OPTION_DEFINITIONS:
+            set_option_bool(key, request.form.get(key) == '1')
+        flash('Options enregistrees avec succes', 'success')
+        return redirect(url_for('administration_bp.options'))
+
+    return render_template('options.html', options=get_options_context())
 
 
 @administration_bp.route('/administration/appliquer_migration', methods=['POST'])
