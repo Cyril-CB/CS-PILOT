@@ -3147,3 +3147,158 @@ a.btn-icon:-webkit-any-link {
 [data-theme="dark"] .modal-close:hover {
     color: var(--gray-900);
 }
+
+/* ============================================================
+   RESPONSIVE MOBILE – Pages salariés
+   (dashboard, demande_recup, demande_conge,
+    mes_demandes_recup, mes_demandes_conges)
+   ============================================================ */
+
+/* ── Wrapper scroll horizontal (fallback) ── */
+.table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+
+    /* ── Titres ── */
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    h2 {
+        font-size: 1.15rem;
+    }
+
+    /* ── Conteneurs : padding réduit ── */
+    .form-container,
+    .dashboard,
+    .vue-ensemble {
+        padding: 1rem;
+    }
+
+    .vue-ensemble .section {
+        padding: 0;
+        box-shadow: none;
+        border: none;
+    }
+
+    /* ── Stat cards ── */
+    .stat-icon {
+        font-size: 1.8rem;
+    }
+
+    .stat-value {
+        font-size: 1.35rem !important;
+    }
+
+    .stat-content h3 {
+        font-size: 0.75rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+
+    /* ── Actions : empilées verticalement ── */
+    .actions {
+        flex-direction: column;
+    }
+
+    .actions .btn,
+    .actions a.btn,
+    .actions button.btn {
+        width: 100%;
+        text-align: center;
+        box-sizing: border-box;
+    }
+
+    /* ── Help box : padding réduit ── */
+    .help-box {
+        padding: 0.75rem 1rem;
+        font-size: 0.88rem;
+    }
+
+    .help-box ul {
+        margin-left: 1rem;
+    }
+
+    .help-box li {
+        font-size: 0.85rem;
+    }
+
+    /* ── Séparateur soldes congés : passage en bloc ── */
+    .solde-separator {
+        display: block;
+        height: 0;
+        overflow: hidden;
+        margin: 0.25rem 0;
+    }
+
+    /* ── Card layout pour data-table-cards ── */
+    .data-table-cards thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .data-table-cards,
+    .data-table-cards tbody,
+    .data-table-cards tr,
+    .data-table-cards td {
+        display: block;
+        width: 100%;
+    }
+
+    .data-table-cards {
+        border: none;
+    }
+
+    .data-table-cards tr {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: var(--radius-md);
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .data-table-cards td {
+        padding: 0.35rem 0;
+        border: none;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.5rem;
+        font-size: 0.88rem;
+    }
+
+    .data-table-cards td::before {
+        content: attr(data-label);
+        font-weight: 700;
+        font-size: 0.78rem;
+        color: var(--gray-500);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        min-width: 90px;
+        flex-shrink: 0;
+    }
+
+    .data-table-cards td:last-child {
+        border-bottom: none;
+    }
+
+    /* ── Dark theme adjustments for cards ── */
+    [data-theme="dark"] .data-table-cards tr {
+        background: var(--white);
+        border-color: var(--gray-300);
+    }
+}

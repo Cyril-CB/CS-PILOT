@@ -59,7 +59,8 @@
         <h2>📝 Dernières saisies</h2>
         
         {% if heures %}
-        <table class="data-table">
+        <div class="table-responsive">
+        <table class="data-table data-table-cards">
             <thead>
                 <tr>
                     <th>Date</th>
@@ -74,23 +75,23 @@
             <tbody>
                 {% for h in heures %}
                 <tr>
-                    <td>{{ h.date }}</td>
-                    <td>
+                    <td data-label="Date">{{ h.date }}</td>
+                    <td data-label="Matin">
                         {% if h.heure_debut_matin %}
                         {{ h.heure_debut_matin }} - {{ h.heure_fin_matin }}
                         {% else %}
                         -
                         {% endif %}
                     </td>
-                    <td>
+                    <td data-label="Après-midi">
                         {% if h.heure_debut_aprem %}
                         {{ h.heure_debut_aprem }} - {{ h.heure_fin_aprem }}
                         {% else %}
                         -
                         {% endif %}
                     </td>
-                    <td><strong>{{ "%.2f"|format(h.total_reel) }}h</strong></td>
-                    <td>
+                    <td data-label="Total jour"><strong>{{ "%.2f"|format(h.total_reel) }}h</strong></td>
+                    <td data-label="Écart">
                         {% if h.ecart > 0 %}
                         <span style="color: #28a745;">+{{ "%.2f"|format(h.ecart) }}h</span>
                         {% elif h.ecart < 0 %}
@@ -99,14 +100,15 @@
                         <span style="color: #6c757d;">0h</span>
                         {% endif %}
                     </td>
-                    <td>{{ h.commentaire or '-' }}</td>
-                    <td>
+                    <td data-label="Commentaire">{{ h.commentaire or '-' }}</td>
+                    <td data-label="Actions">
                         <a href="{{ url_for('saisie_bp.saisie_heures', date=h.date) }}" class="btn-icon" title="Modifier">✏️</a>
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <p class="no-data">Aucune saisie pour le moment</p>
         {% endif %}

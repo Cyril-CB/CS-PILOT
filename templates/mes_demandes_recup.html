@@ -14,7 +14,8 @@
     
     {% if demandes %}
     <div class="section">
-        <table class="data-table">
+        <div class="table-responsive">
+        <table class="data-table data-table-cards">
             <thead>
                 <tr>
                     <th>Date demande</th>
@@ -28,15 +29,15 @@
             <tbody>
                 {% for d in demandes %}
                 <tr>
-                    <td>{{ d.date_demande[:10] }}</td>
-                    <td>
+                    <td data-label="Date demande">{{ d.date_demande[:10] }}</td>
+                    <td data-label="Période">
                         Du {{ d.date_debut }} au {{ d.date_fin }}
                     </td>
-                    <td>
+                    <td data-label="Durée">
                         <strong>{{ "%.1f"|format(d.nb_jours) }} jour(s)</strong><br>
                         <span style="color: var(--gray-500); font-size: 0.85rem;">{{ "%.2f"|format(d.nb_heures) }}h</span>
                     </td>
-                    <td>
+                    <td data-label="Statut">
                         {% if d.statut == 'en_attente_responsable' %}
                         <span class="badge" style="background: #fef3c7; color: #92400e;">En attente responsable</span>
                         {% elif d.statut == 'en_attente_direction' %}
@@ -47,7 +48,7 @@
                         <span class="badge badge-danger">Refusée</span>
                         {% endif %}
                     </td>
-                    <td style="font-size: 0.85rem;">
+                    <td data-label="Validations" style="font-size: 0.85rem;">
                         {% if d.validation_responsable %}
                         <div style="color: var(--success);">✓ {{ d.validation_responsable }}</div>
                         <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_responsable[:10] if d.date_validation_responsable else '' }}</div>
@@ -68,11 +69,12 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td>{{ d.motif_demande or '-' }}</td>
+                    <td data-label="Motif">{{ d.motif_demande or '-' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% else %}
     <div class="no-data">
