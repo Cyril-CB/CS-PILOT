@@ -145,7 +145,7 @@ class TestOptionsAccesResponsables:
 
         assert response.status_code == 200
         assert 'Génération de contrats' not in html
-        assert 'non autorise' in html.lower()
+        assert 'non autorisé' in html.lower()
 
     def test_budget_previsionnel_refuse_responsable_si_option_desactivee(self, resp_client, app):
         with app.app_context():

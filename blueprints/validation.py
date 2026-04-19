@@ -15,10 +15,10 @@ validation_bp = Blueprint('validation_bp', __name__)
 def _formater_horaires(matin_debut=None, matin_fin=None, aprem_debut=None, aprem_fin=None):
     """Formate les horaires d'une journée pour l'affichage."""
     plages = []
-    if matin_debut or matin_fin:
-        plages.append(f"{matin_debut or '--:--'} - {matin_fin or '--:--'}")
-    if aprem_debut or aprem_fin:
-        plages.append(f"{aprem_debut or '--:--'} - {aprem_fin or '--:--'}")
+    if matin_debut and matin_fin:
+        plages.append(f"{matin_debut} - {matin_fin}")
+    if aprem_debut and aprem_fin:
+        plages.append(f"{aprem_debut} - {aprem_fin}")
     return ' / '.join(plages) if plages else '-'
 
 

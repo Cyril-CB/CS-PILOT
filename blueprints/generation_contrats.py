@@ -129,7 +129,7 @@ def _chemin_securise(chemin, dossier):
 def generation_contrats():
     """Page principale avec deux onglets."""
     if not _peut_acceder_module():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
@@ -254,7 +254,7 @@ def generation_contrats():
 def generer_contrat():
     """Génère le contrat DOCX en remplaçant les placeholders."""
     if not _peut_acceder_module():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     try:
@@ -275,7 +275,7 @@ def generer_contrat():
 
     if not _est_salarie_visible(conn, user_id):
         conn.close()
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
 
     # Récupérer le modèle
@@ -451,13 +451,13 @@ def generer_contrat():
 def retelecharger_contrat(user_id):
     """Re-télécharge le dernier contrat généré pour un salarié."""
     if not _peut_acceder_module():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
     if not _est_salarie_visible(conn, user_id):
         conn.close()
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1'))
 
     contrat = conn.execute(
@@ -486,7 +486,7 @@ def retelecharger_contrat(user_id):
 def upload_modele():
     """Uploader un modèle DOCX."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     nom = request.form.get('nom_modele', '').strip()
@@ -533,7 +533,7 @@ def upload_modele():
 def remplacer_modele(modele_id):
     """Remplacer un modèle DOCX existant."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     fichier = request.files.get('fichier_modele')
@@ -575,7 +575,7 @@ def remplacer_modele(modele_id):
 def telecharger_modele(modele_id):
     """Télécharger un modèle DOCX."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
@@ -600,7 +600,7 @@ def telecharger_modele(modele_id):
 def supprimer_modele(modele_id):
     """Supprimer un modèle DOCX."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
@@ -630,7 +630,7 @@ def supprimer_modele(modele_id):
 def ajouter_lieu():
     """Ajouter un lieu de travail."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     nom = request.form.get('nom_lieu', '').strip()
@@ -657,7 +657,7 @@ def ajouter_lieu():
 def supprimer_lieu(lieu_id):
     """Supprimer un lieu de travail."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
@@ -676,7 +676,7 @@ def supprimer_lieu(lieu_id):
 def ajouter_forfait_cee():
     """Ajouter un forfait CEE."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     try:
@@ -704,7 +704,7 @@ def ajouter_forfait_cee():
 def supprimer_forfait_cee(forfait_id):
     """Supprimer un forfait CEE."""
     if not _peut_gerer():
-        flash("Acces non autorise.", 'error')
+        flash("Accès non autorisé.", 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
