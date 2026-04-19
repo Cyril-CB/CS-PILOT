@@ -84,6 +84,45 @@ class TestOptionsSaisie:
             assert row['declaration_conforme'] == 0
             assert row['type_saisie'] == 'heures_modifiees'
 
+    def test_saisie_preserve_declaration_conforme_existante_si_option_desactivee(self, auth_client, app, db, sample_users):
+        date_test = '2025-01-07'
+        with app.app_context():
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, commentaire, type_saisie, declaration_conforme)
+                   VALUES (?, ?, ?, ?, 1)""",
+                (
+                    sample_users['salarie_id'],
+                    date_test,
+                    'Déclaration conforme au planning',
+                    'declaration_conforme',
+                )
+            )
+            db.commit()
+            set_option_bool('saisie_afficher_declaration_conforme', False)
+
+        response = auth_client.post('/saisie_heures', data={
+            'date': date_test,
+            'commentaire': 'Déclaration conforme au planning',
+        }, follow_redirects=True)
+
+        assert response.status_code == 200
+
+        with app.app_context():
+            row = db.execute(
+                """SELECT declaration_conforme, type_saisie, heure_debut_matin, heure_fin_matin,
+                          heure_debut_aprem, heure_fin_aprem
+                   FROM heures_reelles WHERE user_id = ? AND date = ?""",
+                (sample_users['salarie_id'], date_test)
+            ).fetchone()
+            assert row is not None
+            assert row['declaration_conforme'] == 1
+            assert row['type_saisie'] == 'declaration_conforme'
+            assert row['heure_debut_matin'] is None
+            assert row['heure_fin_matin'] is None
+            assert row['heure_debut_aprem'] is None
+            assert row['heure_fin_aprem'] is None
+
 
 class TestOptionsVueMensuelle:
     """Tests de l'affichage des horaires dans la vue mensuelle."""
@@ -127,6 +166,19 @@ class TestMonEquipeVisibilitePresences:
         _creer_contrats_equipe(db, sample_users)
 
         response = resp_client.get('/mon_equipe')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'class="presences-horaires-titre">Présences par tranche horaire' in html
+
+    def test_comptable_voit_les_presences_par_tranche_horaire(self, comptable_client, db, sample_users):
+        db.execute(
+            "INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo, saisi_par) VALUES (?,?,?,?,?)",
+            (sample_users['comptable_id'], 'CDI', '2024-01-01', 35.0, sample_users['directeur_id'])
+        )
+        db.commit()
+
+        response = comptable_client.get('/mon_equipe')
         html = response.get_data(as_text=True)
 
         assert response.status_code == 200

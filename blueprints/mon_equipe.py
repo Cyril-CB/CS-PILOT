@@ -513,7 +513,7 @@ def mon_equipe():
     type_secteur = user_row['type_secteur'] if user_row else ''
     secteur_id = user_row['secteur_id'] if user_row else None
     is_creche = type_secteur == 'creche'
-    peut_voir_presences_horaires = session.get('profil') in ['responsable', 'directeur']
+    peut_voir_presences_horaires = session.get('profil') in ['responsable', 'comptable']
 
     # Presences par tranche horaire
     if peut_voir_presences_horaires and is_creche:
