@@ -1,7 +1,12 @@
 """
 Tests des options applicatives et des personnalisations associées.
 """
+from datetime import datetime, timedelta
+
+from blueprints import mon_equipe as mon_equipe_module
 from app_options import get_option_bool, set_option_bool
+
+DATE_REFERENCE_MON_EQUIPE = datetime(2025, 1, 6, 12, 0, 0)
 
 
 def _creer_contrats_equipe(db, sample_users):
@@ -11,6 +16,36 @@ def _creer_contrats_equipe(db, sample_users):
             "INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo, saisi_par) VALUES (?,?,?,?,?)",
             (user_id, 'CDI', '2024-01-01', 35.0, sample_users['directeur_id'])
         )
+    db.commit()
+
+
+def _figer_semaine_mon_equipe(monkeypatch):
+    class DateTimeFigee(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(
+                DATE_REFERENCE_MON_EQUIPE.year,
+                DATE_REFERENCE_MON_EQUIPE.month,
+                DATE_REFERENCE_MON_EQUIPE.day,
+                DATE_REFERENCE_MON_EQUIPE.hour,
+                DATE_REFERENCE_MON_EQUIPE.minute,
+                DATE_REFERENCE_MON_EQUIPE.second,
+                tzinfo=tz
+            )
+
+    monkeypatch.setattr(mon_equipe_module, 'datetime', DateTimeFigee)
+    return DATE_REFERENCE_MON_EQUIPE.date()
+
+
+def _ajouter_absence_semaine(db, user_id, motif, saisi_par, date_reference):
+    lundi = date_reference - timedelta(days=date_reference.weekday())
+    date_str = lundi.strftime('%Y-%m-%d')
+    db.execute(
+        """INSERT INTO absences
+           (user_id, motif, date_debut, date_fin, jours_ouvres, commentaire, saisi_par)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (user_id, motif, date_str, date_str, 1, 'Absence de test', saisi_par)
+    )
     db.commit()
 
 
@@ -35,9 +70,11 @@ class TestOptionsAdministration:
         with app.app_context():
             assert get_option_bool('saisie_afficher_declaration_conforme') is True
             assert get_option_bool('vue_mensuelle_afficher_horaires') is False
+            assert get_option_bool('mon_equipe_masquer_motifs_absence_salaries') is False
 
         response = admin_client.post('/administration/options', data={
             'vue_mensuelle_afficher_horaires': '1',
+            'mon_equipe_masquer_motifs_absence_salaries': '1',
         }, follow_redirects=True)
 
         assert response.status_code == 200
@@ -46,6 +83,7 @@ class TestOptionsAdministration:
         with app.app_context():
             assert get_option_bool('saisie_afficher_declaration_conforme') is False
             assert get_option_bool('vue_mensuelle_afficher_horaires') is True
+            assert get_option_bool('mon_equipe_masquer_motifs_absence_salaries') is True
 
 
 class TestOptionsSaisie:
@@ -183,6 +221,76 @@ class TestMonEquipeVisibilitePresences:
 
         assert response.status_code == 200
         assert 'class="presences-horaires-titre">Présences par tranche horaire' in html
+
+
+class TestOptionMonEquipeMotifsAbsence:
+    """Tests de l'option de masquage des motifs d'absence."""
+
+    def test_salarie_voit_le_motif_si_option_desactivee(self, auth_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
+        _creer_contrats_equipe(db, sample_users)
+        _ajouter_absence_semaine(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'], date_reference)
+
+        with app.app_context():
+            set_option_bool('mon_equipe_masquer_motifs_absence_salaries', False)
+
+        response = auth_client.get('/mon_equipe')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Arrêt maladie' in html
+        assert '<span class="card-label">Absent</span>' not in html
+
+    def test_salarie_ne_voit_pas_le_motif_si_option_activee(self, auth_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
+        _creer_contrats_equipe(db, sample_users)
+        _ajouter_absence_semaine(db, sample_users['responsable_id'], 'Arrêt maladie', sample_users['directeur_id'], date_reference)
+
+        with app.app_context():
+            set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
+
+        response = auth_client.get('/mon_equipe')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert '<span class="card-label">Absent</span>' in html
+        assert 'Arrêt maladie' not in html
+
+    def test_responsable_continue_de_voir_le_motif_si_option_activee(self, resp_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
+        _creer_contrats_equipe(db, sample_users)
+        _ajouter_absence_semaine(db, sample_users['salarie_id'], 'Congé payé', sample_users['directeur_id'], date_reference)
+
+        with app.app_context():
+            set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
+
+        response = resp_client.get('/mon_equipe')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Congé payé' in html
+
+    def test_comptable_continue_de_voir_le_motif_si_option_activee(self, comptable_client, app, db, sample_users, monkeypatch):
+        date_reference = _figer_semaine_mon_equipe(monkeypatch)
+        db.execute(
+            "UPDATE users SET secteur_id = ? WHERE id = ?",
+            (sample_users['secteur_id'], sample_users['comptable_id'])
+        )
+        db.execute(
+            "INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo, saisi_par) VALUES (?,?,?,?,?)",
+            (sample_users['comptable_id'], 'CDI', '2024-01-01', 35.0, sample_users['directeur_id'])
+        )
+        _creer_contrats_equipe(db, sample_users)
+        _ajouter_absence_semaine(db, sample_users['salarie_id'], 'Congé sans solde', sample_users['directeur_id'], date_reference)
+
+        with app.app_context():
+            set_option_bool('mon_equipe_masquer_motifs_absence_salaries', True)
+
+        response = comptable_client.get('/mon_equipe')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Congé sans solde' in html
 
 
 class TestOptionsAccesResponsables:

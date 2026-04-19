@@ -71,7 +71,7 @@
                 {% elif jour.type_saisie == 'absence' %}
                 <!-- Absence -->
                 <div class="day-card card-absence">
-                    <span class="card-label">{{ jour.absence }}</span>
+                    <span class="card-label">{{ libelle_absence_masquee if masquer_motifs_absence else jour.absence }}</span>
                 </div>
 
                 {% elif jour.type_saisie == 'recup' %}
@@ -142,7 +142,7 @@
                     </div>
                     {% elif jour.type_saisie == 'absence' %}
                     <div class="day-card card-absence">
-                        <span class="card-label">{{ jour.absence }}</span>
+                        <span class="card-label">{{ libelle_absence_masquee if masquer_motifs_absence else jour.absence }}</span>
                     </div>
                     {% elif jour.type_saisie == 'recup' %}
                     <div class="day-card card-recup">
