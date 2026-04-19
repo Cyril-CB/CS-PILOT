@@ -8,6 +8,7 @@ import math
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify)
 from datetime import datetime, timedelta
+from app_options import get_option_bool
 from database import get_db
 from utils import (login_required, get_type_periode, get_planning_valide_a_date,
                    calculer_heures)
@@ -514,6 +515,10 @@ def mon_equipe():
     secteur_id = user_row['secteur_id'] if user_row else None
     is_creche = type_secteur == 'creche'
     peut_voir_presences_horaires = session.get('profil') in ['responsable', 'comptable']
+    masquer_motifs_absence = (
+        session.get('profil') == 'salarie'
+        and get_option_bool('mon_equipe_masquer_motifs_absence_salaries')
+    )
 
     # Presences par tranche horaire
     if peut_voir_presences_horaires and is_creche:
@@ -578,6 +583,7 @@ def mon_equipe():
                             nb_pro=nb_pro,
                             is_creche=is_creche,
                             peut_voir_presences_horaires=peut_voir_presences_horaires,
+                            masquer_motifs_absence=masquer_motifs_absence,
                             secteur_id=secteur_id,
                             today=today)
 

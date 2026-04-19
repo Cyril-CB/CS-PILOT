@@ -21,6 +21,14 @@ OPTION_DEFINITIONS = {
         ),
         'default': False,
     },
+    'mon_equipe_masquer_motifs_absence_salaries': {
+        'label': 'Masquer les motifs d\'absence sur Mon équipe pour les salariés',
+        'description': (
+            'Affiche simplement "Absent" à la place du motif détaillé sur la page '
+            'Mon équipe pour les salariés uniquement.'
+        ),
+        'default': False,
+    },
     'generation_contrats_responsable_autorise': {
         'label': 'Autoriser les responsables à accéder à la page Génération contrats',
         'description': (
