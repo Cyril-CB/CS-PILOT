@@ -1,5 +1,5 @@
 """
-Tests des options applicatives et des personnalisations associees.
+Tests des options applicatives et des personnalisations associées.
 """
 from app_options import get_option_bool, set_option_bool
 
@@ -29,7 +29,7 @@ class TestOptionsAdministration:
     def test_salarie_ne_peut_pas_acceder_a_la_page_options(self, auth_client):
         response = auth_client.get('/administration/options', follow_redirects=True)
         assert response.status_code == 200
-        assert 'non autorise' in response.get_data(as_text=True).lower()
+        assert 'non autorisé' in response.get_data(as_text=True).lower()
 
     def test_enregistrement_des_options(self, admin_client, app):
         with app.app_context():
@@ -41,7 +41,7 @@ class TestOptionsAdministration:
         }, follow_redirects=True)
 
         assert response.status_code == 200
-        assert 'Options enregistrees avec succes' in response.get_data(as_text=True)
+        assert 'Options enregistrées avec succès' in response.get_data(as_text=True)
 
         with app.app_context():
             assert get_option_bool('saisie_afficher_declaration_conforme') is False
@@ -120,7 +120,7 @@ class TestMonEquipeVisibilitePresences:
         html = response.get_data(as_text=True)
 
         assert response.status_code == 200
-        assert 'class="presences-horaires-titre">Presences par tranche horaire' not in html
+        assert 'class="presences-horaires-titre">Présences par tranche horaire' not in html
 
     def test_responsable_voit_les_presences_par_tranche_horaire(self, resp_client, db, sample_users):
         _creer_contrats_equipe(db, sample_users)
@@ -129,4 +129,4 @@ class TestMonEquipeVisibilitePresences:
         html = response.get_data(as_text=True)
 
         assert response.status_code == 200
-        assert 'class="presences-horaires-titre">Presences par tranche horaire' in html
+        assert 'class="presences-horaires-titre">Présences par tranche horaire' in html

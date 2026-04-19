@@ -47,13 +47,13 @@ def administration():
 def options():
     """Page des options applicatives personnalisables."""
     if not _check_admin():
-        flash('Acces non autorise', 'error')
+        flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
     if request.method == 'POST':
         for key in OPTION_DEFINITIONS:
             set_option_bool(key, request.form.get(key) == '1')
-        flash('Options enregistrees avec succes', 'success')
+        flash('Options enregistrées avec succès', 'success')
         return redirect(url_for('administration_bp.options'))
 
     return render_template('options.html', options=get_options_context())
