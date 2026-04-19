@@ -17,6 +17,7 @@ mon_equipe_bp = Blueprint('mon_equipe_bp', __name__)
 
 JOURS_SEMAINE = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
 JOURS_COURTS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven']
+LIBELLE_ABSENCE_MASQUEE = 'Absent'
 
 # Tranches horaires pour l'affichage des presences (creches / taux d'encadrement)
 # Bornes decalees d'1 min pour eviter le double-comptage aux frontieres
@@ -584,6 +585,7 @@ def mon_equipe():
                             is_creche=is_creche,
                             peut_voir_presences_horaires=peut_voir_presences_horaires,
                             masquer_motifs_absence=masquer_motifs_absence,
+                            libelle_absence_masquee=LIBELLE_ABSENCE_MASQUEE,
                             secteur_id=secteur_id,
                             today=today)
 
