@@ -244,6 +244,14 @@ def _peut_voir_equipe():
     return session.get('profil') in ['salarie', 'responsable', 'comptable']
 
 
+def _doit_masquer_motifs_absence():
+    """Masque les motifs d'absence uniquement pour les salariés si l'option est active."""
+    return (
+        session.get('profil') == 'salarie'
+        and get_option_bool('mon_equipe_masquer_motifs_absence_salaries')
+    )
+
+
 def _get_equipe(conn, user_id):
     """Retourne les membres de l'equipe ayant un contrat en cours :
     meme secteur + responsable du secteur."""
@@ -516,10 +524,7 @@ def mon_equipe():
     secteur_id = user_row['secteur_id'] if user_row else None
     is_creche = type_secteur == 'creche'
     peut_voir_presences_horaires = session.get('profil') in ['responsable', 'comptable']
-    masquer_motifs_absence = (
-        session.get('profil') == 'salarie'
-        and get_option_bool('mon_equipe_masquer_motifs_absence_salaries')
-    )
+    masquer_motifs_absence = _doit_masquer_motifs_absence()
 
     # Presences par tranche horaire
     if peut_voir_presences_horaires and is_creche:
