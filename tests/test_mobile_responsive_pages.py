@@ -19,7 +19,15 @@ def test_planning_theorique_utilise_historique_responsive(auth_client, sample_pl
     assert 'planning-day-card' in html
 
 
-def test_mon_equipe_rend_les_versions_desktop_et_mobile(resp_client):
+def test_mon_equipe_rend_les_versions_desktop_et_mobile(resp_client, db, sample_users):
+    cursor = db.cursor()
+    for user_id in (sample_users['responsable_id'], sample_users['salarie_id']):
+        cursor.execute(
+            "INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo, saisi_par) VALUES (?,?,?,?,?)",
+            (user_id, 'CDI', '2024-01-01', 35.0, sample_users['directeur_id'])
+        )
+    db.commit()
+
     response = resp_client.get('/mon_equipe')
     html = response.get_data(as_text=True)
 

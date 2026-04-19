@@ -33,8 +33,7 @@
 
     {% if grille %}
     <!-- Grille equipe -->
-    <div class="equipe-grid-desktop desktop-only">
-    <div class="equipe-grid">
+    <div class="equipe-grid equipe-grid-desktop desktop-only">
         <!-- En-tete jours -->
         <div class="equipe-row equipe-header">
             <div class="equipe-cell equipe-name-col">Collaborateur</div>
@@ -107,7 +106,6 @@
             {% endfor %}
         </div>
         {% endfor %}
-    </div>
     </div>
 
     <div class="equipe-mobile-list mobile-only">
@@ -240,8 +238,7 @@
         <h2 class="presences-horaires-titre">Presences par tranche horaire - Taux d'encadrement</h2>
         <p class="presences-horaires-subtitle">Professionnels presents vs requis ({{ nb_pro }} pro hors responsable, +1 si responsable sur le terrain)</p>
 
-        <div class="presences-grid-desktop desktop-only">
-        <div class="presences-horaires-grid" style="grid-template-columns: 130px 90px 80px repeat(5, 1fr);">
+        <div class="presences-horaires-grid presences-grid-desktop desktop-only" style="grid-template-columns: 130px 90px 80px repeat(5, 1fr);">
             <!-- En-tete -->
             <div class="ph-cell ph-header ph-label-col">Creneau</div>
             <div class="ph-cell ph-header">Enfants</div>
@@ -274,7 +271,6 @@
             </div>
             {% endfor %}
             {% endfor %}
-        </div>
         </div>
 
         <div class="presences-mobile-list mobile-only">
@@ -321,8 +317,7 @@
         <h2 class="presences-horaires-titre">Presences par tranche horaire</h2>
         <p class="presences-horaires-subtitle">Nombre de salaries presents sur chaque creneau (equipe : {{ nb_membres }} pers.)</p>
 
-        <div class="presences-grid-desktop desktop-only">
-        <div class="presences-horaires-grid">
+        <div class="presences-horaires-grid presences-grid-desktop desktop-only">
             <!-- En-tete -->
             <div class="ph-cell ph-header ph-label-col">Creneau</div>
             {% for j in jours_header %}
@@ -342,7 +337,6 @@
             </div>
             {% endfor %}
             {% endfor %}
-        </div>
         </div>
 
         <div class="presences-mobile-list mobile-only">
@@ -395,9 +389,6 @@
     background: var(--primary, #1976d2); color: #fff;
 }
 .week-badge-next { background: #7b1fa2; }
-
-.desktop-only { display: block; }
-.mobile-only { display: none; }
 
 /* ---- Grid ---- */
 .equipe-grid {

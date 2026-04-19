@@ -989,6 +989,14 @@ a.btn-icon:-webkit-any-link {
     margin-bottom: 1rem;
 }
 
+.desktop-only {
+    display: block;
+}
+
+.mobile-only {
+    display: none;
+}
+
 .alert,
 .flash {
     padding: 1rem 1.5rem;
@@ -3392,6 +3400,7 @@ a.btn-icon:-webkit-any-link {
         border-bottom: none;
     }
 
+    /* Footers hidden in card mode because totals are already shown outside each mobile card view. */
     .data-table-cards tfoot {
         display: none;
     }
@@ -3453,5 +3462,13 @@ a.btn-icon:-webkit-any-link {
         flex-wrap: wrap;
         gap: 0.5rem;
         align-items: center;
+    }
+
+    .desktop-only {
+        display: none !important;
+    }
+
+    .mobile-only {
+        display: block;
     }
 }
