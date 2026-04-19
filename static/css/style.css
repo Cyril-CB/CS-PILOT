@@ -989,10 +989,6 @@ a.btn-icon:-webkit-any-link {
     margin-bottom: 1rem;
 }
 
-.desktop-only {
-    display: block;
-}
-
 .mobile-only {
     display: none;
 }
@@ -3429,6 +3425,7 @@ a.btn-icon:-webkit-any-link {
     .month-comment-cell {
         max-width: none;
         white-space: normal;
+        word-break: break-word;
         overflow: visible;
         text-overflow: unset;
     }

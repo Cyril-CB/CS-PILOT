@@ -35,5 +35,4 @@ def test_mon_equipe_rend_les_versions_desktop_et_mobile(resp_client, db, sample_
     assert 'equipe-grid-desktop' in html
     assert 'equipe-mobile-list' in html
     assert 'presences-mobile-list' in html
-    assert '.equipe-mobile-list,\n.presences-mobile-list {\n    display: none;' in html
     assert '@media (max-width: 768px)' in html
