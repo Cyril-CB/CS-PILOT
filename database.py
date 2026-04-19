@@ -68,6 +68,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0028', 'Ajout module analyse ALSH'),
     ('0029', 'Ajout module budget previsionnel'),
     ('0030', 'Ameliorations subventions'),
+    ('0031', 'Ajout demandes conges'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -271,6 +272,30 @@ def init_db():
             date_fin TEXT NOT NULL,
             nb_jours REAL NOT NULL,
             nb_heures REAL NOT NULL,
+            motif_demande TEXT,
+            statut TEXT DEFAULT 'en_attente_responsable',
+            validation_responsable TEXT,
+            date_validation_responsable TEXT,
+            validation_direction TEXT,
+            date_validation_direction TEXT,
+            motif_refus TEXT,
+            refuse_par INTEGER,
+            date_refus TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (refuse_par) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Table des demandes de conges =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS demandes_conges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type_conge TEXT NOT NULL,
+            date_demande TEXT DEFAULT CURRENT_TIMESTAMP,
+            date_debut TEXT NOT NULL,
+            date_fin TEXT NOT NULL,
+            nb_jours REAL NOT NULL,
             motif_demande TEXT,
             statut TEXT DEFAULT 'en_attente_responsable',
             validation_responsable TEXT,

@@ -280,25 +280,35 @@ def inject_pending_counts():
         conn = get_db()
 
         if profil == 'directeur' or profil == 'comptable':
-            row = conn.execute(
+            row_recup = conn.execute(
                 "SELECT COUNT(*) as nb FROM demandes_recup WHERE statut IN ('en_attente_direction', 'en_attente_responsable')"
             ).fetchone()
+            row_conge = conn.execute(
+                "SELECT COUNT(*) as nb FROM demandes_conges WHERE statut IN ('en_attente_direction', 'en_attente_responsable')"
+            ).fetchone()
+            count = (row_recup['nb'] if row_recup else 0) + (row_conge['nb'] if row_conge else 0)
         elif profil == 'responsable':
             user = conn.execute("SELECT secteur_id FROM users WHERE id = ?", (session['user_id'],)).fetchone()
             sid = user['secteur_id'] if user else None
             if sid:
-                row = conn.execute(
+                row_recup = conn.execute(
                     """SELECT COUNT(*) as nb FROM demandes_recup d
                        JOIN users u ON d.user_id = u.id
                        WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'""",
                     (sid,)
                 ).fetchone()
+                row_conge = conn.execute(
+                    """SELECT COUNT(*) as nb FROM demandes_conges d
+                       JOIN users u ON d.user_id = u.id
+                       WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'""",
+                    (sid,)
+                ).fetchone()
+                count = (row_recup['nb'] if row_recup else 0) + (row_conge['nb'] if row_conge else 0)
             else:
-                row = {'nb': 0}
+                count = 0
         else:
-            row = {'nb': 0}
+            count = 0
 
-        count = row['nb'] if row else 0
         chatbot_on = False
         try:
             from utils import get_setting as _gs

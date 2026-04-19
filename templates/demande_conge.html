@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Demande de congé{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>Demande de congé</h1>
+    <p class="subtitle">
+        Solde congés payés : <strong style="color: {% if solde_cp >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cp) }} jour(s)</strong>
+        &nbsp;|&nbsp;
+        Solde congés conventionnels : <strong style="color: {% if solde_cc >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cc) }} jour(s)</strong>
+    </p>
+    
+    <form method="POST" action="{{ url_for('recup_bp.demande_conge') }}">
+        <div class="form-group">
+            <label for="type_conge">Type de congé *</label>
+            <select id="type_conge" name="type_conge" required>
+                <option value="">-- Sélectionner --</option>
+                {% for t in types_conge %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label for="date_debut">Date de début *</label>
+            <input type="date" id="date_debut" name="date_debut" required>
+            <p class="help-text">Premier jour de congé</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="date_fin">Date de fin *</label>
+            <input type="date" id="date_fin" name="date_fin" required>
+            <p class="help-text">Dernier jour de congé (inclus)</p>
+        </div>
+        
+        <div class="form-group">
+            <label for="motif_demande">Motif (optionnel)</label>
+            <textarea id="motif_demande" name="motif_demande" rows="3" placeholder="Ex: Vacances, convenance personnelle..."></textarea>
+        </div>
+        
+        <div class="help-box">
+            <h4>Informations importantes</h4>
+            <ul>
+                <li>Seuls les <strong>jours ouvrés</strong> (lundi-vendredi) sont comptés</li>
+                <li>Les <strong>congés payés</strong> et <strong>congés conventionnels</strong> peuvent être demandés via ce formulaire</li>
+                <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
+                <li>Une demande de congé peut conduire à un <strong>solde négatif</strong> (congé par anticipation). Dans ce cas, elle peut être refusée si les jours en cours d'acquisition sont insuffisants</li>
+                <li>Vous pouvez suivre l'état de votre demande dans "Mes demandes"</li>
+            </ul>
+        </div>
+
+        <div class="help-box" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
+            <h4>📌 Autres types de congés</h4>
+            <ul>
+                <li>Pour les <strong>congés pour évènement familial</strong> ou tout autre type de congé spécial, veuillez transmettre votre demande <strong>par mail</strong> en joignant éventuellement un <strong>justificatif</strong></li>
+                <li>Le <strong>congé sans solde</strong> doit obligatoirement faire l'objet d'une <strong>demande écrite et signée</strong></li>
+            </ul>
+        </div>
+        
+        <div class="actions">
+            <button type="submit" class="btn btn-primary">Créer la demande</button>
+            <a href="{{ url_for('recup_bp.mes_demandes_conges') }}" class="btn btn-secondary">Mes demandes</a>
+            <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

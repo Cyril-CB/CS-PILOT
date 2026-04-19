@@ -236,6 +236,18 @@ def dashboard_responsable():
         ORDER BY d.date_demande ASC
     ''', (secteur_id,)).fetchall()
 
+    # ── 4b. Demandes de conges du secteur ──
+    demandes_conges = conn.execute('''
+        SELECT d.id, d.type_conge, d.date_debut, d.date_fin, d.nb_jours,
+               d.statut, d.date_demande, d.motif_demande,
+               u.nom as demandeur_nom, u.prenom as demandeur_prenom
+        FROM demandes_conges d
+        JOIN users u ON d.user_id = u.id
+        WHERE u.secteur_id = ?
+          AND d.statut IN ('en_attente_responsable', 'en_attente_direction')
+        ORDER BY d.date_demande ASC
+    ''', (secteur_id,)).fetchall()
+
     # ── 5. Conges de l'equipe ──
     conges_equipe = conn.execute('''
         SELECT u.id, u.nom, u.prenom,
@@ -354,6 +366,7 @@ def dashboard_responsable():
                            nb_non_commence=nb_non_commence,
                            fiches_en_attente=fiches_en_attente,
                            demandes_recup=demandes_recup,
+                           demandes_conges=demandes_conges,
                            conges_equipe=conges_equipe,
                            factures_en_attente=factures_en_attente,
                            nb_factures_attente=nb_factures_attente,
