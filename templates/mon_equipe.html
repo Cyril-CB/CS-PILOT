@@ -501,9 +501,7 @@
 
 .equipe-mobile-list,
 .presences-mobile-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+    display: none;
 }
 
 .equipe-mobile-card,
@@ -804,6 +802,13 @@
 @media (max-width: 768px) {
     .desktop-only { display: none !important; }
     .mobile-only { display: block; }
+
+    .equipe-mobile-list,
+    .presences-mobile-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
 
     .week-nav {
         flex-direction: column;
