@@ -309,17 +309,21 @@ def validation_demandes_recup():
                     flash('Le motif de refus est obligatoire', 'error')
                     return redirect(url_for('recup_bp.validation_demandes_recup'))
 
-                # Refuser la demande
-                conn.execute(f'''
+                # Refuser la demande (seulement si elle est en attente)
+                cursor = conn.execute(f'''
                     UPDATE {table}
                     SET statut = 'refusee', motif_refus = ?, refuse_par = ?, date_refus = ?
-                    WHERE id = ?
+                    WHERE id = ? AND statut IN ('en_attente_direction', 'en_attente_responsable')
                 ''', (motif_refus, session['user_id'], now, demande_id))
                 conn.commit()
-                flash('Demande refusée', 'success')
+
+                if cursor.rowcount > 0:
+                    flash('Demande refusée', 'success')
+                else:
+                    flash('Cette demande a déjà été traitée', 'info')
 
                 # Notification email au salarie (si consentement donne)
-                if is_email_configured():
+                if cursor.rowcount > 0 and is_email_configured():
                     peut, email_sal = peut_envoyer_email(demande['user_id'])
                     if peut:
                         salarie = conn.execute('SELECT prenom FROM users WHERE id = ?',
@@ -334,19 +338,23 @@ def validation_demandes_recup():
             elif action == 'valider':
                 # Valider selon le profil
                 if session.get('profil') == 'responsable':
-                    # Responsable valide → passe à en_attente_direction
-                    conn.execute(f'''
+                    # Responsable valide → passe à en_attente_direction (seulement si en_attente_responsable)
+                    cursor = conn.execute(f'''
                         UPDATE {table}
                         SET statut = 'en_attente_direction',
                             validation_responsable = ?,
                             date_validation_responsable = ?
-                        WHERE id = ?
+                        WHERE id = ? AND statut = 'en_attente_responsable'
                     ''', (f"{user_info['prenom']} {user_info['nom']}", now, demande_id))
                     conn.commit()
-                    flash('Demande validée, en attente de la direction', 'success')
 
-                    # Notification email a la direction
-                    if is_email_configured():
+                    if cursor.rowcount > 0:
+                        flash('Demande validée, en attente de la direction', 'success')
+                    else:
+                        flash('Cette demande a déjà été traitée', 'info')
+
+                    # Notification email a la direction (seulement si validation réussie)
+                    if cursor.rowcount > 0 and is_email_configured():
                         demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
                                                  (demande['user_id'],)).fetchone()
                         if demandeur:
@@ -363,66 +371,73 @@ def validation_demandes_recup():
 
                 elif session.get('profil') in ['directeur', 'comptable']:
                     # Direction valide → statut = validee
-                    conn.execute(f'''
+                    # Restriction idempotente : seulement si statut en attente
+                    cursor = conn.execute(f'''
                         UPDATE {table}
                         SET statut = 'validee',
                             validation_direction = ?,
                             date_validation_direction = ?
-                        WHERE id = ?
+                        WHERE id = ? AND statut IN ('en_attente_direction', 'en_attente_responsable')
                     ''', (f"{user_info['prenom']} {user_info['nom']}", now, demande_id))
 
-                    if demande_type == 'conge':
-                        # Créer une entrée dans la table absences
-                        type_conge = demande['type_conge']
-                        nb_jours = demande['nb_jours']
-                        _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
-                        conn.commit()
-                        flash(f'Demande de congé validée définitivement - {nb_jours:.0f} jour(s) ajouté(s) à l\'historique des absences', 'success')
+                    # Ne créer les effets de bord que si la mise à jour a effectivement changé le statut
+                    if cursor.rowcount > 0:
+                        if demande_type == 'conge':
+                            # Créer une entrée dans la table absences
+                            type_conge = demande['type_conge']
+                            nb_jours = demande['nb_jours']
+                            _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
+                            conn.commit()
+                            flash(f'Demande de congé validée définitivement - {nb_jours:.0f} jour(s) ajouté(s) à l\'historique des absences', 'success')
+                        else:
+                            # Créer automatiquement les entrées de récupération dans heures_reelles
+                            date_debut = datetime.strptime(demande['date_debut'], '%Y-%m-%d')
+                            date_fin = datetime.strptime(demande['date_fin'], '%Y-%m-%d')
+
+                            jour_actuel = date_debut
+                            nb_jours_crees = 0
+
+                            while jour_actuel <= date_fin:
+                                jour_semaine = jour_actuel.weekday()
+
+                                # Ne créer que pour les jours ouvrés (lundi-vendredi)
+                                if jour_semaine < 5:
+                                    date_str = jour_actuel.strftime('%Y-%m-%d')
+
+                                    # Vérifier si le mois n'est pas verrouillé
+                                    mois = jour_actuel.month
+                                    annee = jour_actuel.year
+                                    validation = conn.execute('''
+                                        SELECT bloque FROM validations
+                                        WHERE user_id = ? AND mois = ? AND annee = ?
+                                    ''', (demande['user_id'], mois, annee)).fetchone()
+
+                                    if not validation or not validation['bloque']:
+                                        # Supprimer entrée existante si présente
+                                        conn.execute('DELETE FROM heures_reelles WHERE user_id = ? AND date = ?',
+                                                   (demande['user_id'], date_str))
+
+                                        # Créer la nouvelle entrée de récupération
+                                        conn.execute('''
+                                            INSERT INTO heures_reelles
+                                            (user_id, date, type_saisie, commentaire, declaration_conforme,
+                                             heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem)
+                                            VALUES (?, ?, 'recup_journee', ?, 0, NULL, NULL, NULL, NULL)
+                                        ''', (demande['user_id'], date_str, f"Récupération - Demande #{demande_id} validée"))
+
+                                        nb_jours_crees += 1
+
+                                jour_actuel += timedelta(days=1)
+
+                            conn.commit()
+                            flash(f'Demande validée définitivement - {nb_jours_crees} jour(s) de récupération ajouté(s) automatiquement au calendrier', 'success')
                     else:
-                        # Créer automatiquement les entrées de récupération dans heures_reelles
-                        date_debut = datetime.strptime(demande['date_debut'], '%Y-%m-%d')
-                        date_fin = datetime.strptime(demande['date_fin'], '%Y-%m-%d')
-
-                        jour_actuel = date_debut
-                        nb_jours_crees = 0
-
-                        while jour_actuel <= date_fin:
-                            jour_semaine = jour_actuel.weekday()
-
-                            # Ne créer que pour les jours ouvrés (lundi-vendredi)
-                            if jour_semaine < 5:
-                                date_str = jour_actuel.strftime('%Y-%m-%d')
-
-                                # Vérifier si le mois n'est pas verrouillé
-                                mois = jour_actuel.month
-                                annee = jour_actuel.year
-                                validation = conn.execute('''
-                                    SELECT bloque FROM validations
-                                    WHERE user_id = ? AND mois = ? AND annee = ?
-                                ''', (demande['user_id'], mois, annee)).fetchone()
-
-                                if not validation or not validation['bloque']:
-                                    # Supprimer entrée existante si présente
-                                    conn.execute('DELETE FROM heures_reelles WHERE user_id = ? AND date = ?',
-                                               (demande['user_id'], date_str))
-
-                                    # Créer la nouvelle entrée de récupération
-                                    conn.execute('''
-                                        INSERT INTO heures_reelles
-                                        (user_id, date, type_saisie, commentaire, declaration_conforme,
-                                         heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem)
-                                        VALUES (?, ?, 'recup_journee', ?, 0, NULL, NULL, NULL, NULL)
-                                    ''', (demande['user_id'], date_str, f"Récupération - Demande #{demande_id} validée"))
-
-                                    nb_jours_crees += 1
-
-                            jour_actuel += timedelta(days=1)
-
+                        # La demande était déjà validée, ne rien faire
                         conn.commit()
-                        flash(f'Demande validée définitivement - {nb_jours_crees} jour(s) de récupération ajouté(s) automatiquement au calendrier', 'success')
+                        flash('Cette demande a déjà été validée', 'info')
 
-                    # Notification email au salarie (si consentement donne)
-                    if is_email_configured():
+                    # Notification email au salarie (si consentement donne et validation réussie)
+                    if cursor.rowcount > 0 and is_email_configured():
                         peut, email_sal = peut_envoyer_email(demande['user_id'])
                         if peut:
                             salarie = conn.execute('SELECT prenom FROM users WHERE id = ?',
