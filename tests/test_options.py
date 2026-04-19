@@ -131,3 +131,53 @@ class TestMonEquipeVisibilitePresences:
 
         assert response.status_code == 200
         assert 'class="presences-horaires-titre">Présences par tranche horaire' in html
+
+
+class TestOptionsAccesResponsables:
+    """Tests des options d'accès responsables."""
+
+    def test_generation_contrats_refuse_responsable_si_option_desactivee(self, resp_client, app):
+        with app.app_context():
+            set_option_bool('generation_contrats_responsable_autorise', False)
+
+        response = resp_client.get('/generation_contrats', follow_redirects=True)
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Génération de contrats' not in html
+        assert 'non autorise' in html.lower()
+
+    def test_budget_previsionnel_refuse_responsable_si_option_desactivee(self, resp_client, app):
+        with app.app_context():
+            set_option_bool('budget_previsionnel_responsable_autorise', False)
+
+        response = resp_client.get('/budget-previsionnel', follow_redirects=True)
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Budget prévisionnel' not in html
+        assert 'non autorisé' in html.lower()
+
+    def test_menu_responsable_masque_les_liens_desactives(self, resp_client, app):
+        with app.app_context():
+            set_option_bool('generation_contrats_responsable_autorise', False)
+            set_option_bool('budget_previsionnel_responsable_autorise', False)
+
+        response = resp_client.get('/dashboard_responsable')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert '📄 Générer le contrat' not in html
+        assert '📝 Génération contrats' not in html
+        assert 'Budget prévisionnel' not in html
+        assert 'Budget previsionnel' not in html
+
+    def test_infos_salaries_masque_bouton_generation_si_option_desactivee(self, resp_client, app, sample_users):
+        with app.app_context():
+            set_option_bool('generation_contrats_responsable_autorise', False)
+
+        response = resp_client.get(f"/infos_salaries?user_id={sample_users['salarie_id']}")
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert '📄 Générer le contrat' not in html

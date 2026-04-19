@@ -281,7 +281,9 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('budget_bp.mon_budget') }}">💰 Mon budget</a>
+                    {% if budget_previsionnel_responsable_autorise %}
                     <a href="{{ url_for('budget_bp.budget_previsionnel') }}">📘 Budget prévisionnel</a>
+                    {% endif %}
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                 </div>
             </div>
@@ -291,7 +293,9 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salariés</a>
+                    {% if generation_contrats_responsable_autorise %}
                     <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
+                    {% endif %}
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
                 </div>
             </div>

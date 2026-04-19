@@ -130,8 +130,10 @@
                     <input type="file" name="fichier_contrat" id="fichier_contrat" accept=".pdf">
                 </div>
                 <button type="submit" class="btn btn-primary">Ajouter le contrat</button>
+                {% if generation_contrats_responsable_autorise or session.profil in ['directeur', 'comptable'] %}
                 <a href="{{ url_for('generation_contrats_bp.generation_contrats', user_id=salarie.id) }}"
                    class="btn btn-secondary">📄 Générer le contrat</a>
+                {% endif %}
             </div>
         </form>
 

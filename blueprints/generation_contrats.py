@@ -13,6 +13,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
 from database import get_db, DATA_DIR
 from utils import login_required, get_setting, save_setting
+from app_options import get_option_bool
 from blueprints.pesee_alisfa import CRITERES_ALISFA as _CRITERES_ALISFA
 
 # Lookup : _POINTS_PAR_CRITERE[i][niveau] = valeur en points (str) pour le critère i (0-based)
@@ -74,7 +75,12 @@ def _peut_gerer():
 
 
 def _peut_acceder_module():
-    return session.get('profil') in ['comptable', 'directeur', 'responsable']
+    profil = session.get('profil')
+    if profil in ['comptable', 'directeur']:
+        return True
+    if profil == 'responsable':
+        return get_option_bool('generation_contrats_responsable_autorise')
+    return False
 
 
 def _est_salarie_visible(conn, user_id):

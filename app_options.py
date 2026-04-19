@@ -21,6 +21,22 @@ OPTION_DEFINITIONS = {
         ),
         'default': False,
     },
+    'generation_contrats_responsable_autorise': {
+        'label': 'Autoriser les responsables à accéder à la page Génération contrats',
+        'description': (
+            'Permet aux responsables d\'ouvrir la page de génération des contrats '
+            'et d\'y accéder depuis l\'interface.'
+        ),
+        'default': True,
+    },
+    'budget_previsionnel_responsable_autorise': {
+        'label': 'Autoriser les responsables à accéder à la page Budget prévisionnel',
+        'description': (
+            'Permet aux responsables d\'ouvrir la page Budget prévisionnel '
+            'et d\'y accéder depuis l\'interface.'
+        ),
+        'default': True,
+    },
 }
 
 
