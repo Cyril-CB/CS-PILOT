@@ -120,7 +120,7 @@ class TestMonEquipeVisibilitePresences:
         html = response.get_data(as_text=True)
 
         assert response.status_code == 200
-        assert 'Presences par tranche horaire' not in html
+        assert 'class="presences-horaires-titre">Presences par tranche horaire' not in html
 
     def test_responsable_voit_les_presences_par_tranche_horaire(self, resp_client, db, sample_users):
         _creer_contrats_equipe(db, sample_users)
@@ -129,4 +129,4 @@ class TestMonEquipeVisibilitePresences:
         html = response.get_data(as_text=True)
 
         assert response.status_code == 200
-        assert 'Presences par tranche horaire' in html
+        assert 'class="presences-horaires-titre">Presences par tranche horaire' in html
