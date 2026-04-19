@@ -893,6 +893,102 @@ a.btn-icon:-webkit-any-link {
     color: var(--gray-700);
 }
 
+.monthly-user-selector {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    background: var(--gray-50);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.monthly-user-selector-label {
+    font-weight: 500;
+}
+
+.monthly-user-select {
+    padding: 0.5rem;
+    border: 2px solid #667eea;
+    border-radius: 5px;
+    font-size: 1rem;
+    max-width: 100%;
+    min-width: 260px;
+}
+
+.month-view-toggle {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.month-comment-cell {
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.month-page-actions {
+    margin-top: 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.month-page-actions-group {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.planning-alternance-banner {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary);
+    margin-bottom: 2rem;
+}
+
+.planning-history-card {
+    margin-bottom: 2rem;
+    padding: 1.5rem;
+    border-radius: 8px;
+}
+
+.planning-history-meta {
+    color: var(--gray-600);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.planning-tip-box {
+    margin-bottom: 1.5rem;
+    background: #dbeafe;
+    padding: 1rem;
+    border-radius: 6px;
+}
+
+.planning-day-card {
+    background: var(--gray-50);
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+}
+
+.planning-day-title {
+    color: var(--primary-dark);
+    margin-bottom: 1rem;
+}
+
 .alert,
 .flash {
     padding: 1rem 1.5rem;
@@ -3296,9 +3392,66 @@ a.btn-icon:-webkit-any-link {
         border-bottom: none;
     }
 
+    .data-table-cards tfoot {
+        display: none;
+    }
+
     /* ── Dark theme adjustments for cards ── */
     [data-theme="dark"] .data-table-cards tr {
         background: var(--white);
         border-color: var(--gray-300);
+    }
+
+    .monthly-user-selector {
+        align-items: stretch;
+    }
+
+    .monthly-user-select {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .month-view-toggle .btn,
+    .month-header .btn {
+        width: 100%;
+        text-align: center;
+    }
+
+    .month-comment-cell {
+        max-width: none;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+    }
+
+    .month-page-actions,
+    .month-page-actions-group {
+        width: 100%;
+    }
+
+    .month-page-actions-group {
+        justify-content: stretch;
+    }
+
+    .month-page-actions .validation-status {
+        width: 100%;
+        text-align: left !important;
+    }
+
+    .planning-alternance-banner,
+    .planning-history-card,
+    .planning-day-card {
+        padding: 1rem;
+    }
+
+    .planning-history-badge {
+        margin-left: 0 !important;
+    }
+
+    .planning-history-card h3 {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
     }
 }
