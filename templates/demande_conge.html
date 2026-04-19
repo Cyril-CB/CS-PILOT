@@ -7,7 +7,7 @@
     <h1>Demande de congé</h1>
     <p class="subtitle">
         Solde congés payés : <strong style="color: {% if solde_cp >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cp) }} jour(s)</strong>
-        &nbsp;|&nbsp;
+        <span class="solde-separator">&nbsp;|&nbsp;</span>
         Solde congés conventionnels : <strong style="color: {% if solde_cc >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cc) }} jour(s)</strong>
     </p>
     
