@@ -6,9 +6,20 @@ from datetime import datetime, timedelta
 import json
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
-                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
+                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
+from app_options import get_option_bool
 
 validation_bp = Blueprint('validation_bp', __name__)
+
+
+def _formater_horaires(matin_debut=None, matin_fin=None, aprem_debut=None, aprem_fin=None):
+    """Formate les horaires d'une journée pour l'affichage."""
+    plages = []
+    if matin_debut and matin_fin:
+        plages.append(f"{matin_debut} - {matin_fin}")
+    if aprem_debut and aprem_fin:
+        plages.append(f"{aprem_debut} - {aprem_fin}")
+    return ' / '.join(plages) if plages else '-'
 
 
 @validation_bp.route('/valider_mois', methods=['POST'])
@@ -360,6 +371,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     jour_actuel = premier_jour
     total_heures_theoriques = 0
     total_heures_reelles = 0
+    afficher_horaires_vue_mensuelle = get_option_bool('vue_mensuelle_afficher_horaires')
 
     while jour_actuel <= dernier_jour:
         date_str = jour_actuel.strftime('%Y-%m-%d')
@@ -373,14 +385,23 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             type_periode = get_type_periode(date_str)
 
             heures_theo_jour = 0
+            horaires_theoriques = '-'
             if jour_semaine == 5:
                 heures_theo_jour = 0
             else:
                 planning = get_planning_valide_a_date(user_id_a_afficher, type_periode, date_str)
                 if planning:
                     heures_theo_jour = get_heures_theoriques_jour(planning, jour_semaine)
+                    jour_nom = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'][jour_semaine]
+                    horaires_theoriques = _formater_horaires(
+                        planning[f'{jour_nom}_matin_debut'],
+                        planning[f'{jour_nom}_matin_fin'],
+                        planning[f'{jour_nom}_aprem_debut'],
+                        planning[f'{jour_nom}_aprem_fin'],
+                    )
 
             heures_reelles_jour = 0
+            horaires_reels = '-'
             est_saisi = False
             est_declare = False
             type_saisie = None
@@ -394,11 +415,18 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 if est_declare:
                     heures_reelles_jour = heures_theo_jour
                     est_saisi = True
+                    horaires_reels = horaires_theoriques
                 else:
                     est_saisi = True
                     heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
                     heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
                     heures_reelles_jour = heures_matin + heures_aprem
+                    horaires_reels = _formater_horaires(
+                        h['heure_debut_matin'],
+                        h['heure_fin_matin'],
+                        h['heure_debut_aprem'],
+                        h['heure_fin_aprem'],
+                    )
 
                 type_saisie = h['type_saisie']
                 commentaire = h['commentaire']
@@ -422,6 +450,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'est_samedi': jour_semaine == 5,
                 'heures_theoriques': heures_theo_jour,
                 'heures_reelles': heures_reelles_jour,
+                'horaires_theoriques': horaires_theoriques,
+                'horaires_reels': horaires_reels,
                 'ecart': ecart,
                 'est_saisi': est_saisi,
                 'est_declare': est_declare,
@@ -565,6 +595,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         jours_feries=jours_feries,
         premier_jour_semaine=premier_jour.weekday(),
         nb_jours_mois=dernier_jour.day,
+        afficher_horaires_vue_mensuelle=afficher_horaires_vue_mensuelle,
+        declaration_conforme_active=get_option_bool('saisie_afficher_declaration_conforme'),
     )
 
     return template_data, None

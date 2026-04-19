@@ -182,7 +182,7 @@
         <span class="legend-item"><span class="legend-dot dot-ferie"></span> Ferie</span>
     </div>
 
-    {% if is_creche %}
+    {% if peut_voir_presences_horaires and is_creche %}
     <!-- ================================================ -->
     <!-- CRECHE : Frequentation moyenne + Taux encadrement -->
     <!-- ================================================ -->
@@ -309,13 +309,13 @@
         </div>
     </div>
 
-    {% else %}
+    {% elif peut_voir_presences_horaires %}
     <!-- ================================================ -->
-    <!-- STANDARD : Presences par tranche horaire          -->
+    <!-- STANDARD : Présences par tranche horaire          -->
     <!-- ================================================ -->
     <div class="presences-horaires-section">
-        <h2 class="presences-horaires-titre">Presences par tranche horaire</h2>
-        <p class="presences-horaires-subtitle">Nombre de salaries presents sur chaque creneau (equipe : {{ nb_membres }} pers.)</p>
+        <h2 class="presences-horaires-titre">Présences par tranche horaire</h2>
+        <p class="presences-horaires-subtitle">Nombre de salariés présents sur chaque créneau (équipe : {{ nb_membres }} pers.)</p>
 
         <div class="presences-horaires-grid presences-grid-desktop desktop-only">
             <!-- En-tete -->

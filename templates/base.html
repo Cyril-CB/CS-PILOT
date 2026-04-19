@@ -122,6 +122,7 @@
                     <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
                     <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
                     <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('administration_bp.options') }}">⚙️ Options</a>
                     <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
                     <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
                     <a href="{{ url_for('mise_a_jour_bp.mise_a_jour') }}">🔄 Mise à jour appli</a>
@@ -232,6 +233,7 @@
                     <a href="{{ url_for('admin_bp.gestion_jours_feries') }}">🎌 Jours fériés</a>
                     <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
                     <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
+                    <a href="{{ url_for('administration_bp.options') }}">⚙️ Options</a>
                     <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes BDD</a>
                     <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
                     <a href="{{ url_for('mise_a_jour_bp.mise_a_jour') }}">🔄 Mise à jour appli</a>
@@ -279,7 +281,9 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('budget_bp.mon_budget') }}">💰 Mon budget</a>
+                    {% if budget_previsionnel_responsable_autorise %}
                     <a href="{{ url_for('budget_bp.budget_previsionnel') }}">📘 Budget prévisionnel</a>
+                    {% endif %}
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                 </div>
             </div>
@@ -289,7 +293,9 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}">📁 Infos Salariés</a>
+                    {% if generation_contrats_responsable_autorise %}
                     <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
+                    {% endif %}
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
                 </div>
             </div>

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Options{% endblock %}
+
+{% block content %}
+<style>
+    .options-page { max-width: 900px; margin: 0 auto; }
+    .options-list { display: grid; gap: 16px; margin-top: 24px; }
+    .option-card {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: var(--shadow-sm);
+    }
+    .option-toggle {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        cursor: pointer;
+    }
+    .option-toggle input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin-top: 4px;
+        accent-color: var(--primary);
+        flex-shrink: 0;
+    }
+    .option-title { font-size: 1rem; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
+    .option-description { margin: 0; color: var(--gray-600); line-height: 1.5; }
+    .options-actions { margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap; }
+</style>
+
+<div class="options-page">
+    <div class="form-container">
+        <h1>Options</h1>
+        <p class="subtitle">Personnalisez certains comportements de l'application selon les besoins de votre centre.</p>
+
+        <form method="POST">
+            <div class="options-list">
+                {% for option in options %}
+                <div class="option-card">
+                    <label class="option-toggle">
+                        <input type="checkbox" name="{{ option.key }}" value="1" {% if option.value %}checked{% endif %}>
+                        <span>
+                            <div class="option-title">{{ option.label }}</div>
+                            <p class="option-description">{{ option.description }}</p>
+                        </span>
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="options-actions">
+                <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
+                <button type="submit" class="btn btn-primary">Enregistrer les options</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

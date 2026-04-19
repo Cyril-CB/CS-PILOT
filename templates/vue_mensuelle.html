@@ -107,11 +107,21 @@
         <div class="help-box" style="background: #fee2e2; border-left-color: #dc2626; margin-bottom: 1rem;">
             <h4>⚠️ Jours non déclarés</h4>
             <p><strong>{{ nb_jours_non_declares }} jour(s) travaillé(s) n'est/ne sont pas déclaré(s).</strong></p>
-            <p>Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.</p>
+            <p>
+                {% if declaration_conforme_active %}
+                Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.
+                {% else %}
+                Vous devez saisir tous les jours travaillés avant de pouvoir valider le mois.
+                {% endif %}
+            </p>
             <p>Pour chaque jour rouge, cliquez sur ✏️ puis :</p>
             <ul style="margin-bottom: 0;">
+                {% if declaration_conforme_active %}
                 <li>Cochez "✅ Je certifie avoir travaillé mes heures habituelles" si c'est le cas</li>
                 <li>OU saisissez vos heures réelles si elles diffèrent</li>
+                {% else %}
+                <li>Saisissez vos heures réelles, même si elles correspondent au planning théorique</li>
+                {% endif %}
             </ul>
         </div>
         {% endif %}
@@ -123,8 +133,8 @@
                         <th>Date</th>
                         <th>Jour</th>
                         <th>Période</th>
-                        <th>Heures théo.</th>
-                        <th>Heures réelles</th>
+                        <th>{% if afficher_horaires_vue_mensuelle %}Horaires théo.{% else %}Heures théo.{% endif %}</th>
+                        <th>{% if afficher_horaires_vue_mensuelle %}Horaires réels{% else %}Heures réelles{% endif %}</th>
                         <th>Écart</th>
                         <th>Statut</th>
                         <th>Commentaire</th>
@@ -151,13 +161,27 @@
                             {% endif %}
                         </td>
                         <td data-label="Heures théo.">
-                            {% if j.est_samedi %}
-                            <span style="color: #6c757d;">0h</span>
+                            {% if afficher_horaires_vue_mensuelle %}
+                                {% if j.est_samedi %}
+                                <span style="color: #6c757d;">-</span>
+                                {% else %}
+                                {{ j.horaires_theoriques }}
+                                {% endif %}
                             {% else %}
-                            {{ "%.2f"|format(j.heures_theoriques) }}h
+                                {% if j.est_samedi %}
+                                <span style="color: #6c757d;">0h</span>
+                                {% else %}
+                                {{ "%.2f"|format(j.heures_theoriques) }}h
+                                {% endif %}
                             {% endif %}
                         </td>
-                        <td data-label="Heures réelles">{{ "%.2f"|format(j.heures_reelles) }}h</td>
+                        <td data-label="Heures réelles">
+                            {% if afficher_horaires_vue_mensuelle %}
+                            {{ j.horaires_reels }}
+                            {% else %}
+                            {{ "%.2f"|format(j.heures_reelles) }}h
+                            {% endif %}
+                        </td>
                         <td data-label="Écart">
                             {% if j.ecart > 0 %}
                             <span style="color: #28a745; font-weight: bold;">+{{ "%.2f"|format(j.ecart) }}h</span>
@@ -296,15 +320,24 @@
     <div class="help-box">
         <h4>📖 Légende</h4>
         <ul>
+            {% if declaration_conforme_active %}
             <li><strong style="background: #3b82f6; color: white; padding: 2px 6px; border-radius: 3px;">✅ Déclaré</strong> : Déclaration conforme au planning théorique</li>
+            {% endif %}
             <li><strong>✏️ Saisi</strong> : Journée avec saisie manuelle des heures (heures sup ou différentes)</li>
             <li><strong>🏖️ Récup</strong> : Récupération journée complète</li>
             <li><strong style="background: #8b5cf6; color: white; padding: 2px 6px; border-radius: 3px;">🏥 Absence</strong> : Arrêt maladie, congé ou autre absence saisie</li>
-            <li><strong style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px;">⚠️ Non déclaré</strong> : Jour passé qui doit être saisi ou déclaré (empêche la validation)</li>
+            <li><strong style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px;">⚠️ Non déclaré</strong> : Jour passé qui doit être {% if declaration_conforme_active %}saisi ou déclaré{% else %}saisi{% endif %} (empêche la validation)</li>
             <li><strong style="background: #fff3cd; padding: 2px 6px;">Samedi</strong> : N'apparaît que s'il y a une saisie. 0h théorique = tout en heures supplémentaires</li>
         </ul>
         <p><strong>Solde cumulé :</strong> Inclut les mois précédents ({{ "%.2f"|format(solde_anterieur) }}h) + ce mois ({{ "%.2f"|format(solde_mois) }}h)</p>
-        <p><strong>Important :</strong> Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.</p>
+        <p>
+            <strong>Important :</strong>
+            {% if declaration_conforme_active %}
+            Vous devez saisir ou déclarer tous les jours travaillés avant de pouvoir valider le mois.
+            {% else %}
+            Vous devez saisir tous les jours travaillés avant de pouvoir valider le mois.
+            {% endif %}
+        </p>
     </div>
 </div>
 

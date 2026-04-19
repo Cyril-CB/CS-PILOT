@@ -323,6 +323,22 @@ def inject_pending_counts():
             conn.close()
 
 
+@app.context_processor
+def inject_app_options():
+    """Injecte les options utiles à l'affichage global."""
+    try:
+        from app_options import get_option_bool
+        return {
+            'generation_contrats_responsable_autorise': get_option_bool('generation_contrats_responsable_autorise'),
+            'budget_previsionnel_responsable_autorise': get_option_bool('budget_previsionnel_responsable_autorise'),
+        }
+    except Exception:
+        return {
+            'generation_contrats_responsable_autorise': True,
+            'budget_previsionnel_responsable_autorise': True,
+        }
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     """Affiche un message clair quand la limite de tentatives est atteinte."""

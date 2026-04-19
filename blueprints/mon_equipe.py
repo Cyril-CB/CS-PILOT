@@ -513,9 +513,10 @@ def mon_equipe():
     type_secteur = user_row['type_secteur'] if user_row else ''
     secteur_id = user_row['secteur_id'] if user_row else None
     is_creche = type_secteur == 'creche'
+    peut_voir_presences_horaires = session.get('profil') in ['responsable', 'comptable']
 
     # Presences par tranche horaire
-    if is_creche:
+    if peut_voir_presences_horaires and is_creche:
         presences_horaires = _calculer_presences_creche(grille)
         resp_presence = _calculer_presence_responsable(grille)
 
@@ -544,8 +545,11 @@ def mon_equipe():
 
         # Compter les membres hors responsable
         nb_pro = sum(1 for m in membres if m['profil'] != 'responsable')
-    else:
+    elif peut_voir_presences_horaires:
         presences_horaires = _calculer_presences_horaires(grille)
+        nb_pro = len(membres)
+    else:
+        presences_horaires = []
         nb_pro = len(membres)
 
     conn.close()
@@ -569,12 +573,13 @@ def mon_equipe():
                            vendredi=vendredi,
                            semaine_offset=semaine_offset,
                            secteur_nom=secteur_nom,
-                           presences_horaires=presences_horaires,
-                           nb_membres=len(membres),
-                           nb_pro=nb_pro,
-                           is_creche=is_creche,
-                           secteur_id=secteur_id,
-                           today=today)
+                            presences_horaires=presences_horaires,
+                            nb_membres=len(membres),
+                            nb_pro=nb_pro,
+                            is_creche=is_creche,
+                            peut_voir_presences_horaires=peut_voir_presences_horaires,
+                            secteur_id=secteur_id,
+                            today=today)
 
 
 @mon_equipe_bp.route('/api/frequentation_creche/save', methods=['POST'])

@@ -16,6 +16,7 @@ from datetime import datetime, date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
 from database import get_db
 from utils import login_required
+from app_options import get_option_bool
 
 budget_bp = Blueprint('budget_bp', __name__)
 
@@ -725,7 +726,11 @@ NOMS_MOIS = [
 
 
 def _can_access_budget_previsionnel(profil):
-    return profil in ['directeur', 'comptable', 'responsable']
+    if profil in ['directeur', 'comptable']:
+        return True
+    if profil == 'responsable':
+        return get_option_bool('budget_previsionnel_responsable_autorise')
+    return False
 
 
 def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, inflation=0, global_mode=False):

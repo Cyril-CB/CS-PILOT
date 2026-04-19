@@ -485,10 +485,12 @@
                 <span class="direction-ql-icon">💰</span>
                 <span>Mon budget</span>
             </a>
+            {% if budget_previsionnel_responsable_autorise %}
             <a href="{{ url_for('budget_bp.budget_previsionnel') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">📘</span>
                 <span>Budget previsionnel</span>
             </a>
+            {% endif %}
             <a href="{{ url_for('subventions_bp.gestion_subventions') }}" class="direction-quick-link">
                 <span class="direction-ql-icon">📋</span>
                 <span>Subventions</span>
