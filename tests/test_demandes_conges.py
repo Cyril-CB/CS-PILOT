@@ -122,6 +122,68 @@ def test_validation_conge_par_direction(admin_client, app, db, sample_users, sam
         assert absence['jours_ouvres'] == 5
 
 
+def test_validation_conge_idempotente(admin_client, app, db, sample_users, sample_planning):
+    """Verifie que valider plusieurs fois la meme demande ne cree pas de doublons."""
+    with app.app_context():
+        # Creer une demande de conge en attente direction
+        db.execute('''
+            INSERT INTO demandes_conges
+            (user_id, type_conge, date_debut, date_fin, nb_jours, statut)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (sample_users['salarie_id'], 'Congé payé',
+              '2025-08-11', '2025-08-15', 5, 'en_attente_direction'))
+        db.commit()
+
+        demande = db.execute('SELECT id FROM demandes_conges ORDER BY id DESC LIMIT 1').fetchone()
+        demande_id = demande['id']
+
+        # Recuperer le solde CP initial
+        user = db.execute('SELECT cp_pris FROM users WHERE id = ?', (sample_users['salarie_id'],)).fetchone()
+        cp_pris_initial = user['cp_pris'] or 0
+
+    # Premiere validation
+    response = admin_client.post('/validation_demandes_recup', data={
+        'demande_id': demande_id,
+        'action': 'valider',
+        'demande_type': 'conge',
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    with app.app_context():
+        # Verifier qu'une absence a ete creee
+        absences_count = db.execute(
+            "SELECT COUNT(*) as cnt FROM absences WHERE user_id = ? AND motif = 'Congé payé'",
+            (sample_users['salarie_id'],)
+        ).fetchone()['cnt']
+        assert absences_count == 1
+
+        # Verifier que le compteur CP a ete actualise
+        user = db.execute('SELECT cp_pris FROM users WHERE id = ?', (sample_users['salarie_id'],)).fetchone()
+        cp_pris_apres = user['cp_pris'] or 0
+        assert cp_pris_apres == cp_pris_initial + 5
+
+    # Deuxieme validation (tentative de re-validation)
+    response = admin_client.post('/validation_demandes_recup', data={
+        'demande_id': demande_id,
+        'action': 'valider',
+        'demande_type': 'conge',
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    with app.app_context():
+        # Verifier qu'il n'y a toujours qu'une seule absence
+        absences_count = db.execute(
+            "SELECT COUNT(*) as cnt FROM absences WHERE user_id = ? AND motif = 'Congé payé'",
+            (sample_users['salarie_id'],)
+        ).fetchone()['cnt']
+        assert absences_count == 1, "La re-validation ne doit pas creer de doublon d'absence"
+
+        # Verifier que le compteur CP n'a pas ete re-deduit
+        user = db.execute('SELECT cp_pris FROM users WHERE id = ?', (sample_users['salarie_id'],)).fetchone()
+        cp_pris_final = user['cp_pris'] or 0
+        assert cp_pris_final == cp_pris_initial + 5, "La re-validation ne doit pas re-deduire les jours"
+
+
 def test_refus_conge(admin_client, app, db, sample_users):
     """Verifie le refus d'un conge."""
     with app.app_context():
