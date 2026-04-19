@@ -136,8 +136,10 @@ def _compute_indicateurs(conn, annee):
     if bfr <= fonds_roulement:
         score += 1
 
-    # Mapping 0–10 → 1–5 étoiles (seuils stricts, contexte financements publics)
-    if score >= 9:
+    # Mapping 0–10 → 1–5 étoiles.
+    # Un score de 8/10 correspond déjà à une situation globalement saine
+    # malgré un seul indicateur moins favorable.
+    if score >= 8:
         sante_stars = 5
     elif score >= 7:
         sante_stars = 4

@@ -6,15 +6,15 @@
 <div class="vue-mensuelle">
     <!-- Sélecteur d'utilisateur (si accès multi-utilisateurs) -->
     {% if users_accessibles|length > 0 %}
-    <div class="user-selector" style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-        <label for="user_select" style="margin-right: 1rem; font-weight: 500;">
+    <div class="user-selector monthly-user-selector">
+        <label for="user_select" class="monthly-user-selector-label">
             {% if session.profil == 'responsable' %}
             👨‍💼 Fiche de mon équipe :
             {% else %}
             👤 Fiche à afficher :
             {% endif %}
         </label>
-        <select id="user_select" onchange="changerUtilisateur()" style="padding: 0.5rem; border: 2px solid #667eea; border-radius: 5px; font-size: 1rem;">
+        <select id="user_select" onchange="changerUtilisateur()" class="monthly-user-select">
             {% for u in users_accessibles %}
             <option value="{{ u.id }}" {% if u.id == user_id_a_afficher %}selected{% endif %}>
                 {{ u.prenom }} {{ u.nom }}
@@ -46,7 +46,7 @@
     </div>
 
     <!-- Basculer entre les vues -->
-    <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; justify-content: center;">
+    <div class="month-view-toggle">
         <span class="btn btn-primary" style="font-size: 0.85rem; cursor: default;">📋 Vue tableau</span>
         <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois, annee=annee, user_id=user_id_a_afficher) }}"
            class="btn btn-secondary" style="font-size: 0.85rem;">📅 Vue calendrier</a>
@@ -116,115 +116,117 @@
         </div>
         {% endif %}
         
-        <table class="data-table month-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Jour</th>
-                    <th>Période</th>
-                    <th>Heures théo.</th>
-                    <th>Heures réelles</th>
-                    <th>Écart</th>
-                    <th>Statut</th>
-                    <th>Commentaire</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for j in journees %}
-                <tr class="{% if j.non_declare %}jour-non-declare{% elif j.est_saisi %}jour-saisi{% else %}jour-non-saisi{% endif %} {% if j.est_samedi %}jour-samedi{% endif %}">
-                    <td><strong>{{ j.date_obj.strftime('%d/%m') }}</strong></td>
-                    <td>
-                        {{ j.jour_semaine }}
-                        {% if j.est_samedi %}
-                        <span style="background: #ffc107; color: #000; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; margin-left: 5px;">Exceptionnel</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if j.est_samedi %}
-                        -
-                        {% elif j.type_periode == 'vacances' %}
-                        🏖️ Vacances
-                        {% else %}
-                        📚 Scolaire
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if j.est_samedi %}
-                        <span style="color: #6c757d;">0h</span>
-                        {% else %}
-                        {{ "%.2f"|format(j.heures_theoriques) }}h
-                        {% endif %}
-                    </td>
-                    <td>{{ "%.2f"|format(j.heures_reelles) }}h</td>
-                    <td>
-                        {% if j.ecart > 0 %}
-                        <span style="color: #28a745; font-weight: bold;">+{{ "%.2f"|format(j.ecart) }}h</span>
-                        {% elif j.ecart < 0 %}
-                        <span style="color: #dc3545; font-weight: bold;">{{ "%.2f"|format(j.ecart) }}h</span>
-                        {% else %}
-                        <span style="color: #6c757d;">0h</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if j.non_declare %}
-                            <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
-                        {% elif j.type_saisie == 'absence' %}
-                            <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
-                        {% elif j.est_declare %}
-                            <span class="badge" style="background: #3b82f6; color: white;">✅ Déclaré</span>
-                        {% elif j.est_saisi %}
-                            {% if j.type_saisie == 'recup_journee' %}
-                            <span class="badge" style="background: #ffc107; color: #000;">🏖️ Récup</span>
-                            {% else %}
-                            <span class="badge badge-success">✏️ Saisi</span>
+        <div class="table-responsive">
+            <table class="data-table data-table-cards month-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Jour</th>
+                        <th>Période</th>
+                        <th>Heures théo.</th>
+                        <th>Heures réelles</th>
+                        <th>Écart</th>
+                        <th>Statut</th>
+                        <th>Commentaire</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for j in journees %}
+                    <tr class="{% if j.non_declare %}jour-non-declare{% elif j.est_saisi %}jour-saisi{% else %}jour-non-saisi{% endif %} {% if j.est_samedi %}jour-samedi{% endif %}">
+                        <td data-label="Date"><strong>{{ j.date_obj.strftime('%d/%m') }}</strong></td>
+                        <td data-label="Jour">
+                            {{ j.jour_semaine }}
+                            {% if j.est_samedi %}
+                            <span style="background: #ffc107; color: #000; padding: 2px 6px; border-radius: 3px; font-size: 0.75rem; margin-left: 5px;">Exceptionnel</span>
                             {% endif %}
-                        {% else %}
-                            <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
-                        {% endif %}
-                    </td>
-                    <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        {{ j.commentaire or '-' }}
-                    </td>
-                    <td>
-                        {% if peut_modifier %}
-                        <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
-                           class="btn-icon"
-                           title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">
-                            {% if j.est_saisi %}✏️{% else %}➕{% endif %}
-                        </a>
-                        {% else %}
-                        <span class="btn-icon" style="opacity: 0.3;" title="Consultation seule">👁️</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr style="font-weight: bold; background: #f8f9fa;">
-                    <td colspan="3">TOTAL DU MOIS</td>
-                    <td>{{ "%.2f"|format(total_heures_theoriques) }}h</td>
-                    <td>{{ "%.2f"|format(total_heures_reelles) }}h</td>
-                    <td>
-                        {% if solde_mois > 0 %}
-                        <span style="color: #28a745;">+{{ "%.2f"|format(solde_mois) }}h</span>
-                        {% elif solde_mois < 0 %}
-                        <span style="color: #dc3545;">{{ "%.2f"|format(solde_mois) }}h</span>
-                        {% else %}
-                        <span style="color: #6c757d;">0h</span>
-                        {% endif %}
-                    </td>
-                    <td colspan="3"></td>
-                </tr>
-            </tfoot>
-        </table>
+                        </td>
+                        <td data-label="Période">
+                            {% if j.est_samedi %}
+                            -
+                            {% elif j.type_periode == 'vacances' %}
+                            🏖️ Vacances
+                            {% else %}
+                            📚 Scolaire
+                            {% endif %}
+                        </td>
+                        <td data-label="Heures théo.">
+                            {% if j.est_samedi %}
+                            <span style="color: #6c757d;">0h</span>
+                            {% else %}
+                            {{ "%.2f"|format(j.heures_theoriques) }}h
+                            {% endif %}
+                        </td>
+                        <td data-label="Heures réelles">{{ "%.2f"|format(j.heures_reelles) }}h</td>
+                        <td data-label="Écart">
+                            {% if j.ecart > 0 %}
+                            <span style="color: #28a745; font-weight: bold;">+{{ "%.2f"|format(j.ecart) }}h</span>
+                            {% elif j.ecart < 0 %}
+                            <span style="color: #dc3545; font-weight: bold;">{{ "%.2f"|format(j.ecart) }}h</span>
+                            {% else %}
+                            <span style="color: #6c757d;">0h</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Statut">
+                            {% if j.non_declare %}
+                                <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
+                            {% elif j.type_saisie == 'absence' %}
+                                <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
+                            {% elif j.est_declare %}
+                                <span class="badge" style="background: #3b82f6; color: white;">✅ Déclaré</span>
+                            {% elif j.est_saisi %}
+                                {% if j.type_saisie == 'recup_journee' %}
+                                <span class="badge" style="background: #ffc107; color: #000;">🏖️ Récup</span>
+                                {% else %}
+                                <span class="badge badge-success">✏️ Saisi</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
+                            {% endif %}
+                        </td>
+                        <td data-label="Commentaire" class="month-comment-cell">
+                            {{ j.commentaire or '-' }}
+                        </td>
+                        <td data-label="Actions">
+                            {% if peut_modifier %}
+                            <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
+                               class="btn-icon"
+                               title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">
+                                {% if j.est_saisi %}✏️{% else %}➕{% endif %}
+                            </a>
+                            {% else %}
+                            <span class="btn-icon" style="opacity: 0.3;" title="Consultation seule">👁️</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: bold; background: #f8f9fa;">
+                        <td colspan="3">TOTAL DU MOIS</td>
+                        <td>{{ "%.2f"|format(total_heures_theoriques) }}h</td>
+                        <td>{{ "%.2f"|format(total_heures_reelles) }}h</td>
+                        <td>
+                            {% if solde_mois > 0 %}
+                            <span style="color: #28a745;">+{{ "%.2f"|format(solde_mois) }}h</span>
+                            {% elif solde_mois < 0 %}
+                            <span style="color: #dc3545;">{{ "%.2f"|format(solde_mois) }}h</span>
+                            {% else %}
+                            <span style="color: #6c757d;">0h</span>
+                            {% endif %}
+                        </td>
+                        <td colspan="3"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
     </div>
     
     <!-- Actions -->
-    <div class="actions" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+    <div class="actions month-page-actions">
         <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
         
-        <div style="display: flex; gap: 1rem; align-items: center;">
+        <div class="month-page-actions-group">
             <!-- Bouton PDF si verrouillé -->
             {% if validation and validation.bloque %}
             <a href="{{ url_for('exports_bp.export_pdf_mensuel', user_id=user_id_a_afficher, mois=mois, annee=annee) }}" 

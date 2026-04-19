@@ -8,7 +8,7 @@
     <p class="subtitle">Définissez vos horaires habituels selon les périodes (par jour de la semaine)</p>
     
     {% if semaine_actuelle and semaine_actuelle != 'fixe' %}
-    <div style="background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); padding: 1.5rem; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 2rem;">
+    <div class="planning-alternance-banner">
         <h3 style="color: var(--primary-dark); margin-bottom: 0.5rem;">
             🔄 Planning alterné activé
         </h3>
@@ -38,7 +38,7 @@
         </p>
         {% for p in plannings %}
         {% set est_actif = (p.date_debut_validite <= date_actuelle) %}
-        <div style="margin-bottom: 2rem; padding: 1.5rem; background: {% if est_actif %}#dbeafe{% else %}var(--gray-50){% endif %}; border-radius: 8px; border-left: 4px solid {% if est_actif %}var(--primary){% else %}var(--gray-300){% endif %};">
+        <div class="planning-history-card" style="background: {% if est_actif %}#dbeafe{% else %}var(--gray-50){% endif %}; border-left: 4px solid {% if est_actif %}var(--primary){% else %}var(--gray-300){% endif %};">
             <h3 style="color: var(--primary-dark); margin-bottom: 0.5rem;">
                 {% if p.type_alternance and p.type_alternance != 'fixe' %}
                     {% if p.type_alternance == 'semaine_1' %}
@@ -53,104 +53,106 @@
                 🏖️ Vacances scolaires
                 {% endif %}
                 {% if est_actif %}
-                <span style="background: var(--primary); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">✓ ACTIF</span>
+                <span class="planning-history-badge" style="background: var(--primary); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">✓ ACTIF</span>
                 {% else %}
-                <span style="background: var(--gray-400); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">Historique</span>
+                <span class="planning-history-badge" style="background: var(--gray-400); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">Historique</span>
                 {% endif %}
             </h3>
-            <p style="color: var(--gray-600); font-size: 0.9rem; margin-bottom: 1rem;">
+            <p class="planning-history-meta">
                 <strong>Valable à partir du :</strong> {{ p.date_debut_validite }} 
                 ({{ "%.1f"|format(p.total_hebdo) }}h/semaine)
             </p>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Jour</th>
-                        <th>Matin</th>
-                        <th>Après-midi</th>
-                        <th>Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td><strong>Lundi</strong></td>
-                        <td>{{ p.lundi_matin_debut or '-' }} - {{ p.lundi_matin_fin or '-' }}</td>
-                        <td>{{ p.lundi_aprem_debut or '-' }} - {{ p.lundi_aprem_fin or '-' }}</td>
-                        <td>
-                            {% set lundi_h = ((p.lundi_matin_debut and p.lundi_matin_fin) | default(0, true)) %}
-                            {% if lundi_h %}
-                            {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 %}
-                            {% set h_aprem = (p.lundi_aprem_fin.split(':')[0]|int * 60 + p.lundi_aprem_fin.split(':')[1]|int - p.lundi_aprem_debut.split(':')[0]|int * 60 - p.lundi_aprem_debut.split(':')[1]|int) / 60 if p.lundi_aprem_debut and p.lundi_aprem_fin else 0 %}
-                            {{ "%.1f"|format(h_matin + h_aprem) }}h
-                            {% else %}
-                            Non travaillé
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>Mardi</strong></td>
-                        <td>{{ p.mardi_matin_debut or '-' }} - {{ p.mardi_matin_fin or '-' }}</td>
-                        <td>{{ p.mardi_aprem_debut or '-' }} - {{ p.mardi_aprem_fin or '-' }}</td>
-                        <td>
-                            {% if p.mardi_matin_debut %}
-                            {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 %}
-                            {% set h_aprem = (p.mardi_aprem_fin.split(':')[0]|int * 60 + p.mardi_aprem_fin.split(':')[1]|int - p.mardi_aprem_debut.split(':')[0]|int * 60 - p.mardi_aprem_debut.split(':')[1]|int) / 60 if p.mardi_aprem_debut and p.mardi_aprem_fin else 0 %}
-                            {{ "%.1f"|format(h_matin + h_aprem) }}h
-                            {% else %}
-                            Non travaillé
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>Mercredi</strong></td>
-                        <td>{{ p.mercredi_matin_debut or '-' }} - {{ p.mercredi_matin_fin or '-' }}</td>
-                        <td>{{ p.mercredi_aprem_debut or '-' }} - {{ p.mercredi_aprem_fin or '-' }}</td>
-                        <td>
-                            {% if p.mercredi_matin_debut %}
-                            {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 %}
-                            {% set h_aprem = (p.mercredi_aprem_fin.split(':')[0]|int * 60 + p.mercredi_aprem_fin.split(':')[1]|int - p.mercredi_aprem_debut.split(':')[0]|int * 60 - p.mercredi_aprem_debut.split(':')[1]|int) / 60 if p.mercredi_aprem_debut and p.mercredi_aprem_fin else 0 %}
-                            {{ "%.1f"|format(h_matin + h_aprem) }}h
-                            {% else %}
-                            Non travaillé
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>Jeudi</strong></td>
-                        <td>{{ p.jeudi_matin_debut or '-' }} - {{ p.jeudi_matin_fin or '-' }}</td>
-                        <td>{{ p.jeudi_aprem_debut or '-' }} - {{ p.jeudi_aprem_fin or '-' }}</td>
-                        <td>
-                            {% if p.jeudi_matin_debut %}
-                            {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 %}
-                            {% set h_aprem = (p.jeudi_aprem_fin.split(':')[0]|int * 60 + p.jeudi_aprem_fin.split(':')[1]|int - p.jeudi_aprem_debut.split(':')[0]|int * 60 - p.jeudi_aprem_debut.split(':')[1]|int) / 60 if p.jeudi_aprem_debut and p.jeudi_aprem_fin else 0 %}
-                            {{ "%.1f"|format(h_matin + h_aprem) }}h
-                            {% else %}
-                            Non travaillé
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td><strong>Vendredi</strong></td>
-                        <td>{{ p.vendredi_matin_debut or '-' }} - {{ p.vendredi_matin_fin or '-' }}</td>
-                        <td>{{ p.vendredi_aprem_debut or '-' }} - {{ p.vendredi_aprem_fin or '-' }}</td>
-                        <td>
-                            {% if p.vendredi_matin_debut %}
-                            {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 %}
-                            {% set h_aprem = (p.vendredi_aprem_fin.split(':')[0]|int * 60 + p.vendredi_aprem_fin.split(':')[1]|int - p.vendredi_aprem_debut.split(':')[0]|int * 60 - p.vendredi_aprem_debut.split(':')[1]|int) / 60 if p.vendredi_aprem_debut and p.vendredi_aprem_fin else 0 %}
-                            {{ "%.1f"|format(h_matin + h_aprem) }}h
-                            {% else %}
-                            Non travaillé
-                            {% endif %}
-                        </td>
-                    </tr>
-                </tbody>
-                <tfoot>
-                    <tr>
-                        <td colspan="3"><strong>Total hebdomadaire</strong></td>
-                        <td><strong>{{ "%.2f"|format(p.total_hebdo) }}h</strong></td>
-                    </tr>
-                </tfoot>
-            </table>
+            <div class="table-responsive">
+                <table class="data-table data-table-cards planning-history-table">
+                    <thead>
+                        <tr>
+                            <th>Jour</th>
+                            <th>Matin</th>
+                            <th>Après-midi</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td data-label="Jour"><strong>Lundi</strong></td>
+                            <td data-label="Matin">{{ p.lundi_matin_debut or '-' }} - {{ p.lundi_matin_fin or '-' }}</td>
+                            <td data-label="Après-midi">{{ p.lundi_aprem_debut or '-' }} - {{ p.lundi_aprem_fin or '-' }}</td>
+                            <td data-label="Total">
+                                {% set lundi_h = ((p.lundi_matin_debut and p.lundi_matin_fin) | default(0, true)) %}
+                                {% if lundi_h %}
+                                {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% set h_aprem = (p.lundi_aprem_fin.split(':')[0]|int * 60 + p.lundi_aprem_fin.split(':')[1]|int - p.lundi_aprem_debut.split(':')[0]|int * 60 - p.lundi_aprem_debut.split(':')[1]|int) / 60 if p.lundi_aprem_debut and p.lundi_aprem_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% else %}
+                                Non travaillé
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td data-label="Jour"><strong>Mardi</strong></td>
+                            <td data-label="Matin">{{ p.mardi_matin_debut or '-' }} - {{ p.mardi_matin_fin or '-' }}</td>
+                            <td data-label="Après-midi">{{ p.mardi_aprem_debut or '-' }} - {{ p.mardi_aprem_fin or '-' }}</td>
+                            <td data-label="Total">
+                                {% if p.mardi_matin_debut %}
+                                {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% set h_aprem = (p.mardi_aprem_fin.split(':')[0]|int * 60 + p.mardi_aprem_fin.split(':')[1]|int - p.mardi_aprem_debut.split(':')[0]|int * 60 - p.mardi_aprem_debut.split(':')[1]|int) / 60 if p.mardi_aprem_debut and p.mardi_aprem_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% else %}
+                                Non travaillé
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td data-label="Jour"><strong>Mercredi</strong></td>
+                            <td data-label="Matin">{{ p.mercredi_matin_debut or '-' }} - {{ p.mercredi_matin_fin or '-' }}</td>
+                            <td data-label="Après-midi">{{ p.mercredi_aprem_debut or '-' }} - {{ p.mercredi_aprem_fin or '-' }}</td>
+                            <td data-label="Total">
+                                {% if p.mercredi_matin_debut %}
+                                {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% set h_aprem = (p.mercredi_aprem_fin.split(':')[0]|int * 60 + p.mercredi_aprem_fin.split(':')[1]|int - p.mercredi_aprem_debut.split(':')[0]|int * 60 - p.mercredi_aprem_debut.split(':')[1]|int) / 60 if p.mercredi_aprem_debut and p.mercredi_aprem_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% else %}
+                                Non travaillé
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td data-label="Jour"><strong>Jeudi</strong></td>
+                            <td data-label="Matin">{{ p.jeudi_matin_debut or '-' }} - {{ p.jeudi_matin_fin or '-' }}</td>
+                            <td data-label="Après-midi">{{ p.jeudi_aprem_debut or '-' }} - {{ p.jeudi_aprem_fin or '-' }}</td>
+                            <td data-label="Total">
+                                {% if p.jeudi_matin_debut %}
+                                {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% set h_aprem = (p.jeudi_aprem_fin.split(':')[0]|int * 60 + p.jeudi_aprem_fin.split(':')[1]|int - p.jeudi_aprem_debut.split(':')[0]|int * 60 - p.jeudi_aprem_debut.split(':')[1]|int) / 60 if p.jeudi_aprem_debut and p.jeudi_aprem_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% else %}
+                                Non travaillé
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td data-label="Jour"><strong>Vendredi</strong></td>
+                            <td data-label="Matin">{{ p.vendredi_matin_debut or '-' }} - {{ p.vendredi_matin_fin or '-' }}</td>
+                            <td data-label="Après-midi">{{ p.vendredi_aprem_debut or '-' }} - {{ p.vendredi_aprem_fin or '-' }}</td>
+                            <td data-label="Total">
+                                {% if p.vendredi_matin_debut %}
+                                {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% set h_aprem = (p.vendredi_aprem_fin.split(':')[0]|int * 60 + p.vendredi_aprem_fin.split(':')[1]|int - p.vendredi_aprem_debut.split(':')[0]|int * 60 - p.vendredi_aprem_debut.split(':')[1]|int) / 60 if p.vendredi_aprem_debut and p.vendredi_aprem_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% else %}
+                                Non travaillé
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3"><strong>Total hebdomadaire</strong></td>
+                            <td><strong>{{ "%.2f"|format(p.total_hebdo) }}h</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
         </div>
         {% endfor %}
     </div>
@@ -204,13 +206,13 @@
                 </p>
             </div>
             
-            <p class="help-text" style="margin-bottom: 1.5rem; background: #dbeafe; padding: 1rem; border-radius: 6px;">
+            <p class="help-text planning-tip-box">
                 <strong>Conseil :</strong> Laissez les horaires vides pour les jours non travaillés. Les heures vides = jour de repos.
             </p>
             
             <!-- LUNDI -->
-            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Lundi</h3>
+            <div class="planning-day-card">
+                <h3 class="planning-day-title">Lundi</h3>
                 <div class="time-grid">
                     <div class="time-section">
                         <h4>Matin</h4>
@@ -238,8 +240,8 @@
             </div>
             
             <!-- MARDI -->
-            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Mardi</h3>
+            <div class="planning-day-card">
+                <h3 class="planning-day-title">Mardi</h3>
                 <div class="time-grid">
                     <div class="time-section">
                         <h4>Matin</h4>
@@ -267,8 +269,8 @@
             </div>
             
             <!-- MERCREDI -->
-            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Mercredi</h3>
+            <div class="planning-day-card">
+                <h3 class="planning-day-title">Mercredi</h3>
                 <div class="time-grid">
                     <div class="time-section">
                         <h4>Matin</h4>
@@ -296,8 +298,8 @@
             </div>
             
             <!-- JEUDI -->
-            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Jeudi</h3>
+            <div class="planning-day-card">
+                <h3 class="planning-day-title">Jeudi</h3>
                 <div class="time-grid">
                     <div class="time-section">
                         <h4>Matin</h4>
@@ -325,8 +327,8 @@
             </div>
             
             <!-- VENDREDI -->
-            <div style="background: var(--gray-50); padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
-                <h3 style="color: var(--primary-dark); margin-bottom: 1rem;">Vendredi</h3>
+            <div class="planning-day-card">
+                <h3 class="planning-day-title">Vendredi</h3>
                 <div class="time-grid">
                     <div class="time-section">
                         <h4>Matin</h4>
