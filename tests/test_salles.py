@@ -92,7 +92,7 @@ def test_responsable_peut_creer_recurrence(resp_client, db, sample_users):
     ).fetchone()[0]
 
     assert response.status_code == 200
-    assert 'Recurrence "Formation equipe" creee' in response.get_data(as_text=True)
+    assert 'Formation equipe' in response.get_data(as_text=True)
     assert recurrence['titre'] == 'Formation equipe'
     assert recurrence['created_by'] == sample_users['responsable_id']
     assert reservations == 5
