@@ -20,6 +20,11 @@ def _est_admin():
     return session.get('profil') in ('directeur', 'comptable')
 
 
+def _peut_creer_recurrence():
+    """Verifie si l'utilisateur peut creer des recurrences."""
+    return _est_admin() or session.get('profil') == 'responsable'
+
+
 def _get_dates_exclues(conn, date_debut_str, date_fin_str, exclure_vacances, exclure_feries):
     """Retourne l'ensemble des dates a exclure (vacances + feries) dans la plage."""
     dates_exclues = set()
@@ -163,6 +168,7 @@ def salles():
                                date_sel=date_sel,
                                jours_semaine=JOURS_SEMAINE,
                                is_admin=_est_admin(),
+                               can_create_recurrence=_peut_creer_recurrence(),
                                today=datetime.now().strftime('%Y-%m-%d'))
     finally:
         conn.close()
@@ -423,8 +429,8 @@ def supprimer_reservation(resa_id):
 @login_required
 def creer_recurrence():
     """Creer une recurrence et generer les reservations."""
-    if not _est_admin():
-        flash('Seuls les administrateurs peuvent creer des recurrences.', 'error')
+    if not _peut_creer_recurrence():
+        flash('Seuls les administrateurs et responsables peuvent creer des recurrences.', 'error')
         return redirect(url_for('salles_bp.salles'))
 
     salle_id = request.form.get('salle_id', type=int)
@@ -482,12 +488,20 @@ def creer_recurrence():
 @login_required
 def supprimer_recurrence(rec_id):
     """Supprimer une recurrence et toutes ses reservations futures."""
-    if not _est_admin():
-        flash('Acces refuse.', 'error')
-        return redirect(url_for('salles_bp.salles'))
-
     conn = get_db()
     try:
+        recurrence = conn.execute(
+            'SELECT id, created_by FROM recurrences_salles WHERE id = ?',
+            (rec_id,)
+        ).fetchone()
+        if not recurrence:
+            flash('Recurrence introuvable.', 'error')
+            return redirect(url_for('salles_bp.salles'))
+
+        if recurrence['created_by'] != session.get('user_id') and not _est_admin():
+            flash('Acces refuse.', 'error')
+            return redirect(url_for('salles_bp.salles'))
+
         today = datetime.now().strftime('%Y-%m-%d')
         # Supprimer les reservations futures liees
         conn.execute('''
@@ -508,10 +522,6 @@ def supprimer_recurrence(rec_id):
 @login_required
 def regenerer_recurrence(rec_id):
     """Regenerer les reservations d'une recurrence (apres mise a jour des vacances/feries)."""
-    if not _est_admin():
-        flash('Acces refuse.', 'error')
-        return redirect(url_for('salles_bp.salles'))
-
     conn = get_db()
     try:
         recurrence = conn.execute(
@@ -519,6 +529,10 @@ def regenerer_recurrence(rec_id):
         ).fetchone()
         if not recurrence:
             flash('Recurrence introuvable ou inactive.', 'error')
+            return redirect(url_for('salles_bp.salles'))
+
+        if recurrence['created_by'] != session.get('user_id') and not _est_admin():
+            flash('Acces refuse.', 'error')
             return redirect(url_for('salles_bp.salles'))
 
         today = datetime.now().strftime('%Y-%m-%d')

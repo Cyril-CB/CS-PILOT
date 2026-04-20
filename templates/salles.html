@@ -214,8 +214,8 @@
     </div>
     {% endif %}
 
-    {# ══════ SECTION : Recurrences (admin) ══════ #}
-    {% if is_admin and salles %}
+    {# ══════ SECTION : Recurrences ══════ #}
+    {% if can_create_recurrence and salles %}
     <div class="salles-section">
         <h2 class="salles-section-title" onclick="toggleSallesSection('section-rec')">
             <span class="salles-arrow" id="arrow-section-rec">▸</span>
@@ -317,6 +317,7 @@
                     </td>
                     <td>{{ rc.prenom }} {{ rc.nom_user }}</td>
                     <td class="salles-actions">
+                        {% if is_admin or rc.created_by == session.user_id %}
                         <form method="POST" action="{{ url_for('salles_bp.regenerer_recurrence', rec_id=rc.id) }}"
                               style="display:inline;" title="Regenerer les reservations futures">
                             <button type="submit" class="btn btn-sm btn-primary">Regenerer</button>
@@ -326,6 +327,7 @@
                               style="display:inline;">
                             <button type="submit" class="btn btn-sm btn-danger">Supprimer</button>
                         </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
