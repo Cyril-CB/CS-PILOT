@@ -141,7 +141,7 @@
             {% set mobile_week = namespace(current=None) %}
             {% for j in jours_calendrier %}
                 {% set d = j.donnees %}
-                {% set week_number = ((loop.index0 + premier_jour_semaine) // 7) + 1 %}
+                {% set week_number = ((j.jour - 1) // 7) + 1 %}
                 {% if mobile_week.current != week_number %}
                     {% set mobile_week.current = week_number %}
                     <p class="calendar-mobile-week-title">Semaine {{ week_number }}</p>
