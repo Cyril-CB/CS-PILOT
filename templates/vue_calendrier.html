@@ -140,6 +140,9 @@
             <div class="calendar-mobile-cell {% if d and d.non_declare %}calendar-mobile-cell-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-cell-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-cell-recup{% elif j.est_ferie %}calendar-mobile-cell-ferie{% elif d and d.est_declare %}calendar-mobile-cell-declare{% elif d and d.est_saisi %}calendar-mobile-cell-saisi{% elif j.est_weekend %}calendar-mobile-cell-weekend{% endif %}"
                  {% if d and peut_modifier and not j.est_dimanche %}
                  onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
+                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'; }"
+                 role="link"
+                 tabindex="0"
                  style="cursor: pointer;"
                  title="Cliquer pour {% if d.est_saisi %}modifier{% else %}saisir{% endif %}"
                  {% elif j.est_ferie %}
