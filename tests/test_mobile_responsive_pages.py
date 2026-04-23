@@ -13,6 +13,18 @@ def test_vue_mensuelle_utilise_table_cartes_mobile(auth_client, sample_users, sa
     assert 'monthlyPage.dataset.layout' in html
 
 
+def test_vue_calendrier_rend_versions_desktop_et_mobile(auth_client, sample_users, sample_planning):
+    response = auth_client.get('/vue_calendrier')
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'calendar-mobile-layout' in html
+    assert 'calendar-mobile-day-card' in html
+    assert 'calendar-mobile-filter-chip' in html
+    assert 'calendar-desktop-layout' in html
+    assert 'cal-grid' in html
+
+
 def test_planning_theorique_utilise_historique_responsive(auth_client, sample_planning):
     response = auth_client.get('/planning_theorique')
     html = response.get_data(as_text=True)
