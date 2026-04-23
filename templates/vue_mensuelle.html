@@ -4,6 +4,8 @@
 
 {% block content %}
 <div class="vue-mensuelle">
+    {% set mobile_breakpoint_px = 768 %}
+    {% set month_first_weekday = journees[0].date_obj.replace(day=1).weekday() if journees else 0 %}
     {% set mobile_counts = namespace(
         total=journees|length,
         non_declares=0,
@@ -145,7 +147,7 @@
         <div class="month-mobile-days">
             {% set week_marker = namespace(current=None) %}
             {% for j in journees %}
-                {% set week_number = ((j.date_obj.day - 1) // 7) + 1 %}
+                {% set week_number = ((j.date_obj.day + month_first_weekday - 1) // 7) + 1 %}
                 {% if week_marker.current != week_number %}
                     {% set week_marker.current = week_number %}
                     <p class="month-mobile-week-title">Semaine {{ week_number }}</p>
@@ -610,7 +612,7 @@ function deverrouillerFiche() {
         return;
     }
 
-    const mobileQuery = window.matchMedia('(max-width: 768px)');
+    const mobileQuery = window.matchMedia('(max-width: {{ mobile_breakpoint_px }}px)');
     const updateMonthlyLayout = (query) => {
         monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';
     };
@@ -1016,7 +1018,7 @@ function deverrouillerFiche() {
     display: block;
 }
 
-@media (max-width: 768px) {
+@media (max-width: {{ mobile_breakpoint_px }}px) {
     .vue-mensuelle {
         padding: 1rem;
         border-radius: 24px;
