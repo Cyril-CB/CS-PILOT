@@ -147,9 +147,11 @@
             {% set week_marker = namespace(current=None) %}
             {% for j in journees %}
                 {% set week_number = ((j.date_obj.day - 1) // 7) + 1 %}
+                {% set week_start_day = ((week_number - 1) * 7) + 1 %}
+                {% set week_end_day = [week_number * 7, journees[-1].date_obj.day]|min %}
                 {% if week_marker.current != week_number %}
                     {% set week_marker.current = week_number %}
-                    <p class="month-mobile-week-title">Semaine {{ week_number }}</p>
+                    <p class="month-mobile-week-title">Jours {{ week_start_day }} à {{ week_end_day }}</p>
                 {% endif %}
                 <article class="month-mobile-day-card {% if j.non_declare %}month-mobile-day-card-danger{% elif j.type_saisie == 'absence' %}month-mobile-day-card-absence{% elif j.est_declare %}month-mobile-day-card-declare{% elif j.est_saisi %}month-mobile-day-card-saisi{% endif %}">
                     <div class="month-mobile-day-main">
