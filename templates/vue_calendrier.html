@@ -5,28 +5,6 @@
 {% block content %}
 <div class="vue-mensuelle">
     {% set mobile_breakpoint_px = 768 %}
-    {% set mobile_counts = namespace(
-        total=journees|length,
-        non_declares=0,
-        declares=0,
-        saisis=0,
-        absences=0
-    ) %}
-    {% for j in journees %}
-        {% if j.non_declare %}
-            {% set mobile_counts.non_declares = mobile_counts.non_declares + 1 %}
-        {% endif %}
-        {% if j.est_declare %}
-            {% set mobile_counts.declares = mobile_counts.declares + 1 %}
-        {% endif %}
-        {% if j.est_saisi and j.type_saisie != 'absence' %}
-            {% set mobile_counts.saisis = mobile_counts.saisis + 1 %}
-        {% endif %}
-        {% if j.type_saisie == 'absence' %}
-            {% set mobile_counts.absences = mobile_counts.absences + 1 %}
-        {% endif %}
-    {% endfor %}
-
     <!-- Sélecteur d'utilisateur -->
     {% if users_accessibles|length > 0 %}
     <div class="user-selector calendar-user-selector">
@@ -129,138 +107,95 @@
         </div>
         {% endif %}
 
-        <div class="calendar-mobile-filters" aria-label="Synthèse des statuts du mois">
-            <span class="calendar-mobile-filter-chip calendar-mobile-filter-chip-active">Tous <strong>{{ mobile_counts.total }}</strong></span>
-            <span class="calendar-mobile-filter-chip">À faire <strong>{{ mobile_counts.non_declares }}</strong></span>
-            <span class="calendar-mobile-filter-chip">Déclarés <strong>{{ mobile_counts.declares }}</strong></span>
-            <span class="calendar-mobile-filter-chip">Saisis <strong>{{ mobile_counts.saisis }}</strong></span>
-            <span class="calendar-mobile-filter-chip">Absences <strong>{{ mobile_counts.absences }}</strong></span>
+        <div class="calendar-mobile-board">
+            <div class="calendar-mobile-board-header">
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-board-nav"
+                   aria-label="Voir le mois précédent">‹</a>
+                <div class="calendar-mobile-board-title-wrap">
+                    <h2 class="calendar-mobile-board-title">{{ nom_mois }} {{ annee }}</h2>
+                </div>
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-board-nav"
+                   aria-label="Voir le mois suivant">›</a>
+            </div>
+
+            <div class="calendar-mobile-weekdays" aria-hidden="true">
+                <span>L</span>
+                <span>M</span>
+                <span>M</span>
+                <span>J</span>
+                <span>V</span>
+                <span>S</span>
+                <span>D</span>
+            </div>
+
+            <div class="calendar-mobile-grid">
+                {% for i in range(premier_jour_semaine) %}
+                <div class="calendar-mobile-cell calendar-mobile-cell-empty"></div>
+                {% endfor %}
+
+            {% for j in jours_calendrier %}
+            {% set d = j.donnees %}
+            <div class="calendar-mobile-cell {% if d and d.non_declare %}calendar-mobile-cell-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-cell-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-cell-recup{% elif j.est_ferie %}calendar-mobile-cell-ferie{% elif d and d.est_declare %}calendar-mobile-cell-declare{% elif d and d.est_saisi %}calendar-mobile-cell-saisi{% elif j.est_weekend %}calendar-mobile-cell-weekend{% endif %}"
+                 {% if d and peut_modifier and not j.est_dimanche %}
+                 onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
+                 style="cursor: pointer;"
+                 title="Cliquer pour {% if d.est_saisi %}modifier{% else %}saisir{% endif %}"
+                 {% elif j.est_ferie %}
+                 title="{{ j.libelle_ferie }}"
+                 {% endif %}>
+                <div class="calendar-mobile-cell-top">
+                    <span class="calendar-mobile-cell-day">{{ j.jour }}</span>
+                    {% if j.est_ferie %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-ferie"></span>
+                    {% elif d and d.non_declare %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-danger"></span>
+                    {% elif d and d.type_saisie == 'absence' %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-absence"></span>
+                    {% elif d and d.type_saisie == 'recup_journee' %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-recup"></span>
+                    {% elif d and d.est_declare %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-declare"></span>
+                    {% elif d and d.est_saisi %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-saisi"></span>
+                    {% endif %}
+                </div>
+
+                {% if d %}
+                    {% if d.type_saisie == 'recup_journee' %}
+                    <div class="calendar-mobile-cell-main">R</div>
+                    {% elif d.est_saisi or d.est_declare or d.type_saisie == 'absence' %}
+                    <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_reelles) }}h</div>
+                    {% else %}
+                    <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_theoriques) }}h</div>
+                    {% endif %}
+
+                    {% if d.type_periode == 'vacances' and not d.est_samedi %}
+                    <div class="calendar-mobile-cell-note">vac.</div>
+                    {% elif d.ecart > 0 %}
+                    <div class="calendar-mobile-cell-note calendar-mobile-cell-note-pos">+{{ "%.1f"|format(d.ecart) }}</div>
+                    {% elif d.ecart < 0 %}
+                    <div class="calendar-mobile-cell-note calendar-mobile-cell-note-neg">{{ "%.1f"|format(d.ecart) }}</div>
+                    {% elif d.non_declare %}
+                    <div class="calendar-mobile-cell-note">⚠</div>
+                    {% endif %}
+                {% elif j.est_ferie %}
+                    <div class="calendar-mobile-cell-main calendar-mobile-cell-main-label">F</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            </div>
         </div>
 
-        <div class="calendar-mobile-days">
-            {% set mobile_week = namespace(current=None) %}
-            {% for j in jours_calendrier %}
-                {% set d = j.donnees %}
-                {% set week_number = ((j.jour - 1) // 7) + 1 %}
-                {% if mobile_week.current != week_number %}
-                    {% set mobile_week.current = week_number %}
-                    <p class="calendar-mobile-week-title">Semaine {{ week_number }}</p>
-                {% endif %}
-                <article class="calendar-mobile-day-card {% if d and d.non_declare %}calendar-mobile-day-card-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-day-card-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-day-card-recup{% elif j.est_ferie %}calendar-mobile-day-card-ferie{% elif d and d.est_declare %}calendar-mobile-day-card-declare{% elif d and d.est_saisi %}calendar-mobile-day-card-saisi{% elif j.est_weekend %}calendar-mobile-day-card-weekend{% endif %}">
-                    <div class="calendar-mobile-day-main">
-                        <div class="calendar-mobile-date-block">
-                            <span class="calendar-mobile-day-name">{{ ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'][j.jour_semaine] }}</span>
-                            <strong class="calendar-mobile-day-number">{{ "%02d"|format(j.jour) }}</strong>
-                        </div>
-
-                        <div class="calendar-mobile-day-body">
-                            <div class="calendar-mobile-day-badges">
-                                {% if j.est_ferie %}
-                                <span class="badge" style="background: #ec4899; color: white;">🎉 Férié</span>
-                                {% elif d and d.non_declare %}
-                                <span class="badge" style="background: #dc2626; color: white;">⚠️ À faire</span>
-                                {% elif d and d.type_saisie == 'absence' %}
-                                <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
-                                {% elif d and d.type_saisie == 'recup_journee' %}
-                                <span class="badge" style="background: #f59e0b; color: #1f2937;">🏖️ Récup</span>
-                                {% elif d and d.est_declare %}
-                                <span class="badge" style="background: #2563eb; color: white;">✅ Déclaré</span>
-                                {% elif d and d.est_saisi %}
-                                <span class="badge badge-success">✏️ Saisi</span>
-                                {% elif j.est_dimanche %}
-                                <span class="badge" style="background: #e2e8f0; color: #475569;">Dimanche</span>
-                                {% elif j.est_weekend %}
-                                <span class="badge" style="background: #e2e8f0; color: #475569;">Weekend</span>
-                                {% else %}
-                                <span class="badge" style="background: #e2e8f0; color: #475569;">Planning</span>
-                                {% endif %}
-
-                                {% if d and d.type_periode == 'vacances' and not d.est_samedi %}
-                                <span class="calendar-mobile-inline-tag">Vacances</span>
-                                {% endif %}
-                            </div>
-
-                            <p class="calendar-mobile-period">
-                                {% if j.est_ferie %}
-                                {{ j.libelle_ferie }}
-                                {% elif d and d.type_saisie == 'absence' %}
-                                Jour d’absence
-                                {% elif d and d.type_saisie == 'recup_journee' %}
-                                Récupération sur la journée
-                                {% elif j.est_dimanche %}
-                                Jour non travaillé
-                                {% elif j.est_weekend and not d %}
-                                Weekend / non travaillé
-                                {% elif d and d.type_periode == 'vacances' and not d.est_samedi %}
-                                Période vacances
-                                {% else %}
-                                Période scolaire
-                                {% endif %}
-                            </p>
-                        </div>
-
-                        <div class="calendar-mobile-hours">
-                            <strong class="calendar-mobile-hours-real">
-                                {% if d and d.type_saisie == 'recup_journee' %}
-                                Récup.
-                                {% elif d and (d.est_saisi or d.est_declare or d.type_saisie == 'absence') %}
-                                {{ "%.1f"|format(d.heures_reelles) }}h
-                                {% elif d %}
-                                {{ "%.1f"|format(d.heures_theoriques) }}h
-                                {% else %}
-                                -
-                                {% endif %}
-                            </strong>
-                            <span class="calendar-mobile-hours-gap {% if d and d.ecart > 0 %}is-positive{% elif d and d.ecart < 0 %}is-negative{% endif %}">
-                                {% if d and d.ecart > 0 %}
-                                +{{ "%.2f"|format(d.ecart) }}h
-                                {% elif d and d.ecart < 0 %}
-                                {{ "%.2f"|format(d.ecart) }}h
-                                {% elif d and d.est_declare %}
-                                Conforme
-                                {% elif d and d.non_declare %}
-                                À saisir
-                                {% elif j.est_ferie %}
-                                Férié
-                                {% elif j.est_weekend %}
-                                Repos
-                                {% else %}
-                                0h
-                                {% endif %}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="calendar-mobile-day-footer">
-                        <div class="calendar-mobile-metric">
-                            <span>Théo</span>
-                            <strong>
-                                {% if d and d.type_saisie != 'recup_journee' %}
-                                {{ "%.2f"|format(d.heures_theoriques) }}h
-                                {% else %}
-                                -
-                                {% endif %}
-                            </strong>
-                        </div>
-                        <div class="calendar-mobile-metric">
-                            <span>Date</span>
-                            <strong>{{ j.date[8:] }}/{{ j.date[5:7] }}</strong>
-                        </div>
-                        <div class="calendar-mobile-metric calendar-mobile-metric-action">
-                            <span>Action</span>
-                            {% if d and peut_modifier and not j.est_dimanche %}
-                            <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}"
-                               class="calendar-mobile-action-link"
-                               title="{% if d.est_saisi %}Modifier{% else %}Saisir{% endif %}">
-                                {% if d.est_saisi %}Modifier{% else %}Saisir{% endif %}
-                            </a>
-                            {% else %}
-                            <strong>Lecture</strong>
-                            {% endif %}
-                        </div>
-                    </div>
-                </article>
-            {% endfor %}
+        <div class="calendar-mobile-legend" aria-label="Légende du calendrier">
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-declare"></i>Déclaré</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-saisi"></i>Saisi</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-recup"></i>Récup</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-absence"></i>Absence</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-weekend"></i>Sam. exc.</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-danger"></i>À faire</span>
         </div>
     </div>
 
@@ -657,8 +592,7 @@ function deverrouillerFiche() {
     font-size: 0.92rem;
 }
 
-.calendar-mobile-toggle,
-.calendar-mobile-filters {
+.calendar-mobile-toggle {
     display: flex;
     flex-wrap: wrap;
     gap: 0.6rem;
@@ -668,8 +602,7 @@ function deverrouillerFiche() {
     margin-top: 1rem;
 }
 
-.calendar-mobile-chip,
-.calendar-mobile-filter-chip {
+.calendar-mobile-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -683,8 +616,7 @@ function deverrouillerFiche() {
     box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.9);
 }
 
-.calendar-mobile-chip-active,
-.calendar-mobile-filter-chip-active {
+.calendar-mobile-chip-active {
     background: #2d6a58;
     color: #fff;
     box-shadow: none;
@@ -698,8 +630,9 @@ function deverrouillerFiche() {
 }
 
 .calendar-mobile-stat-card,
-.calendar-mobile-day-card,
-.calendar-mobile-alert {
+.calendar-mobile-board,
+.calendar-mobile-alert,
+.calendar-mobile-legend {
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 22px;
@@ -759,178 +692,217 @@ function deverrouillerFiche() {
     border-color: #fde68a;
 }
 
-.calendar-mobile-days {
+.calendar-mobile-board {
+    padding: 1rem 0.9rem 0.9rem;
+}
+
+.calendar-mobile-board-header {
     display: flex;
-    flex-direction: column;
-    gap: 0.85rem;
-    margin-top: 1rem;
-}
-
-.calendar-mobile-week-title {
-    margin: 0.5rem 0 0;
-    font-size: 0.78rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #6b7280;
-}
-
-.calendar-mobile-day-card {
-    padding: 1rem;
-    border-left: 4px solid #d1d5db;
-}
-
-.calendar-mobile-day-card-danger {
-    border-left-color: #dc2626;
-}
-
-.calendar-mobile-day-card-absence {
-    border-left-color: #8b5cf6;
-}
-
-.calendar-mobile-day-card-recup {
-    border-left-color: #f59e0b;
-}
-
-.calendar-mobile-day-card-ferie {
-    border-left-color: #ec4899;
-}
-
-.calendar-mobile-day-card-declare {
-    border-left-color: #2563eb;
-}
-
-.calendar-mobile-day-card-saisi {
-    border-left-color: #16a34a;
-}
-
-.calendar-mobile-day-card-weekend {
-    border-left-color: #94a3b8;
-}
-
-.calendar-mobile-day-main,
-.calendar-mobile-day-footer {
-    display: flex;
-    gap: 0.9rem;
-}
-
-.calendar-mobile-day-main {
-    align-items: flex-start;
-}
-
-.calendar-mobile-date-block {
-    min-width: 3.75rem;
-    text-align: center;
-}
-
-.calendar-mobile-day-name {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 700;
-    color: #6b7280;
-    letter-spacing: 0.05em;
-}
-
-.calendar-mobile-day-number {
-    display: block;
-    font-size: 2rem;
-    line-height: 1;
-    color: #0f172a;
-}
-
-.calendar-mobile-day-body {
-    flex: 1;
-    min-width: 0;
-}
-
-.calendar-mobile-day-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-bottom: 0.35rem;
-}
-
-.calendar-mobile-inline-tag {
-    display: inline-flex;
     align-items: center;
-    padding: 0.2rem 0.55rem;
-    border-radius: 999px;
-    background: #dcfce7;
-    color: #166534;
-    font-size: 0.72rem;
-    font-weight: 700;
+    justify-content: space-between;
+    gap: 0.9rem;
+    margin-bottom: 0.9rem;
 }
 
-.calendar-mobile-period {
-    margin: 0;
-    color: #6b7280;
-    font-size: 0.92rem;
-}
-
-.calendar-mobile-hours {
-    min-width: 4.6rem;
-    text-align: right;
-}
-
-.calendar-mobile-hours-real {
-    display: block;
-    font-size: 1.3rem;
-    line-height: 1.05;
-    color: #0f172a;
-}
-
-.calendar-mobile-hours-gap {
-    display: block;
-    margin-top: 0.25rem;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: #6b7280;
-}
-
-.calendar-mobile-day-footer {
-    margin-top: 0.9rem;
-    padding-top: 0.85rem;
-    border-top: 1px solid #e5e7eb;
-    align-items: flex-end;
-}
-
-.calendar-mobile-metric {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    min-width: 0;
-}
-
-.calendar-mobile-metric span {
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #94a3b8;
-    font-weight: 700;
-}
-
-.calendar-mobile-metric strong {
-    font-size: 0.92rem;
-    color: #1f2937;
-}
-
-.calendar-mobile-metric-action {
-    align-items: flex-end;
-}
-
-.calendar-mobile-action-link {
+.calendar-mobile-board-nav {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 2.2rem;
-    padding: 0.45rem 0.8rem;
+    width: 2.2rem;
+    height: 2.2rem;
     border-radius: 999px;
-    background: #2d6a58;
-    color: #fff;
     text-decoration: none;
-    font-size: 0.85rem;
+    background: #edf3ef;
+    color: #2d6a58;
+    font-size: 1.25rem;
     font-weight: 700;
+}
+
+.calendar-mobile-board-title-wrap {
+    flex: 1;
+    text-align: center;
+}
+
+.calendar-mobile-board-title {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #0f172a;
+}
+
+.calendar-mobile-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+}
+
+.calendar-mobile-weekdays span {
+    text-align: center;
+    font-size: 0.73rem;
+    font-weight: 700;
+    color: #6b7280;
+}
+
+.calendar-mobile-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.35rem;
+}
+
+.calendar-mobile-cell {
+    position: relative;
+    min-height: 4.35rem;
+    padding: 0.42rem 0.35rem 0.32rem;
+    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.calendar-mobile-cell-empty {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.calendar-mobile-cell-weekend {
+    background: #f4efe8;
+    border-color: #ece2d4;
+}
+
+.calendar-mobile-cell-declare {
+    background: #eef6ff;
+    border-color: #bfdbfe;
+}
+
+.calendar-mobile-cell-saisi {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+
+.calendar-mobile-cell-recup {
+    background: #fff7dd;
+    border-color: #fcd34d;
+}
+
+.calendar-mobile-cell-absence {
+    background: #f6ecff;
+    border-color: #d8b4fe;
+}
+
+.calendar-mobile-cell-ferie {
+    background: #fff1f7;
+    border-color: #f9a8d4;
+}
+
+.calendar-mobile-cell-danger {
+    background: #fff1f2;
+    border-color: #fda4af;
+}
+
+.calendar-mobile-cell-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.2rem;
+}
+
+.calendar-mobile-cell-day {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.calendar-mobile-cell-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.calendar-mobile-cell-dot-declare,
+.calendar-mobile-legend-dot-declare {
+    background: #2563eb;
+}
+
+.calendar-mobile-cell-dot-saisi,
+.calendar-mobile-legend-dot-saisi {
+    background: #10b981;
+}
+
+.calendar-mobile-cell-dot-recup,
+.calendar-mobile-legend-dot-recup {
+    background: #f59e0b;
+}
+
+.calendar-mobile-cell-dot-absence,
+.calendar-mobile-legend-dot-absence {
+    background: #c084fc;
+}
+
+.calendar-mobile-cell-dot-ferie {
+    background: #ec4899;
+}
+
+.calendar-mobile-cell-dot-danger,
+.calendar-mobile-legend-dot-danger {
+    background: #ef4444;
+}
+
+.calendar-mobile-legend-dot-weekend {
+    background: #d6bfa3;
+}
+
+.calendar-mobile-cell-main {
+    margin-top: 0.35rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #334155;
+}
+
+.calendar-mobile-cell-main-label {
+    color: #9d174d;
+}
+
+.calendar-mobile-cell-note {
+    position: absolute;
+    left: 0.35rem;
+    bottom: 0.28rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.calendar-mobile-cell-note-pos {
+    color: #15803d;
+}
+
+.calendar-mobile-cell-note-neg {
+    color: #dc2626;
+}
+
+.calendar-mobile-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.9rem;
+    margin-top: 0.9rem;
+    padding: 0.95rem 1rem;
+}
+
+.calendar-mobile-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.calendar-mobile-legend-dot {
+    width: 0.62rem;
+    height: 0.62rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
 }
 
 .calendar-page-actions {

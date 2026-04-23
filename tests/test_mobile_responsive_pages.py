@@ -19,8 +19,9 @@ def test_vue_calendrier_rend_versions_desktop_et_mobile(auth_client, sample_user
 
     assert response.status_code == 200
     assert 'calendar-mobile-layout' in html
-    assert 'calendar-mobile-day-card' in html
-    assert 'calendar-mobile-filter-chip' in html
+    assert 'calendar-mobile-board' in html
+    assert 'calendar-mobile-grid' in html
+    assert 'calendar-mobile-cell' in html
     assert 'calendar-desktop-layout' in html
     assert 'cal-grid' in html
 
