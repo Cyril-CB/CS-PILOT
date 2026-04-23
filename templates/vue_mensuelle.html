@@ -197,7 +197,7 @@
                         </div>
 
                         <div class="month-mobile-hours">
-                            <strong class="month-mobile-hours-real">
+                            <strong class="month-mobile-hours-real{% if afficher_horaires_vue_mensuelle %} month-mobile-hours-real-schedule{% endif %}">
                                 {% if afficher_horaires_vue_mensuelle %}
                                 {{ j.horaires_reels }}
                                 {% else %}
@@ -961,9 +961,17 @@ function deverrouillerFiche() {
 
 .month-mobile-hours-real {
     display: block;
-    font-size: 1.7rem;
+    font-size: 1.35rem;
     line-height: 1;
     color: #1f2937;
+}
+
+.month-mobile-hours-real-schedule {
+    max-width: 7.5rem;
+    font-size: 0.9rem;
+    line-height: 1.3;
+    white-space: normal;
+    word-break: break-word;
 }
 
 .month-mobile-hours-gap {
