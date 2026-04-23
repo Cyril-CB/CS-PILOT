@@ -7,6 +7,10 @@ def test_vue_mensuelle_utilise_table_cartes_mobile(auth_client, sample_users, sa
     assert 'class="table-responsive"' in html
     assert 'data-label="Statut"' in html
     assert 'month-page-actions' in html
+    assert 'month-mobile-layout' in html
+    assert 'month-mobile-day-card' in html
+    assert "window.matchMedia('(max-width: 768px)')" in html
+    assert "monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';" in html
 
 
 def test_planning_theorique_utilise_historique_responsive(auth_client, sample_planning):
