@@ -89,11 +89,11 @@
 
         <div class="calendar-mobile-stats">
             <div class="calendar-mobile-stat-card">
-                <span class="calendar-mobile-stat-label">Theoriques</span>
+                <span class="calendar-mobile-stat-label">Théoriques</span>
                 <strong class="calendar-mobile-stat-value">{{ "%.1f"|format(total_heures_theoriques) }}h</strong>
             </div>
             <div class="calendar-mobile-stat-card">
-                <span class="calendar-mobile-stat-label">Reelles</span>
+                <span class="calendar-mobile-stat-label">Réelles</span>
                 <strong class="calendar-mobile-stat-value">{{ "%.1f"|format(total_heures_reelles) }}h</strong>
             </div>
             <div class="calendar-mobile-stat-card">
@@ -103,7 +103,7 @@
                 </strong>
             </div>
             <div class="calendar-mobile-stat-card">
-                <span class="calendar-mobile-stat-label">Solde cumule</span>
+                <span class="calendar-mobile-stat-label">Solde cumulé</span>
                 <strong class="calendar-mobile-stat-value {% if solde_cumule > 0 %}is-positive{% elif solde_cumule < 0 %}is-negative{% endif %}">
                     {% if solde_cumule > 0 %}+{% endif %}{{ "%.2f"|format(solde_cumule) }}h
                 </strong>
@@ -112,27 +112,27 @@
 
         {% if validation and validation.bloque %}
         <div class="calendar-mobile-alert calendar-mobile-alert-success">
-            <strong>Fiche verrouillee</strong>
-            <span>Cette fiche est validee et n’est plus modifiable.</span>
+            <strong>Fiche verrouillée</strong>
+            <span>Cette fiche est validée et n’est plus modifiable.</span>
         </div>
         {% endif %}
 
         {% if nb_jours_non_declares > 0 %}
         <div class="calendar-mobile-alert calendar-mobile-alert-danger">
-            <strong>{{ nb_jours_non_declares }} jour(s) non declare(s)</strong>
-            <span>Cliquez sur un jour en alerte pour le saisir ou le declarer.</span>
+            <strong>{{ nb_jours_non_declares }} jour(s) non déclaré(s)</strong>
+            <span>Cliquez sur un jour en alerte pour le saisir ou le déclarer.</span>
         </div>
         {% elif not mois_est_termine %}
         <div class="calendar-mobile-alert calendar-mobile-alert-warning">
             <strong>Mois en cours</strong>
-            <span>La validation sera possible a partir du 1er jour du mois suivant.</span>
+            <span>La validation sera possible à partir du 1er jour du mois suivant.</span>
         </div>
         {% endif %}
 
-        <div class="calendar-mobile-filters" aria-label="Synthese des statuts du mois">
+        <div class="calendar-mobile-filters" aria-label="Synthèse des statuts du mois">
             <span class="calendar-mobile-filter-chip calendar-mobile-filter-chip-active">Tous <strong>{{ mobile_counts.total }}</strong></span>
-            <span class="calendar-mobile-filter-chip">A faire <strong>{{ mobile_counts.non_declares }}</strong></span>
-            <span class="calendar-mobile-filter-chip">Declares <strong>{{ mobile_counts.declares }}</strong></span>
+            <span class="calendar-mobile-filter-chip">À faire <strong>{{ mobile_counts.non_declares }}</strong></span>
+            <span class="calendar-mobile-filter-chip">Déclarés <strong>{{ mobile_counts.declares }}</strong></span>
             <span class="calendar-mobile-filter-chip">Saisis <strong>{{ mobile_counts.saisis }}</strong></span>
             <span class="calendar-mobile-filter-chip">Absences <strong>{{ mobile_counts.absences }}</strong></span>
         </div>
@@ -156,15 +156,15 @@
                         <div class="calendar-mobile-day-body">
                             <div class="calendar-mobile-day-badges">
                                 {% if j.est_ferie %}
-                                <span class="badge" style="background: #ec4899; color: white;">🎉 Ferie</span>
+                                <span class="badge" style="background: #ec4899; color: white;">🎉 Férié</span>
                                 {% elif d and d.non_declare %}
-                                <span class="badge" style="background: #dc2626; color: white;">⚠️ A faire</span>
+                                <span class="badge" style="background: #dc2626; color: white;">⚠️ À faire</span>
                                 {% elif d and d.type_saisie == 'absence' %}
                                 <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
                                 {% elif d and d.type_saisie == 'recup_journee' %}
-                                <span class="badge" style="background: #f59e0b; color: #1f2937;">🏖️ Recup</span>
+                                <span class="badge" style="background: #f59e0b; color: #1f2937;">🏖️ Récup</span>
                                 {% elif d and d.est_declare %}
-                                <span class="badge" style="background: #2563eb; color: white;">✅ Declare</span>
+                                <span class="badge" style="background: #2563eb; color: white;">✅ Déclaré</span>
                                 {% elif d and d.est_saisi %}
                                 <span class="badge badge-success">✏️ Saisi</span>
                                 {% elif j.est_dimanche %}
@@ -186,15 +186,15 @@
                                 {% elif d and d.type_saisie == 'absence' %}
                                 Jour d’absence
                                 {% elif d and d.type_saisie == 'recup_journee' %}
-                                Recuperation sur la journee
+                                Récupération sur la journée
                                 {% elif j.est_dimanche %}
                                 Jour non travaille
                                 {% elif j.est_weekend and not d %}
                                 Weekend / non travaille
                                 {% elif d and d.type_periode == 'vacances' and not d.est_samedi %}
-                                Periode vacances
+                                Période vacances
                                 {% else %}
-                                Periode scolaire
+                                Période scolaire
                                 {% endif %}
                             </p>
                         </div>
@@ -202,7 +202,7 @@
                         <div class="calendar-mobile-hours">
                             <strong class="calendar-mobile-hours-real">
                                 {% if d and d.type_saisie == 'recup_journee' %}
-                                Recup.
+                                Récup.
                                 {% elif d and (d.est_saisi or d.est_declare or d.type_saisie == 'absence') %}
                                 {{ "%.1f"|format(d.heures_reelles) }}h
                                 {% elif d %}
@@ -219,9 +219,9 @@
                                 {% elif d and d.est_declare %}
                                 Conforme
                                 {% elif d and d.non_declare %}
-                                A saisir
+                                À saisir
                                 {% elif j.est_ferie %}
-                                Ferie
+                                Férié
                                 {% elif j.est_weekend %}
                                 Repos
                                 {% else %}
