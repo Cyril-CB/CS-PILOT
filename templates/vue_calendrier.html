@@ -27,12 +27,12 @@
         {% endif %}
     {% endfor %}
 
-    <!-- Selecteur d'utilisateur -->
+    <!-- Sélecteur d'utilisateur -->
     {% if users_accessibles|length > 0 %}
     <div class="user-selector calendar-user-selector">
         <label for="user_select" class="calendar-user-selector-label">
             {% if session.profil == 'responsable' %}
-            👨‍💼 Fiche de mon equipe :
+            👨‍💼 Fiche de mon équipe :
             {% else %}
             👤 Fiche a afficher :
             {% endif %}
@@ -188,9 +188,9 @@
                                 {% elif d and d.type_saisie == 'recup_journee' %}
                                 Récupération sur la journée
                                 {% elif j.est_dimanche %}
-                                Jour non travaille
+                                Jour non travaillé
                                 {% elif j.est_weekend and not d %}
-                                Weekend / non travaille
+                                Weekend / non travaillé
                                 {% elif d and d.type_periode == 'vacances' and not d.est_samedi %}
                                 Période vacances
                                 {% else %}

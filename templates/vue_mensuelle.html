@@ -616,7 +616,7 @@ function deverrouillerFiche() {
         return;
     }
 
-    // JS et CSS réutilisent la même variable Jinja `mobile_breakpoint_px`.
+    // JS et CSS réutilise la même variable Jinja `mobile_breakpoint_px`.
     const mobileQuery = window.matchMedia('(max-width: {{ mobile_breakpoint_px }}px)');
     const updateMonthlyLayout = (query) => {
         monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';
