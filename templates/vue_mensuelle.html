@@ -612,12 +612,11 @@ function deverrouillerFiche() {
     }
 
     if (typeof window.matchMedia !== 'function') {
-        monthlyPage.dataset.layout = 'desktop';
         console.warn('Détection mobile non disponible : matchMedia est indisponible.');
         return;
     }
 
-    // Keep this breakpoint synchronized with the CSS media query below.
+    // JS et CSS réutilisent la même variable Jinja `mobile_breakpoint_px`.
     const mobileQuery = window.matchMedia('(max-width: {{ mobile_breakpoint_px }}px)');
     const updateMonthlyLayout = (query) => {
         monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';
