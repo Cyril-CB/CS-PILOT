@@ -5,7 +5,6 @@
 {% block content %}
 <div class="vue-mensuelle">
     {% set mobile_breakpoint_px = 768 %}
-    {% set month_start_weekday_index = journees[0].date_obj.replace(day=1).weekday() if journees else 0 %}
     {% set mobile_counts = namespace(
         total=journees|length,
         non_declares=0,
@@ -147,7 +146,7 @@
         <div class="month-mobile-days">
             {% set week_marker = namespace(current=None) %}
             {% for j in journees %}
-                {% set week_number = ((j.date_obj.day + month_start_weekday_index - 1) // 7) + 1 %}
+                {% set week_number = ((j.date_obj.day - 1) // 7) + 1 %}
                 {% if week_marker.current != week_number %}
                     {% set week_marker.current = week_number %}
                     <p class="month-mobile-week-title">Semaine {{ week_number }}</p>
@@ -613,10 +612,12 @@ function deverrouillerFiche() {
     }
 
     if (typeof window.matchMedia !== 'function') {
+        monthlyPage.dataset.layout = 'desktop';
         console.warn('Détection mobile non disponible : matchMedia est indisponible.');
         return;
     }
 
+    // Keep this breakpoint synchronized with the CSS media query below.
     const mobileQuery = window.matchMedia('(max-width: {{ mobile_breakpoint_px }}px)');
     const updateMonthlyLayout = (query) => {
         monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';
