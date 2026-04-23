@@ -185,6 +185,7 @@ class TestOptionsVueMensuelle:
         assert 'Horaires réels' in html
         assert '08:30 - 12:00 / 13:30 - 17:00' in html
         assert '08:45 - 12:15 / 13:15 - 17:30' in html
+        assert 'month-mobile-hours-real month-mobile-hours-real-schedule' in html
 
 
 class TestMonEquipeVisibilitePresences:

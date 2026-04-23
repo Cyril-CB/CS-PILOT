@@ -7,6 +7,23 @@ def test_vue_mensuelle_utilise_table_cartes_mobile(auth_client, sample_users, sa
     assert 'class="table-responsive"' in html
     assert 'data-label="Statut"' in html
     assert 'month-page-actions' in html
+    assert 'month-mobile-layout' in html
+    assert 'month-mobile-day-card' in html
+    assert 'window.matchMedia(' in html
+    assert 'monthlyPage.dataset.layout' in html
+
+
+def test_vue_calendrier_rend_versions_desktop_et_mobile(auth_client, sample_users, sample_planning):
+    response = auth_client.get('/vue_calendrier')
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'calendar-mobile-layout' in html
+    assert 'calendar-mobile-board' in html
+    assert 'calendar-mobile-grid' in html
+    assert 'calendar-mobile-cell' in html
+    assert 'calendar-desktop-layout' in html
+    assert 'cal-grid' in html
 
 
 def test_planning_theorique_utilise_historique_responsive(auth_client, sample_planning):

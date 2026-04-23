@@ -4,17 +4,18 @@
 
 {% block content %}
 <div class="vue-mensuelle">
-    <!-- Selecteur d'utilisateur -->
+    {% set mobile_breakpoint_px = 768 %}
+    <!-- Sélecteur d'utilisateur -->
     {% if users_accessibles|length > 0 %}
-    <div class="user-selector" style="background: var(--gray-50); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
-        <label for="user_select" style="margin-right: 1rem; font-weight: 500;">
+    <div class="user-selector calendar-user-selector">
+        <label for="user_select" class="calendar-user-selector-label">
             {% if session.profil == 'responsable' %}
-            👨‍💼 Fiche de mon equipe :
+            👨‍💼 Fiche de mon équipe :
             {% else %}
-            👤 Fiche a afficher :
+            👤 Fiche à afficher :
             {% endif %}
         </label>
-        <select id="user_select" onchange="changerUtilisateur()" style="padding: 0.5rem; border: 2px solid #667eea; border-radius: 5px; font-size: 1rem;">
+        <select id="user_select" onchange="changerUtilisateur()" class="calendar-user-select">
             {% for u in users_accessibles %}
             <option value="{{ u.id }}" {% if u.id == user_id_a_afficher %}selected{% endif %}>
                 {{ u.prenom }} {{ u.nom }}
@@ -31,6 +32,177 @@
     </script>
     {% endif %}
 
+    <div class="calendar-mobile-layout" aria-label="Vue mobile du calendrier">
+        <div class="calendar-mobile-hero">
+            <p class="calendar-mobile-kicker">
+                {% if user_affiche.id == session.user_id %}
+                Mon calendrier
+                {% else %}
+                Calendrier mensuel
+                {% endif %}
+            </p>
+            <div class="calendar-mobile-nav">
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-nav-btn"
+                   aria-label="Voir le mois précédent">‹</a>
+
+                <div class="calendar-mobile-title-wrap">
+                    <h1 class="calendar-mobile-title">{{ nom_mois }} {{ annee }}</h1>
+                    {% if user_affiche.id != session.user_id %}
+                    <p class="calendar-mobile-user">{{ user_affiche.prenom }} {{ user_affiche.nom }}</p>
+                    {% endif %}
+                </div>
+
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-nav-btn"
+                   aria-label="Voir le mois suivant">›</a>
+            </div>
+
+            <div class="calendar-mobile-toggle">
+                <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois, annee=annee, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-chip">Tableau</a>
+                <span class="calendar-mobile-chip calendar-mobile-chip-active">Calendrier</span>
+            </div>
+        </div>
+
+        <div class="calendar-mobile-stats">
+            <div class="calendar-mobile-stat-card">
+                <span class="calendar-mobile-stat-label">Théoriques</span>
+                <strong class="calendar-mobile-stat-value">{{ "%.1f"|format(total_heures_theoriques) }}h</strong>
+            </div>
+            <div class="calendar-mobile-stat-card">
+                <span class="calendar-mobile-stat-label">Réelles</span>
+                <strong class="calendar-mobile-stat-value">{{ "%.1f"|format(total_heures_reelles) }}h</strong>
+            </div>
+            <div class="calendar-mobile-stat-card">
+                <span class="calendar-mobile-stat-label">Solde mois</span>
+                <strong class="calendar-mobile-stat-value {% if solde_mois > 0 %}is-positive{% elif solde_mois < 0 %}is-negative{% endif %}">
+                    {% if solde_mois > 0 %}+{% endif %}{{ "%.2f"|format(solde_mois) }}h
+                </strong>
+            </div>
+            <div class="calendar-mobile-stat-card">
+                <span class="calendar-mobile-stat-label">Solde cumulé</span>
+                <strong class="calendar-mobile-stat-value {% if solde_cumule > 0 %}is-positive{% elif solde_cumule < 0 %}is-negative{% endif %}">
+                    {% if solde_cumule > 0 %}+{% endif %}{{ "%.2f"|format(solde_cumule) }}h
+                </strong>
+            </div>
+        </div>
+
+        {% if validation and validation.bloque %}
+        <div class="calendar-mobile-alert calendar-mobile-alert-success">
+            <strong>Fiche verrouillée</strong>
+            <span>Cette fiche est validée et n’est plus modifiable.</span>
+        </div>
+        {% endif %}
+
+        {% if nb_jours_non_declares > 0 %}
+        <div class="calendar-mobile-alert calendar-mobile-alert-danger">
+            <strong>{{ nb_jours_non_declares }} jour(s) non déclaré(s)</strong>
+            <span>Cliquez sur un jour en alerte pour le saisir ou le déclarer.</span>
+        </div>
+        {% elif not mois_est_termine %}
+        <div class="calendar-mobile-alert calendar-mobile-alert-warning">
+            <strong>Mois en cours</strong>
+            <span>La validation sera possible à partir du 1er jour du mois suivant.</span>
+        </div>
+        {% endif %}
+
+        <div class="calendar-mobile-board">
+            <div class="calendar-mobile-board-header">
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-board-nav"
+                   aria-label="Voir le mois précédent">‹</a>
+                <div class="calendar-mobile-board-title-wrap">
+                    <h2 class="calendar-mobile-board-title">{{ nom_mois }} {{ annee }}</h2>
+                </div>
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+                   class="calendar-mobile-board-nav"
+                   aria-label="Voir le mois suivant">›</a>
+            </div>
+
+            <div class="calendar-mobile-weekdays" aria-hidden="true">
+                <span>L</span>
+                <span>M</span>
+                <span>M</span>
+                <span>J</span>
+                <span>V</span>
+                <span>S</span>
+                <span>D</span>
+            </div>
+
+            <div class="calendar-mobile-grid">
+                {% for i in range(premier_jour_semaine) %}
+                <div class="calendar-mobile-cell calendar-mobile-cell-empty"></div>
+                {% endfor %}
+
+            {% for j in jours_calendrier %}
+            {% set d = j.donnees %}
+            <div class="calendar-mobile-cell {% if d and d.non_declare %}calendar-mobile-cell-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-cell-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-cell-recup{% elif j.est_ferie %}calendar-mobile-cell-ferie{% elif d and d.est_declare %}calendar-mobile-cell-declare{% elif d and d.est_saisi %}calendar-mobile-cell-saisi{% elif j.est_weekend %}calendar-mobile-cell-weekend{% endif %}"
+                 {% if d and peut_modifier and not j.est_dimanche %}
+                 onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
+                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'; }"
+                 role="link"
+                 tabindex="0"
+                 style="cursor: pointer;"
+                 title="Cliquer pour {% if d.est_saisi %}modifier{% else %}saisir{% endif %}"
+                 {% elif j.est_ferie %}
+                 title="{{ j.libelle_ferie }}"
+                 {% endif %}>
+                <div class="calendar-mobile-cell-top">
+                    <span class="calendar-mobile-cell-day">{{ j.jour }}</span>
+                    {% if j.est_ferie %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-ferie"></span>
+                    {% elif d and d.non_declare %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-danger"></span>
+                    {% elif d and d.type_saisie == 'absence' %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-absence"></span>
+                    {% elif d and d.type_saisie == 'recup_journee' %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-recup"></span>
+                    {% elif d and d.est_declare %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-declare"></span>
+                    {% elif d and d.est_saisi %}
+                    <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-saisi"></span>
+                    {% endif %}
+                </div>
+
+                {% if d %}
+                    {% if d.type_saisie == 'recup_journee' %}
+                    <div class="calendar-mobile-cell-main">R</div>
+                    {% elif d.est_saisi or d.est_declare or d.type_saisie == 'absence' %}
+                    <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_reelles) }}h</div>
+                    {% else %}
+                    <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_theoriques) }}h</div>
+                    {% endif %}
+
+                    {% if d.type_periode == 'vacances' and not d.est_samedi %}
+                    <div class="calendar-mobile-cell-note">vac.</div>
+                    {% elif d.ecart > 0 %}
+                    <div class="calendar-mobile-cell-note calendar-mobile-cell-note-pos">+{{ "%.1f"|format(d.ecart) }}</div>
+                    {% elif d.ecart < 0 %}
+                    <div class="calendar-mobile-cell-note calendar-mobile-cell-note-neg">{{ "%.1f"|format(d.ecart) }}</div>
+                    {% elif d.non_declare %}
+                    <div class="calendar-mobile-cell-note">⚠</div>
+                    {% endif %}
+                {% elif j.est_ferie %}
+                    <div class="calendar-mobile-cell-main calendar-mobile-cell-main-label">F</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            </div>
+        </div>
+
+        <div class="calendar-mobile-legend" aria-label="Légende du calendrier">
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-declare"></i>Déclaré</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-saisi"></i>Saisi</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-recup"></i>Récup</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-absence"></i>Absence</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-weekend"></i>Sam. exc.</span>
+            <span class="calendar-mobile-legend-item"><i class="calendar-mobile-legend-dot calendar-mobile-legend-dot-danger"></i>À faire</span>
+        </div>
+    </div>
+
+    <div class="calendar-desktop-layout">
     <div class="month-header">
         <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
            class="btn btn-secondary">← {{ mois_precedent }}/{{ annee_precedente }}</a>
@@ -233,9 +405,10 @@
             {% endfor %}
         </div>
     </div>
+    </div>
 
     <!-- Actions -->
-    <div class="actions" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
+    <div class="actions calendar-page-actions" style="margin-top: 2rem; display: flex; justify-content: space-between; align-items: center;">
         <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
 
         <div style="display: flex; gap: 1rem; align-items: center;">
@@ -334,6 +507,420 @@ function deverrouillerFiche() {
 </script>
 
 <style>
+.calendar-user-selector {
+    background: #f8fafc;
+    padding: 1rem;
+    border-radius: 18px;
+    margin-bottom: 1.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.calendar-user-selector-label {
+    display: inline-block;
+    margin-right: 1rem;
+    font-weight: 600;
+    color: #334155;
+}
+
+.calendar-user-select {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    font-size: 1rem;
+    background: #fff;
+}
+
+.calendar-mobile-layout {
+    display: none;
+}
+
+.calendar-desktop-layout {
+    display: block;
+}
+
+.calendar-mobile-hero {
+    padding: 1.15rem;
+    border-radius: 28px;
+    margin-bottom: 1rem;
+    background: linear-gradient(180deg, #fdf2f8 0%, #f8fafc 100%);
+    border: 1px solid #fbcfe8;
+    box-shadow: 0 22px 45px rgba(15, 23, 42, 0.08);
+}
+
+.calendar-mobile-kicker {
+    margin: 0 0 0.85rem;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9d174d;
+}
+
+.calendar-mobile-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+}
+
+.calendar-mobile-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    color: #1f2937;
+    text-decoration: none;
+    font-size: 1.5rem;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.calendar-mobile-title-wrap {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+}
+
+.calendar-mobile-title {
+    margin: 0;
+    font-size: 1.45rem;
+    color: #0f172a;
+}
+
+.calendar-mobile-user {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+    font-size: 0.92rem;
+}
+
+.calendar-mobile-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.calendar-mobile-toggle {
+    margin-top: 1rem;
+}
+
+.calendar-mobile-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-height: 2.4rem;
+    padding: 0.5rem 0.95rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #475569;
+    text-decoration: none;
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.9);
+}
+
+.calendar-mobile-chip-active {
+    background: #2d6a58;
+    color: #fff;
+    box-shadow: none;
+}
+
+.calendar-mobile-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.calendar-mobile-stat-card,
+.calendar-mobile-board,
+.calendar-mobile-alert,
+.calendar-mobile-legend {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 22px;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.calendar-mobile-stat-card {
+    padding: 1rem;
+}
+
+.calendar-mobile-stat-label {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+}
+
+.calendar-mobile-stat-value {
+    font-size: 1.85rem;
+    line-height: 1;
+    color: #111827;
+}
+
+.calendar-mobile-stat-value.is-positive,
+.calendar-mobile-hours-gap.is-positive {
+    color: #15803d;
+}
+
+.calendar-mobile-stat-value.is-negative,
+.calendar-mobile-hours-gap.is-negative {
+    color: #dc2626;
+}
+
+.calendar-mobile-alert {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.calendar-mobile-alert-success {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+}
+
+.calendar-mobile-alert-danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.calendar-mobile-alert-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.calendar-mobile-board {
+    padding: 1rem 0.9rem 0.9rem;
+}
+
+.calendar-mobile-board-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    margin-bottom: 0.9rem;
+}
+
+.calendar-mobile-board-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 999px;
+    text-decoration: none;
+    background: #edf3ef;
+    color: #2d6a58;
+    font-size: 1.25rem;
+    font-weight: 700;
+}
+
+.calendar-mobile-board-title-wrap {
+    flex: 1;
+    text-align: center;
+}
+
+.calendar-mobile-board-title {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #0f172a;
+}
+
+.calendar-mobile-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-bottom: 0.55rem;
+}
+
+.calendar-mobile-weekdays span {
+    text-align: center;
+    font-size: 0.73rem;
+    font-weight: 700;
+    color: #6b7280;
+}
+
+.calendar-mobile-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.35rem;
+}
+
+.calendar-mobile-cell {
+    position: relative;
+    min-height: 4.35rem;
+    padding: 0.42rem 0.35rem 0.32rem;
+    border-radius: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.calendar-mobile-cell-empty {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.calendar-mobile-cell-weekend {
+    background: #f4efe8;
+    border-color: #ece2d4;
+}
+
+.calendar-mobile-cell-declare {
+    background: #eef6ff;
+    border-color: #bfdbfe;
+}
+
+.calendar-mobile-cell-saisi {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+}
+
+.calendar-mobile-cell-recup {
+    background: #fff7dd;
+    border-color: #fcd34d;
+}
+
+.calendar-mobile-cell-absence {
+    background: #f6ecff;
+    border-color: #d8b4fe;
+}
+
+.calendar-mobile-cell-ferie {
+    background: #fff1f7;
+    border-color: #f9a8d4;
+}
+
+.calendar-mobile-cell-danger {
+    background: #fff1f2;
+    border-color: #fda4af;
+}
+
+.calendar-mobile-cell-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.2rem;
+}
+
+.calendar-mobile-cell-day {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.calendar-mobile-cell-dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.calendar-mobile-cell-dot-declare,
+.calendar-mobile-legend-dot-declare {
+    background: #2563eb;
+}
+
+.calendar-mobile-cell-dot-saisi,
+.calendar-mobile-legend-dot-saisi {
+    background: #10b981;
+}
+
+.calendar-mobile-cell-dot-recup,
+.calendar-mobile-legend-dot-recup {
+    background: #f59e0b;
+}
+
+.calendar-mobile-cell-dot-absence,
+.calendar-mobile-legend-dot-absence {
+    background: #c084fc;
+}
+
+.calendar-mobile-cell-dot-ferie {
+    background: #ec4899;
+}
+
+.calendar-mobile-cell-dot-danger,
+.calendar-mobile-legend-dot-danger {
+    background: #ef4444;
+}
+
+.calendar-mobile-legend-dot-weekend {
+    background: #d6bfa3;
+}
+
+.calendar-mobile-cell-main {
+    margin-top: 0.35rem;
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #334155;
+}
+
+.calendar-mobile-cell-main-label {
+    color: #9d174d;
+}
+
+.calendar-mobile-cell-note {
+    position: absolute;
+    left: 0.35rem;
+    bottom: 0.28rem;
+    font-size: 0.64rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.calendar-mobile-cell-note-pos {
+    color: #15803d;
+}
+
+.calendar-mobile-cell-note-neg {
+    color: #dc2626;
+}
+
+.calendar-mobile-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.9rem;
+    margin-top: 0.9rem;
+    padding: 0.95rem 1rem;
+}
+
+.calendar-mobile-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: #475569;
+}
+
+.calendar-mobile-legend-dot {
+    width: 0.62rem;
+    height: 0.62rem;
+    border-radius: 999px;
+    flex: 0 0 auto;
+}
+
+.calendar-page-actions {
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.calendar-page-actions > div {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 /* Grille calendrier */
 .cal-grid {
     display: grid;
@@ -606,7 +1193,65 @@ function deverrouillerFiche() {
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: {{ mobile_breakpoint_px }}px) {
+    .vue-mensuelle {
+        padding: 1rem;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #f8fafc 0%, #eef4f1 100%);
+    }
+
+    .calendar-user-selector {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .calendar-user-selector-label {
+        margin-right: 0;
+    }
+
+    .calendar-user-select {
+        width: 100%;
+    }
+
+    .calendar-mobile-layout {
+        display: block;
+    }
+
+    .calendar-desktop-layout {
+        display: none;
+    }
+
+    .calendar-page-actions {
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+
+    .calendar-page-actions > a,
+    .calendar-page-actions .btn,
+    .calendar-page-actions form,
+    .calendar-page-actions > div {
+        width: 100%;
+    }
+
+    .calendar-page-actions > div {
+        justify-content: stretch;
+    }
+
+    .calendar-page-actions .validation-status,
+    .calendar-page-actions .help-box {
+        width: 100%;
+        text-align: left !important;
+    }
+
+    .calendar-page-actions form .btn,
+    .calendar-page-actions > a.btn,
+    .calendar-page-actions > div > .btn,
+    .calendar-page-actions > div > a.btn {
+        width: 100%;
+        text-align: center;
+    }
+
     .cal-cell {
         min-height: 60px;
         padding: 0.25rem;

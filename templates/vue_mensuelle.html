@@ -4,6 +4,29 @@
 
 {% block content %}
 <div class="vue-mensuelle">
+    {% set mobile_breakpoint_px = 768 %}
+    {% set mobile_counts = namespace(
+        total=journees|length,
+        non_declares=0,
+        declares=0,
+        saisis=0,
+        absences=0
+    ) %}
+    {% for j in journees %}
+        {% if j.non_declare %}
+            {% set mobile_counts.non_declares = mobile_counts.non_declares + 1 %}
+        {% endif %}
+        {% if j.est_declare %}
+            {% set mobile_counts.declares = mobile_counts.declares + 1 %}
+        {% endif %}
+        {% if j.est_saisi and j.type_saisie != 'absence' %}
+            {% set mobile_counts.saisis = mobile_counts.saisis + 1 %}
+        {% endif %}
+        {% if j.type_saisie == 'absence' %}
+            {% set mobile_counts.absences = mobile_counts.absences + 1 %}
+        {% endif %}
+    {% endfor %}
+
     <!-- Sélecteur d'utilisateur (si accès multi-utilisateurs) -->
     {% if users_accessibles|length > 0 %}
     <div class="user-selector monthly-user-selector">
@@ -30,7 +53,205 @@
     }
     </script>
     {% endif %}
-    
+
+    <div class="month-mobile-layout" aria-label="Vue mobile de la fiche mensuelle">
+        <div class="month-mobile-hero">
+            <p class="month-mobile-kicker">
+                {% if user_affiche.id == session.user_id %}
+                Ma fiche mensuelle
+                {% else %}
+                Fiche mensuelle
+                {% endif %}
+            </p>
+            <div class="month-mobile-nav">
+                <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
+                   class="month-mobile-nav-btn"
+                   aria-label="Voir le mois précédent">‹</a>
+
+                <div class="month-mobile-title-wrap">
+                    <h1 class="month-mobile-title">{{ nom_mois }} {{ annee }}</h1>
+                    {% if user_affiche.id != session.user_id %}
+                    <p class="month-mobile-user">{{ user_affiche.prenom }} {{ user_affiche.nom }}</p>
+                    {% endif %}
+                </div>
+
+                <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois_suivant, annee=annee_suivante, user_id=user_id_a_afficher) }}"
+                   class="month-mobile-nav-btn"
+                   aria-label="Voir le mois suivant">›</a>
+            </div>
+
+            <div class="month-mobile-toggle">
+                <span class="month-mobile-chip month-mobile-chip-active">Tableau</span>
+                <a href="{{ url_for('validation_bp.vue_calendrier', mois=mois, annee=annee, user_id=user_id_a_afficher) }}"
+                   class="month-mobile-chip">Calendrier</a>
+            </div>
+        </div>
+
+        <div class="month-mobile-stats">
+            <div class="month-mobile-stat-card">
+                <span class="month-mobile-stat-label">Théoriques</span>
+                <strong class="month-mobile-stat-value">{{ "%.1f"|format(total_heures_theoriques) }}h</strong>
+            </div>
+            <div class="month-mobile-stat-card">
+                <span class="month-mobile-stat-label">Réelles</span>
+                <strong class="month-mobile-stat-value">{{ "%.1f"|format(total_heures_reelles) }}h</strong>
+            </div>
+            <div class="month-mobile-stat-card">
+                <span class="month-mobile-stat-label">Solde mois</span>
+                <strong class="month-mobile-stat-value {% if solde_mois > 0 %}is-positive{% elif solde_mois < 0 %}is-negative{% endif %}">
+                    {% if solde_mois > 0 %}+{% endif %}{{ "%.2f"|format(solde_mois) }}h
+                </strong>
+            </div>
+            <div class="month-mobile-stat-card">
+                <span class="month-mobile-stat-label">Solde cumulé</span>
+                <strong class="month-mobile-stat-value {% if solde_cumule > 0 %}is-positive{% elif solde_cumule < 0 %}is-negative{% endif %}">
+                    {% if solde_cumule > 0 %}+{% endif %}{{ "%.2f"|format(solde_cumule) }}h
+                </strong>
+            </div>
+        </div>
+
+        {% if validation and validation.bloque %}
+        <div class="month-mobile-alert month-mobile-alert-success">
+            <strong>Fiche verrouillée</strong>
+            <span>Cette fiche est validée et n’est plus modifiable.</span>
+        </div>
+        {% endif %}
+
+        {% if nb_jours_non_declares > 0 %}
+        <div class="month-mobile-alert month-mobile-alert-danger">
+            <strong>{{ nb_jours_non_declares }} jour(s) non déclaré(s)</strong>
+            <span>
+                {% if declaration_conforme_active %}
+                Déclarer ou saisir chaque jour travaillé avant validation.
+                {% else %}
+                Saisir chaque jour travaillé avant validation.
+                {% endif %}
+            </span>
+        </div>
+        {% elif not mois_est_termine %}
+        <div class="month-mobile-alert month-mobile-alert-warning">
+            <strong>Mois en cours</strong>
+            <span>La validation sera possible à partir du 1er jour du mois suivant.</span>
+        </div>
+        {% endif %}
+
+        <div class="month-mobile-filters" aria-label="Synthèse des statuts du mois">
+            <span class="month-mobile-filter-chip month-mobile-filter-chip-active">Tous <strong>{{ mobile_counts.total }}</strong></span>
+            <span class="month-mobile-filter-chip">À faire <strong>{{ mobile_counts.non_declares }}</strong></span>
+            <span class="month-mobile-filter-chip">Déclarés <strong>{{ mobile_counts.declares }}</strong></span>
+            <span class="month-mobile-filter-chip">Saisis <strong>{{ mobile_counts.saisis }}</strong></span>
+            <span class="month-mobile-filter-chip">Absences <strong>{{ mobile_counts.absences }}</strong></span>
+        </div>
+
+        <div class="month-mobile-days">
+            {% set week_marker = namespace(current=None) %}
+            {% for j in journees %}
+                {% set week_number = ((j.date_obj.day - 1) // 7) + 1 %}
+                {% set week_start_day = ((week_number - 1) * 7) + 1 %}
+                {% set week_end_day = [week_number * 7, journees[-1].date_obj.day]|min %}
+                {% if week_marker.current != week_number %}
+                    {% set week_marker.current = week_number %}
+                    <p class="month-mobile-week-title">Jours {{ week_start_day }} à {{ week_end_day }}</p>
+                {% endif %}
+                <article class="month-mobile-day-card {% if j.non_declare %}month-mobile-day-card-danger{% elif j.type_saisie == 'absence' %}month-mobile-day-card-absence{% elif j.est_declare %}month-mobile-day-card-declare{% elif j.est_saisi %}month-mobile-day-card-saisi{% endif %}">
+                    <div class="month-mobile-day-main">
+                        <div class="month-mobile-date-block">
+                            <span class="month-mobile-day-name">{{ j.jour_semaine[:3]|upper }}</span>
+                            <strong class="month-mobile-day-number">{{ j.date_obj.strftime('%d') }}</strong>
+                        </div>
+
+                        <div class="month-mobile-day-body">
+                            <div class="month-mobile-day-badges">
+                                {% if j.non_declare %}
+                                    <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
+                                {% elif j.type_saisie == 'absence' %}
+                                    <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
+                                {% elif j.est_declare %}
+                                    <span class="badge" style="background: #3b82f6; color: white;">✅ Déclaré</span>
+                                {% elif j.est_saisi %}
+                                    {% if j.type_saisie == 'recup_journee' %}
+                                    <span class="badge" style="background: #ffc107; color: #000;">🏖️ Récup</span>
+                                    {% else %}
+                                    <span class="badge badge-success">✏️ Saisi</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
+                                {% endif %}
+
+                                {% if j.est_samedi %}
+                                <span class="month-mobile-inline-tag">Samedi exc.</span>
+                                {% endif %}
+                            </div>
+
+                            <p class="month-mobile-period">
+                                {% if j.est_samedi %}
+                                Événement ou saisie exceptionnelle
+                                {% elif j.type_periode == 'vacances' %}
+                                Période vacances
+                                {% else %}
+                                Période scolaire
+                                {% endif %}
+                            </p>
+
+                            {% if j.commentaire %}
+                            <p class="month-mobile-comment">{{ j.commentaire }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="month-mobile-hours">
+                            <strong class="month-mobile-hours-real{% if afficher_horaires_vue_mensuelle %} month-mobile-hours-real-schedule{% endif %}">
+                                {% if afficher_horaires_vue_mensuelle %}
+                                {{ j.horaires_reels }}
+                                {% else %}
+                                {{ "%.1f"|format(j.heures_reelles) }}h
+                                {% endif %}
+                            </strong>
+                            <span class="month-mobile-hours-gap {% if j.ecart > 0 %}is-positive{% elif j.ecart < 0 %}is-negative{% endif %}">
+                                {% if j.ecart > 0 %}
+                                +{{ "%.2f"|format(j.ecart) }}h
+                                {% elif j.ecart < 0 %}
+                                {{ "%.2f"|format(j.ecart) }}h
+                                {% else %}
+                                0h
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="month-mobile-day-footer">
+                        <div class="month-mobile-metric">
+                            <span>Théo</span>
+                            <strong>
+                                {% if afficher_horaires_vue_mensuelle %}
+                                    {% if j.est_samedi %}-{% else %}{{ j.horaires_theoriques }}{% endif %}
+                                {% else %}
+                                    {% if j.est_samedi %}0h{% else %}{{ "%.2f"|format(j.heures_theoriques) }}h{% endif %}
+                                {% endif %}
+                            </strong>
+                        </div>
+                        <div class="month-mobile-metric">
+                            <span>Date</span>
+                            <strong>{{ j.date_obj.strftime('%d/%m') }}</strong>
+                        </div>
+                        <div class="month-mobile-metric month-mobile-metric-action">
+                            <span>Action</span>
+                            {% if peut_modifier %}
+                            <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
+                               class="month-mobile-action-link"
+                               title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">
+                                {% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}
+                            </a>
+                            {% else %}
+                            <strong>Lecture</strong>
+                            {% endif %}
+                        </div>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="month-desktop-layout">
     <div class="month-header">
         <a href="{{ url_for('validation_bp.vue_mensuelle', mois=mois_precedent, annee=annee_precedente, user_id=user_id_a_afficher) }}"
            class="btn btn-secondary">← {{ mois_precedent }}/{{ annee_precedente }}</a>
@@ -245,6 +466,7 @@
             </table>
         </div>
     </div>
+    </div>
     
     <!-- Actions -->
     <div class="actions month-page-actions">
@@ -383,6 +605,34 @@ function deverrouillerFiche() {
     document.body.appendChild(form);
     form.submit();
 }
+
+(function() {
+    const monthlyPage = document.querySelector('.vue-mensuelle');
+
+    if (!monthlyPage) {
+        return;
+    }
+
+    if (typeof window.matchMedia !== 'function') {
+        console.warn('Détection mobile non disponible : matchMedia est indisponible.');
+        return;
+    }
+
+    // JS et CSS réutilisent la même variable Jinja `mobile_breakpoint_px`.
+    const mobileBreakpointPx = {{ mobile_breakpoint_px|tojson }};
+    const mobileQuery = window.matchMedia(`(max-width: ${mobileBreakpointPx}px)`);
+    const updateMonthlyLayout = (query) => {
+        monthlyPage.dataset.layout = query.matches ? 'mobile' : 'desktop';
+    };
+
+    updateMonthlyLayout(mobileQuery);
+
+    if (typeof mobileQuery.addEventListener === 'function') {
+        mobileQuery.addEventListener('change', updateMonthlyLayout);
+    } else if (typeof mobileQuery.addListener === 'function') {
+        mobileQuery.addListener(updateMonthlyLayout);
+    }
+})();
 </script>
 
 <style>
@@ -433,6 +683,388 @@ function deverrouillerFiche() {
 
 .month-table tfoot tr {
     border-top: 3px solid #667eea;
+}
+
+.month-mobile-layout {
+    display: none;
+}
+
+.month-mobile-hero {
+    background: linear-gradient(180deg, #2d6a58 0%, #285b4c 100%);
+    color: #fff;
+    border-radius: 28px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    box-shadow: 0 20px 35px rgba(40, 91, 76, 0.22);
+}
+
+.month-mobile-kicker {
+    margin: 0 0 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 700;
+    opacity: 0.78;
+}
+
+.month-mobile-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.month-mobile-nav-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    text-decoration: none;
+    font-size: 1.8rem;
+    line-height: 1;
+}
+
+.month-mobile-title-wrap {
+    flex: 1;
+    min-width: 0;
+}
+
+.month-mobile-title {
+    color: #fff;
+    font-size: 1.9rem;
+    margin: 0;
+}
+
+.month-mobile-user {
+    margin: 0.2rem 0 0;
+    font-size: 0.92rem;
+    opacity: 0.86;
+}
+
+.month-mobile-toggle,
+.month-mobile-filters {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.month-mobile-chip,
+.month-mobile-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.month-mobile-chip {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.month-mobile-chip-active {
+    background: #fff;
+    color: #285b4c;
+}
+
+.month-mobile-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.month-mobile-stat-card,
+.month-mobile-day-card,
+.month-mobile-alert {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 20px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.month-mobile-stat-card {
+    padding: 1rem;
+}
+
+.month-mobile-stat-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin-bottom: 0.35rem;
+}
+
+.month-mobile-stat-value {
+    font-size: 1.9rem;
+    line-height: 1;
+    color: #1f2937;
+}
+
+.month-mobile-stat-value.is-positive,
+.month-mobile-hours-gap.is-positive {
+    color: #15803d;
+}
+
+.month-mobile-stat-value.is-negative,
+.month-mobile-hours-gap.is-negative {
+    color: #dc2626;
+}
+
+.month-mobile-alert {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+}
+
+.month-mobile-alert-success {
+    background: #ecfdf5;
+    border-color: #bbf7d0;
+}
+
+.month-mobile-alert-danger {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.month-mobile-alert-warning {
+    background: #fffbeb;
+    border-color: #fde68a;
+}
+
+.month-mobile-filter-chip {
+    background: #f8fafc;
+    color: #475569;
+}
+
+.month-mobile-filter-chip-active {
+    background: #2d6a58;
+    color: #fff;
+}
+
+.month-mobile-days {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
+.month-mobile-week-title {
+    margin: 0.5rem 0 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #6b7280;
+}
+
+.month-mobile-day-card {
+    padding: 1rem;
+    border-left: 4px solid #d1d5db;
+}
+
+.month-mobile-day-card-danger {
+    border-left-color: #dc2626;
+}
+
+.month-mobile-day-card-declare {
+    border-left-color: #2563eb;
+}
+
+.month-mobile-day-card-saisi {
+    border-left-color: #16a34a;
+}
+
+.month-mobile-day-card-absence {
+    border-left-color: #8b5cf6;
+}
+
+.month-mobile-day-main,
+.month-mobile-day-footer {
+    display: flex;
+    gap: 0.9rem;
+}
+
+.month-mobile-day-main {
+    align-items: flex-start;
+}
+
+.month-mobile-date-block {
+    min-width: 3.5rem;
+    text-align: center;
+}
+
+.month-mobile-day-name {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #6b7280;
+    letter-spacing: 0.05em;
+}
+
+.month-mobile-day-number {
+    display: block;
+    font-size: 2rem;
+    line-height: 1;
+    color: #1f2937;
+}
+
+.month-mobile-day-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.month-mobile-day-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+}
+
+.month-mobile-inline-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.month-mobile-period,
+.month-mobile-comment {
+    margin: 0;
+    color: #6b7280;
+    font-size: 0.92rem;
+}
+
+.month-mobile-comment {
+    margin-top: 0.25rem;
+}
+
+.month-mobile-hours {
+    min-width: 4.3rem;
+    text-align: right;
+}
+
+.month-mobile-hours-real {
+    display: block;
+    font-size: 1.35rem;
+    line-height: 1;
+    color: #1f2937;
+}
+
+.month-mobile-hours-real-schedule {
+    max-width: 7.5rem;
+    font-size: 0.9rem;
+    line-height: 1.3;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.month-mobile-hours-gap {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #6b7280;
+}
+
+.month-mobile-day-footer {
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px solid #e5e7eb;
+    align-items: flex-end;
+}
+
+.month-mobile-metric {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.month-mobile-metric span {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    font-weight: 700;
+}
+
+.month-mobile-metric strong {
+    font-size: 0.92rem;
+    color: #1f2937;
+}
+
+.month-mobile-metric-action {
+    align-items: flex-end;
+}
+
+.month-mobile-action-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.2rem;
+    padding: 0.45rem 0.8rem;
+    border-radius: 999px;
+    background: #2d6a58;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.month-desktop-layout {
+    display: block;
+}
+
+@media (max-width: {{ mobile_breakpoint_px }}px) {
+    .vue-mensuelle {
+        padding: 1rem;
+        border-radius: 24px;
+        background: linear-gradient(180deg, #f5f8f6 0%, #edf3f0 100%);
+    }
+
+    .month-mobile-layout {
+        display: block;
+    }
+
+    .month-desktop-layout {
+        display: none;
+    }
+
+    .month-page-actions {
+        margin-top: 1.5rem;
+    }
+
+    .month-page-actions .btn {
+        width: 100%;
+        text-align: center;
+    }
+}
+
+.vue-mensuelle[data-layout="mobile"] .month-mobile-layout {
+    display: block;
+}
+
+.vue-mensuelle[data-layout="mobile"] .month-desktop-layout {
+    display: none;
 }
 </style>
 {% endblock %}
