@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 import json
 from database import get_db
-from utils import login_required
+from utils import login_required, get_semaine_alternance
 
 suivi_bp = Blueprint('suivi_bp', __name__)
 
@@ -82,16 +82,29 @@ def _get_planning_cached(conn, user_id, date_str, planning_cache, type_periode_c
     cache_key = (user_id, date_str)
     if cache_key not in planning_cache:
         type_periode = _get_type_periode_cached(conn, date_str, type_periode_cache)
-        planning = conn.execute('''
-            SELECT *
-            FROM planning_theorique
-            WHERE user_id = ?
-              AND type_periode = ?
-              AND (type_alternance IS NULL OR type_alternance = 'fixe')
-              AND date_debut_validite <= ?
-            ORDER BY date_debut_validite DESC
-            LIMIT 1
-        ''', (user_id, type_periode, date_str)).fetchone()
+        semaine_type = get_semaine_alternance(user_id, date_str)
+        if semaine_type == 'fixe':
+            planning = conn.execute('''
+                SELECT *
+                FROM planning_theorique
+                WHERE user_id = ?
+                  AND type_periode = ?
+                  AND (type_alternance IS NULL OR type_alternance = 'fixe')
+                  AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode, date_str)).fetchone()
+        else:
+            planning = conn.execute('''
+                SELECT *
+                FROM planning_theorique
+                WHERE user_id = ?
+                  AND type_periode = ?
+                  AND type_alternance = ?
+                  AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode, semaine_type, date_str)).fetchone()
         planning_cache[cache_key] = planning
     return planning_cache[cache_key]
 
