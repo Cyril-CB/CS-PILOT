@@ -338,8 +338,8 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
                 break
         previous_worked_day = metrics
 
-    if any(day_metrics.get(day, {}).get('longest_consecutive_hours', 0) >= MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK for day in recent_20_days):
-        rest_options.append(_format_points('Repos', 20, 'Au moins 6h de travail consécutif avec une pause inférieure à 20 minutes'))
+    if any(day_metrics.get(day, {}).get('longest_consecutive_hours', 0) > MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK for day in recent_20_days):
+        rest_options.append(_format_points('Repos', 20, 'Plus de 6h de travail consécutif avec une pause inférieure à 20 minutes'))
 
     pause_reduced_5 = sum(1 for day in recent_5_days if day_metrics.get(day, {}).get('pause_reduced'))
     pause_reduced_20 = sum(1 for day in recent_20_days if day_metrics.get(day, {}).get('pause_reduced'))

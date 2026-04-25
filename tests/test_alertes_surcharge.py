@@ -166,3 +166,30 @@ class TestAlertesSurchargeCalcul:
         assert response.status_code == 200
         assert 'Jean Martin' not in html
         assert 'Aucune alerte de surcharge détectée' in html
+
+    def test_ne_signale_pas_une_journee_continue_de_exactement_6h(self, admin_client, app, db, sample_users, sample_planning):
+        target_date = _recent_business_days(1)[0]
+
+        with app.app_context():
+            db.execute(
+                'UPDATE users SET solde_initial = ? WHERE id = ?',
+                (25, sample_users['salarie_id'])
+            )
+            _insert_hours(
+                db,
+                sample_users['salarie_id'],
+                target_date,
+                '08:00',
+                '14:00',
+                None,
+                None,
+            )
+            db.commit()
+
+        response = admin_client.get('/alertes_surcharge')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Jean Martin' in html
+        assert 'Solde actuel : +24.0h' in html
+        assert 'Plus de 6h de travail consécutif avec une pause inférieure à 20 minutes' not in html
