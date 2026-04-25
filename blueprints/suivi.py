@@ -17,6 +17,30 @@ SURCHARGE_CATEGORIES = [
     {'label': 'Rouge', 'min': 76, 'max': 99, 'color': '#dc2626', 'text_color': '#7f1d1d'},
     {'label': 'Noir', 'min': 100, 'max': 100, 'color': '#111827', 'text_color': '#111827'},
 ]
+MIN_BREAK_MINUTES = 20
+MIN_DAILY_REST_HOURS = 11
+MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK = 6
+BUSINESS_DAYS_PER_WEEK = 5
+SATURDAY_WEEKDAY_INDEX = 5
+MAX_DAILY_HOURS_THRESHOLD = 10
+MAX_WEEKLY_AVERAGE_HOURS = 44
+MAX_WEEKLY_HOURS_THRESHOLD = 48
+SPARKLINE_DAYS_LOOKBACK = 60
+WEEKLY_OVERTIME_RULES = [
+    {'threshold': 12, 'points': 14},
+    {'threshold': 7, 'points': 8},
+    {'threshold': 3.5, 'points': 4},
+]
+MONTHLY_BALANCE_RULES = [
+    {'threshold': 20, 'points': 18},
+    {'threshold': 10, 'points': 12},
+    {'threshold': 5, 'points': 6},
+]
+CURRENT_BALANCE_RULES = [
+    {'threshold': 50, 'points': 20},
+    {'threshold': 35, 'points': 16},
+    {'threshold': 20, 'points': 12},
+]
 
 
 def _profil_direction_compta():
@@ -82,7 +106,7 @@ def _day_segments_from_row(row):
 
 
 def _day_segments_from_planning(planning, date_obj):
-    if not planning or date_obj.weekday() > 4:
+    if not planning or date_obj.weekday() >= BUSINESS_DAYS_PER_WEEK:
         return []
 
     jour_nom = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'][date_obj.weekday()]
@@ -131,7 +155,7 @@ def _compute_segments_metrics(date_obj, segments):
     for index in range(1, len(dt_segments)):
         gap_seconds = (dt_segments[index][0] - dt_segments[index - 1][1]).total_seconds()
         segment_seconds = (dt_segments[index][1] - dt_segments[index][0]).total_seconds()
-        if gap_seconds < 20 * 60:
+        if gap_seconds < MIN_BREAK_MINUTES * 60:
             current_seconds += max(gap_seconds, 0) + segment_seconds
         else:
             longest_seconds = max(longest_seconds, current_seconds)
@@ -152,9 +176,9 @@ def _compute_day_metrics(conn, user_id, row, planning_cache, type_periode_cache)
     actual_metrics = _compute_segments_metrics(date_obj, actual_segments)
 
     theoretical_hours = 0.0
-    if date_obj.weekday() == 5:
+    if date_obj.weekday() == SATURDAY_WEEKDAY_INDEX:
         theoretical_hours = 0.0
-    elif date_obj.weekday() < 5:
+    elif date_obj.weekday() < BUSINESS_DAYS_PER_WEEK:
         theoretical_hours = planned_metrics['worked_hours']
 
     actual_hours = theoretical_hours if row['declaration_conforme'] else actual_metrics['worked_hours']
@@ -184,8 +208,9 @@ def _recent_business_days(end_date, limit, feries_set):
     days = []
     current = end_date
     while len(days) < limit:
-        if current.weekday() < 5 and current.strftime('%Y-%m-%d') not in feries_set:
-            days.append(current.strftime('%Y-%m-%d'))
+        current_str = current.strftime('%Y-%m-%d')
+        if current.weekday() < BUSINESS_DAYS_PER_WEEK and current_str not in feries_set:
+            days.append(current_str)
         current -= timedelta(days=1)
     days.reverse()
     return days
@@ -216,7 +241,7 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
     previous_month_start, previous_month_end = _get_previous_month_range(today)
     solde_dernier_mois = 0
 
-    sparkline_start = today - timedelta(days=59)
+    sparkline_start = today - timedelta(days=SPARKLINE_DAYS_LOOKBACK - 1)
     sparkline_labels = []
     sparkline_points = []
     solde_avant_fenetre = solde_courant
@@ -247,15 +272,11 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
     overtime_last_5 = round(sum(max(day_metrics.get(day, {}).get('delta', 0), 0) for day in recent_5_days), 2)
     overtime_points = 0
     overtime_detail = 'Aucun dépassement sur les 5 derniers jours ouvrés'
-    if overtime_last_5 > 12:
-        overtime_points = 14
-        overtime_detail = f'{overtime_last_5:.1f}h sur les 5 derniers jours ouvrés'
-    elif overtime_last_5 > 7:
-        overtime_points = 8
-        overtime_detail = f'{overtime_last_5:.1f}h sur les 5 derniers jours ouvrés'
-    elif overtime_last_5 > 3.5:
-        overtime_points = 4
-        overtime_detail = f'{overtime_last_5:.1f}h sur les 5 derniers jours ouvrés'
+    for rule in WEEKLY_OVERTIME_RULES:
+        if overtime_last_5 > rule['threshold']:
+            overtime_points = rule['points']
+            overtime_detail = f'{overtime_last_5:.1f}h sur les 5 derniers jours ouvrés'
+            break
 
     last_completed_week_monday = _get_last_completed_week_monday(today)
     weekly_totals = []
@@ -263,7 +284,7 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
         week_start = last_completed_week_monday - timedelta(days=offset * 7)
         week_dates = [
             (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d')
-            for day_offset in range(5)
+            for day_offset in range(BUSINESS_DAYS_PER_WEEK)
             if (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d') not in feries_set
         ]
         weekly_totals.append(round(sum(day_metrics.get(day, {}).get('actual_hours', 0) for day in week_dates), 2))
@@ -273,19 +294,19 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
         week_start = last_completed_week_monday - timedelta(days=offset * 7)
         week_dates = [
             (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d')
-            for day_offset in range(5)
+            for day_offset in range(BUSINESS_DAYS_PER_WEEK)
             if (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d') not in feries_set
         ]
         weekly_average_12.append(round(sum(day_metrics.get(day, {}).get('actual_hours', 0) for day in week_dates), 2))
-    moyenne_12_semaines = round(sum(weekly_average_12) / len(weekly_average_12), 2) if weekly_average_12 else 0
+    average_12_weeks = round(sum(weekly_average_12) / len(weekly_average_12), 2) if weekly_average_12 else 0
 
     threshold_options = []
-    if any(day_metrics.get(day, {}).get('actual_hours', 0) > 10 for day in recent_5_days):
-        threshold_options.append(_format_points('Seuil', 18, 'Au moins une journée au-delà de 10h sur les 5 derniers jours ouvrés'))
-    if moyenne_12_semaines > 44:
-        threshold_options.append(_format_points('Seuil', 18, f'Moyenne hebdomadaire de {moyenne_12_semaines:.1f}h sur les 12 dernières semaines complètes'))
+    if any(day_metrics.get(day, {}).get('actual_hours', 0) > MAX_DAILY_HOURS_THRESHOLD for day in recent_5_days):
+        threshold_options.append(_format_points('Seuil', 18, f'Au moins une journée au-delà de {MAX_DAILY_HOURS_THRESHOLD}h sur les 5 derniers jours ouvrés'))
+    if average_12_weeks > MAX_WEEKLY_AVERAGE_HOURS:
+        threshold_options.append(_format_points('Seuil', 18, f'Moyenne hebdomadaire de {average_12_weeks:.1f}h sur les 12 dernières semaines complètes'))
     max_three_weeks = max(weekly_totals) if weekly_totals else 0
-    if max_three_weeks >= 48:
+    if max_three_weeks >= MAX_WEEKLY_HOURS_THRESHOLD:
         threshold_options.append(_format_points('Seuil', 20, f'Une semaine à {max_three_weeks:.1f}h sur les 3 dernières semaines complètes'))
 
     threshold_points = max((item['points'] for item in threshold_options), default=0)
@@ -299,12 +320,12 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
             continue
         if previous_worked_day:
             rest_hours = (metrics['start_at'] - previous_worked_day['end_at']).total_seconds() / 3600
-            if rest_hours < 11:
+            if rest_hours < MIN_DAILY_REST_HOURS:
                 rest_options.append(_format_points('Repos', 20, f'Repos quotidien réduit à {rest_hours:.1f}h entre deux journées travaillées'))
                 break
         previous_worked_day = metrics
 
-    if any(day_metrics.get(day, {}).get('longest_consecutive_hours', 0) >= 6 for day in recent_20_days):
+    if any(day_metrics.get(day, {}).get('longest_consecutive_hours', 0) >= MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK for day in recent_20_days):
         rest_options.append(_format_points('Repos', 20, 'Au moins 6h de travail consécutif avec une pause inférieure à 20 minutes'))
 
     pause_reduced_5 = sum(1 for day in recent_5_days if day_metrics.get(day, {}).get('pause_reduced'))
@@ -320,28 +341,20 @@ def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, ty
     rest_detail = next((item['detail'] for item in rest_options if item['points'] == rest_points), 'Aucun signal repos détecté')
 
     monthly_points = 0
-    monthly_detail = 'Solde du dernier mois écoulé inférieur à 5h'
-    if solde_dernier_mois > 20:
-        monthly_points = 18
-        monthly_detail = f'Solde du dernier mois écoulé : +{solde_dernier_mois:.1f}h'
-    elif solde_dernier_mois > 10:
-        monthly_points = 12
-        monthly_detail = f'Solde du dernier mois écoulé : +{solde_dernier_mois:.1f}h'
-    elif solde_dernier_mois >= 5:
-        monthly_points = 6
-        monthly_detail = f'Solde du dernier mois écoulé : +{solde_dernier_mois:.1f}h'
+    monthly_detail = f'Solde du dernier mois écoulé inférieur à {MONTHLY_BALANCE_RULES[-1]["threshold"]}h'
+    for rule in MONTHLY_BALANCE_RULES:
+        if solde_dernier_mois > rule['threshold'] or (rule['threshold'] == MONTHLY_BALANCE_RULES[-1]['threshold'] and solde_dernier_mois >= rule['threshold']):
+            monthly_points = rule['points']
+            monthly_detail = f'Solde du dernier mois écoulé : +{solde_dernier_mois:.1f}h'
+            break
 
     current_balance_points = 0
-    current_balance_detail = 'Solde actuel inférieur à 20h'
-    if solde_courant > 50:
-        current_balance_points = 20
-        current_balance_detail = f'Solde actuel : +{solde_courant:.1f}h'
-    elif solde_courant > 35:
-        current_balance_points = 16
-        current_balance_detail = f'Solde actuel : +{solde_courant:.1f}h'
-    elif solde_courant >= 20:
-        current_balance_points = 12
-        current_balance_detail = f'Solde actuel : +{solde_courant:.1f}h'
+    current_balance_detail = f'Solde actuel inférieur à {CURRENT_BALANCE_RULES[-1]["threshold"]}h'
+    for rule in CURRENT_BALANCE_RULES:
+        if solde_courant > rule['threshold'] or (rule['threshold'] == CURRENT_BALANCE_RULES[-1]['threshold'] and solde_courant >= rule['threshold']):
+            current_balance_points = rule['points']
+            current_balance_detail = f'Solde actuel : +{solde_courant:.1f}h'
+            break
 
     breakdown = [
         _format_points('Heures supplémentaires hebdomadaires', overtime_points, overtime_detail),
@@ -545,6 +558,8 @@ def alertes_surcharge():
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
+    critical_count = 0
+    vigilance_count = 0
     conn = get_db()
     try:
         users = conn.execute('''
@@ -567,12 +582,16 @@ def alertes_surcharge():
                 alertes.append(alerte)
 
         alertes.sort(key=lambda item: (-item['score'], -item['solde_actuel'], item['nom_complet']))
+        critical_count = sum(1 for item in alertes if item['category']['label'] in ['Rouge', 'Noir'])
+        vigilance_count = sum(1 for item in alertes if item['category']['label'] in ['Orange', 'Jaune'])
     finally:
         conn.close()
 
     return render_template(
         'alertes_surcharge.html',
         alertes=alertes,
+        critical_count=critical_count,
+        vigilance_count=vigilance_count,
         today=today,
         mois=today.month,
         annee=today.year,

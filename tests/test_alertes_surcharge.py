@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 
-def _recent_weekdays(limit):
+def _recent_business_days(limit):
     days = []
     current = datetime.now().date() - timedelta(days=1)
     while len(days) < limit:
@@ -64,7 +64,7 @@ class TestAlertesSurchargeCalcul:
                 (9, sample_users['salarie_id'])
             )
 
-            for date_str in _recent_weekdays(5):
+            for date_str in _recent_business_days(5):
                 _insert_hours(
                     db,
                     sample_users['salarie_id'],

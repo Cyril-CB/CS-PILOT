@@ -24,7 +24,7 @@
             <div class="stat-icon">⚫</div>
             <div class="stat-content">
                 <h3>Critiques</h3>
-                <p class="stat-value">{{ alertes|selectattr('category.label', 'equalto', 'Noir')|list|length + alertes|selectattr('category.label', 'equalto', 'Rouge')|list|length }}</p>
+                <p class="stat-value">{{ critical_count }}</p>
                 <p class="stat-detail">Rouge + Noir</p>
             </div>
         </div>
@@ -32,7 +32,7 @@
             <div class="stat-icon">🟠</div>
             <div class="stat-content">
                 <h3>Vigilance</h3>
-                <p class="stat-value">{{ alertes|selectattr('category.label', 'equalto', 'Orange')|list|length + alertes|selectattr('category.label', 'equalto', 'Jaune')|list|length }}</p>
+                <p class="stat-value">{{ vigilance_count }}</p>
                 <p class="stat-detail">Orange + Jaune</p>
             </div>
         </div>
