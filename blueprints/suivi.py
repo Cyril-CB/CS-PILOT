@@ -2,12 +2,399 @@
 Blueprint suivi_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 from database import get_db
-from utils import login_required
+from utils import login_required, get_semaine_alternance
 
 suivi_bp = Blueprint('suivi_bp', __name__)
+
+
+SURCHARGE_CATEGORIES = [
+    {'label': 'Vert', 'min': 0, 'max': 25, 'color': '#16a34a', 'text_color': '#14532d'},
+    {'label': 'Jaune', 'min': 26, 'max': 50, 'color': '#eab308', 'text_color': '#713f12'},
+    {'label': 'Orange', 'min': 51, 'max': 75, 'color': '#f97316', 'text_color': '#7c2d12'},
+    {'label': 'Rouge', 'min': 76, 'max': 99, 'color': '#dc2626', 'text_color': '#7f1d1d'},
+    {'label': 'Noir', 'min': 100, 'max': 100, 'color': '#111827', 'text_color': '#111827'},
+]
+MIN_BREAK_MINUTES = 20
+MIN_DAILY_REST_HOURS = 11
+MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK = 6
+BUSINESS_DAYS_PER_WEEK = 5
+SATURDAY_WEEKDAY_INDEX = 5
+MAX_DAILY_HOURS_THRESHOLD = 10
+MAX_WEEKLY_AVERAGE_HOURS = 44
+MAX_WEEKLY_HOURS_THRESHOLD = 48
+SPARKLINE_DAYS_LOOKBACK = 60
+WEEKLY_OVERTIME_RULES = [
+    {'threshold': 12, 'points': 14},
+    {'threshold': 7, 'points': 8},
+    {'threshold': 3.5, 'points': 4},
+]
+MONTHLY_BALANCE_RULES = [
+    {'threshold': 20, 'points': 18},
+    {'threshold': 10, 'points': 12},
+    {'threshold': 5, 'points': 6},
+]
+CURRENT_BALANCE_RULES = [
+    {'threshold': 50, 'points': 20},
+    {'threshold': 35, 'points': 16},
+    {'threshold': 20, 'points': 12},
+]
+
+
+def _profil_direction_compta():
+    return session.get('profil') in ['directeur', 'comptable']
+
+
+def _get_previous_month_range(reference_date):
+    first_day_current_month = reference_date.replace(day=1)
+    last_day_previous_month = first_day_current_month - timedelta(days=1)
+    first_day_previous_month = last_day_previous_month.replace(day=1)
+    return first_day_previous_month, last_day_previous_month
+
+
+def _get_last_completed_week_monday(reference_date):
+    current_week_monday = reference_date - timedelta(days=reference_date.weekday())
+    return current_week_monday - timedelta(days=7)
+
+
+def _get_feries_set(conn):
+    return {
+        row['date']
+        for row in conn.execute('SELECT date FROM jours_feries').fetchall()
+    }
+
+
+def _get_type_periode_cached(conn, date_str, type_periode_cache):
+    if date_str not in type_periode_cache:
+        periode = conn.execute('''
+            SELECT 1
+            FROM periodes_vacances
+            WHERE ? >= date_debut AND ? <= date_fin
+            LIMIT 1
+        ''', (date_str, date_str)).fetchone()
+        type_periode_cache[date_str] = 'vacances' if periode else 'periode_scolaire'
+    return type_periode_cache[date_str]
+
+
+def _get_planning_cached(conn, user_id, date_str, planning_cache, type_periode_cache):
+    cache_key = (user_id, date_str)
+    if cache_key not in planning_cache:
+        type_periode = _get_type_periode_cached(conn, date_str, type_periode_cache)
+        semaine_type = get_semaine_alternance(user_id, date_str)
+        if semaine_type == 'fixe':
+            planning = conn.execute('''
+                SELECT *
+                FROM planning_theorique
+                WHERE user_id = ?
+                  AND type_periode = ?
+                  AND (type_alternance IS NULL OR type_alternance = 'fixe')
+                  AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode, date_str)).fetchone()
+        else:
+            planning = conn.execute('''
+                SELECT *
+                FROM planning_theorique
+                WHERE user_id = ?
+                  AND type_periode = ?
+                  AND type_alternance = ?
+                  AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode, semaine_type, date_str)).fetchone()
+        planning_cache[cache_key] = planning
+    return planning_cache[cache_key]
+
+
+def _day_segments_from_row(row):
+    segments = []
+    if row['heure_debut_matin'] and row['heure_fin_matin']:
+        segments.append((row['heure_debut_matin'], row['heure_fin_matin']))
+    if row['heure_debut_aprem'] and row['heure_fin_aprem']:
+        segments.append((row['heure_debut_aprem'], row['heure_fin_aprem']))
+    return segments
+
+
+def _day_segments_from_planning(planning, date_obj):
+    if not planning or date_obj.weekday() >= BUSINESS_DAYS_PER_WEEK:
+        return []
+
+    jour_nom = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'][date_obj.weekday()]
+    segments = []
+    matin_debut = planning[f'{jour_nom}_matin_debut']
+    matin_fin = planning[f'{jour_nom}_matin_fin']
+    aprem_debut = planning[f'{jour_nom}_aprem_debut']
+    aprem_fin = planning[f'{jour_nom}_aprem_fin']
+
+    if matin_debut and matin_fin:
+        segments.append((matin_debut, matin_fin))
+    if aprem_debut and aprem_fin:
+        segments.append((aprem_debut, aprem_fin))
+    return segments
+
+
+def _compute_segments_metrics(date_obj, segments):
+    metrics = {
+        'worked_hours': 0.0,
+        'start_at': None,
+        'end_at': None,
+        'break_minutes': None,
+        'longest_consecutive_hours': 0.0,
+    }
+    if not segments:
+        return metrics
+
+    dt_segments = []
+    for start_str, end_str in segments:
+        start_dt = datetime.combine(date_obj, datetime.strptime(start_str, '%H:%M').time())
+        end_dt = datetime.combine(date_obj, datetime.strptime(end_str, '%H:%M').time())
+        if end_dt < start_dt:
+            end_dt += timedelta(days=1)
+        dt_segments.append((start_dt, end_dt))
+
+    metrics['worked_hours'] = round(sum((end - start).total_seconds() for start, end in dt_segments) / 3600, 2)
+    metrics['start_at'] = dt_segments[0][0]
+    metrics['end_at'] = dt_segments[-1][1]
+
+    if len(dt_segments) >= 2:
+        break_seconds = (dt_segments[1][0] - dt_segments[0][1]).total_seconds()
+        metrics['break_minutes'] = round(max(0, break_seconds) / 60, 2)
+
+    longest_seconds = (dt_segments[0][1] - dt_segments[0][0]).total_seconds()
+    current_seconds = longest_seconds
+    for index in range(1, len(dt_segments)):
+        gap_seconds = (dt_segments[index][0] - dt_segments[index - 1][1]).total_seconds()
+        segment_seconds = (dt_segments[index][1] - dt_segments[index][0]).total_seconds()
+        if gap_seconds < MIN_BREAK_MINUTES * 60:
+            current_seconds += max(gap_seconds, 0) + segment_seconds
+        else:
+            longest_seconds = max(longest_seconds, current_seconds)
+            current_seconds = segment_seconds
+    longest_seconds = max(longest_seconds, current_seconds)
+    metrics['longest_consecutive_hours'] = round(longest_seconds / 3600, 2)
+
+    return metrics
+
+
+def _compute_day_metrics(conn, user_id, row, planning_cache, type_periode_cache):
+    date_obj = datetime.strptime(row['date'], '%Y-%m-%d').date()
+    planning = _get_planning_cached(conn, user_id, row['date'], planning_cache, type_periode_cache)
+    planned_segments = _day_segments_from_planning(planning, date_obj)
+    actual_segments = planned_segments if row['declaration_conforme'] else _day_segments_from_row(row)
+
+    planned_metrics = _compute_segments_metrics(date_obj, planned_segments)
+    actual_metrics = _compute_segments_metrics(date_obj, actual_segments)
+
+    theoretical_hours = 0.0
+    if date_obj.weekday() == SATURDAY_WEEKDAY_INDEX:
+        theoretical_hours = 0.0
+    elif date_obj.weekday() < BUSINESS_DAYS_PER_WEEK:
+        theoretical_hours = planned_metrics['worked_hours']
+
+    actual_hours = theoretical_hours if row['declaration_conforme'] else actual_metrics['worked_hours']
+
+    pause_reduced = (
+        planned_metrics['break_minutes'] is not None
+        and actual_metrics['break_minutes'] is not None
+        and actual_metrics['break_minutes'] < planned_metrics['break_minutes']
+    )
+
+    return {
+        'date': row['date'],
+        'date_obj': date_obj,
+        'theoretical_hours': theoretical_hours,
+        'actual_hours': actual_hours,
+        'delta': round(actual_hours - theoretical_hours, 2),
+        'start_at': actual_metrics['start_at'],
+        'end_at': actual_metrics['end_at'],
+        'break_minutes': actual_metrics['break_minutes'],
+        'planned_break_minutes': planned_metrics['break_minutes'],
+        'pause_reduced': pause_reduced,
+        'longest_consecutive_hours': actual_metrics['longest_consecutive_hours'],
+    }
+
+
+def _recent_business_days(end_date, limit, feries_set):
+    days = []
+    current = end_date
+    while len(days) < limit:
+        current_str = current.strftime('%Y-%m-%d')
+        if current.weekday() < BUSINESS_DAYS_PER_WEEK and current_str not in feries_set:
+            days.append(current_str)
+        current -= timedelta(days=1)
+    days.reverse()
+    return days
+
+
+def _format_points(label, points, detail):
+    return {'label': label, 'points': points, 'detail': detail}
+
+
+def _get_score_category(score):
+    score = min(100, max(0, int(round(score))))
+    for category in SURCHARGE_CATEGORIES:
+        if category['min'] <= score <= category['max']:
+            return category
+    return SURCHARGE_CATEGORIES[0]
+
+
+def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, type_periode_cache):
+    rows = conn.execute('''
+        SELECT date, heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem, declaration_conforme
+        FROM heures_reelles
+        WHERE user_id = ? AND date <= ?
+        ORDER BY date
+    ''', (user['id'], today.strftime('%Y-%m-%d'))).fetchall()
+
+    day_metrics = {}
+    solde_courant = user['solde_initial'] or 0
+    previous_month_start, previous_month_end = _get_previous_month_range(today)
+    solde_dernier_mois = 0
+
+    sparkline_start = today - timedelta(days=SPARKLINE_DAYS_LOOKBACK - 1)
+    sparkline_labels = []
+    sparkline_points = []
+    solde_avant_fenetre = solde_courant
+
+    for row in rows:
+        metrics = _compute_day_metrics(conn, user['id'], row, planning_cache, type_periode_cache)
+        day_metrics[metrics['date']] = metrics
+        if metrics['date_obj'] < sparkline_start:
+            solde_avant_fenetre += metrics['delta']
+        solde_courant += metrics['delta']
+        if previous_month_start <= metrics['date_obj'] <= previous_month_end:
+            solde_dernier_mois += metrics['delta']
+
+    running_balance = solde_avant_fenetre
+    current_day = sparkline_start
+    while current_day <= today:
+        date_str = current_day.strftime('%Y-%m-%d')
+        if date_str in day_metrics:
+            running_balance += day_metrics[date_str]['delta']
+        sparkline_labels.append(current_day.strftime('%d/%m'))
+        sparkline_points.append(round(running_balance, 2))
+        current_day += timedelta(days=1)
+
+    reference_workday = today - timedelta(days=1)
+    recent_5_days = _recent_business_days(reference_workday, 5, feries_set)
+    recent_20_days = _recent_business_days(reference_workday, 20, feries_set)
+
+    overtime_last_5 = round(sum(max(day_metrics.get(day, {}).get('delta', 0), 0) for day in recent_5_days), 2)
+    overtime_points = 0
+    overtime_detail = 'Aucun dépassement sur les 5 derniers jours ouvrés'
+    for rule in WEEKLY_OVERTIME_RULES:
+        if overtime_last_5 > rule['threshold']:
+            overtime_points = rule['points']
+            overtime_detail = f'{overtime_last_5:.1f}h sur les 5 derniers jours ouvrés'
+            break
+
+    last_completed_week_monday = _get_last_completed_week_monday(today)
+    weekly_totals = []
+    for offset in range(3):
+        week_start = last_completed_week_monday - timedelta(days=offset * 7)
+        week_dates = [
+            (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d')
+            for day_offset in range(BUSINESS_DAYS_PER_WEEK)
+            if (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d') not in feries_set
+        ]
+        weekly_totals.append(round(sum(day_metrics.get(day, {}).get('actual_hours', 0) for day in week_dates), 2))
+
+    weekly_average_12 = []
+    for offset in range(12):
+        week_start = last_completed_week_monday - timedelta(days=offset * 7)
+        week_dates = [
+            (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d')
+            for day_offset in range(BUSINESS_DAYS_PER_WEEK)
+            if (week_start + timedelta(days=day_offset)).strftime('%Y-%m-%d') not in feries_set
+        ]
+        weekly_average_12.append(round(sum(day_metrics.get(day, {}).get('actual_hours', 0) for day in week_dates), 2))
+    average_12_weeks = round(sum(weekly_average_12) / len(weekly_average_12), 2) if weekly_average_12 else 0
+
+    threshold_options = []
+    if any(day_metrics.get(day, {}).get('actual_hours', 0) > MAX_DAILY_HOURS_THRESHOLD for day in recent_5_days):
+        threshold_options.append(_format_points('Seuil', 18, f'Au moins une journée au-delà de {MAX_DAILY_HOURS_THRESHOLD}h sur les 5 derniers jours ouvrés'))
+    if average_12_weeks > MAX_WEEKLY_AVERAGE_HOURS:
+        threshold_options.append(_format_points('Seuil', 18, f'Moyenne hebdomadaire de {average_12_weeks:.1f}h sur les 12 dernières semaines complètes'))
+    max_three_weeks = max(weekly_totals) if weekly_totals else 0
+    if max_three_weeks >= MAX_WEEKLY_HOURS_THRESHOLD:
+        threshold_options.append(_format_points('Seuil', 20, f'Une semaine à {max_three_weeks:.1f}h sur les 3 dernières semaines complètes'))
+
+    threshold_points = max((item['points'] for item in threshold_options), default=0)
+    threshold_detail = next((item['detail'] for item in threshold_options if item['points'] == threshold_points), 'Aucun seuil dépassé')
+
+    rest_options = []
+    previous_worked_day = None
+    for date_str in recent_20_days:
+        metrics = day_metrics.get(date_str)
+        if not metrics or not metrics['start_at'] or not metrics['end_at']:
+            continue
+        if previous_worked_day:
+            rest_hours = (metrics['start_at'] - previous_worked_day['end_at']).total_seconds() / 3600
+            if rest_hours < MIN_DAILY_REST_HOURS:
+                rest_options.append(_format_points('Repos', 20, f'Repos quotidien réduit à {rest_hours:.1f}h entre deux journées travaillées'))
+                break
+        previous_worked_day = metrics
+
+    if any(day_metrics.get(day, {}).get('longest_consecutive_hours', 0) >= MAX_CONSECUTIVE_HOURS_WITH_SHORT_BREAK for day in recent_20_days):
+        rest_options.append(_format_points('Repos', 20, 'Au moins 6h de travail consécutif avec une pause inférieure à 20 minutes'))
+
+    pause_reduced_5 = sum(1 for day in recent_5_days if day_metrics.get(day, {}).get('pause_reduced'))
+    pause_reduced_20 = sum(1 for day in recent_20_days if day_metrics.get(day, {}).get('pause_reduced'))
+    if pause_reduced_20 >= 8:
+        rest_options.append(_format_points('Repos', 16, f'Pause prévue réduite {pause_reduced_20} fois sur les 20 derniers jours ouvrés'))
+    elif pause_reduced_5 >= 3:
+        rest_options.append(_format_points('Repos', 12, f'Pause prévue réduite {pause_reduced_5} fois sur les 5 derniers jours ouvrés'))
+    elif pause_reduced_5 >= 1:
+        rest_options.append(_format_points('Repos', 5, 'Pause prévue réduite au moins une fois sur les 5 derniers jours ouvrés'))
+
+    rest_points = max((item['points'] for item in rest_options), default=0)
+    rest_detail = next((item['detail'] for item in rest_options if item['points'] == rest_points), 'Aucun signal repos détecté')
+
+    monthly_points = 0
+    monthly_detail = f'Solde du dernier mois écoulé inférieur à {MONTHLY_BALANCE_RULES[-1]["threshold"]}h'
+    for rule in MONTHLY_BALANCE_RULES:
+        if solde_dernier_mois > rule['threshold'] or (rule['threshold'] == MONTHLY_BALANCE_RULES[-1]['threshold'] and solde_dernier_mois >= rule['threshold']):
+            monthly_points = rule['points']
+            monthly_detail = f'Solde du dernier mois écoulé : +{solde_dernier_mois:.1f}h'
+            break
+
+    current_balance_points = 0
+    current_balance_detail = f'Solde actuel inférieur à {CURRENT_BALANCE_RULES[-1]["threshold"]}h'
+    for rule in CURRENT_BALANCE_RULES:
+        if solde_courant > rule['threshold'] or (rule['threshold'] == CURRENT_BALANCE_RULES[-1]['threshold'] and solde_courant >= rule['threshold']):
+            current_balance_points = rule['points']
+            current_balance_detail = f'Solde actuel : +{solde_courant:.1f}h'
+            break
+
+    breakdown = [
+        _format_points('Heures supplémentaires hebdomadaires', overtime_points, overtime_detail),
+        _format_points('Seuil', threshold_points, threshold_detail),
+        _format_points('Repos', rest_points, rest_detail),
+        _format_points('Solde du dernier mois', monthly_points, monthly_detail),
+        _format_points('Solde non récupéré', current_balance_points, current_balance_detail),
+    ]
+
+    score = min(100, sum(item['points'] for item in breakdown))
+    if score <= 0 or solde_courant <= 0:
+        return None
+
+    category = _get_score_category(score)
+    return {
+        'user_id': user['id'],
+        'nom_complet': f"{user['prenom']} {user['nom']}",
+        'secteur_nom': user['secteur_nom'] or 'Sans secteur',
+        'profil': user['profil'],
+        'score': score,
+        'category': category,
+        'solde_actuel': round(solde_courant, 2),
+        'solde_dernier_mois': round(solde_dernier_mois, 2),
+        'sparkline_labels': sparkline_labels,
+        'sparkline_points': sparkline_points,
+        'breakdown': breakdown,
+    }
 
 
 @suivi_bp.route('/historique_modifications')
@@ -170,7 +557,55 @@ def suivi_anomalies():
         anomalies_list.append(anom_dict)
     
     return render_template('suivi_anomalies.html',
-                         anomalies=anomalies_list,
-                         stats=dict(stats) if stats else {},
-                         gravite_filtre=gravite_filtre,
-                         afficher_traitees=afficher_traitees)
+                          anomalies=anomalies_list,
+                          stats=dict(stats) if stats else {},
+                          gravite_filtre=gravite_filtre,
+                          afficher_traitees=afficher_traitees)
+
+
+@suivi_bp.route('/alertes_surcharge')
+@login_required
+def alertes_surcharge():
+    """Alertes de surcharge de travail pour la direction et la comptabilité."""
+    if not _profil_direction_compta():
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    critical_count = 0
+    vigilance_count = 0
+    conn = get_db()
+    try:
+        users = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, u.profil, u.solde_initial, s.nom AS secteur_nom
+            FROM users u
+            LEFT JOIN secteurs s ON s.id = u.secteur_id
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+            ORDER BY s.nom, u.nom, u.prenom
+        ''').fetchall()
+
+        today = datetime.now().date()
+        feries_set = _get_feries_set(conn)
+        planning_cache = {}
+        type_periode_cache = {}
+
+        alertes = []
+        for user in users:
+            alerte = _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, type_periode_cache)
+            if alerte:
+                alertes.append(alerte)
+
+        alertes.sort(key=lambda item: (-item['score'], -item['solde_actuel'], item['nom_complet']))
+        critical_count = sum(1 for item in alertes if item['category']['label'] in ['Rouge', 'Noir'])
+        vigilance_count = sum(1 for item in alertes if item['category']['label'] in ['Orange', 'Jaune'])
+    finally:
+        conn.close()
+
+    return render_template(
+        'alertes_surcharge.html',
+        alertes=alertes,
+        critical_count=critical_count,
+        vigilance_count=vigilance_count,
+        today=today,
+        mois=today.month,
+        annee=today.year,
+    )

@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Alertes surcharge{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="direction-header">
+        <div>
+            <h1>🚨 Alertes surcharge</h1>
+            <p class="subtitle">Salariés avec heures supplémentaires à récupérer et score de surcharge au {{ today.strftime('%d/%m/%Y') }}</p>
+        </div>
+    </div>
+
+    <div class="stats-grid stats-grid-4" style="margin-bottom: 1.5rem;">
+        <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-content">
+                <h3>Salariés suivis</h3>
+                <p class="stat-value">{{ alertes|length }}</p>
+                <p class="stat-detail">Score &gt; 0 et solde positif</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⚫</div>
+            <div class="stat-content">
+                <h3>Critiques</h3>
+                <p class="stat-value">{{ critical_count }}</p>
+                <p class="stat-detail">Rouge + Noir</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🟠</div>
+            <div class="stat-content">
+                <h3>Vigilance</h3>
+                <p class="stat-value">{{ vigilance_count }}</p>
+                <p class="stat-detail">Orange + Jaune</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-content">
+                <h3>Solde cumulé</h3>
+                <p class="stat-value">{{ "%.1f"|format(alertes|sum(attribute='solde_actuel')) }}h</p>
+                <p class="stat-detail">Heures à récupérer</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Liste des alertes</h2>
+        {% if alertes %}
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Salarié</th>
+                        <th>Catégorie</th>
+                        <th>Score</th>
+                        <th>Solde actuel</th>
+                        <th>Solde dernier mois</th>
+                        <th>Détail du score</th>
+                        <th>Évolution 60 jours</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for alerte in alertes %}
+                    <tr>
+                        <td>
+                            <strong>{{ alerte.nom_complet }}</strong><br>
+                            <span style="color: var(--gray-500); font-size: 0.9rem;">{{ alerte.secteur_nom }}</span>
+                        </td>
+                        <td>
+                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:0.35rem 0.75rem;border-radius:999px;font-weight:700;background:{{ alerte.category.color }}22;color:{{ alerte.category.text_color }};border:1px solid {{ alerte.category.color }}55;">
+                                {{ alerte.category.label }}
+                            </span>
+                        </td>
+                        <td style="font-weight: 700; font-size: 1.05rem;">{{ alerte.score }}/100</td>
+                        <td>
+                            <strong>{{ "%.1f"|format(alerte.solde_actuel) }}h</strong>
+                        </td>
+                        <td>
+                            {% if alerte.solde_dernier_mois >= 0 %}
+                            +{{ "%.1f"|format(alerte.solde_dernier_mois) }}h
+                            {% else %}
+                            {{ "%.1f"|format(alerte.solde_dernier_mois) }}h
+                            {% endif %}
+                        </td>
+                        <td>
+                            <ul style="margin: 0; padding-left: 1rem;">
+                                {% for ligne in alerte.breakdown if ligne.points > 0 %}
+                                <li><strong>{{ ligne.points }} pts</strong> — {{ ligne.label }}<br><span style="color: var(--gray-500); font-size: 0.85rem;">{{ ligne.detail }}</span></li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                        <td style="min-width: 150px;">
+                            <canvas
+                                class="surcharge-sparkline"
+                                width="140"
+                                height="42"
+                                data-labels="{{ alerte.sparkline_labels|tojson|forceescape }}"
+                                data-points="{{ alerte.sparkline_points|tojson|forceescape }}"
+                                data-color="{{ alerte.category.color }}"
+                                aria-label="Évolution du solde d'heures supplémentaires sur 60 jours pour {{ alerte.nom_complet }}">
+                            </canvas>
+                        </td>
+                        <td>
+                            <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=alerte.user_id, mois=mois, annee=annee) }}" class="btn btn-primary">
+                                📅 Vue mensuelle
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="direction-empty">
+            <p>✅ Aucune alerte de surcharge détectée pour le moment.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if alertes %}
+<script src="{{ url_for('static', filename='js/vendor/chart-4.4.0.umd.js') }}"></script>
+<script>
+(function() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+    document.querySelectorAll('.surcharge-sparkline').forEach(function(canvas) {
+        const labels = JSON.parse(canvas.dataset.labels || '[]');
+        const points = JSON.parse(canvas.dataset.points || '[]');
+        const color = canvas.dataset.color || '#2563eb';
+
+        if (!points.length) {
+            return;
+        }
+
+        new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: points,
+                    borderColor: color,
+                    backgroundColor: color + '22',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    fill: false,
+                    tension: 0.35,
+                }]
+            },
+            options: {
+                responsive: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                return 'Solde : ' + ctx.parsed.y.toFixed(1) + 'h';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { display: false, grid: { display: false } },
+                    y: {
+                        display: false,
+                        grid: { color: gridColor }
+                    }
+                },
+                elements: {
+                    line: { capBezierPoints: true }
+                }
+            }
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}
