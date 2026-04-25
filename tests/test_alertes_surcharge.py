@@ -144,7 +144,7 @@ class TestAlertesSurchargeCalcul:
         assert 'Jean Martin' not in html
         assert 'Aucune alerte de surcharge détectée' in html
 
-    def test_ne_signale_pas_un_planning_alterne_quand_les_heures_matchent(self, admin_client, app, db, sample_users, sample_planning):
+    def test_ne_signale_pas_un_planning_alterné_quand_les_heures_matchent(self, admin_client, app, db, sample_users, sample_planning):
         target_date = _recent_business_days(1)[0]
 
         with app.app_context():
