@@ -81,3 +81,27 @@ def test_telechargement_archive_documents_zip(app, admin_client, monkeypatch, tm
     assert response.status_code == 200
     assert archive_path.name in response.headers['Content-Disposition']
     assert response.data
+
+
+def test_suppression_archive_documents_affiche_message_specifique(
+    app, admin_client, monkeypatch, tmp_path
+):
+    _configurer_documents_test(tmp_path, monkeypatch)
+
+    documents_dir = tmp_path / 'documents'
+    documents_dir.mkdir(parents=True)
+    (documents_dir / 'a_supprimer.txt').write_text('ok', encoding='utf-8')
+
+    admin_client.post('/sauvegardes/creer', data={'label': 'suppression'})
+    archive_path = next((tmp_path / 'backups').glob('documents_*_suppression.zip'))
+
+    response = admin_client.post(
+        '/sauvegardes/supprimer',
+        data={'filename': archive_path.name},
+        follow_redirects=True,
+    )
+    contenu = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'Archive des documents supprimee' in contenu
+    assert not archive_path.exists()

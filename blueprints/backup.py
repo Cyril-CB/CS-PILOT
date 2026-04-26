@@ -140,7 +140,7 @@ def supprimer():
 
     ok, msg = supprimer_sauvegarde(filename)
     if ok:
-        flash('Sauvegarde supprimee', 'success')
+        flash(msg, 'success')
     else:
         flash(f'Erreur : {msg}', 'error')
 
