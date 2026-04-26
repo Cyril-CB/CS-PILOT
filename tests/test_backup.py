@@ -52,6 +52,20 @@ def test_creation_sauvegarde_genere_zip_documents_avec_sous_repertoires(
     assert 'subventions/2026/piece.pdf' in noms
 
 
+def test_creation_sauvegarde_sans_documents_n_genere_pas_de_zip(
+    app, admin_client, monkeypatch, tmp_path
+):
+    _configurer_documents_test(tmp_path, monkeypatch)
+
+    response = admin_client.post('/sauvegardes/creer', data={'label': 'sans_docs'}, follow_redirects=True)
+    contenu = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert 'Sauvegarde de la base creee avec succes' in contenu
+    assert 'Archive des documents : Aucun document uploadé à archiver' in contenu
+    assert not list((tmp_path / 'backups').glob('documents_*_sans_docs.zip'))
+
+
 def test_telechargement_archive_documents_zip(app, admin_client, monkeypatch, tmp_path):
     _configurer_documents_test(tmp_path, monkeypatch)
 

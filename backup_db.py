@@ -114,14 +114,21 @@ def creer_archive_documents(label=None):
     backup_dir = get_backup_dir()
     archive_name = _build_backup_filename('documents', 'zip', label=label)
     archive_path = os.path.join(backup_dir, archive_name)
+    fichiers = []
+
+    for root, _, files in os.walk(documents_dir):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            arcname = os.path.relpath(filepath, documents_dir).replace(os.sep, '/')
+            fichiers.append((filepath, arcname))
+
+    if not fichiers:
+        return None, "Aucun document uploadé à archiver"
 
     try:
         with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for root, _, files in os.walk(documents_dir):
-                for filename in files:
-                    filepath = os.path.join(root, filename)
-                    arcname = os.path.relpath(filepath, documents_dir).replace(os.sep, '/')
-                    archive.write(filepath, arcname)
+            for filepath, arcname in fichiers:
+                archive.write(filepath, arcname)
 
         return archive_path, None
     except Exception as e:

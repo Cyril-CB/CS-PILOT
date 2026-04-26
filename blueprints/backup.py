@@ -77,7 +77,8 @@ def creer():
         rotation_sauvegardes(20)
 
     if archive_err:
-        flash(f'Erreur lors de l\'archive des documents : {archive_err}', 'error')
+        category = 'info' if archive_path is None and archive_err.startswith('Aucun document') else 'error'
+        flash(f'Archive des documents : {archive_err}', category)
     else:
         archive_name = os.path.basename(archive_path)
         flash(f'Archive des documents creee avec succes : {archive_name}', 'success')
