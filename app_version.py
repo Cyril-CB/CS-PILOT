@@ -1,10 +1,12 @@
 """Version applicative de CS-PILOT."""
 
+import re
 from pathlib import Path
 
 
 DEFAULT_APP_VERSION = '1.1.0'
 APP_VERSION_FILE = Path(__file__).resolve().parent / 'VERSION.txt'
+APP_VERSION_PATTERN = re.compile(r'^\d+\.\d+\.\d+$')
 
 
 def get_app_version():
@@ -14,4 +16,7 @@ def get_app_version():
     except OSError:
         return DEFAULT_APP_VERSION
 
-    return version or DEFAULT_APP_VERSION
+    if not version or not APP_VERSION_PATTERN.fullmatch(version):
+        return DEFAULT_APP_VERSION
+
+    return version

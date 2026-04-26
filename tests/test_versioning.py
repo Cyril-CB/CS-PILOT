@@ -13,7 +13,7 @@ def test_inject_version_utilise_version_applicative_configuree(app):
     assert version_ctx['app_version'] == app_version.get_app_version()
 
 
-def test_invalidate_version_cache_recharge_la_version(app, monkeypatch, tmp_path):
+def test_invalidate_version_cache_reloads_version(app, monkeypatch, tmp_path):
     """Le cache de version doit être rechargé après invalidation."""
     import app as app_module
 
