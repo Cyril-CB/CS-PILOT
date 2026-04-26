@@ -96,7 +96,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Gestion des cles API
 - Parametres personnels (email, preferences de notifications)
 - Systeme de migration de base de donnees avec suivi des versions
-- Sauvegarde et restauration de la base de donnees (avec rotation automatique)
+- Sauvegarde de la base de donnees, archivage des documents uploades et restauration (avec rotation automatique)
 - Page d'administration systeme
 
 ### Securite

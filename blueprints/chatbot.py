@@ -165,7 +165,7 @@ PAGE_PROMPTS = {
     'mise_a_jour': (
         "L'utilisateur est sur la page Mise à jour de l'application. "
         "⚠️ Rappel important : avant toute mise à jour, effectuer une sauvegarde de la base de données ! "
-        "Aller dans Administration > Sauvegardes BDD pour créer une sauvegarde avant de lancer la mise à jour. "
+        "Aller dans Administration > Sauvegardes pour créer une sauvegarde avant de lancer la mise à jour. "
         "Cela permet de revenir en arrière en cas de problème."
     ),
     'saisie_heures': (

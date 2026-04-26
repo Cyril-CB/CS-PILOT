@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Sauvegardes - Base de donnees{% endblock %}
+{% block title %}Sauvegardes{% endblock %}
 
 {% block content %}
 <div class="form-container">
-    <h1>💾 Sauvegardes de la base de donnees</h1>
+    <h1>💾 Sauvegardes</h1>
     <p class="subtitle">Gerez les sauvegardes et la restauration de vos donnees</p>
 
     <!-- Info base actuelle + creation sauvegarde -->
@@ -14,6 +14,7 @@
             <div>
                 <p>Base de donnees actuelle : <strong>{{ db_filename or 'cspilot.db' }}</strong>
                 {% if db_size %} ({{ db_size }}){% endif %}</p>
+                <p style="margin-top: 6px;">Le bouton ci-dessous cree aussi une archive ZIP de tous les documents uploades en conservant les sous-repertoires.</p>
             </div>
             <form method="POST" action="{{ url_for('backup_bp.creer') }}" style="display: flex; align-items: center; gap: 10px;">
                 <input type="text" name="label" placeholder="Label optionnel (ex: avant_mise_a_jour)" style="width: 300px;">
@@ -72,12 +73,52 @@
         {% endif %}
     </div>
 
+    <div class="section">
+        <h2>Archives des documents ({{ archives_documents|length }})</h2>
+
+        {% if archives_documents %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Fichier ZIP</th>
+                    <th>Taille</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for archive in archives_documents %}
+                <tr>
+                    <td><strong>{{ archive.filename }}</strong></td>
+                    <td>{{ archive.size_human }}</td>
+                    <td>{{ archive.date_str }}</td>
+                    <td style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <a href="{{ url_for('backup_bp.telecharger', filename=archive.filename) }}"
+                           class="btn btn-secondary" style="font-size: 0.85em; padding: 4px 10px;"
+                           title="Telecharger l'archive ZIP">📥 Telecharger</a>
+
+                        <form method="POST" action="{{ url_for('backup_bp.supprimer') }}" style="display:inline;"
+                              onsubmit="return confirm('Supprimer cette archive ZIP ?');">
+                            <input type="hidden" name="filename" value="{{ archive.filename }}">
+                            <button type="submit" class="btn-icon" title="Supprimer" style="font-size: 0.85em;">🗑️</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color: #666; font-style: italic;">Aucune archive de documents disponible. Creez une sauvegarde pour generer le premier ZIP.</p>
+        {% endif %}
+    </div>
+
     <!-- Aide -->
     <div class="help-box">
         <h4>💡 Bonnes pratiques</h4>
         <ul>
             <li><strong>Sauvegardez regulierement</strong> : avant chaque mise a jour, en fin de mois, ou apres des modifications importantes</li>
             <li><strong>Telechargez vos sauvegardes</strong> : conservez une copie sur un autre support (cle USB, disque externe, cloud)</li>
+            <li><strong>Documents uploades</strong> : les archives ZIP conservent l'arborescence de vos sous-dossiers</li>
             <li><strong>Restauration</strong> : une sauvegarde de securite est creee automatiquement avant toute restauration</li>
             <li><strong>Rotation automatique</strong> : les 20 dernieres sauvegardes sont conservees, les plus anciennes sont supprimees automatiquement</li>
         </ul>
