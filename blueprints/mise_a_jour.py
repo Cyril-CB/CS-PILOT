@@ -18,6 +18,7 @@ from flask import Blueprint, render_template, request, session, flash, redirect,
 
 from utils import login_required
 from database import DATA_DIR
+from app_version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,7 @@ def _get_app_dir():
 
 def _get_current_version():
     """Retourne la version actuelle de l'application."""
-    try:
-        from migration_manager import get_version_actuelle
-        version_db = get_version_actuelle()
-        return f'1.1.{int(version_db)}'
-    except Exception:
-        return '1.1.0'
+    return APP_VERSION
 
 
 def _fetch_latest_release():

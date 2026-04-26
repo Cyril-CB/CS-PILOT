@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from utils import login_required
 from database import get_db, DATABASE
 from app_options import OPTION_DEFINITIONS, get_options_context, set_option_bool
+from app_version import APP_VERSION
 import os
 
 administration_bp = Blueprint('administration_bp', __name__)
@@ -28,8 +29,6 @@ def administration():
     from migration_manager import get_statut_complet
 
     statut_migrations = get_statut_complet()
-    version_db = statut_migrations.get('version_actuelle', '0000')
-    version_app = f"1.1.{version_db}"
 
     # Informations sur la base de donnees
     db_info = _get_db_info()
@@ -38,7 +37,7 @@ def administration():
         'administration.html',
         statut=statut_migrations,
         db_info=db_info,
-        version_app=version_app
+        version_app=APP_VERSION
     )
 
 

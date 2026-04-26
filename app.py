@@ -11,6 +11,7 @@ from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 from database import init_db, get_db, DATA_DIR
 from extensions import csrf, limiter
+from app_version import APP_VERSION
 
 
 def generate_env_file(env_path):
@@ -253,12 +254,7 @@ def inject_version():
     """Injecte la version de l'application dans tous les templates (mise en cache)."""
     global _cached_app_version
     if _cached_app_version is None:
-        from migration_manager import get_version_actuelle
-        version_db = get_version_actuelle()
-        try:
-            _cached_app_version = f'1.1.{int(version_db)}'
-        except (ValueError, TypeError):
-            _cached_app_version = '1.1.0'
+        _cached_app_version = APP_VERSION
     return {'app_version': _cached_app_version}
 
 
