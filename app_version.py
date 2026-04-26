@@ -15,6 +15,3 @@ def get_app_version():
         return DEFAULT_APP_VERSION
 
     return version or DEFAULT_APP_VERSION
-
-
-APP_VERSION = get_app_version()

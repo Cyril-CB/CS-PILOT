@@ -10,20 +10,23 @@ def test_inject_version_utilise_version_applicative_configuree(app):
     with app.app_context():
         version_ctx = app_module.inject_version()
 
-    assert version_ctx['app_version'] == app_version.APP_VERSION
+    assert version_ctx['app_version'] == app_version.get_app_version()
 
 
-def test_invalidate_version_cache_recharge_la_version(app, monkeypatch):
+def test_invalidate_version_cache_recharge_la_version(app, monkeypatch, tmp_path):
     """Le cache de version doit être rechargé après invalidation."""
     import app as app_module
 
+    version_file = tmp_path / 'VERSION.txt'
+    version_file.write_text('1.1.502', encoding='utf-8')
+    monkeypatch.setattr(app_version, 'APP_VERSION_FILE', version_file)
+
     app_module.invalidate_version_cache()
-    monkeypatch.setattr(app_version, 'get_app_version', lambda: '1.1.502')
 
     with app.app_context():
         assert app_module.inject_version()['app_version'] == '1.1.502'
 
-    monkeypatch.setattr(app_version, 'get_app_version', lambda: '1.1.503')
+    version_file.write_text('1.1.503', encoding='utf-8')
 
     with app.app_context():
         assert app_module.inject_version()['app_version'] == '1.1.502'
