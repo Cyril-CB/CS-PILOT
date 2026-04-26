@@ -117,13 +117,7 @@ def creer_archive_documents(label=None):
 
     try:
         with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
-            for root, dirs, files in os.walk(documents_dir):
-                rel_root = os.path.relpath(root, documents_dir)
-                rel_root_zip = rel_root.replace(os.sep, '/')
-
-                if rel_root_zip != '.' and not dirs and not files:
-                    archive.writestr(f'{rel_root_zip}/', '')
-
+            for root, _, files in os.walk(documents_dir):
                 for filename in files:
                     filepath = os.path.join(root, filename)
                     arcname = os.path.relpath(filepath, documents_dir).replace(os.sep, '/')
@@ -233,8 +227,8 @@ def rotation_sauvegardes(max_backups=20):
 
 def rotation_archives_documents(max_backups=20):
     """Supprime les archives de documents les plus anciennes."""
-    sauvegardes = lister_archives_documents()
-    return _appliquer_rotation(sauvegardes, max_backups)
+    archives_documents = lister_archives_documents()
+    return _appliquer_rotation(archives_documents, max_backups)
 
 
 def _appliquer_rotation(sauvegardes, max_backups):

@@ -14,7 +14,7 @@
             <div>
                 <p>Base de donnees actuelle : <strong>{{ db_filename or 'cspilot.db' }}</strong>
                 {% if db_size %} ({{ db_size }}){% endif %}</p>
-                <p style="margin-top: 6px;">Le bouton ci-dessous cree aussi une archive ZIP de tous les documents uploades en conservant les sous-repertoires.</p>
+                <p style="margin-top: 6px;">Le bouton ci-dessous cree aussi une archive ZIP de tous les documents uploadés en conservant les sous-repertoires.</p>
             </div>
             <form method="POST" action="{{ url_for('backup_bp.creer') }}" style="display: flex; align-items: center; gap: 10px;">
                 <input type="text" name="label" placeholder="Label optionnel (ex: avant_mise_a_jour)" style="width: 300px;">
@@ -118,7 +118,7 @@
         <ul>
             <li><strong>Sauvegardez regulierement</strong> : avant chaque mise a jour, en fin de mois, ou apres des modifications importantes</li>
             <li><strong>Telechargez vos sauvegardes</strong> : conservez une copie sur un autre support (cle USB, disque externe, cloud)</li>
-            <li><strong>Documents uploades</strong> : les archives ZIP conservent l'arborescence de vos sous-dossiers</li>
+            <li><strong>Documents uploadés</strong> : les archives ZIP conservent l'arborescence de vos sous-dossiers</li>
             <li><strong>Restauration</strong> : une sauvegarde de securite est creee automatiquement avant toute restauration</li>
             <li><strong>Rotation automatique</strong> : les 20 dernieres sauvegardes sont conservees, les plus anciennes sont supprimees automatiquement</li>
         </ul>
