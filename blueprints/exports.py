@@ -4,12 +4,6 @@ Blueprint exports_bp.
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, make_response
 from datetime import datetime, timedelta
 from io import BytesIO
-from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib import colors
-from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
@@ -21,6 +15,13 @@ exports_bp = Blueprint('exports_bp', __name__)
 @login_required
 def export_pdf_mensuel():
     """Export PDF de la fiche mensuelle (uniquement si verrouillée)"""
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, KeepTogether
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
     user_id_param = request.args.get('user_id', type=int)
     mois = request.args.get('mois', type=int)
     annee = request.args.get('annee', type=int)
