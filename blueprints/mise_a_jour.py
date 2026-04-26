@@ -62,7 +62,7 @@ def _get_app_dir():
 
 def _get_current_version():
     """Retourne la version actuelle de l'application."""
-    return app_version.APP_VERSION
+    return app_version.get_app_version()
 
 
 def _fetch_latest_release():

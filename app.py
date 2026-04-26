@@ -254,7 +254,7 @@ def inject_version():
     """Injecte la version de l'application dans tous les templates (mise en cache)."""
     global _cached_app_version
     if _cached_app_version is None:
-        _cached_app_version = app_version.APP_VERSION
+        _cached_app_version = app_version.get_app_version()
     return {'app_version': _cached_app_version}
 
 

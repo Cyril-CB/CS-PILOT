@@ -37,7 +37,7 @@ def administration():
         'administration.html',
         statut=statut_migrations,
         db_info=db_info,
-        version_app=app_version.APP_VERSION
+        version_app=app_version.get_app_version()
     )
 
 
