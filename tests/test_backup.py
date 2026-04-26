@@ -103,5 +103,5 @@ def test_suppression_archive_documents_affiche_message_specifique(
     contenu = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'Archive des documents supprimee' in contenu
+    assert 'Archive des documents supprimée' in contenu
     assert not archive_path.exists()

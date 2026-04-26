@@ -222,8 +222,8 @@ def supprimer_sauvegarde(filename):
     try:
         os.remove(filepath)
         if is_documents_zip:
-            return True, "Archive des documents supprimee"
-        return True, "Sauvegarde supprimee"
+            return True, "Archive des documents supprimée"
+        return True, "Sauvegarde supprimée"
     except Exception as e:
         return False, str(e)
 
