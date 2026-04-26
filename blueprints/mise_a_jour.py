@@ -15,10 +15,10 @@ from datetime import datetime
 
 import requests
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
+import app_version
 
 from utils import login_required
 from database import DATA_DIR
-from app_version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _get_app_dir():
 
 def _get_current_version():
     """Retourne la version actuelle de l'application."""
-    return APP_VERSION
+    return app_version.APP_VERSION
 
 
 def _fetch_latest_release():

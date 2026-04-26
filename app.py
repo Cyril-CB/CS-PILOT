@@ -9,9 +9,9 @@ from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
+import app_version
 from database import init_db, get_db, DATA_DIR
 from extensions import csrf, limiter
-from app_version import APP_VERSION
 
 
 def generate_env_file(env_path):
@@ -254,7 +254,7 @@ def inject_version():
     """Injecte la version de l'application dans tous les templates (mise en cache)."""
     global _cached_app_version
     if _cached_app_version is None:
-        _cached_app_version = APP_VERSION
+        _cached_app_version = app_version.APP_VERSION
     return {'app_version': _cached_app_version}
 
 

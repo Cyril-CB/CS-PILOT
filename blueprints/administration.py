@@ -4,10 +4,10 @@ Gestion des migrations de base de donnees et informations systeme.
 Accessible uniquement aux directeurs et comptables.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+import app_version
 from utils import login_required
 from database import get_db, DATABASE
 from app_options import OPTION_DEFINITIONS, get_options_context, set_option_bool
-from app_version import APP_VERSION
 import os
 
 administration_bp = Blueprint('administration_bp', __name__)
@@ -37,7 +37,7 @@ def administration():
         'administration.html',
         statut=statut_migrations,
         db_info=db_info,
-        version_app=APP_VERSION
+        version_app=app_version.APP_VERSION
     )
 
 
