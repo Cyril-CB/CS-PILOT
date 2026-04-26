@@ -119,12 +119,14 @@ def creer_archive_documents(label=None):
         with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             for root, dirs, files in os.walk(documents_dir):
                 rel_root = os.path.relpath(root, documents_dir)
-                if rel_root != '.' and not dirs and not files:
-                    archive.writestr(f'{rel_root}/', '')
+                rel_root_zip = rel_root.replace(os.sep, '/')
+
+                if rel_root_zip != '.' and not dirs and not files:
+                    archive.writestr(f'{rel_root_zip}/', '')
 
                 for filename in files:
                     filepath = os.path.join(root, filename)
-                    arcname = os.path.relpath(filepath, documents_dir)
+                    arcname = os.path.relpath(filepath, documents_dir).replace(os.sep, '/')
                     archive.write(filepath, arcname)
 
         return archive_path, None
