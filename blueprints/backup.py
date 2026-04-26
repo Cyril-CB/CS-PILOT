@@ -6,10 +6,13 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from utils import login_required
 from backup_db import (
     creer_sauvegarde,
+    creer_archive_documents,
     lister_sauvegardes,
+    lister_archives_documents,
     restaurer_sauvegarde,
     supprimer_sauvegarde,
     rotation_sauvegardes,
+    rotation_archives_documents,
     get_db_path,
     _safe_backup_path,
 )
@@ -32,6 +35,7 @@ def liste_sauvegardes():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     sauvegardes = lister_sauvegardes()
+    archives_documents = lister_archives_documents()
 
     # Info sur la base actuelle
     db_path = get_db_path()
@@ -45,7 +49,12 @@ def liste_sauvegardes():
         else:
             db_size = f"{db_size_bytes / (1024 * 1024):.1f} Mo"
 
-    return render_template('backup.html', sauvegardes=sauvegardes, db_size=db_size)
+    return render_template(
+        'backup.html',
+        sauvegardes=sauvegardes,
+        archives_documents=archives_documents,
+        db_size=db_size,
+    )
 
 
 @backup_bp.route('/sauvegardes/creer', methods=['POST'])
@@ -58,14 +67,22 @@ def creer():
 
     label = request.form.get('label', '').strip() or None
     path, err = creer_sauvegarde(label=label)
+    archive_path, archive_err = creer_archive_documents(label=label)
 
     if err:
         flash(f'Erreur lors de la sauvegarde : {err}', 'error')
     else:
         filename = os.path.basename(path)
-        flash(f'Sauvegarde creee avec succes : {filename}', 'success')
-        # Rotation automatique
+        flash(f'Sauvegarde de la base creee avec succes : {filename}', 'success')
         rotation_sauvegardes(20)
+
+    if archive_err:
+        category = 'info' if archive_path is None and archive_err.startswith('Aucun document') else 'error'
+        flash(f'Archive des documents : {archive_err}', category)
+    else:
+        archive_name = os.path.basename(archive_path)
+        flash(f'Archive des documents creee avec succes : {archive_name}', 'success')
+        rotation_archives_documents(20)
 
     return redirect(url_for('backup_bp.liste_sauvegardes'))
 
@@ -123,7 +140,7 @@ def supprimer():
 
     ok, msg = supprimer_sauvegarde(filename)
     if ok:
-        flash('Sauvegarde supprimee', 'success')
+        flash(msg, 'success')
     else:
         flash(f'Erreur : {msg}', 'error')
 

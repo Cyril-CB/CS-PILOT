@@ -14,11 +14,13 @@ import sys
 import sqlite3
 import shutil
 import argparse
+import zipfile
 from datetime import datetime
 
-from database import DATABASE
+from database import DATABASE, DATA_DIR
 
 BACKUP_DIR = 'backups'
+DOCUMENTS_DIR = 'documents'
 
 # Regex stricte pour les noms de fichiers autorises dans le dossier backups
 _SAFE_FILENAME_RE = re.compile(r'^[a-zA-Z0-9._-]+$')
@@ -54,6 +56,28 @@ def get_db_path():
     return DATABASE
 
 
+def get_documents_dir():
+    """Retourne le chemin absolu du dossier documents."""
+    documents_path = os.path.join(DATA_DIR, DOCUMENTS_DIR)
+    os.makedirs(documents_path, exist_ok=True)
+    return documents_path
+
+
+def _sanitize_label(label):
+    """Nettoie un label pour l'integrer dans un nom de fichier."""
+    if not label:
+        return ''
+    return re.sub(r'[^a-zA-Z0-9_-]', '', label)
+
+
+def _build_backup_filename(prefix, extension, label=None):
+    """Construit un nom de fichier de sauvegarde standardise."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    clean_label = _sanitize_label(label)
+    suffix = f"_{clean_label}" if clean_label else ""
+    return f"{prefix}_{timestamp}{suffix}.{extension}"
+
+
 def creer_sauvegarde(label=None):
     """
     Cree une sauvegarde de la base de donnees avec l'API sqlite3 backup.
@@ -64,12 +88,7 @@ def creer_sauvegarde(label=None):
         return None, "Base de donnees introuvable"
 
     backup_dir = get_backup_dir()
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    # Nettoyer le label : ne garder que les caracteres alphanumeriques, tirets et underscores
-    if label:
-        label = re.sub(r'[^a-zA-Z0-9_-]', '', label)
-    suffix = f"_{label}" if label else ""
-    filename = f"backup_{timestamp}{suffix}.db"
+    filename = _build_backup_filename('backup', 'db', label=label)
     backup_path = os.path.join(backup_dir, filename)
 
     try:
@@ -89,13 +108,42 @@ def creer_sauvegarde(label=None):
         return None, str(e)
 
 
-def lister_sauvegardes():
-    """Liste toutes les sauvegardes disponibles, triees par date (plus recente en premier)."""
+def creer_archive_documents(label=None):
+    """Cree une archive ZIP de tous les documents uploades en conservant l'arborescence."""
+    documents_dir = get_documents_dir()
+    backup_dir = get_backup_dir()
+    archive_name = _build_backup_filename('documents', 'zip', label=label)
+    archive_path = os.path.join(backup_dir, archive_name)
+    fichiers = []
+
+    for root, _, files in os.walk(documents_dir):
+        for filename in files:
+            filepath = os.path.join(root, filename)
+            arcname = os.path.relpath(filepath, documents_dir).replace(os.sep, '/')
+            fichiers.append((filepath, arcname))
+
+    if not fichiers:
+        return None, "Aucun document uploadé à archiver"
+
+    try:
+        with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for filepath, arcname in fichiers:
+                archive.write(filepath, arcname)
+
+        return archive_path, None
+    except Exception as e:
+        if os.path.exists(archive_path):
+            os.remove(archive_path)
+        return None, str(e)
+
+
+def _lister_fichiers_sauvegarde(prefix, extension):
+    """Liste les fichiers de sauvegarde correspondant au prefixe et a l'extension demandes."""
     backup_dir = get_backup_dir()
     sauvegardes = []
 
     for f in os.listdir(backup_dir):
-        if f.startswith('backup_') and f.endswith('.db'):
+        if f.startswith(f'{prefix}_') and f.endswith(f'.{extension}'):
             filepath = os.path.join(backup_dir, f)
             stat = os.stat(filepath)
             sauvegardes.append({
@@ -109,6 +157,16 @@ def lister_sauvegardes():
 
     sauvegardes.sort(key=lambda x: x['date'], reverse=True)
     return sauvegardes
+
+
+def lister_sauvegardes():
+    """Liste toutes les sauvegardes disponibles, triees par date (plus recente en premier)."""
+    return _lister_fichiers_sauvegarde('backup', 'db')
+
+
+def lister_archives_documents():
+    """Liste toutes les archives ZIP de documents disponibles."""
+    return _lister_fichiers_sauvegarde('documents', 'zip')
 
 
 def restaurer_sauvegarde(filename):
@@ -153,7 +211,9 @@ def restaurer_sauvegarde(filename):
 def supprimer_sauvegarde(filename):
     """Supprime un fichier de sauvegarde."""
     filepath = _safe_backup_path(filename)
-    if not filepath or not filename.endswith('.db'):
+    is_backup_db = filename.startswith('backup_') and filename.endswith('.db')
+    is_documents_zip = filename.startswith('documents_') and filename.endswith('.zip')
+    if not filepath or not (is_backup_db or is_documents_zip):
         return False, "Operation non autorisee"
 
     if not os.path.exists(filepath):
@@ -161,7 +221,9 @@ def supprimer_sauvegarde(filename):
 
     try:
         os.remove(filepath)
-        return True, "Sauvegarde supprimee"
+        if is_documents_zip:
+            return True, "Archive des documents supprimée"
+        return True, "Sauvegarde supprimée"
     except Exception as e:
         return False, str(e)
 
@@ -169,6 +231,17 @@ def supprimer_sauvegarde(filename):
 def rotation_sauvegardes(max_backups=20):
     """Supprime les sauvegardes les plus anciennes pour ne garder que max_backups."""
     sauvegardes = lister_sauvegardes()
+    return _appliquer_rotation(sauvegardes, max_backups)
+
+
+def rotation_archives_documents(max_backups=20):
+    """Supprime les archives de documents les plus anciennes."""
+    archives_documents = lister_archives_documents()
+    return _appliquer_rotation(archives_documents, max_backups)
+
+
+def _appliquer_rotation(sauvegardes, max_backups):
+    """Supprime les fichiers les plus anciens pour ne garder que max_backups."""
     supprimees = 0
 
     if len(sauvegardes) > max_backups:
