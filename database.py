@@ -115,6 +115,7 @@ def init_db():
             pesee INTEGER,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
+            force_password_change INTEGER DEFAULT 0,
             adresse TEXT,
             date_naissance TEXT,
             numero_secu TEXT,
@@ -1320,6 +1321,12 @@ def init_db():
         cursor.execute("SELECT email_notifications_enabled FROM users LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE users ADD COLUMN email_notifications_enabled INTEGER DEFAULT 0")
+
+    # Migration : ajouter force_password_change si n'existe pas
+    try:
+        cursor.execute("SELECT force_password_change FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN force_password_change INTEGER DEFAULT 0")
 
     # Migration : ajouter type_secteur si n'existe pas
     try:

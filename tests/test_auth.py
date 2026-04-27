@@ -63,6 +63,27 @@ class TestLogin:
             assert session['prenom'] == 'Jean'
             assert session['profil'] == 'salarie'
 
+    def test_login_avec_changement_mdp_obligatoire(self, client, app, db, sample_users):
+        """Un utilisateur avec changement obligatoire est redirigé vers la page dédiée."""
+        from werkzeug.security import generate_password_hash
+
+        with app.app_context():
+            db.execute(
+                '''
+                INSERT INTO users (nom, prenom, login, password, profil, force_password_change, email)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ''',
+                ('Temp', 'User', 'temp_user', generate_password_hash('Temporaire!'), 'salarie', 1, 'temp@example.com')
+            )
+            db.commit()
+
+        response = client.post('/login', data={
+            'login': 'temp_user',
+            'password': 'Temporaire!',
+        }, follow_redirects=False)
+        assert response.status_code == 302
+        assert '/changer_mot_de_passe' in response.headers['Location']
+
 
 class TestLogout:
     """Tests de la route /logout."""
@@ -147,8 +168,8 @@ class TestSetup:
             'nom': 'Dupont',
             'prenom': 'Jean',
             'login': 'jdupont',
-            'password': 'Motdepasse1',
-            'password_confirm': 'Motdepasse1',
+            'password': 'Motdepasse!',
+            'password_confirm': 'Motdepasse!',
         }, follow_redirects=True)
         assert response.status_code == 200
         content = response.data.decode('utf-8')
@@ -172,8 +193,8 @@ class TestSetup:
             'nom': 'Dupont',
             'prenom': 'Jean',
             'login': 'jdupont',
-            'password': 'Motdepasse1',
-            'password_confirm': 'Motdepasse2',
+            'password': 'Motdepasse!',
+            'password_confirm': 'Motdepasse2!',
         }, follow_redirects=True)
         content = response.data.decode('utf-8')
         assert 'ne correspondent pas' in content
@@ -184,12 +205,116 @@ class TestSetup:
             'nom': 'Dupont',
             'prenom': 'Jean',
             'login': 'jdupont',
-            'password': 'Motdepasse1',
-            'password_confirm': 'Motdepasse1',
+            'password': 'Motdepasse!',
+            'password_confirm': 'Motdepasse!',
         })
         user = db.execute("SELECT profil FROM users WHERE login = 'jdupont'").fetchone()
         assert user is not None
         assert user['profil'] == 'directeur'
+
+
+class TestChangementMotDePasse:
+    """Tests du changement obligatoire de mot de passe."""
+
+    def test_route_forcee_depuis_dashboard(self, client, app, db):
+        from werkzeug.security import generate_password_hash
+
+        with app.app_context():
+            db.execute(
+                '''
+                INSERT INTO users (nom, prenom, login, password, profil, force_password_change)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                ('Temp', 'User', 'temp_user', generate_password_hash('Temporaire!'), 'salarie', 1)
+            )
+            db.commit()
+
+        client.post('/login', data={'login': 'temp_user', 'password': 'Temporaire!'}, follow_redirects=False)
+        response = client.get('/dashboard', follow_redirects=False)
+        assert response.status_code == 302
+        assert '/changer_mot_de_passe' in response.headers['Location']
+
+    def test_changement_mot_de_passe_reussi(self, client, app, db):
+        from werkzeug.security import generate_password_hash
+
+        with app.app_context():
+            db.execute(
+                '''
+                INSERT INTO users (nom, prenom, login, password, profil, force_password_change)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                ('Temp', 'User', 'temp_user', generate_password_hash('Temporaire!'), 'salarie', 1)
+            )
+            db.commit()
+
+        client.post('/login', data={'login': 'temp_user', 'password': 'Temporaire!'}, follow_redirects=False)
+        response = client.post('/changer_mot_de_passe', data={
+            'current_password': 'Temporaire!',
+            'new_password': 'Nouveau!Pass',
+            'password_confirm': 'Nouveau!Pass',
+        }, follow_redirects=False)
+        assert response.status_code == 302
+        assert '/dashboard' in response.headers['Location']
+
+        user = db.execute(
+            'SELECT force_password_change FROM users WHERE login = ?',
+            ('temp_user',)
+        ).fetchone()
+        assert user['force_password_change'] == 0
+
+        client.get('/logout')
+        relogin = client.post('/login', data={'login': 'temp_user', 'password': 'Nouveau!Pass'}, follow_redirects=False)
+        assert relogin.status_code == 302
+        assert '/dashboard' in relogin.headers['Location']
+
+
+class TestMotDePasseOublie:
+    """Tests du parcours mot de passe oublié."""
+
+    def test_page_mot_de_passe_oublie_accessible(self, client, sample_users):
+        response = client.get('/mot-de-passe-oublie')
+        assert response.status_code == 200
+        assert 'Mot de passe oublié' in response.get_data(as_text=True)
+
+    def test_reinitialisation_envoie_mot_de_passe_temporaire(self, client, app, db, sample_users, monkeypatch):
+        sent = {}
+
+        with app.app_context():
+            db.execute(
+                "UPDATE users SET email = ? WHERE login = ?",
+                ('salarie@example.com', 'salarie_test')
+            )
+            db.commit()
+
+        monkeypatch.setattr('blueprints.auth.is_email_configured', lambda: True)
+
+        def fake_send_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
+            sent['destinataire'] = destinataire
+            sent['contenu_html'] = contenu_html
+            return True, 'ok'
+
+        monkeypatch.setattr('blueprints.auth.envoyer_email', fake_send_email)
+
+        response = client.post('/mot-de-passe-oublie', data={'login': 'salarie_test'}, follow_redirects=True)
+        html = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert 'mot de passe temporaire' in html
+        assert sent['destinataire'] == 'salarie@example.com'
+
+        user = db.execute(
+            'SELECT force_password_change FROM users WHERE login = ?',
+            ('salarie_test',)
+        ).fetchone()
+        assert user['force_password_change'] == 1
+
+    def test_reinitialisation_inconnue_reste_generique(self, client, sample_users, monkeypatch):
+        monkeypatch.setattr('blueprints.auth.is_email_configured', lambda: True)
+        monkeypatch.setattr('blueprints.auth.envoyer_email', lambda *args, **kwargs: (True, 'ok'))
+
+        response = client.post('/mot-de-passe-oublie', data={'login': 'inconnu'}, follow_redirects=True)
+        html = response.get_data(as_text=True)
+        assert response.status_code == 200
+        assert 'mot de passe temporaire' in html
 
 
 class TestGestionVacances:

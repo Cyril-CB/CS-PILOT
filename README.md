@@ -155,7 +155,7 @@ Sur le PC serveur, relever l'adresse IP (`ipconfig` sous Windows). Depuis les au
 
 Lors du premier acces a l'application (aucun compte existant), un assistant de configuration vous guidera pour creer le compte administrateur initial.
 
-Ce compte sera automatiquement de profil **Directeur** (acces complet). Le mot de passe doit respecter les regles de securite : 8 caracteres minimum, au moins une majuscule, une minuscule et un chiffre (caractere special recommande).
+Ce compte sera automatiquement de profil **Directeur** (acces complet). Le mot de passe doit respecter les regles de securite : 8 caracteres minimum, au moins une majuscule, une minuscule et un caractere special.
 
 ## Structure du projet
 

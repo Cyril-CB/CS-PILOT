@@ -2,6 +2,7 @@
 Fonctions utilitaires partagées entre tous les blueprints.
 """
 import logging
+import re
 from flask import session, flash, redirect, url_for
 from functools import wraps
 from datetime import datetime, timedelta
@@ -81,11 +82,10 @@ def validate_password_strength(password):
     """Valide la complexité d'un mot de passe.
 
     Retourne une liste d'erreurs (vide si le mot de passe est conforme).
-    Règles : 8 caractères min, 1 majuscule, 1 minuscule, 1 chiffre.
-    Un caractère spécial est recommandé (avertissement, pas bloquant).
+    Règles : 8 caractères min, 1 majuscule, 1 minuscule, 1 caractère spécial.
     """
-    import re
     errors = []
+    password = password or ''
 
     if len(password) < 8:
         errors.append('Le mot de passe doit contenir au moins 8 caractères')
@@ -93,8 +93,8 @@ def validate_password_strength(password):
         errors.append('Le mot de passe doit contenir au moins une majuscule')
     if not re.search(r'[a-z]', password):
         errors.append('Le mot de passe doit contenir au moins une minuscule')
-    if not re.search(r'[0-9]', password):
-        errors.append('Le mot de passe doit contenir au moins un chiffre')
+    if not re.search(r'[^A-Za-z0-9]', password):
+        errors.append('Le mot de passe doit contenir au moins un caractère spécial')
 
     return errors
 
