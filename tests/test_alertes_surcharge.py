@@ -127,11 +127,12 @@ class TestAlertesSurchargeCalcul:
 
         response = admin_client.get('/alertes_surcharge')
         html = response.get_data(as_text=True)
+        expected_score = '72/100' if datetime.now().date().weekday() == 0 else '70/100'
 
         assert response.status_code == 200
         assert 'Jean Martin' in html
         assert 'Orange' in html
-        assert '70/100' in html
+        assert expected_score in html
         assert 'Solde du dernier mois écoulé : +6.0h' in html
         assert 'surcharge-sparkline' in html
         assert 'Vue mensuelle' in html

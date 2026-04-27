@@ -56,7 +56,7 @@ def creer_user():
             nom = request.form.get('nom')
             prenom = request.form.get('prenom')
             login = request.form.get('login')
-            password = request.form.get('password')
+            password = request.form.get('password') or ''
             profil = request.form.get('profil')
             secteur_id = request.form.get('secteur_id') or None
             responsable_id = request.form.get('responsable_id') or None
@@ -89,10 +89,11 @@ def creer_user():
             try:
                 conn.execute('''
                     INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id,
-                                       solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                       solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde,
+                                       force_password_change)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (nom, prenom, login, password_hash, profil, secteur_id, responsable_id,
-                      solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde))
+                      solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, 1))
                 conn.commit()
                 flash(f'Utilisateur {prenom} {nom} créé avec succès', 'success')
                 return redirect(url_for('admin_bp.gestion_users'))
@@ -129,7 +130,7 @@ def modifier_user(user_id):
             profil = request.form.get('profil')
             secteur_id = request.form.get('secteur_id') or None
             responsable_id = request.form.get('responsable_id') or None
-            nouveau_password = request.form.get('nouveau_password')
+            nouveau_password = request.form.get('nouveau_password') or ''
             solde_initial = request.form.get('solde_initial', type=float) or 0
             date_entree = request.form.get('date_entree') or None
 
@@ -162,7 +163,8 @@ def modifier_user(user_id):
                     conn.execute('''
                         UPDATE users
                         SET nom=?, prenom=?, login=?, password=?, profil=?, secteur_id=?, responsable_id=?,
-                            solde_initial=?, date_entree=?, cp_acquis=?, cp_a_prendre=?, cp_pris=?, cc_solde=?
+                            solde_initial=?, date_entree=?, cp_acquis=?, cp_a_prendre=?, cp_pris=?, cc_solde=?,
+                            force_password_change=1
                         WHERE id=?
                     ''', (nom, prenom, login, password_hash, profil, secteur_id, responsable_id,
                           solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, user_id))

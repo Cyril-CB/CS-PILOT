@@ -159,7 +159,7 @@ Lors du **premier accès** (aucun compte existant), l'application vous redirige 
 2. Remplissez le formulaire :
    - **Nom** et **Prénom**
    - **Identifiant de connexion** (login, en minuscules sans espace recommandé)
-   - **Mot de passe** : respectez les règles de sécurité — *8 caractères minimum, au moins une majuscule, une minuscule et un chiffre* (caractère spécial recommandé)
+   - **Mot de passe** : respectez les règles de sécurité — *8 caractères minimum, au moins une majuscule, une minuscule et un caractère spécial*
    - **Confirmer le mot de passe**
 3. Cliquez sur **Créer le compte administrateur**.
 

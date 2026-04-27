@@ -32,17 +32,17 @@ class TestPasswordValidation:
         errors = validate_password_strength('ABCDEFG1')
         assert any('minuscule' in e for e in errors)
 
-    def test_mot_de_passe_sans_chiffre(self):
-        errors = validate_password_strength('Abcdefgh')
-        assert any('chiffre' in e for e in errors)
+    def test_mot_de_passe_sans_caractere_special(self):
+        errors = validate_password_strength('Abcdefg1')
+        assert any('caractère spécial' in e for e in errors)
 
     def test_mot_de_passe_valide(self):
         errors = validate_password_strength('Abcdef1!')
         assert errors == []
 
-    def test_mot_de_passe_valide_sans_special(self):
-        """Un mot de passe sans caractère spécial est accepté (recommandé mais pas obligatoire)."""
-        errors = validate_password_strength('Abcdefg1')
+    def test_mot_de_passe_valide_sans_chiffre(self):
+        """Un mot de passe sans chiffre est accepté si les autres règles sont respectées."""
+        errors = validate_password_strength('Abcdefg!')
         assert errors == []
 
     def test_mot_de_passe_vide(self):
@@ -52,7 +52,7 @@ class TestPasswordValidation:
     def test_erreurs_multiples(self):
         """Un mot de passe très faible doit retourner plusieurs erreurs."""
         errors = validate_password_strength('abc')
-        assert len(errors) >= 3  # trop court + pas de majuscule + pas de chiffre
+        assert len(errors) >= 3  # trop court + pas de majuscule + pas de caractère spécial
 
 
 class TestCsrfTokenPresence:
@@ -109,6 +109,25 @@ class TestCreerUserPasswordValidation:
             }, follow_redirects=True)
             html = response.data.decode('utf-8')
             assert 'créé avec succès' in html
+
+    def test_creation_user_force_changement_mot_de_passe(self, client, sample_users, app, db):
+        """Un utilisateur créé par l'administration doit changer son mot de passe à la première connexion."""
+        self._login_admin_no_redirect(client)
+        with app.app_context():
+            response = client.post('/creer_user', data={
+                'nom': 'Temp',
+                'prenom': 'User',
+                'login': 'temp_user',
+                'password': 'Temporaire!',
+                'profil': 'salarie',
+            }, follow_redirects=True)
+            assert response.status_code == 200
+            created = db.execute(
+                'SELECT force_password_change FROM users WHERE login = ?',
+                ('temp_user',)
+            ).fetchone()
+            assert created is not None
+            assert created['force_password_change'] == 1
 
 
 class TestSecretKeyValidation:
