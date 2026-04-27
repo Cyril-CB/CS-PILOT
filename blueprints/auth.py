@@ -62,13 +62,14 @@ def _redirect_after_login(profil):
 
 def _generate_temporary_password(length=12):
     """Génère un mot de passe temporaire conforme à la politique de sécurité."""
+    length = max(length, 8)
     alphabet = string.ascii_letters + string.digits + SPECIAL_PASSWORD_CHARACTERS
     password_chars = [
         secrets.choice(string.ascii_uppercase),
         secrets.choice(string.ascii_lowercase),
         secrets.choice(SPECIAL_PASSWORD_CHARACTERS),
     ]
-    while len(password_chars) < max(length, 8):
+    while len(password_chars) < length:
         password_chars.append(secrets.choice(alphabet))
     secrets.SystemRandom().shuffle(password_chars)
     return ''.join(password_chars)
@@ -127,7 +128,7 @@ def login():
                 (login_val,)
             ).fetchone()
 
-            password_ok = bool(user and _verify_password(conn, user, password))
+            password_ok = user is not None and _verify_password(conn, user, password)
             if password_ok:
                 conn.commit()
         finally:
