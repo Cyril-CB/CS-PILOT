@@ -1,7 +1,6 @@
 """
 Blueprint Authentification : login, logout, index, setup initial.
 """
-import hashlib
 import html
 import logging
 import secrets
@@ -31,16 +30,8 @@ def _has_any_user():
 
 
 def _verify_password(conn, user, password):
-    """Vérifie un mot de passe et migre les anciens hash SHA256 si nécessaire."""
+    """Vérifie un mot de passe avec l'algorithme de hachage sécurisé stocké."""
     stored = user['password']
-    if len(stored) == 64 and all(c in '0123456789abcdef' for c in stored):
-        if hashlib.sha256(password.encode()).hexdigest() == stored:
-            conn.execute(
-                'UPDATE users SET password = ? WHERE id = ?',
-                (generate_password_hash(password), user['id'])
-            )
-            return True
-        return False
     return check_password_hash(stored, password)
 
 
