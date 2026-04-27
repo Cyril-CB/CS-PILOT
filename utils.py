@@ -83,9 +83,11 @@ def validate_password_strength(password):
 
     Retourne une liste d'erreurs (vide si le mot de passe est conforme).
     Règles : 8 caractères min, 1 majuscule, 1 minuscule, 1 caractère spécial.
+    Un mot de passe absent est considéré comme invalide.
     """
     errors = []
-    password = password or ''
+    if password is None:
+        password = ''
 
     if len(password) < 8:
         errors.append('Le mot de passe doit contenir au moins 8 caractères')

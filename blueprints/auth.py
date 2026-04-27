@@ -66,7 +66,6 @@ def _generate_temporary_password(length=12):
     password_chars = [
         secrets.choice(string.ascii_uppercase),
         secrets.choice(string.ascii_lowercase),
-        secrets.choice(string.digits),
         secrets.choice(SPECIAL_PASSWORD_CHARACTERS),
     ]
     while len(password_chars) < max(length, 8):

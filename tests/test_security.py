@@ -52,7 +52,7 @@ class TestPasswordValidation:
     def test_erreurs_multiples(self):
         """Un mot de passe très faible doit retourner plusieurs erreurs."""
         errors = validate_password_strength('abc')
-        assert len(errors) >= 3  # trop court + pas de majuscule + pas de chiffre
+        assert len(errors) >= 3  # trop court + pas de majuscule + pas de caractère spécial
 
 
 class TestCsrfTokenPresence:
