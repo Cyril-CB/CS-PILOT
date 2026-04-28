@@ -1,8 +1,6 @@
 from datetime import date
 
-
-def _login(client, login, password):
-    return client.post('/login', data={'login': login, 'password': password}, follow_redirects=True)
+from tests.conftest import _login
 
 
 def test_page_commandes_salaries_accessible_aux_salaries(auth_client):

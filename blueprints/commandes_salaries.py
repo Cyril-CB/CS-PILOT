@@ -1,6 +1,7 @@
 """
 Commandes de fournitures pour les salariés.
 """
+import re
 from datetime import date
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
@@ -44,21 +45,31 @@ def _peut_suivre_globalement():
     )
 
 
+def _has_multiple_or_mixed_decimal_separators(value):
+    return value.count(',') > 1 or value.count('.') > 1 or (',' in value and '.' in value)
+
+
 def _parse_prix(raw_value):
-    value = (raw_value or '').strip().replace(' ', '').replace(',', '.')
+    value = (raw_value or '').strip().replace(' ', '')
     if not value:
         return None
-    try:
-        parsed = float(value)
-    except ValueError:
-        return None
-    return parsed if parsed >= 0 else None
+
+    if _has_multiple_or_mixed_decimal_separators(value):
+        raise ValueError
+
+    normalized = value.replace(',', '.')
+    if not re.fullmatch(r'\d+(?:\.\d{1,2})?', normalized):
+        raise ValueError
+
+    return float(normalized)
 
 
 def _format_prix(value):
     if value is None:
         return '—'
-    return f"{value:,.2f}".replace(',', ' ').replace('.', ',') + ' €'
+    formatted = f"{value:,.2f}"
+    formatted = formatted.replace(',', '\u202f').replace('.', ',')
+    return f"{formatted} €"
 
 
 @commandes_salaries_bp.route('/commandes-salaries', methods=['GET', 'POST'])
@@ -72,17 +83,17 @@ def commandes_salaries():
         description = (request.form.get('description') or '').strip()
         reference = (request.form.get('reference') or '').strip()
         urgence = request.form.get('urgence', 'normal')
-        prix = _parse_prix(request.form.get('prix'))
-        prix_raw = (request.form.get('prix') or '').strip()
+        try:
+            prix = _parse_prix(request.form.get('prix'))
+        except ValueError:
+            flash("Le prix saisi est invalide.", "error")
+            return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
 
         if not description:
             flash("La description de la demande est obligatoire.", "error")
             return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
         if urgence not in URGENCES_MAP:
             flash("Le niveau d'urgence sélectionné est invalide.", "error")
-            return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
-        if prix_raw and prix is None:
-            flash("Le prix saisi est invalide.", "error")
             return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
 
         conn = get_db()
@@ -110,8 +121,9 @@ def commandes_salaries():
         return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
 
     conn = get_db()
+    peut_suivre = _peut_suivre_globalement()
     try:
-        if _peut_suivre_globalement():
+        if peut_suivre:
             commandes = conn.execute(
                 '''
                 SELECT c.*, u.nom, u.prenom
@@ -157,7 +169,8 @@ def commandes_salaries():
         groupes_config=GROUPES,
         urgences_config=URGENCES,
         aujourd_hui=date.today().isoformat(),
-        peut_suivre=_peut_suivre_globalement(),
+        peut_suivre=peut_suivre,
+        nombre_colonnes_table=8 if peut_suivre else 6,
     )
 
 
