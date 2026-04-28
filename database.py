@@ -69,6 +69,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0029', 'Ajout module budget previsionnel'),
     ('0030', 'Ameliorations subventions'),
     ('0031', 'Ajout demandes conges'),
+    ('0032', 'Ajout commandes salaries et delegations'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -688,6 +689,39 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (responsable_id) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Commandes salaries et delegations (migration 0032) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS commandes_salaries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date_demande TEXT NOT NULL,
+            description TEXT NOT NULL,
+            reference TEXT,
+            prix REAL,
+            urgence TEXT NOT NULL DEFAULT 'normal',
+            groupe TEXT NOT NULL DEFAULT 'en_cours',
+            traite_par INTEGER,
+            date_traitement TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (traite_par) REFERENCES users(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations_missions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mission_key TEXT NOT NULL UNIQUE,
+            delegated_user_id INTEGER NOT NULL,
+            delegated_by_user_id INTEGER NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (delegated_user_id) REFERENCES users(id),
+            FOREIGN KEY (delegated_by_user_id) REFERENCES users(id)
         )
     ''')
 

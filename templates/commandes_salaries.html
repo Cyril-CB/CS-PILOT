@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Commandes salariés - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+    .commandes-form-card {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: var(--shadow-sm);
+        margin-bottom: 24px;
+    }
+    .commandes-form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+    }
+    .commandes-form-grid .form-group-full {
+        grid-column: 1 / -1;
+    }
+    .commandes-help {
+        margin: 8px 0 0;
+        color: var(--gray-600);
+        font-size: 0.95rem;
+    }
+    .commandes-checkbox {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--success);
+        cursor: pointer;
+    }
+    .commandes-inline-form {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+    }
+    .commandes-inline-form select {
+        min-width: 150px;
+    }
+    .commandes-statut {
+        min-width: 120px;
+        text-align: center;
+        display: inline-block;
+    }
+    @media (max-width: 768px) {
+        .commandes-inline-form {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+</style>
+
+<div class="sv-page">
+    <div class="sv-header">
+        <div>
+            <h1>Commandes salariés</h1>
+            <p class="subtitle">Demandes de fournitures regroupées par statut</p>
+        </div>
+    </div>
+
+    <div class="commandes-form-card">
+        <h2>Nouvelle demande</h2>
+        <p class="commandes-help">Complétez votre demande de fournitures. La date du jour est renseignée automatiquement.</p>
+
+        <form method="POST">
+            <div class="commandes-form-grid">
+                <div class="form-group">
+                    <label for="date_demande">Date</label>
+                    <input type="date" id="date_demande" value="{{ aujourd_hui }}" readonly>
+                </div>
+
+                <div class="form-group">
+                    <label for="urgence">Niveau d'urgence</label>
+                    <select id="urgence" name="urgence">
+                        {% for urgence in urgences_config %}
+                        <option value="{{ urgence.key }}" {% if urgence.key == 'normal' %}selected{% endif %}>{{ urgence.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group form-group-full">
+                    <label for="description">Description de la demande *</label>
+                    <input type="text" id="description" name="description" required
+                           placeholder="Ex : cahier grand format">
+                </div>
+
+                <div class="form-group">
+                    <label for="reference">Référence</label>
+                    <input type="text" id="reference" name="reference" placeholder="Optionnel">
+                </div>
+
+                <div class="form-group">
+                    <label for="prix">Prix</label>
+                    <input type="text" id="prix" name="prix" inputmode="decimal" placeholder="Optionnel">
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">➕ Enregistrer la demande</button>
+            </div>
+        </form>
+    </div>
+
+    {% for groupe in groupes %}
+    <div class="sv-group" data-groupe="{{ groupe.key }}">
+        <div class="sv-group-head" style="background:{{ groupe.color }};" onclick="toggleGroup(this)">
+            <span class="sv-group-arrow">▾</span>
+            <span class="sv-group-label">{{ groupe.label }}</span>
+            <span class="sv-group-count">{{ groupe.lignes|length }} demande{{ 's' if groupe.lignes|length != 1 else '' }}</span>
+        </div>
+
+        <div class="sv-group-body">
+            <div class="sv-scroll">
+                <table class="sv-board">
+                    <thead>
+                        <tr>
+                            {% if peut_suivre %}
+                            <th class="sv-col-name">Demandeur</th>
+                            {% endif %}
+                            <th class="sv-col-date">Date</th>
+                            <th class="sv-col-comment">Description</th>
+                            <th class="sv-col-text">Référence</th>
+                            <th class="sv-col-amount">Prix</th>
+                            <th class="sv-col-status">Urgence</th>
+                            {% if peut_suivre %}
+                            <th class="sv-col-status">Commandée</th>
+                            <th class="sv-col-status">Statut</th>
+                            {% else %}
+                            <th class="sv-col-status">État</th>
+                            {% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for commande in groupe.lignes %}
+                        <tr class="sv-row">
+                            {% if peut_suivre %}
+                            <td class="sv-col-name sv-cell-name">
+                                <span class="sv-cell-text">{{ commande.demandeur }}</span>
+                                <span class="sv-left-color" style="background:{{ groupe.color }};"></span>
+                            </td>
+                            {% endif %}
+                            <td class="sv-col-date">
+                                {{ commande.date_demande[8:10] }}/{{ commande.date_demande[5:7] }}/{{ commande.date_demande[0:4] }}
+                            </td>
+                            <td class="sv-col-comment">{{ commande.description }}</td>
+                            <td class="sv-col-text">{{ commande.reference or '—' }}</td>
+                            <td class="sv-col-amount">{{ commande.prix_affiche }}</td>
+                            <td class="sv-col-status">
+                                {% set urgence = urgences_config|selectattr('key', 'equalto', commande.urgence)|list %}
+                                <span class="sv-status-pill" style="background:{{ urgence[0].color if urgence else '#c4c4c4' }};">
+                                    {{ urgence[0].label if urgence else '—' }}
+                                </span>
+                            </td>
+                            {% if peut_suivre %}
+                            <td class="sv-col-status">
+                                <form method="POST" action="{{ url_for('commandes_salaries_bp.modifier_statut_commande', commande_id=commande.id) }}" class="commandes-inline-form">
+                                    <input type="hidden" name="groupe" value="{{ 'commandee' if commande.groupe != 'commandee' else 'en_cours' }}">
+                                    <input type="checkbox"
+                                           class="commandes-checkbox"
+                                           {% if commande.groupe == 'commandee' %}checked{% endif %}
+                                           {% if commande.groupe == 'annulee' %}disabled{% endif %}
+                                           onchange="this.form.submit()">
+                                </form>
+                            </td>
+                            <td class="sv-col-status">
+                                <form method="POST" action="{{ url_for('commandes_salaries_bp.modifier_statut_commande', commande_id=commande.id) }}" class="commandes-inline-form">
+                                    <select name="groupe" onchange="this.form.submit()">
+                                        {% for option in groupes_config %}
+                                        <option value="{{ option.key }}" {% if option.key == commande.groupe %}selected{% endif %}>{{ option.label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                            </td>
+                            {% else %}
+                            <td class="sv-col-status">
+                                <span class="sv-status-pill commandes-statut" style="background:{{ groupe.color }};">
+                                    {{ groupe.label }}
+                                </span>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% endfor %}
+
+                        {% if not groupe.lignes %}
+                        <tr>
+                            <td colspan="{% if peut_suivre %}8{% else %}6{% endif %}" class="sv-empty">
+                                Aucune demande dans ce groupe
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+function toggleGroup(head) {
+    var body = head.nextElementSibling;
+    var arrow = head.querySelector('.sv-group-arrow');
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        arrow.textContent = '▾';
+    } else {
+        body.style.display = 'none';
+        arrow.textContent = '▸';
+    }
+}
+</script>
+{% endblock %}

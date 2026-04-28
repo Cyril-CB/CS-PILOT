@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 from database import get_db
+from delegations import MISSIONS, MISSIONS_MAP, save_delegation
 from utils import login_required, validate_password_strength
 
 admin_bp = Blueprint('admin_bp', __name__)
@@ -40,6 +41,90 @@ def gestion_users():
     conn.close()
     
     return render_template('gestion_users.html', users=users, secteurs=secteurs)
+
+
+@admin_bp.route('/delegations', methods=['GET', 'POST'])
+@login_required
+def delegations():
+    """Gestion des délégations de mission."""
+    if session.get('profil') not in ['directeur', 'comptable']:
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    try:
+        if request.method == 'POST':
+            if session.get('profil') != 'directeur':
+                flash('Seule la direction peut modifier les délégations.', 'error')
+                return redirect(url_for('admin_bp.delegations'))
+
+            mission_key = request.form.get('mission_key')
+            delegated_user_id = request.form.get('delegated_user_id', type=int)
+
+            if mission_key not in MISSIONS_MAP:
+                flash('Mission invalide.', 'error')
+                return redirect(url_for('admin_bp.delegations'))
+
+            if delegated_user_id:
+                user = conn.execute(
+                    '''
+                    SELECT id, nom, prenom
+                    FROM users
+                    WHERE id = ? AND actif = 1 AND profil IN ('salarie', 'responsable')
+                    ''',
+                    (delegated_user_id,)
+                ).fetchone()
+                if not user:
+                    flash('Le salarié sélectionné est invalide.', 'error')
+                    return redirect(url_for('admin_bp.delegations'))
+
+            save_delegation(mission_key, delegated_user_id, session['user_id'])
+            if delegated_user_id:
+                flash('La délégation a été enregistrée.', 'success')
+            else:
+                flash('La délégation a été retirée.', 'success')
+            return redirect(url_for('admin_bp.delegations'))
+
+        salaries = conn.execute(
+            '''
+            SELECT id, nom, prenom, profil
+            FROM users
+            WHERE actif = 1 AND profil IN ('salarie', 'responsable')
+            ORDER BY nom, prenom
+            '''
+        ).fetchall()
+
+        delegations_rows = conn.execute(
+            '''
+            SELECT d.mission_key, d.delegated_user_id, u.nom, u.prenom
+            FROM delegations_missions d
+            LEFT JOIN users u ON u.id = d.delegated_user_id
+            '''
+        ).fetchall()
+    finally:
+        conn.close()
+
+    delegations_map = {row['mission_key']: row for row in delegations_rows}
+    missions = []
+    for mission in MISSIONS:
+        row = delegations_map.get(mission['key'])
+        delegated_user_name = None
+        delegated_user_id = None
+        if row and row['delegated_user_id']:
+            delegated_user_id = row['delegated_user_id']
+            delegated_user_name = f"{row['prenom']} {row['nom']}"
+        missions.append({
+            **mission,
+            'delegated_user_id': delegated_user_id,
+            'delegated_user_name': delegated_user_name,
+        })
+
+    return render_template(
+        'delegations.html',
+        missions=missions,
+        salaries=salaries,
+        peut_modifier=session.get('profil') == 'directeur',
+    )
 
 @admin_bp.route('/creer_user', methods=['GET', 'POST'])
 @login_required
