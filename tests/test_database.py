@@ -67,6 +67,12 @@ class TestInitDb:
         versions = {m['version'] for m in lister_fichiers_migrations()}
         assert '0029' in versions
 
+    def test_versions_migrations_uniques(self):
+        """Chaque fichier de migration doit avoir une version unique."""
+        versions = [m['version'] for m in lister_fichiers_migrations()]
+        assert len(versions) == len(set(versions))
+        assert '0033' in versions
+
     def test_postes_depense_initialises(self, app, db):
         """Les postes de dépense par défaut doivent être créés."""
         with app.app_context():

@@ -1,5 +1,5 @@
 """
-Migration 0032 : Commandes salariés et délégations.
+Migration 0033 : Commandes salariés et délégations.
 """
 
 NOM = "Ajout commandes salariés et délégations"

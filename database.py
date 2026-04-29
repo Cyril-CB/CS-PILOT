@@ -69,7 +69,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0029', 'Ajout module budget previsionnel'),
     ('0030', 'Ameliorations subventions'),
     ('0031', 'Ajout demandes conges'),
-    ('0032', 'Ajout commandes salaries et delegations'),
+    ('0033', 'Ajout commandes salaries et delegations'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -692,7 +692,7 @@ def init_db():
         )
     ''')
 
-    # ===== Commandes salaries et delegations (migration 0032) =====
+    # ===== Commandes salaries et delegations (migration 0033) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS commandes_salaries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
