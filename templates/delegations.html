@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Délégation - CS-PILOT{% endblock %}
+
+{% block content %}
+<style>
+    .delegations-page { max-width: 980px; margin: 0 auto; }
+    .delegation-card {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: var(--shadow-sm);
+        margin-top: 24px;
+    }
+    .delegation-meta {
+        margin: 12px 0 20px;
+        color: var(--gray-600);
+        line-height: 1.5;
+    }
+    .delegation-current {
+        font-weight: 600;
+        color: var(--gray-900);
+    }
+</style>
+
+<div class="delegations-page">
+    <div class="form-container">
+        <h1>Délégation</h1>
+        <p class="subtitle">Permettez à un salarié de suivre certaines missions en votre nom.</p>
+
+        {% for mission in missions %}
+        <div class="delegation-card">
+            <h2>{{ mission.label }}</h2>
+            <p class="delegation-meta">
+                {% if mission.delegated_user_name %}
+                <span class="delegation-current">Mission actuellement déléguée à {{ mission.delegated_user_name }}</span>
+                {% else %}
+                <span class="delegation-current">Aucune délégation active pour cette mission</span>
+                {% endif %}
+            </p>
+
+            <form method="POST" action="{{ url_for('admin_bp.delegations') }}">
+                <input type="hidden" name="mission_key" value="{{ mission.key }}">
+
+                <div class="form-group">
+                    <label for="delegated_user_id_{{ mission.key }}">Salarié délégataire</label>
+                    <select id="delegated_user_id_{{ mission.key }}" name="delegated_user_id" {% if not peut_modifier %}disabled{% endif %}>
+                        <option value="">Aucune délégation</option>
+                        {% for user in salaries %}
+                        <option value="{{ user.id }}" {% if mission.delegated_user_id == user.id %}selected{% endif %}>
+                            {{ user.prenom }} {{ user.nom }}{% if user.profil == 'responsable' %} — Responsable{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
+                    {% if peut_modifier %}
+                    <button type="submit" class="btn btn-primary">Déléguer cette mission</button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
