@@ -50,3 +50,13 @@ def upgrade(conn):
     )
 
     conn.commit()
+
+
+def downgrade(conn):
+    """Annule la migration."""
+    cursor = conn.cursor()
+
+    cursor.execute("DROP TABLE IF EXISTS delegations_missions")
+    cursor.execute("DROP TABLE IF EXISTS commandes_salaries")
+
+    conn.commit()
