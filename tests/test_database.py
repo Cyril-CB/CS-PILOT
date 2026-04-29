@@ -7,6 +7,7 @@ Tests pour le module database.py :
 - Connexion et row_factory
 - Résolution conditionnelle de DATA_DIR (mode script vs mode frozen)
 """
+from collections import Counter
 import importlib
 import os
 import sys
@@ -70,7 +71,12 @@ class TestInitDb:
     def test_versions_migrations_uniques(self):
         """Chaque fichier de migration doit avoir une version unique."""
         versions = [m['version'] for m in lister_fichiers_migrations()]
-        assert len(versions) == len(set(versions))
+        duplicates = sorted([version for version, count in Counter(versions).items() if count > 1])
+        assert len(versions) == len(set(versions)), f"Versions dupliquées: {', '.join(duplicates)}"
+
+    def test_fichier_migration_0033_present(self):
+        """La migration 0033 doit exister sous forme de fichier."""
+        versions = {m['version'] for m in lister_fichiers_migrations()}
         assert '0033' in versions
 
     def test_postes_depense_initialises(self, app, db):
