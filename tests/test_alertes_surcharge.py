@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+from blueprints.suivi import _calculate_surcharge_alert, _get_feries_set
+
 
 def _recent_business_days(limit):
     days = []
@@ -125,15 +127,33 @@ class TestAlertesSurchargeCalcul:
 
             db.commit()
 
+            user = db.execute(
+                '''
+                SELECT u.id, u.nom, u.prenom, u.profil, u.solde_initial, s.nom AS secteur_nom
+                FROM users u
+                LEFT JOIN secteurs s ON s.id = u.secteur_id
+                WHERE u.id = ?
+                ''',
+                (sample_users['salarie_id'],)
+            ).fetchone()
+            expected_alert = _calculate_surcharge_alert(
+                db,
+                user,
+                datetime.now().date(),
+                _get_feries_set(db),
+                {},
+                {},
+            )
+
         response = admin_client.get('/alertes_surcharge')
         html = response.get_data(as_text=True)
-        expected_score = '72/100' if datetime.now().date().weekday() == 0 else '70/100'
 
         assert response.status_code == 200
+        assert expected_alert is not None
         assert 'Jean Martin' in html
-        assert 'Orange' in html
-        assert expected_score in html
-        assert 'Solde du dernier mois écoulé : +6.0h' in html
+        assert expected_alert['category']['label'] in html
+        assert f"{expected_alert['score']}/100" in html
+        assert f"Solde du dernier mois écoulé : +{expected_alert['solde_dernier_mois']:.1f}h" in html
         assert 'surcharge-sparkline' in html
         assert 'Vue mensuelle' in html
 

@@ -366,6 +366,12 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     for h in heures_rows:
         heures_reelles[h['date']] = dict(h)
 
+    jours_feries_rows = conn.execute('''
+        SELECT date, libelle FROM jours_feries
+        WHERE date >= ? AND date <= ?
+    ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
+    jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
+
     # Generer toutes les journees du mois
     journees = []
     jour_actuel = premier_jour
@@ -376,9 +382,11 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     while jour_actuel <= dernier_jour:
         date_str = jour_actuel.strftime('%Y-%m-%d')
         jour_semaine = jour_actuel.weekday()  # 0=lundi, 6=dimanche
+        est_ferie = date_str in jours_feries
+        libelle_ferie = jours_feries.get(date_str)
 
         if jour_semaine < 6:
-            if jour_semaine == 5 and date_str not in heures_reelles:
+            if jour_semaine == 5 and date_str not in heures_reelles and not est_ferie:
                 jour_actuel += timedelta(days=1)
                 continue
 
@@ -430,6 +438,12 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
                 type_saisie = h['type_saisie']
                 commentaire = h['commentaire']
+            elif est_ferie and jour_semaine < 5:
+                heures_reelles_jour = heures_theo_jour
+                horaires_reels = horaires_theoriques
+                est_declare = True
+                type_saisie = 'ferie'
+                commentaire = libelle_ferie
             else:
                 if jour_actuel.date() < datetime.now().date() and jour_semaine < 5:
                     non_declare = True
@@ -458,7 +472,9 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'non_declare': non_declare,
                 'type_saisie': type_saisie,
                 'commentaire': commentaire,
-                'type_periode': type_periode
+                'type_periode': type_periode,
+                'est_ferie': est_ferie,
+                'libelle_ferie': libelle_ferie,
             })
 
         jour_actuel += timedelta(days=1)
@@ -559,13 +575,6 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     else:
         mois_suivant = mois + 1
         annee_suivante = annee
-
-    # Jours feries du mois
-    jours_feries_rows = conn.execute('''
-        SELECT date, libelle FROM jours_feries
-        WHERE date >= ? AND date <= ?
-    ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-    jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
 
     noms_mois = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
                  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']

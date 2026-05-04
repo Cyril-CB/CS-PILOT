@@ -208,26 +208,32 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
 
     semaine_type = get_semaine_alternance(user_id, date_str)
 
-    if semaine_type == 'fixe':
-        planning = conn.execute('''
+    def _chercher_planning_pour_type(type_periode_recherche):
+        if semaine_type == 'fixe':
+            return conn.execute('''
+                SELECT * FROM planning_theorique
+                WHERE user_id = ?
+                AND type_periode = ?
+                AND (type_alternance IS NULL OR type_alternance = 'fixe')
+                AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode_recherche, date_str)).fetchone()
+
+        return conn.execute('''
             SELECT * FROM planning_theorique
-            WHERE user_id = ? 
-            AND type_periode = ?
-            AND (type_alternance IS NULL OR type_alternance = 'fixe')
-            AND date_debut_validite <= ?
-            ORDER BY date_debut_validite DESC
-            LIMIT 1
-        ''', (user_id, type_periode, date_str)).fetchone()
-    else:
-        planning = conn.execute('''
-            SELECT * FROM planning_theorique
-            WHERE user_id = ? 
+            WHERE user_id = ?
             AND type_periode = ?
             AND type_alternance = ?
             AND date_debut_validite <= ?
             ORDER BY date_debut_validite DESC
             LIMIT 1
-        ''', (user_id, type_periode, semaine_type, date_str)).fetchone()
+        ''', (user_id, type_periode_recherche, semaine_type, date_str)).fetchone()
+
+    planning = _chercher_planning_pour_type(type_periode)
+
+    if not planning and type_periode == 'vacances':
+        planning = _chercher_planning_pour_type('periode_scolaire')
 
     conn.close()
     return planning

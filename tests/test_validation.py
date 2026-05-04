@@ -7,6 +7,9 @@ Tests pour le module validation.py :
 """
 from datetime import datetime
 
+from blueprints.validation import _get_vue_mensuelle_data_impl
+from database import get_db
+
 
 def _creer_saisie_mois(db, user_id, mois, annee):
     """Helper : crée une saisie par jour ouvré du mois pour permettre la validation."""
@@ -28,6 +31,18 @@ def _creer_saisie_mois(db, user_id, mois, annee):
                 (user_id, jour.strftime('%Y-%m-%d'))
             )
         jour += timedelta(days=1)
+    db.commit()
+
+
+def _ajouter_jour_ferie(db, date_str, libelle):
+    """Helper : ajoute un jour férié en base."""
+    db.execute(
+        '''
+        INSERT INTO jours_feries (annee, date, libelle)
+        VALUES (?, ?, ?)
+        ''',
+        (int(date_str[:4]), date_str, libelle)
+    )
     db.commit()
 
 
@@ -210,3 +225,78 @@ class TestVueEnsembleAcces:
         response = auth_client.get('/vue_ensemble_validation', follow_redirects=True)
         assert response.status_code == 200
         assert 'non autoris' in response.data.decode('utf-8').lower()
+
+
+class TestVueMensuelleJoursFeries:
+    """Tests du pré-remplissage des jours fériés."""
+
+    def test_helper_pre_remplit_un_jour_ferie_sans_non_declaration(self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _ajouter_jour_ferie(db, '2024-05-01', 'Fête du Travail')
+
+            with app.test_request_context('/vue_mensuelle?mois=5&annee=2024'):
+                from flask import session
+
+                session['user_id'] = sample_users['salarie_id']
+                session['profil'] = 'salarie'
+
+                conn = get_db()
+                try:
+                    data, error_redirect = _get_vue_mensuelle_data_impl(
+                        conn,
+                        5,
+                        2024,
+                        None,
+                        'validation_bp.vue_mensuelle'
+                    )
+                finally:
+                    conn.close()
+
+        assert error_redirect is None
+        jour = next((j for j in data['journees'] if j['date'] == '2024-05-01'), None)
+        assert jour is not None
+        assert jour['type_saisie'] == 'ferie'
+        assert jour['est_ferie'] is True
+        assert jour['libelle_ferie'] == 'Fête du Travail'
+        assert jour['commentaire'] == 'Fête du Travail'
+        assert jour['est_declare'] is True
+        assert jour['est_saisi'] is False
+        assert jour['non_declare'] is False
+
+    def test_vue_calendrier_affiche_le_libelle_du_jour_ferie(self, auth_client, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _ajouter_jour_ferie(db, '2024-05-01', 'Fête du Travail')
+
+        response = auth_client.get('/vue_calendrier?mois=5&annee=2024')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Fête du Travail' in html
+
+
+class TestPlanningTheoriqueAffichage:
+    """Tests de l'affichage des totaux du planning théorique."""
+
+    def test_affiche_le_total_si_seule_l_apres_midi_est_renseignee(self, auth_client, app, db, sample_planning):
+        with app.app_context():
+            db.execute(
+                '''
+                UPDATE planning_theorique
+                SET lundi_matin_debut = NULL,
+                    lundi_matin_fin = NULL,
+                    lundi_aprem_debut = ?,
+                    lundi_aprem_fin = ?,
+                    total_hebdo = ?
+                WHERE id = ?
+                ''',
+                ('13:00', '17:00', 32.0, sample_planning['planning_id'])
+            )
+            db.commit()
+
+        response = auth_client.get('/planning_theorique')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert '13:00 - 17:00' in html
+        assert '4.0h' in html
+        assert 'Non travaillé' not in html
