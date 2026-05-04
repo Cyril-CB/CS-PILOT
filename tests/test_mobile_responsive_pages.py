@@ -34,6 +34,7 @@ def test_planning_theorique_utilise_historique_responsive(auth_client, sample_pl
     assert 'planning-history-table' in html
     assert 'data-label="Après-midi"' in html
     assert 'planning-day-card' in html
+    assert 'vous pouvez ne saisir que le planning scolaire' in html
 
 
 def test_mon_equipe_rend_les_versions_desktop_et_mobile(resp_client, db, sample_users):

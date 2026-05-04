@@ -193,6 +193,91 @@ class TestGetHeuresTheoriquesJour:
             assert get_heures_theoriques_jour({}, 5) == 0
 
 
+class TestGetPlanningValideADate:
+    """Tests de fallback du planning théorique."""
+
+    def test_vacances_utilise_planning_scolaire_si_aucun_planning_vacances(self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            from utils import get_planning_valide_a_date
+
+            db.execute('''
+                INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
+                VALUES (?, ?, ?, ?)
+            ''', ('Vacances test', '2025-02-10', '2025-02-14', sample_users['directeur_id']))
+            db.commit()
+
+            planning = get_planning_valide_a_date(sample_users['salarie_id'], 'vacances', '2025-02-12')
+
+            assert planning is not None
+            assert planning['type_periode'] == 'periode_scolaire'
+            assert planning['lundi_matin_debut'] == sample_planning['lundi_matin_debut']
+
+    def test_vacances_utilise_la_bonne_semaine_alternee_si_aucun_planning_vacances(self, app, db, sample_users):
+        with app.app_context():
+            from utils import get_planning_valide_a_date
+
+            db.execute('DELETE FROM planning_theorique WHERE user_id = ?', (sample_users['salarie_id'],))
+            db.execute('DELETE FROM alternance_reference WHERE user_id = ?', (sample_users['salarie_id'],))
+
+            db.execute('''
+                INSERT INTO planning_theorique (
+                    user_id, type_periode, date_debut_validite, type_alternance,
+                    lundi_matin_debut, lundi_matin_fin, lundi_aprem_debut, lundi_aprem_fin,
+                    mardi_matin_debut, mardi_matin_fin, mardi_aprem_debut, mardi_aprem_fin,
+                    mercredi_matin_debut, mercredi_matin_fin, mercredi_aprem_debut, mercredi_aprem_fin,
+                    jeudi_matin_debut, jeudi_matin_fin, jeudi_aprem_debut, jeudi_aprem_fin,
+                    vendredi_matin_debut, vendredi_matin_fin, vendredi_aprem_debut, vendredi_aprem_fin,
+                    total_hebdo
+                ) VALUES (
+                    ?, 'periode_scolaire', '2025-01-01', 'semaine_1',
+                    '08:00', '12:00', '13:00', '16:00',
+                    '08:00', '12:00', '13:00', '16:00',
+                    '08:00', '12:00', '13:00', '16:00',
+                    '08:00', '12:00', '13:00', '16:00',
+                    '08:00', '12:00', '13:00', '16:00',
+                    35.0
+                )
+            ''', (sample_users['salarie_id'],))
+
+            db.execute('''
+                INSERT INTO planning_theorique (
+                    user_id, type_periode, date_debut_validite, type_alternance,
+                    lundi_matin_debut, lundi_matin_fin, lundi_aprem_debut, lundi_aprem_fin,
+                    mardi_matin_debut, mardi_matin_fin, mardi_aprem_debut, mardi_aprem_fin,
+                    mercredi_matin_debut, mercredi_matin_fin, mercredi_aprem_debut, mercredi_aprem_fin,
+                    jeudi_matin_debut, jeudi_matin_fin, jeudi_aprem_debut, jeudi_aprem_fin,
+                    vendredi_matin_debut, vendredi_matin_fin, vendredi_aprem_debut, vendredi_aprem_fin,
+                    total_hebdo
+                ) VALUES (
+                    ?, 'periode_scolaire', '2025-01-01', 'semaine_2',
+                    '09:00', '12:00', '13:30', '17:30',
+                    '09:00', '12:00', '13:30', '17:30',
+                    '09:00', '12:00', '13:30', '17:30',
+                    '09:00', '12:00', '13:30', '17:30',
+                    '09:00', '12:00', '13:30', '17:30',
+                    35.0
+                )
+            ''', (sample_users['salarie_id'],))
+
+            db.execute('''
+                INSERT INTO alternance_reference (user_id, date_reference, date_debut_validite)
+                VALUES (?, ?, ?)
+            ''', (sample_users['salarie_id'], '2025-01-06', '2025-01-01'))
+
+            db.execute('''
+                INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
+                VALUES (?, ?, ?, ?)
+            ''', ('Vacances alternées', '2025-01-13', '2025-01-17', sample_users['directeur_id']))
+            db.commit()
+
+            planning = get_planning_valide_a_date(sample_users['salarie_id'], 'vacances', '2025-01-13')
+
+            assert planning is not None
+            assert planning['type_periode'] == 'periode_scolaire'
+            assert planning['type_alternance'] == 'semaine_2'
+            assert planning['lundi_matin_debut'] == '09:00'
+
+
 class TestEncryption:
     """Tests du chiffrement/déchiffrement."""
 
