@@ -78,9 +78,8 @@
                             <td data-label="Matin">{{ p.lundi_matin_debut or '-' }} - {{ p.lundi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.lundi_aprem_debut or '-' }} - {{ p.lundi_aprem_fin or '-' }}</td>
                             <td data-label="Total">
-                                {% set lundi_h = ((p.lundi_matin_debut and p.lundi_matin_fin) | default(0, true)) %}
-                                {% if lundi_h %}
-                                {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% if (p.lundi_matin_debut and p.lundi_matin_fin) or (p.lundi_aprem_debut and p.lundi_aprem_fin) %}
+                                {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 if p.lundi_matin_debut and p.lundi_matin_fin else 0 %}
                                 {% set h_aprem = (p.lundi_aprem_fin.split(':')[0]|int * 60 + p.lundi_aprem_fin.split(':')[1]|int - p.lundi_aprem_debut.split(':')[0]|int * 60 - p.lundi_aprem_debut.split(':')[1]|int) / 60 if p.lundi_aprem_debut and p.lundi_aprem_fin else 0 %}
                                 {{ "%.1f"|format(h_matin + h_aprem) }}h
                                 {% else %}
@@ -93,8 +92,8 @@
                             <td data-label="Matin">{{ p.mardi_matin_debut or '-' }} - {{ p.mardi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.mardi_aprem_debut or '-' }} - {{ p.mardi_aprem_fin or '-' }}</td>
                             <td data-label="Total">
-                                {% if p.mardi_matin_debut %}
-                                {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% if (p.mardi_matin_debut and p.mardi_matin_fin) or (p.mardi_aprem_debut and p.mardi_aprem_fin) %}
+                                {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 if p.mardi_matin_debut and p.mardi_matin_fin else 0 %}
                                 {% set h_aprem = (p.mardi_aprem_fin.split(':')[0]|int * 60 + p.mardi_aprem_fin.split(':')[1]|int - p.mardi_aprem_debut.split(':')[0]|int * 60 - p.mardi_aprem_debut.split(':')[1]|int) / 60 if p.mardi_aprem_debut and p.mardi_aprem_fin else 0 %}
                                 {{ "%.1f"|format(h_matin + h_aprem) }}h
                                 {% else %}
@@ -107,8 +106,8 @@
                             <td data-label="Matin">{{ p.mercredi_matin_debut or '-' }} - {{ p.mercredi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.mercredi_aprem_debut or '-' }} - {{ p.mercredi_aprem_fin or '-' }}</td>
                             <td data-label="Total">
-                                {% if p.mercredi_matin_debut %}
-                                {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% if (p.mercredi_matin_debut and p.mercredi_matin_fin) or (p.mercredi_aprem_debut and p.mercredi_aprem_fin) %}
+                                {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 if p.mercredi_matin_debut and p.mercredi_matin_fin else 0 %}
                                 {% set h_aprem = (p.mercredi_aprem_fin.split(':')[0]|int * 60 + p.mercredi_aprem_fin.split(':')[1]|int - p.mercredi_aprem_debut.split(':')[0]|int * 60 - p.mercredi_aprem_debut.split(':')[1]|int) / 60 if p.mercredi_aprem_debut and p.mercredi_aprem_fin else 0 %}
                                 {{ "%.1f"|format(h_matin + h_aprem) }}h
                                 {% else %}
@@ -121,8 +120,8 @@
                             <td data-label="Matin">{{ p.jeudi_matin_debut or '-' }} - {{ p.jeudi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.jeudi_aprem_debut or '-' }} - {{ p.jeudi_aprem_fin or '-' }}</td>
                             <td data-label="Total">
-                                {% if p.jeudi_matin_debut %}
-                                {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% if (p.jeudi_matin_debut and p.jeudi_matin_fin) or (p.jeudi_aprem_debut and p.jeudi_aprem_fin) %}
+                                {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 if p.jeudi_matin_debut and p.jeudi_matin_fin else 0 %}
                                 {% set h_aprem = (p.jeudi_aprem_fin.split(':')[0]|int * 60 + p.jeudi_aprem_fin.split(':')[1]|int - p.jeudi_aprem_debut.split(':')[0]|int * 60 - p.jeudi_aprem_debut.split(':')[1]|int) / 60 if p.jeudi_aprem_debut and p.jeudi_aprem_fin else 0 %}
                                 {{ "%.1f"|format(h_matin + h_aprem) }}h
                                 {% else %}
@@ -135,8 +134,8 @@
                             <td data-label="Matin">{{ p.vendredi_matin_debut or '-' }} - {{ p.vendredi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.vendredi_aprem_debut or '-' }} - {{ p.vendredi_aprem_fin or '-' }}</td>
                             <td data-label="Total">
-                                {% if p.vendredi_matin_debut %}
-                                {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 %}
+                                {% if (p.vendredi_matin_debut and p.vendredi_matin_fin) or (p.vendredi_aprem_debut and p.vendredi_aprem_fin) %}
+                                {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 if p.vendredi_matin_debut and p.vendredi_matin_fin else 0 %}
                                 {% set h_aprem = (p.vendredi_aprem_fin.split(':')[0]|int * 60 + p.vendredi_aprem_fin.split(':')[1]|int - p.vendredi_aprem_debut.split(':')[0]|int * 60 - p.vendredi_aprem_debut.split(':')[1]|int) / 60 if p.vendredi_aprem_debut and p.vendredi_aprem_fin else 0 %}
                                 {{ "%.1f"|format(h_matin + h_aprem) }}h
                                 {% else %}

@@ -153,7 +153,7 @@
                     {% set week_marker.current = week_number %}
                     <p class="month-mobile-week-title">Jours {{ week_start_day }} à {{ week_end_day }}</p>
                 {% endif %}
-                <article class="month-mobile-day-card {% if j.non_declare %}month-mobile-day-card-danger{% elif j.type_saisie == 'absence' %}month-mobile-day-card-absence{% elif j.est_declare %}month-mobile-day-card-declare{% elif j.est_saisi %}month-mobile-day-card-saisi{% endif %}">
+                <article class="month-mobile-day-card {% if j.non_declare %}month-mobile-day-card-danger{% elif j.type_saisie == 'absence' %}month-mobile-day-card-absence{% elif j.type_saisie == 'ferie' %}month-mobile-day-card-declare{% elif j.est_declare %}month-mobile-day-card-declare{% elif j.est_saisi %}month-mobile-day-card-saisi{% endif %}">
                     <div class="month-mobile-day-main">
                         <div class="month-mobile-date-block">
                             <span class="month-mobile-day-name">{{ j.jour_semaine[:3]|upper }}</span>
@@ -162,7 +162,9 @@
 
                         <div class="month-mobile-day-body">
                             <div class="month-mobile-day-badges">
-                                {% if j.non_declare %}
+                                {% if j.type_saisie == 'ferie' %}
+                                    <span class="badge" style="background: #ec4899; color: white;">🎌 Férié</span>
+                                {% elif j.non_declare %}
                                     <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
                                 {% elif j.type_saisie == 'absence' %}
                                     <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
@@ -186,6 +188,8 @@
                             <p class="month-mobile-period">
                                 {% if j.est_samedi %}
                                 Événement ou saisie exceptionnelle
+                                {% elif j.type_saisie == 'ferie' %}
+                                Jour férié
                                 {% elif j.type_periode == 'vacances' %}
                                 Période vacances
                                 {% else %}
@@ -413,7 +417,9 @@
                             {% endif %}
                         </td>
                         <td data-label="Statut">
-                            {% if j.non_declare %}
+                            {% if j.type_saisie == 'ferie' %}
+                                <span class="badge" style="background: #ec4899; color: white;">🎌 Férié</span>
+                            {% elif j.non_declare %}
                                 <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
                             {% elif j.type_saisie == 'absence' %}
                                 <span class="badge" style="background: #8b5cf6; color: white;">🏥 Absence</span>
