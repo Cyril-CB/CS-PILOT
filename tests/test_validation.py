@@ -253,7 +253,8 @@ class TestVueMensuelleJoursFeries:
                     conn.close()
 
         assert error_redirect is None
-        jour = next(j for j in data['journees'] if j['date'] == '2024-05-01')
+        jour = next((j for j in data['journees'] if j['date'] == '2024-05-01'), None)
+        assert jour is not None
         assert jour['type_saisie'] == 'ferie'
         assert jour['est_ferie'] is True
         assert jour['libelle_ferie'] == 'Fête du Travail'
