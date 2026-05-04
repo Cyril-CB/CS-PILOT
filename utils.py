@@ -208,7 +208,7 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
 
     semaine_type = get_semaine_alternance(user_id, date_str)
 
-    def _chercher_planning(type_periode_recherche):
+    def _chercher_planning_pour_type(type_periode_recherche):
         if semaine_type == 'fixe':
             return conn.execute('''
                 SELECT * FROM planning_theorique
@@ -230,10 +230,10 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
             LIMIT 1
         ''', (user_id, type_periode_recherche, semaine_type, date_str)).fetchone()
 
-    planning = _chercher_planning(type_periode)
+    planning = _chercher_planning_pour_type(type_periode)
 
     if not planning and type_periode == 'vacances':
-        planning = _chercher_planning('periode_scolaire')
+        planning = _chercher_planning_pour_type('periode_scolaire')
 
     conn.close()
     return planning
