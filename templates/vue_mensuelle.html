@@ -163,7 +163,7 @@
                         <div class="month-mobile-day-body">
                             <div class="month-mobile-day-badges">
                                 {% if j.type_saisie == 'ferie' %}
-                                    <span class="badge" style="background: #ec4899; color: white;">🎌 Férié</span>
+                                    <span class="badge month-badge-ferie">🎌 Férié</span>
                                 {% elif j.non_declare %}
                                     <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
                                 {% elif j.type_saisie == 'absence' %}
@@ -418,7 +418,7 @@
                         </td>
                         <td data-label="Statut">
                             {% if j.type_saisie == 'ferie' %}
-                                <span class="badge" style="background: #ec4899; color: white;">🎌 Férié</span>
+                                <span class="badge month-badge-ferie">🎌 Férié</span>
                             {% elif j.non_declare %}
                                 <span class="badge" style="background: #dc3545; color: white;">⚠️ Non déclaré</span>
                             {% elif j.type_saisie == 'absence' %}
@@ -949,6 +949,11 @@ function deverrouillerFiche() {
     color: #92400e;
     font-size: 0.72rem;
     font-weight: 700;
+}
+
+.month-badge-ferie {
+    background: #ec4899;
+    color: white;
 }
 
 .month-mobile-period,
