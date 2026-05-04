@@ -168,10 +168,15 @@
                     <option value="periode_scolaire">Période scolaire</option>
                     <option value="vacances">Vacances scolaires</option>
                 </select>
+                <label for="use_specific_vacation_planning" style="display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem; font-weight: 600;">
+                    <input type="checkbox" id="use_specific_vacation_planning">
+                    Saisir un planning spécifique pour les vacances scolaires
+                </label>
                 <p class="help-text">
                     Si vos horaires en vacances scolaires sont identiques à ceux de la période scolaire,
                     vous pouvez ne saisir que le planning scolaire : il sera utilisé par défaut,
                     y compris pour la semaine 1 / semaine 2 si vous utilisez un planning alterné.
+                    Cochez l'option ci-dessus uniquement si vous avez des horaires différents pendant les vacances.
                 </p>
             </div>
             
@@ -371,8 +376,21 @@
 // Pré-remplir la date de début de validité avec la date du jour
 document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('date_debut_validite');
+    const typePeriodeSelect = document.getElementById('type_periode');
+    const vacationPlanningCheckbox = document.getElementById('use_specific_vacation_planning');
+    const vacancesOption = typePeriodeSelect.querySelector('option[value="vacances"]');
     if (dateInput && !dateInput.value) {
         dateInput.value = '{{ date_actuelle }}';
+    }
+
+    function toggleVacationPlanningOption() {
+        const useSpecificVacationPlanning = vacationPlanningCheckbox.checked;
+        vacancesOption.disabled = !useSpecificVacationPlanning;
+        vacancesOption.hidden = !useSpecificVacationPlanning;
+
+        if (!useSpecificVacationPlanning && (!typePeriodeSelect.value || typePeriodeSelect.value === 'vacances')) {
+            typePeriodeSelect.value = 'periode_scolaire';
+        }
     }
     
     // Gestion affichage date de référence selon type d'alternance
@@ -409,7 +427,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Déclencher au chargement et au changement
+    vacationPlanningCheckbox.addEventListener('change', toggleVacationPlanningOption);
     typeAlternanceSelect.addEventListener('change', toggleDateReference);
+    toggleVacationPlanningOption();
     toggleDateReference(); // Initial
 });
 </script>
