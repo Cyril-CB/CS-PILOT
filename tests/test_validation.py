@@ -259,6 +259,8 @@ class TestVueMensuelleJoursFeries:
         assert jour['est_ferie'] is True
         assert jour['libelle_ferie'] == 'Fête du Travail'
         assert jour['commentaire'] == 'Fête du Travail'
+        assert jour['est_declare'] is True
+        assert jour['est_saisi'] is False
         assert jour['non_declare'] is False
 
     def test_vue_calendrier_affiche_le_libelle_du_jour_ferie(self, auth_client, app, db, sample_users, sample_planning):

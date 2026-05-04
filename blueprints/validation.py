@@ -441,6 +441,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             elif est_ferie and jour_semaine < 5:
                 heures_reelles_jour = heures_theo_jour
                 horaires_reels = horaires_theoriques
+                est_declare = True
                 type_saisie = 'ferie'
                 commentaire = libelle_ferie
             else:
