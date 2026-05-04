@@ -383,7 +383,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dateInput.value = '{{ date_actuelle }}';
     }
 
-    function toggleVacationPlanningOption() {
+    function gererOptionPlanningVacances() {
         const useSpecificVacationPlanning = vacationPlanningCheckbox.checked;
         vacancesOption.disabled = !useSpecificVacationPlanning;
         vacancesOption.hidden = !useSpecificVacationPlanning;
@@ -427,9 +427,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Déclencher au chargement et au changement
-    vacationPlanningCheckbox.addEventListener('change', toggleVacationPlanningOption);
+    vacationPlanningCheckbox.addEventListener('change', gererOptionPlanningVacances);
     typeAlternanceSelect.addEventListener('change', toggleDateReference);
-    toggleVacationPlanningOption();
+    gererOptionPlanningVacances();
     toggleDateReference(); // Initial
 });
 </script>
