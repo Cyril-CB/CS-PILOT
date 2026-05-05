@@ -268,7 +268,9 @@ class TestRelanceValidationDelegation:
         )
 
         assert response.status_code == 403
-        assert 'acces reserve au directeur' in response.get_data(as_text=True).lower()
+        assert response.get_json() == {
+            'error': 'Acces reserve a la direction ou aux utilisateurs delegues'
+        }
 
     def test_salarie_delegue_peut_appeler_api_relance(self, app, sample_users):
         directeur_client = app.test_client()
