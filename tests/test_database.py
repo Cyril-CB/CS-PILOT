@@ -28,6 +28,7 @@ class TestInitDb:
         'historique_modifications', 'demandes_recup', 'jours_feries',
         'planning_enfance_config', 'absences', 'app_settings',
         'presence_forfait_jour', 'validation_forfait_jour', 'schema_migrations',
+        'prevention_dismissals',
         # Tables ajoutées par les migrations, maintenant dans le schéma initial
         'variables_paie_defauts', 'variables_paie', 'contrats',
         'documents_salaries', 'prepa_paie_statut', 'conges_cloture_mensuelle',
@@ -78,6 +79,11 @@ class TestInitDb:
         """La migration 0033 doit exister sous forme de fichier."""
         versions = {m['version'] for m in lister_fichiers_migrations()}
         assert '0033' in versions
+
+    def test_fichier_migration_0034_present(self):
+        """La migration 0034 doit exister sous forme de fichier."""
+        versions = {m['version'] for m in lister_fichiers_migrations()}
+        assert '0034' in versions
 
     def test_postes_depense_initialises(self, app, db):
         """Les postes de dépense par défaut doivent être créés."""

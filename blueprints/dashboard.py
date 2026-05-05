@@ -10,6 +10,7 @@ from utils import (login_required, get_user_info, calculer_heures,
                    calculer_solde_recup)
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
+MAX_PREVENTION_DISMISS_KEYS = 50
 
 
 @dashboard_bp.route('/dashboard')
@@ -128,23 +129,31 @@ def dashboard():
 @dashboard_bp.route('/dashboard/prevention_dismiss', methods=['POST'])
 @login_required
 def prevention_dismiss():
-    keys = request.form.getlist('keys')
-    keys = [key for key in keys if key and key.startswith('prev:') and len(key) <= 200]
+    keys = []
+    seen = set()
+    for key in request.form.getlist('keys'):
+        if not key or not key.startswith('prev:') or len(key) > 200:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+        if len(keys) >= MAX_PREVENTION_DISMISS_KEYS:
+            break
 
     if not keys:
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
     try:
-        for key in keys:
-            conn.execute(
-                """
-                INSERT INTO prevention_dismissals (user_id, message_key)
-                VALUES (?, ?)
-                ON CONFLICT(user_id, message_key) DO UPDATE SET dismissed_at = CURRENT_TIMESTAMP
-                """,
-                (session['user_id'], key),
-            )
+        conn.executemany(
+            """
+            INSERT INTO prevention_dismissals (user_id, message_key)
+            VALUES (?, ?)
+            ON CONFLICT(user_id, message_key) DO UPDATE SET dismissed_at = CURRENT_TIMESTAMP
+            """,
+            [(session['user_id'], key) for key in keys],
+        )
         conn.commit()
     finally:
         conn.close()

@@ -60,3 +60,33 @@ class TestDashboardPreventionSante:
         assert "Prévention santé au travail." in html
         assert "Ta pause semble courte par rapport à ta durée de travail." in html
 
+    def test_prevention_dismiss_limite_et_dedup(self, auth_client, app, db, sample_users):
+        from blueprints.dashboard import MAX_PREVENTION_DISMISS_KEYS
+
+        keys = [f"prev:test:{index}" for index in range(MAX_PREVENTION_DISMISS_KEYS + 10)]
+        keys_with_duplicates = keys + [keys[0]] * 20
+
+        with app.app_context():
+            db.execute(
+                "DELETE FROM prevention_dismissals WHERE user_id = ?",
+                (sample_users["salarie_id"],),
+            )
+            db.commit()
+
+        response = auth_client.post(
+            "/dashboard/prevention_dismiss",
+            data={"keys": keys_with_duplicates},
+        )
+        assert response.status_code == 302
+
+        with app.app_context():
+            rows = db.execute(
+                "SELECT message_key FROM prevention_dismissals WHERE user_id = ? ORDER BY message_key",
+                (sample_users["salarie_id"],),
+            ).fetchall()
+            stored = {row["message_key"] for row in rows}
+
+        assert len(stored) == MAX_PREVENTION_DISMISS_KEYS
+        assert keys[0] in stored
+        assert keys[MAX_PREVENTION_DISMISS_KEYS - 1] in stored
+        assert keys[MAX_PREVENTION_DISMISS_KEYS] not in stored
