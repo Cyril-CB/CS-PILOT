@@ -280,7 +280,12 @@ def vue_ensemble_validation():
                  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
     peut_relancer_validation = profil == 'directeur' or acces_delegation
-    delegation_sans_fiches = acces_delegation and profil not in ['directeur', 'comptable', 'responsable']
+    # Les responsables peuvent accéder à la vue d'ensemble, mais leurs droits
+    # sur les fiches individuelles restent limités par secteur dans
+    # `vue_mensuelle`. Lorsqu'ils arrivent ici via délégation, on masque donc
+    # les liens vers les fiches pour éviter d'afficher des accès qui seront
+    # refusés ensuite.
+    delegation_sans_fiches = acces_delegation and profil not in ['directeur', 'comptable']
     
     return render_template('vue_ensemble_validation.html',
                          users_validation=users_validation,
