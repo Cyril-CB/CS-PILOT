@@ -35,6 +35,14 @@ def test_responsable_peut_voir_formulaire_recurrence(resp_client, db):
     assert "onclick=\"toggleSallesSection('section-rec')\"" in html
 
 
+def test_salarie_voit_lien_salles_dans_menu(auth_client):
+    """Le salarié doit pouvoir accéder au module Salles depuis le menu."""
+    response = auth_client.get('/dashboard')
+
+    assert response.status_code == 200
+    assert '<a href="/salles" class="sidebar-link">🏠 Salles</a>' in response.get_data(as_text=True)
+
+
 def test_salarie_ne_peut_pas_creer_recurrence(auth_client, db):
     """Le salarie conserve l'interdiction de creer une recurrence."""
     cursor = db.execute(
