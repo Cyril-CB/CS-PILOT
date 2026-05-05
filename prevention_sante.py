@@ -311,7 +311,6 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
                 text=(
                     "Ta fiche indique une journée de plus de 6h sans pause. Pense à vérifier ta saisie. "
                     "Une vraie coupure aide à récupérer et à éviter l’accumulation de fatigue. "
-                    "La pause n'est pas seulement un droit, elle est obligatoire après 6 heures de travail."
                 ),
             )
         )
@@ -325,8 +324,7 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
                 key=f"prev:s2_pause_courte:{date_ctx}",
                 text=(
                     "Ta pause semble courte par rapport à ta durée de travail. Si c’est une erreur, tu peux corriger ta fiche. "
-                    "Si cela se répète, il peut être utile d’en parler avec ton/ta responsable pour trouver le temps de prendre une véritable pause. "
-                    "La pause n'est pas seulement un droit, elle est obligatoire après 6 heures de travail et doit durer au minimum 20 minutes."
+                    "Si cela se répète, il peut être utile d’en parler avec ton/ta responsable. "
                 ),
             )
         )
