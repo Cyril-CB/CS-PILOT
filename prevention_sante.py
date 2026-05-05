@@ -515,7 +515,7 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
             )
         )
 
-    # Filtrer les messages déjà accusés réception.
+    # Filtrer les messages déjà accusés de réception.
     dismissed = _load_dismissed_keys(conn, user_id, [m.key for m in messages])
     return [m for m in messages if m.key not in dismissed]
 
