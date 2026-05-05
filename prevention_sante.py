@@ -491,7 +491,7 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
                 key=f"prev:s4_hsup_3sem:{last_week_monday.strftime('%Y-%m-%d')}",
                 text=(
                     "Tes fiches montrent des heures en plus plusieurs semaines de suite. "
-                    "Si cette situation devient habituelle, un échange ton/ta responsable peut aider avec à voir si la charge "
+                    "Si cette situation devient habituelle, un échange avec ton/ta responsable peut aider à voir si la charge "
                     "ou l’organisation du travail doivent être ajustées."
                 ),
             )
