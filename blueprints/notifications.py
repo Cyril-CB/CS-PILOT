@@ -5,7 +5,7 @@ Acces : directeur, comptable.
 """
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
 from database import get_db
-from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
+from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import login_required, get_setting, NOMS_MOIS
 from email_service import (
     get_email_config, save_email_config, set_email_enabled,
