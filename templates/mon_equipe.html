@@ -50,13 +50,6 @@
             <!-- Nom du salarie -->
             <div class="equipe-cell equipe-name-col">
                 <div class="member-name">{{ row.nom }} {{ row.prenom }}</div>
-                <div class="member-role">
-                    {% if row.profil == 'responsable' %}
-                    <span class="role-badge role-resp">Responsable</span>
-                    {% else %}
-                    <span class="role-badge">{{ row.profil }}</span>
-                    {% endif %}
-                </div>
             </div>
 
             {% for jour in row.jours %}
@@ -113,13 +106,6 @@
         <article class="equipe-mobile-card">
             <div class="equipe-mobile-card-header">
                 <div class="member-name">{{ row.nom }} {{ row.prenom }}</div>
-                <div class="member-role">
-                    {% if row.profil == 'responsable' %}
-                    <span class="role-badge role-resp">Responsable</span>
-                    {% else %}
-                    <span class="role-badge">{{ row.profil }}</span>
-                    {% endif %}
-                </div>
             </div>
 
             <div class="equipe-mobile-days">
@@ -433,13 +419,6 @@
 
 /* ---- Member info ---- */
 .member-name { font-weight: 600; font-size: 0.9rem; line-height: 1.2; }
-.member-role { margin-top: 2px; }
-.role-badge {
-    font-size: 0.7rem; padding: 1px 7px;
-    border-radius: 8px; background: var(--gray-100, #eee);
-    color: var(--gray-600, #666);
-}
-.role-resp { background: #e8eaf6; color: #3949ab; font-weight: 600; }
 
 /* ---- Day cards ---- */
 .day-card {
@@ -607,8 +586,6 @@
 [data-theme="dark"] .card-absence { background: #3e1014; border-color: #e53935; color: #ef9a9a; }
 [data-theme="dark"] .card-recup { background: #3e2600; border-color: #fb8c00; color: #ffcc80; }
 [data-theme="dark"] .card-ferie { background: #2a0e35; border-color: #8e24aa; color: #ce93d8; }
-[data-theme="dark"] .role-badge { background: var(--gray-700); color: var(--gray-300); }
-[data-theme="dark"] .role-resp { background: #1a237e; color: #9fa8da; }
 [data-theme="dark"] .equipe-mobile-card,
 [data-theme="dark"] .presence-mobile-card,
 [data-theme="dark"] .equipe-mobile-day,
