@@ -121,8 +121,12 @@
                     
                     <!-- Actions -->
                     <td>
-                        <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=u.id, mois=mois, annee=annee) }}" 
+                        {% if not delegation_sans_fiches or u.id == session.user_id %}
+                        <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=u.id, mois=mois, annee=annee) }}"
                            class="btn-icon" title="Voir la fiche">👁️</a>
+                        {% else %}
+                        <span class="btn-icon" style="opacity:0.25;cursor:not-allowed;" title="Accès à la fiche non autorisé">👁️</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -132,7 +136,7 @@
     
     <div class="actions" style="margin-top: 2rem; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
         <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour au tableau de bord</a>
-        {% if session.profil == 'directeur' and en_attente > 0 %}
+        {% if peut_relancer_validation and en_attente > 0 %}
         <button class="btn" id="relanceBtn" onclick="relancerResponsables()"
                 style="background:#7c3aed;color:white;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
             &#128233; Relancer les responsables par email
@@ -193,7 +197,7 @@
 }
 </style>
 
-{% if session.profil == 'directeur' %}
+{% if peut_relancer_validation %}
 <script>
 async function relancerResponsables() {
     if (!confirm('Envoyer un email de relance a tous les responsables ayant des fiches non validees pour {{ nom_mois }} {{ annee }} ?')) return;

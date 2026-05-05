@@ -5,6 +5,7 @@ Acces : directeur, comptable.
 """
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
 from database import get_db
+from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import login_required, get_setting, NOMS_MOIS
 from email_service import (
     get_email_config, save_email_config, set_email_enabled,
@@ -91,7 +92,10 @@ def test_email():
 @login_required
 def relance_validation():
     """Envoie une relance aux responsables pour les fiches d'heures non validees."""
-    if session.get('profil') not in ['directeur']:
+    if session.get('profil') != 'directeur' and not user_has_delegation(
+        session.get('user_id'),
+        MISSION_SUIVI_VALIDATIONS_RELANCES,
+    ):
         return jsonify({'error': 'Acces reserve au directeur'}), 403
 
     if not is_email_configured():
@@ -165,7 +169,10 @@ def relance_validation():
 @login_required
 def relance_responsable_unique():
     """Envoie une relance a un responsable specifique pour les fiches non validees."""
-    if session.get('profil') not in ['directeur']:
+    if session.get('profil') != 'directeur' and not user_has_delegation(
+        session.get('user_id'),
+        MISSION_SUIVI_VALIDATIONS_RELANCES,
+    ):
         return jsonify({'error': 'Acces reserve au directeur'}), 403
 
     if not is_email_configured():
