@@ -410,7 +410,7 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
                 key=f"prev:s9_repos_11h:{last_rest_issue}",
                 text=(
                     "Le temps entre ta fin de journée et ta reprise semble court. "
-                    "Vérifie ta saisie. Si c’est bien le cas, il est important d’en parler pour préserver ton bien être."
+                    "Vérifie ta saisie. Si c’est bien le cas, il est important d’en parler pour préserver ton bien-être."
                 ),
             )
         )
