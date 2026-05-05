@@ -70,6 +70,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0030', 'Ameliorations subventions'),
     ('0031', 'Ajout demandes conges'),
     ('0033', 'Ajout commandes salaries et delegations'),
+    ('0034', 'Prevention sante au travail'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -213,6 +214,18 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, date)
+        )
+    ''')
+
+    # ===== Table des accusés réception prévention santé =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS prevention_dismissals (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            message_key TEXT NOT NULL,
+            dismissed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, message_key),
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
 

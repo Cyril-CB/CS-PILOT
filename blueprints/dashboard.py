@@ -1,14 +1,16 @@
 """
 Blueprint Dashboard : tableau de bord salarié.
 """
-from flask import Blueprint, render_template, session, redirect, url_for
+from flask import Blueprint, render_template, session, redirect, url_for, request
 from datetime import datetime
 from database import get_db
+from prevention_sante import compute_prevention_messages
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_solde_recup)
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
+MAX_PREVENTION_DISMISS_KEYS = 50
 
 
 @dashboard_bp.route('/dashboard')
@@ -31,6 +33,8 @@ def dashboard():
     conn = get_db()
 
     try:
+        prevention_messages = compute_prevention_messages(conn, session['user_id'])
+
         heures = conn.execute('''
             SELECT date, heure_debut_matin, heure_fin_matin,
                    heure_debut_aprem, heure_fin_aprem,
@@ -111,6 +115,7 @@ def dashboard():
 
     return render_template('dashboard.html',
                          user=user,
+                         prevention_messages=prevention_messages,
                          heures=heures_enrichies,
                          solde_recup=solde_recup,
                          cp_acquis=cp_acquis,
@@ -119,3 +124,38 @@ def dashboard():
                          cp_solde=cp_solde,
                          cc_solde=cc_solde,
                          notif_email_off=notif_email_off)
+
+
+@dashboard_bp.route('/dashboard/prevention_dismiss', methods=['POST'])
+@login_required
+def prevention_dismiss():
+    keys = []
+    seen = set()
+    for key in request.form.getlist('keys'):
+        if not key or not key.startswith('prev:') or len(key) > 200:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+        if len(keys) >= MAX_PREVENTION_DISMISS_KEYS:
+            break
+
+    if not keys:
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    try:
+        conn.executemany(
+            """
+            INSERT INTO prevention_dismissals (user_id, message_key)
+            VALUES (?, ?)
+            ON CONFLICT(user_id, message_key) DO UPDATE SET dismissed_at = CURRENT_TIMESTAMP
+            """,
+            [(session['user_id'], key) for key in keys],
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect(url_for('dashboard_bp.dashboard'))

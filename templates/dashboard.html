@@ -7,6 +7,31 @@
     <h1>📊 Tableau de bord</h1>
     <p class="subtitle">Bienvenue {{ session.prenom }} {{ session.nom }}</p>
 
+    {% if prevention_messages %}
+    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px 16px;margin-bottom:1rem;font-size:13px;color:#065f46;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+            <span style="font-size:18px;line-height:1;">&#127793;</span>
+            <div style="flex:1;">
+                <div style="font-weight:600;margin-bottom:6px;">Prévention santé au travail.</div>
+                <ul style="margin:0;padding-left:18px;">
+                    {% for msg in prevention_messages %}
+                    <li style="margin:0.15rem 0;">{{ msg.text }}</li>
+                    {% endfor %}
+                </ul>
+                <form method="POST" action="{{ url_for('dashboard_bp.prevention_dismiss') }}" style="margin-top:10px;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% for msg in prevention_messages %}
+                    <input type="hidden" name="keys" value="{{ msg.key }}">
+                    {% endfor %}
+                    <button type="submit" class="btn" style="padding:6px 10px;font-size:12px;border-radius:8px;background:#d1fae5;border:1px solid #6ee7b7;color:#065f46;">
+                        J’ai pris connaissance du conseil
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     {% if notif_email_off %}
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px 16px;margin-bottom:1.5rem;font-size:13px;color:#1e40af;display:flex;align-items:center;gap:10px;">
         <span style="font-size:18px;">&#128276;</span>
