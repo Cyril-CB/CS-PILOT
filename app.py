@@ -11,6 +11,7 @@ from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 import app_version
 from database import init_db, get_db, DATA_DIR
+from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES
 from extensions import csrf, limiter
 
 
@@ -270,7 +271,11 @@ def invalidate_version_cache():
 def inject_pending_counts():
     """Injecte le nombre de demandes en attente dans tous les templates."""
     if 'user_id' not in session:
-        return {'pending_count': 0, 'chatbot_enabled': False}
+        return {
+            'pending_count': 0,
+            'chatbot_enabled': False,
+            'can_access_vue_ensemble_validation': False,
+        }
 
     profil = session.get('profil', '')
     conn = None
@@ -313,9 +318,30 @@ def inject_pending_counts():
             chatbot_on = _gs('chatbot_model') is not None
         except Exception:
             pass
-        return {'pending_count': count, 'chatbot_enabled': chatbot_on}
+
+        delegation_validation = False
+        try:
+            row = conn.execute(
+                'SELECT delegated_user_id FROM delegations_missions WHERE mission_key = ?',
+                (MISSION_SUIVI_VALIDATIONS_RELANCES,)
+            ).fetchone()
+            delegation_validation = bool(row and row['delegated_user_id'] == session.get('user_id'))
+        except Exception:
+            delegation_validation = False
+
+        can_access_vue_ensemble_validation = profil in ('directeur', 'comptable', 'responsable') or delegation_validation
+
+        return {
+            'pending_count': count,
+            'chatbot_enabled': chatbot_on,
+            'can_access_vue_ensemble_validation': can_access_vue_ensemble_validation,
+        }
     except Exception:
-        return {'pending_count': 0, 'chatbot_enabled': False}
+        return {
+            'pending_count': 0,
+            'chatbot_enabled': False,
+            'can_access_vue_ensemble_validation': False,
+        }
     finally:
         if conn:
             conn.close()

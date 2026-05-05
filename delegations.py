@@ -5,11 +5,16 @@ from database import get_db
 
 
 MISSION_SUIVI_COMMANDES_FOURNITURES = 'suivi_commandes_fournitures'
+MISSION_SUIVI_VALIDATIONS_RELANCES = 'suivi_validations_relances'
 
 MISSIONS = [
     {
         'key': MISSION_SUIVI_COMMANDES_FOURNITURES,
         'label': 'Suivi et commande des fournitures',
+    },
+    {
+        'key': MISSION_SUIVI_VALIDATIONS_RELANCES,
+        'label': "Suivi des validations (vue d'ensemble) et relances",
     }
 ]
 
