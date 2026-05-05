@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 import json
 from database import get_db
+from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, calculer_heures,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
 from app_options import get_option_bool
@@ -195,7 +196,12 @@ def deverrouiller_mois():
 @login_required
 def vue_ensemble_validation():
     """Vue d'ensemble des validations mensuelles (directeur, comptable et responsables)"""
-    if session.get('profil') not in ['directeur', 'comptable', 'responsable']:
+    acces_delegation = user_has_delegation(
+        session.get('user_id'),
+        MISSION_SUIVI_VALIDATIONS_RELANCES,
+    )
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable', 'responsable'] and not acces_delegation:
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
     
@@ -211,7 +217,7 @@ def vue_ensemble_validation():
 
     try:
         # Récupérer les utilisateurs selon le profil connecté
-        if session.get('profil') == 'responsable':
+        if profil == 'responsable' and not acces_delegation:
             responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
 
             if not responsable_secteur or not responsable_secteur['secteur_id']:
@@ -272,6 +278,9 @@ def vue_ensemble_validation():
     
     noms_mois = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
                  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
+
+    peut_relancer_validation = profil == 'directeur' or acces_delegation
+    delegation_sans_fiches = acces_delegation and profil not in ['directeur', 'comptable', 'responsable']
     
     return render_template('vue_ensemble_validation.html',
                          users_validation=users_validation,
@@ -281,7 +290,9 @@ def vue_ensemble_validation():
                          mois_precedent=mois_precedent,
                          annee_precedente=annee_precedente,
                          mois_suivant=mois_suivant,
-                         annee_suivante=annee_suivante)
+                         annee_suivante=annee_suivante,
+                         peut_relancer_validation=peut_relancer_validation,
+                         delegation_sans_fiches=delegation_sans_fiches)
 
 def _get_vue_mensuelle_data(redirect_route='validation_bp.vue_mensuelle'):
     """Calcul partagé des données de la fiche mensuelle (utilisé par vue_mensuelle et vue_calendrier)."""

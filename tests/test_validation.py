@@ -9,6 +9,7 @@ from datetime import datetime
 
 from blueprints.validation import _get_vue_mensuelle_data_impl
 from database import get_db
+from tests.conftest import _login
 
 
 def _creer_saisie_mois(db, user_id, mois, annee):
@@ -225,6 +226,72 @@ class TestVueEnsembleAcces:
         response = auth_client.get('/vue_ensemble_validation', follow_redirects=True)
         assert response.status_code == 200
         assert 'non autoris' in response.data.decode('utf-8').lower()
+
+    def test_salarie_delegue_acces(self, app, sample_users):
+        """Un salarié délégué peut accéder à la vue d'ensemble."""
+        directeur_client = app.test_client()
+        salarie_client = app.test_client()
+        _login(directeur_client, 'admin', 'Admin1234')
+        _login(salarie_client, 'salarie_test', 'sal123')
+
+        response = directeur_client.post(
+            '/delegations',
+            data={
+                'mission_key': 'suivi_validations_relances',
+                'delegated_user_id': str(sample_users['salarie_id']),
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        vue_ensemble = salarie_client.get('/vue_ensemble_validation')
+        assert vue_ensemble.status_code == 200
+        html = vue_ensemble.get_data(as_text=True)
+        assert 'État des validations' in html
+        assert 'Marie Dupont' in html
+
+        fiche_responsable = salarie_client.get(
+            f"/vue_mensuelle?user_id={sample_users['responsable_id']}&mois=5&annee=2024",
+            follow_redirects=True,
+        )
+        assert fiche_responsable.status_code == 200
+        assert 'accès non autorisé' in fiche_responsable.get_data(as_text=True).lower()
+
+
+class TestRelanceValidationDelegation:
+    """Tests d'accès aux endpoints de relance par délégation."""
+
+    def test_salarie_refuse_api_relance(self, auth_client):
+        response = auth_client.post(
+            '/api/email/relance_validation',
+            json={'mois': 5, 'annee': 2024},
+        )
+
+        assert response.status_code == 403
+        assert 'acces reserve au directeur' in response.get_data(as_text=True).lower()
+
+    def test_salarie_delegue_peut_appeler_api_relance(self, app, sample_users):
+        directeur_client = app.test_client()
+        salarie_client = app.test_client()
+        _login(directeur_client, 'admin', 'Admin1234')
+        _login(salarie_client, 'salarie_test', 'sal123')
+
+        response = directeur_client.post(
+            '/delegations',
+            data={
+                'mission_key': 'suivi_validations_relances',
+                'delegated_user_id': str(sample_users['salarie_id']),
+            },
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+        res = salarie_client.post(
+            '/api/email/relance_validation',
+            json={'mois': 5, 'annee': 2024},
+        )
+        assert res.status_code == 400
+        assert 'service email non configure' in res.get_data(as_text=True).lower()
 
 
 class TestVueMensuelleJoursFeries:
