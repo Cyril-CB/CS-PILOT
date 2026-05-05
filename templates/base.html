@@ -319,18 +319,15 @@
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
                     <span>📊 Mon espace</span><span class="sidebar-arrow">&#9662;</span>
                 </button>
-	                <div class="sidebar-section-menu">
-	                    <a href="{{ url_for('dashboard_bp.dashboard') }}">📊 Tableau de bord</a>
-	                    <a href="{{ url_for('validation_bp.vue_mensuelle') }}">📅 Vue mensuelle</a>
-	                    <a href="{{ url_for('validation_bp.vue_calendrier') }}">📆 Vue calendrier</a>
-	                    {% if can_access_vue_ensemble_validation %}
-	                    <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}">📋 Vue ensemble validation</a>
-	                    {% endif %}
-	                    <a href="{{ url_for('saisie_bp.saisie_heures') }}">✏️ Saisir heures</a>
-	                    <a href="{{ url_for('planning_bp.planning_theorique') }}">🗓️ Mon planning</a>
-	                    <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}">👥 Mon équipe</a>
-	                </div>
-            </div>
+		                <div class="sidebar-section-menu">
+		                    <a href="{{ url_for('dashboard_bp.dashboard') }}">📊 Tableau de bord</a>
+		                    <a href="{{ url_for('validation_bp.vue_mensuelle') }}">📅 Vue mensuelle</a>
+		                    <a href="{{ url_for('validation_bp.vue_calendrier') }}">📆 Vue calendrier</a>
+		                    <a href="{{ url_for('saisie_bp.saisie_heures') }}">✏️ Saisir heures</a>
+		                    <a href="{{ url_for('planning_bp.planning_theorique') }}">🗓️ Mon planning</a>
+		                    <a href="{{ url_for('mon_equipe_bp.mon_equipe') }}">👥 Mon équipe</a>
+		                </div>
+	            </div>
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
                     <span>🏖️ Récup & Congés</span><span class="sidebar-arrow">&#9662;</span>
@@ -341,10 +338,13 @@
                     <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">📄 Mes demandes récup</a>
                     <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">📄 Mes demandes congés</a>
                 </div>
-            </div>
-            <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
-            {% endif %}
-        </nav>
+	            </div>
+	            <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+	            {% if can_access_vue_ensemble_validation %}
+	            <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble validation</a>
+	            {% endif %}
+	            {% endif %}
+	        </nav>
 
         <div class="sidebar-footer">
             {% if session.profil in ['salarie', 'prestataire'] %}
