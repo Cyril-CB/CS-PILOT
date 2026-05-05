@@ -96,7 +96,7 @@ def relance_validation():
         session.get('user_id'),
         MISSION_SUIVI_VALIDATIONS_RELANCES,
     ):
-        return jsonify({'error': 'Acces reserve au directeur'}), 403
+        return jsonify({'error': 'Acces reserve a la direction ou aux utilisateurs delegues'}), 403
 
     if not is_email_configured():
         return jsonify({'error': 'Service email non configure'}), 400
