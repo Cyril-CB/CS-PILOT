@@ -387,7 +387,7 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
                 key=f"prev:s3_pause_reduite_10j:{date_ctx}",
                 text=(
                     "Plusieurs journées récentes indiquent une pause réduite. "
-                    "Ce n’est pas forcément grave ponctuellement, mais répété cela peut être un signal de charge de travail trop élevée."
+                    "Ce n’est pas forcément grave ponctuellement, mais si cela se répète, cela peut être un signal de charge de travail trop élevée."
                 ),
             )
         )
