@@ -37,11 +37,12 @@ def test_responsable_peut_voir_formulaire_recurrence(resp_client, db):
     assert "onclick=\"toggleSallesSection('section-rec')\"" in html
 
 
-def test_salarie_voit_lien_salles_dans_menu(auth_client, app):
+def test_salarie_voit_lien_salles_dans_menu(auth_client):
     """Le salarié doit pouvoir accéder au module Salles depuis le menu."""
-    response = auth_client.get('/dashboard')
-    with app.test_request_context():
+    with auth_client.application.test_request_context():
         salles_url = url_for('salles_bp.salles')
+
+    response = auth_client.get('/dashboard')
 
     assert response.status_code == 200
     assert f'<a href="{salles_url}" class="sidebar-link">🏠 Salles</a>' in response.get_data(as_text=True)

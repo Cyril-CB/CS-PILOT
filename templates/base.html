@@ -339,11 +339,11 @@
                     <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">📄 Mes demandes congés</a>
                 </div>
 	            </div>
- 	            <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
-	            <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
- 	            {% if can_access_vue_ensemble_validation %}
- 	            <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble</a>
- 	            {% endif %}
+                <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+                <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
+                {% if can_access_vue_ensemble_validation %}
+                <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble</a>
+                {% endif %}
  	            {% endif %}
 	        </nav>
 
