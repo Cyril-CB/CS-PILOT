@@ -4,7 +4,7 @@ Blueprint Dashboard : tableau de bord salarié.
 from flask import Blueprint, render_template, session, redirect, url_for, request
 from datetime import datetime
 from database import get_db
-from prevention_sante import compute_prevention_messages
+from blueprints.prevention_sante import compute_prevention_messages
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_solde_recup)

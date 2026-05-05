@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 import json
 from database import get_db
-from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
+from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, calculer_heures,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
 from app_options import get_option_bool

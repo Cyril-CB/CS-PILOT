@@ -11,7 +11,7 @@ from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 import app_version
 from database import init_db, get_db, DATA_DIR
-from delegations import MISSION_SUIVI_VALIDATIONS_RELANCES
+from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES
 from extensions import csrf, limiter
 
 

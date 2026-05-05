@@ -7,7 +7,7 @@ from datetime import date
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from database import get_db
-from delegations import MISSION_SUIVI_COMMANDES_FOURNITURES, user_has_delegation
+from blueprints.delegations import MISSION_SUIVI_COMMANDES_FOURNITURES, user_has_delegation
 from utils import login_required
 
 commandes_salaries_bp = Blueprint('commandes_salaries_bp', __name__)

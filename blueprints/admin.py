@@ -7,7 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 from database import get_db
-from delegations import MISSIONS, MISSIONS_MAP, save_delegation
+from blueprints.delegations import MISSIONS, MISSIONS_MAP, save_delegation
 from utils import login_required, validate_password_strength
 
 admin_bp = Blueprint('admin_bp', __name__)
