@@ -1,5 +1,7 @@
 """Tests UI minimaux pour la page salles."""
 
+from flask import url_for
+
 
 def test_gestion_salles_utilise_toggle_dedie(admin_client, db):
     """Le formulaire admin des salles doit utiliser le toggle dédié à la page."""
@@ -35,12 +37,14 @@ def test_responsable_peut_voir_formulaire_recurrence(resp_client, db):
     assert "onclick=\"toggleSallesSection('section-rec')\"" in html
 
 
-def test_salarie_voit_lien_salles_dans_menu(auth_client):
+def test_salarie_voit_lien_salles_dans_menu(auth_client, app):
     """Le salarié doit pouvoir accéder au module Salles depuis le menu."""
     response = auth_client.get('/dashboard')
+    with app.test_request_context():
+        salles_url = url_for('salles_bp.salles')
 
     assert response.status_code == 200
-    assert '<a href="/salles" class="sidebar-link">🏠 Salles</a>' in response.get_data(as_text=True)
+    assert f'<a href="{salles_url}" class="sidebar-link">🏠 Salles</a>' in response.get_data(as_text=True)
 
 
 def test_salarie_ne_peut_pas_creer_recurrence(auth_client, db):
