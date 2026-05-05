@@ -32,7 +32,7 @@ class TestDashboardPreventionSante:
         assert response.status_code == 200
         assert "Prévention santé au travail." in html
         assert "Ta fiche indique une journée de plus de 6h sans pause." in html
-        assert "C'est noté, je prend soins de ma santé !" in html
+        assert "J’ai pris connaissance du conseil" in html
 
         dismissed_key = f"prev:s1_no_pause:{date_str}"
         response_dismiss = auth_client.post(
