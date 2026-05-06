@@ -102,7 +102,7 @@ class TestRhStatistiques:
         html = resp.get_data(as_text=True)
         assert 'ETP' in html
 
-    def test_n_affiche_plus_la_section_a_recuperer(self, client, users_with_contracts):
+    def test_ne_affiche_plus_la_section_a_recuperer(self, client, users_with_contracts):
         _login(client, 'dir_test', 'Dir1234')
         resp = client.get('/rh/statistiques')
         assert resp.status_code == 200
