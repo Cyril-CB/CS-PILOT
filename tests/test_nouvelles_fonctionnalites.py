@@ -102,29 +102,12 @@ class TestRhStatistiques:
         html = resp.get_data(as_text=True)
         assert 'ETP' in html
 
-    def test_recup_heures_utilise_le_solde_de_recuperation_et_pas_les_conges(self, app, client, users_with_contracts):
-        """Le total RH doit reposer sur le solde de récupération, pas sur cc_solde."""
-        with app.app_context():
-            import database
-            conn = database.get_db()
-            # Les congés conventionnels ne doivent pas influencer le total d'heures à récupérer.
-            conn.execute(
-                'UPDATE users SET solde_initial = ?, cc_solde = ? WHERE id = ?',
-                (5.0, 12.0, users_with_contracts['sal1_id'])
-            )
-            conn.execute(
-                'UPDATE users SET solde_initial = ?, cc_solde = ? WHERE id = ?',
-                (-2.0, 20.0, users_with_contracts['sal2_id'])
-            )
-            conn.commit()
-            conn.close()
-
+    def test_n_affiche_plus_la_section_a_recuperer(self, client, users_with_contracts):
         _login(client, 'dir_test', 'Dir1234')
         resp = client.get('/rh/statistiques')
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert '5.0 h' in html
-        assert '32.0 h' not in html
+        assert 'À récupérer' not in html
 
 
 # ── Tests contrats temps_hebdo ────────────────────────────────────────────────

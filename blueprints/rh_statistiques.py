@@ -5,7 +5,7 @@ Page de statistiques RH : effectifs actifs, ETP, arrêts maladie, heures supplé
 from flask import Blueprint, render_template, session, redirect, url_for, flash
 from datetime import datetime, date
 from database import get_db
-from utils import login_required, calculer_solde_recup
+from utils import login_required
 
 rh_statistiques_bp = Blueprint('rh_statistiques_bp', __name__)
 
@@ -88,11 +88,6 @@ def rh_statistiques():
 
     conn.close()
 
-    recup_par_user = {
-        sal['user_id']: max(0, calculer_solde_recup(sal['user_id']))
-        for sal in actifs_raw
-    }
-
     # ── Agréger par secteur et type de contrat ──
     types_contrat = ['CDI', 'CDD', 'CEE', 'Autre']
 
@@ -100,7 +95,6 @@ def rh_statistiques():
     stats_global = {tc: {'nb': 0, 'etp': 0.0} for tc in types_contrat}
     total_maladie_global = 0.0
     total_supp_global = 0.0
-    total_recup_global = 0.0
 
     # Données par secteur
     secteurs_dict = {}
@@ -111,14 +105,12 @@ def rh_statistiques():
         etp = _calcul_etp(sal['type_contrat'], sal['temps_hebdo'])
         maladie = maladie_par_user.get(sal['user_id'], 0)
         supp = supp_par_user.get(sal['user_id'], 0)
-        recup = recup_par_user.get(sal['user_id'], 0)
 
         # Global
         stats_global[tc]['nb'] += 1
         stats_global[tc]['etp'] = round(stats_global[tc]['etp'] + etp, 4)
         total_maladie_global += maladie
         total_supp_global += supp
-        total_recup_global += recup
 
         # Par secteur
         if sid not in secteurs_dict:
@@ -129,7 +121,6 @@ def rh_statistiques():
                 'total_etp': 0.0,
                 'maladie_jours': 0.0,
                 'supp_heures': 0.0,
-                'recup_heures': 0.0,
             }
         secteurs_dict[sid]['types'][tc]['nb'] += 1
         secteurs_dict[sid]['types'][tc]['etp'] = round(secteurs_dict[sid]['types'][tc]['etp'] + etp, 4)
@@ -137,7 +128,6 @@ def rh_statistiques():
         secteurs_dict[sid]['total_etp'] = round(secteurs_dict[sid]['total_etp'] + etp, 4)
         secteurs_dict[sid]['maladie_jours'] += maladie
         secteurs_dict[sid]['supp_heures'] += supp
-        secteurs_dict[sid]['recup_heures'] += recup
 
     # Totaux globaux
     total_nb_global = sum(v['nb'] for v in stats_global.values())
@@ -163,7 +153,6 @@ def rh_statistiques():
         total_etp_global=total_etp_global,
         total_maladie_global=total_maladie_global,
         total_supp_global=total_supp_global,
-        total_recup_global=total_recup_global,
         secteurs_list=secteurs_list,
         chart_labels_type=chart_labels_type,
         chart_nb_type=chart_nb_type,
