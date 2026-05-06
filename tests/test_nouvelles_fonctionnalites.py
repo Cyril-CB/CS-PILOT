@@ -102,6 +102,27 @@ class TestRhStatistiques:
         html = resp.get_data(as_text=True)
         assert 'ETP' in html
 
+    def test_recup_heures_ne_compte_pas_cc_solde_negatif(self, app, client, users_with_contracts):
+        """Les cc_solde négatifs (congés pris par anticipation) ne doivent pas
+        réduire le total des heures à récupérer par secteur."""
+        with app.app_context():
+            import database
+            conn = database.get_db()
+            # sal1 a 5 jours CC disponibles, sal2 a -2 jours (anticipation)
+            conn.execute('UPDATE users SET cc_solde = 5.0 WHERE id = ?', (users_with_contracts['sal1_id'],))
+            conn.execute('UPDATE users SET cc_solde = -2.0 WHERE id = ?', (users_with_contracts['sal2_id'],))
+            conn.commit()
+            conn.close()
+
+        _login(client, 'dir_test', 'Dir1234')
+        resp = client.get('/rh/statistiques')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        # 5 jours * 7h = 35h attendues ; le -2 ne doit pas réduire ce total
+        assert '35.0' in html
+        # Le total global ne doit pas contenir de valeur négative liée au cc_solde
+        assert '-14' not in html
+
 
 # ── Tests contrats temps_hebdo ────────────────────────────────────────────────
 

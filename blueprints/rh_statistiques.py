@@ -110,7 +110,7 @@ def rh_statistiques():
         etp = _calcul_etp(sal['type_contrat'], sal['temps_hebdo'])
         maladie = maladie_par_user.get(sal['user_id'], 0)
         supp = supp_par_user.get(sal['user_id'], 0)
-        recup = (sal['cc_solde'] or 0) * HEURES_JOUR  # cc_solde en jours -> heures
+        recup = max(0, sal['cc_solde'] or 0) * HEURES_JOUR  # cc_solde en jours -> heures (négatif = anticipation, non comptabilisé)
 
         # Global
         stats_global[tc]['nb'] += 1
