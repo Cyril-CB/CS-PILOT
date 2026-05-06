@@ -10,6 +10,8 @@ from utils import login_required
 rh_statistiques_bp = Blueprint('rh_statistiques_bp', __name__)
 
 ETP_CEE = 0.12      # Un CEE compte 0.12 ETP (équivalent temps plein)
+
+
 def _calcul_etp(type_contrat, temps_hebdo):
     """Calcule l'ETP d'un salarié selon son type de contrat et temps hebdo."""
     if type_contrat == 'CEE':
