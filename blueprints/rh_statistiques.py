@@ -5,14 +5,11 @@ Page de statistiques RH : effectifs actifs, ETP, arrêts maladie, heures supplé
 from flask import Blueprint, render_template, session, redirect, url_for, flash
 from datetime import datetime, date
 from database import get_db
-from utils import login_required
+from utils import login_required, calculer_solde_recup
 
 rh_statistiques_bp = Blueprint('rh_statistiques_bp', __name__)
 
 ETP_CEE = 0.12      # Un CEE compte 0.12 ETP (équivalent temps plein)
-HEURES_JOUR = 7.0   # Nombre d'heures par jour ouvré (pour convertir cc_solde en heures)
-
-
 def _calcul_etp(type_contrat, temps_hebdo):
     """Calcule l'ETP d'un salarié selon son type de contrat et temps hebdo."""
     if type_contrat == 'CEE':
@@ -49,8 +46,7 @@ def rh_statistiques():
             s.id as secteur_id,
             s.nom as secteur_nom,
             c.type_contrat,
-            c.temps_hebdo,
-            u.cc_solde
+            c.temps_hebdo
         FROM users u
         JOIN secteurs s ON u.secteur_id = s.id
         JOIN contrats c ON c.user_id = u.id
@@ -92,6 +88,11 @@ def rh_statistiques():
 
     conn.close()
 
+    recup_par_user = {
+        sal['user_id']: max(0, calculer_solde_recup(sal['user_id']))
+        for sal in actifs_raw
+    }
+
     # ── Agréger par secteur et type de contrat ──
     types_contrat = ['CDI', 'CDD', 'CEE', 'Autre']
 
@@ -110,7 +111,7 @@ def rh_statistiques():
         etp = _calcul_etp(sal['type_contrat'], sal['temps_hebdo'])
         maladie = maladie_par_user.get(sal['user_id'], 0)
         supp = supp_par_user.get(sal['user_id'], 0)
-        recup = max(0, sal['cc_solde'] or 0) * HEURES_JOUR  # cc_solde en jours -> heures (négatif = anticipation, non comptabilisé)
+        recup = recup_par_user.get(sal['user_id'], 0)
 
         # Global
         stats_global[tc]['nb'] += 1
