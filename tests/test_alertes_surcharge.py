@@ -197,7 +197,7 @@ class TestAlertesSurchargeCalcul:
                 INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
                 VALUES ('Vacances test', ?, ?, ?)
                 ''',
-                (target_date, target_date, sample_users['admin_id'])
+                (target_date, target_date, sample_users['directeur_id'])
             )
             _insert_hours(
                 db,
