@@ -11,8 +11,9 @@ def test_dashboard_comptable_sections_specifiques(comptable_client):
     response = comptable_client.get('/dashboard_comptable')
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert 'Mon solde recup' in html or 'Mon solde récupération' in html
-    assert 'Mes cong' in html
+    assert 'Mon solde récupération' in html
+    assert 'Mes congés payés' in html
+    assert 'Mes congés conventionnels' in html
     # KPI cards
     assert "Ma fiche d&#39;heures" in html or "Ma fiche d'heures" in html
     assert 'Documents manquants' in html
