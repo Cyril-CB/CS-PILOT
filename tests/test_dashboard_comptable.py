@@ -1,3 +1,6 @@
+import re
+
+
 def test_dashboard_comptable_accessible(comptable_client):
     """Verifie que le comptable accede a son dashboard."""
     response = comptable_client.get('/dashboard_comptable')
@@ -25,6 +28,16 @@ def test_dashboard_comptable_sections_specifiques(comptable_client):
     assert 'Pretes a exporter' in html
     assert 'Factures en attente' in html
     assert 'Donnees importees disponibles' in html
+
+
+def test_dashboard_comptable_affiche_les_soldes_en_cartes(comptable_client):
+    response = comptable_client.get('/dashboard_comptable')
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert re.search(r'<div class="stat-card">.*?Mon solde récupération', html, re.S)
+    assert re.search(r'<div class="stat-card">.*?Mes congés payés', html, re.S)
+    assert re.search(r'<div class="stat-card">.*?Mes congés conventionnels', html, re.S)
 
 
 def test_dashboard_comptable_acces_rapides(comptable_client):
