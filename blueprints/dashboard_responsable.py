@@ -5,7 +5,7 @@ Tableau de bord pour les responsables, scope au secteur.
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request
 from datetime import datetime, timedelta
 from database import get_db
-from utils import login_required, NOMS_MOIS
+from utils import login_required, NOMS_MOIS, calculer_solde_recup
 
 dashboard_responsable_bp = Blueprint('dashboard_responsable_bp', __name__)
 
@@ -63,6 +63,14 @@ def dashboard_responsable():
         'SELECT id, nom FROM secteurs WHERE id = ?', (secteur_id,)
     ).fetchone()
     secteur_nom = secteur_row['nom'] if secteur_row else 'Mon secteur'
+
+    conges_user = conn.execute(
+        'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
+        (session['user_id'],)
+    ).fetchone()
+    cp_solde = ((conges_user['cp_a_prendre'] or 0) - (conges_user['cp_pris'] or 0)) if conges_user else 0
+    cc_solde = (conges_user['cc_solde'] or 0) if conges_user else 0
+    solde_recup = calculer_solde_recup(session['user_id'])
 
     # ── 1. Equipe du secteur ──
     equipe = conn.execute('''
@@ -343,6 +351,9 @@ def dashboard_responsable():
                            nom_mois=NOMS_MOIS[mois],
                            secteur_nom=secteur_nom,
                            secteur_id=secteur_id,
+                           cp_solde=cp_solde,
+                           cc_solde=cc_solde,
+                           solde_recup=solde_recup,
                            nb_salaries=nb_salaries,
                            contrats_dict=contrats_dict,
                            total_etp=total_etp,
