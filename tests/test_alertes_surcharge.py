@@ -188,6 +188,35 @@ class TestAlertesSurchargeCalcul:
         assert 'Jean Martin' not in html
         assert 'Aucune alerte de surcharge détectée' in html
 
+    def test_ne_signale_pas_un_planning_vacances_si_le_planning_scolaire_doit_servir_de_repli(self, admin_client, app, db, sample_users, sample_planning):
+        target_date = _recent_business_days(1)[0]
+
+        with app.app_context():
+            db.execute(
+                '''
+                INSERT INTO periodes_vacances (nom, date_debut, date_fin, created_by)
+                VALUES ('Vacances test', ?, ?, ?)
+                ''',
+                (target_date, target_date, sample_users['directeur_id'])
+            )
+            _insert_hours(
+                db,
+                sample_users['salarie_id'],
+                target_date,
+                '08:30',
+                '12:00',
+                '13:30',
+                '17:00',
+            )
+            db.commit()
+
+        response = admin_client.get('/alertes_surcharge')
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert 'Jean Martin' not in html
+        assert 'Aucune alerte de surcharge détectée' in html
+
     def test_ne_signale_pas_une_journee_continue_de_exactement_6h(self, admin_client, app, db, sample_users, sample_planning):
         target_date = _recent_business_days(1)[0]
 
