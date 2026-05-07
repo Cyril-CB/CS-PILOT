@@ -30,7 +30,18 @@ def test_dashboard_comptable_sections_specifiques(comptable_client):
     assert 'Donnees importees disponibles' in html
 
 
-def test_dashboard_comptable_affiche_les_soldes_en_cartes(comptable_client):
+def test_dashboard_comptable_affiche_les_soldes_en_cartes(comptable_client, app, db, sample_users):
+    with app.app_context():
+        db.execute(
+            '''
+            UPDATE users
+            SET solde_initial = ?, cp_a_prendre = ?, cp_pris = ?, cc_solde = ?
+            WHERE id = ?
+            ''',
+            (-2, 8, 3, 1.5, sample_users['comptable_id'])
+        )
+        db.commit()
+
     response = comptable_client.get('/dashboard_comptable')
     html = response.get_data(as_text=True)
 
@@ -38,6 +49,9 @@ def test_dashboard_comptable_affiche_les_soldes_en_cartes(comptable_client):
     assert re.search(r'<div class="stat-card">.*?Mon solde récupération', html, re.S)
     assert re.search(r'<div class="stat-card">.*?Mes congés payés', html, re.S)
     assert re.search(r'<div class="stat-card">.*?Mes congés conventionnels', html, re.S)
+    assert '-2.0h' in html
+    assert '5.0 j' in html
+    assert '1.5 j' in html
 
 
 def test_dashboard_comptable_acces_rapides(comptable_client):
