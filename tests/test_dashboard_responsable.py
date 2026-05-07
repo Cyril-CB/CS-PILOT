@@ -13,6 +13,8 @@ def test_dashboard_responsable_affiche_sections(resp_client):
     response = resp_client.get('/dashboard_responsable')
     assert response.status_code == 200
     html = response.get_data(as_text=True)
+    assert 'Mon solde recup' in html or 'Mon solde récupération' in html
+    assert 'Mes cong' in html
     assert 'ETP Secteur' in html
     assert 'Factures en attente' in html
     assert 'Factures a approuver' in html

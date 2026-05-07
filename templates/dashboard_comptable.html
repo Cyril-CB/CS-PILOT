@@ -11,6 +11,27 @@
         </div>
     </div>
 
+    <div class="direction-mini-stats" style="margin-bottom:1.25rem;">
+        <div class="direction-mini-stat">
+            <span class="direction-mini-value" style="color:{% if solde_recup > 0 %}var(--success){% elif solde_recup < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
+                {% if solde_recup > 0 %}+{% endif %}{{ "%.1f"|format(solde_recup) }}h
+            </span>
+            <span class="direction-mini-label">Mon solde récupération</span>
+        </div>
+        <div class="direction-mini-stat">
+            <span class="direction-mini-value" style="color:{% if cp_solde > 0 %}var(--success){% elif cp_solde < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
+                {{ "%.1f"|format(cp_solde) }} j
+            </span>
+            <span class="direction-mini-label">Mes congés payés</span>
+        </div>
+        <div class="direction-mini-stat">
+            <span class="direction-mini-value" style="color:{% if cc_solde > 0 %}var(--success){% elif cc_solde < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
+                {{ "%.1f"|format(cc_solde) }} j
+            </span>
+            <span class="direction-mini-label">Mes congés conventionnels</span>
+        </div>
+    </div>
+
     {# ════════════════════════════════════════════════════════════
        SECTION 1 : KPI PRINCIPAUX (4 cartes)
        ════════════════════════════════════════════════════════════ #}
