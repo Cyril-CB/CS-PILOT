@@ -1,3 +1,6 @@
+import re
+
+
 def test_dashboard_responsable_accessible(resp_client):
     """Verifie que le responsable accede a son dashboard."""
     response = resp_client.get('/dashboard_responsable')
@@ -23,6 +26,30 @@ def test_dashboard_responsable_affiche_sections(resp_client):
     assert 'Subventions' in html
     assert 'Budget' in html
     assert 'Conges de l&#39;equipe' in html or "Conges de l'equipe" in html
+
+
+def test_dashboard_responsable_affiche_les_soldes_en_cartes(resp_client, app, db, sample_users):
+    with app.app_context():
+        db.execute(
+            '''
+            UPDATE users
+            SET solde_initial = ?, cp_a_prendre = ?, cp_pris = ?, cc_solde = ?
+            WHERE id = ?
+            ''',
+            (3.5, 12, 2, -1, sample_users['responsable_id'])
+        )
+        db.commit()
+
+    response = resp_client.get('/dashboard_responsable')
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert re.search(r'<div class="stat-card">.*?Mon solde récupération', html, re.S)
+    assert re.search(r'<div class="stat-card">.*?Mes congés payés', html, re.S)
+    assert re.search(r'<div class="stat-card">.*?Mes congés conventionnels', html, re.S)
+    assert '+3.5h' in html
+    assert '10.0 j' in html
+    assert '-1.0 j' in html
 
 
 def test_dashboard_responsable_pas_tresorerie_anomalies(resp_client):
