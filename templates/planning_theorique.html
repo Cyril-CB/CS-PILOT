@@ -58,10 +58,18 @@
                 <span class="planning-history-badge" style="background: var(--gray-400); color: white; padding: 0.25rem 0.75rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem;">Historique</span>
                 {% endif %}
             </h3>
-            <p class="planning-history-meta">
-                <strong>Valable à partir du :</strong> {{ p.date_debut_validite }} 
-                ({{ "%.1f"|format(p.total_hebdo) }}h/semaine)
-            </p>
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.5rem;">
+                <p class="planning-history-meta" style="margin: 0;">
+                    <strong>Valable à partir du :</strong> {{ p.date_debut_validite }}
+                    ({{ "%.1f"|format(p.total_hebdo) }}h/semaine)
+                </p>
+                <button type="button"
+                        class="btn btn-danger btn-sm"
+                        onclick="ouvrirModaleSuppression({{ p.id }}, '{{ p.date_debut_validite }}')"
+                        style="background: #dc2626; color: white; border: none; padding: 0.3rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap;">
+                    Supprimer
+                </button>
+            </div>
             <div class="table-responsive">
                 <table class="data-table data-table-cards planning-history-table">
                     <thead>
@@ -371,6 +379,57 @@
         </form>
     </div>
 </div>
+
+<!-- Modale de confirmation de suppression -->
+<div id="modal-suppression" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:8px; padding:2rem; max-width:500px; width:90%; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+        <h3 style="color:#dc2626; margin-top:0;">&#9888;&#65039; Supprimer ce planning ?</h3>
+        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:6px; padding:1rem; margin-bottom:1rem;">
+            <p style="margin:0 0 0.75rem 0; font-weight:600; color:#991b1b;">
+                La suppression est définitive et ne doit être effectuée qu'en cas d'erreur de saisie.
+            </p>
+            <p style="margin:0; color:#7f1d1d;">
+                &#128204; Si vos horaires ont changé, <strong>ne supprimez pas ce planning</strong>.
+                Créez plutôt un <strong>nouveau planning</strong> en indiquant la date à partir de laquelle les nouveaux horaires s'appliquent.
+            </p>
+        </div>
+        <p style="color:#374151; margin-bottom:1.5rem;">
+            Vous allez supprimer le planning valable à partir du <strong id="modal-date-planning"></strong>.
+            Cette action est irréversible.
+        </p>
+        <form id="form-suppression" method="POST" style="display:inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:flex; gap:1rem; justify-content:flex-end;">
+                <button type="button" onclick="fermerModaleSuppression()"
+                        style="background:#6b7280; color:white; border:none; padding:0.6rem 1.25rem; border-radius:4px; cursor:pointer; font-size:0.95rem;">
+                    Annuler
+                </button>
+                <button type="submit"
+                        style="background:#dc2626; color:white; border:none; padding:0.6rem 1.25rem; border-radius:4px; cursor:pointer; font-size:0.95rem; font-weight:600;">
+                    Confirmer la suppression
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function ouvrirModaleSuppression(planningId, datePlanning) {
+    document.getElementById('modal-date-planning').textContent = datePlanning;
+    document.getElementById('form-suppression').action = '/planning_theorique/supprimer/' + planningId;
+    const modal = document.getElementById('modal-suppression');
+    modal.style.display = 'flex';
+}
+
+function fermerModaleSuppression() {
+    document.getElementById('modal-suppression').style.display = 'none';
+}
+
+// Fermer la modale en cliquant sur le fond
+document.getElementById('modal-suppression').addEventListener('click', function(e) {
+    if (e.target === this) fermerModaleSuppression();
+});
+</script>
 
 <script>
 // Pré-remplir la date de début de validité avec la date du jour

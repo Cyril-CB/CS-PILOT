@@ -125,7 +125,7 @@ def planning_theorique():
             conn.close()
         
         return redirect(url_for('planning_bp.planning_theorique'))
-    
+
     # GET: afficher tous les plannings (historique complet) + infos alternance
     conn = get_db()
     plannings = conn.execute('''
@@ -148,8 +148,34 @@ def planning_theorique():
     
     conn.close()
     
-    return render_template('planning_theorique.html', 
+    return render_template('planning_theorique.html',
                          plannings=plannings,
                          references=references,
                          semaine_actuelle=semaine_actuelle,
                          date_actuelle=datetime.now().strftime('%Y-%m-%d'))
+
+
+@planning_bp.route('/planning_theorique/supprimer/<int:planning_id>', methods=['POST'])
+@login_required
+def supprimer_planning(planning_id):
+    """Suppression d'un planning - uniquement en cas d'erreur de saisie"""
+    conn = get_db()
+    try:
+        planning = conn.execute(
+            'SELECT id, date_debut_validite FROM planning_theorique WHERE id = ? AND user_id = ?',
+            (planning_id, session['user_id'])
+        ).fetchone()
+
+        if not planning:
+            flash('Planning introuvable ou accès refusé', 'error')
+            return redirect(url_for('planning_bp.planning_theorique'))
+
+        conn.execute('DELETE FROM planning_theorique WHERE id = ?', (planning_id,))
+        conn.commit()
+        flash(f'Planning du {planning["date_debut_validite"]} supprimé.', 'success')
+    except Exception as e:
+        flash(f'Erreur lors de la suppression : {str(e)}', 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('planning_bp.planning_theorique'))
