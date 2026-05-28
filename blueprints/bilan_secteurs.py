@@ -12,7 +12,8 @@ Fonctionnalites :
 - Taux de logistique (site1, site2, global) par annee avec selection
 - Calcul du resultat avec et sans logistique
 - Export PDF du bilan
-- Accessible aux profils directeur et comptable
+- Accessible aux profils directeur, comptable et responsable
+  (les responsables ne voient que leur secteur et ne peuvent pas importer/modifier)
 """
 import csv
 import io
@@ -29,7 +30,17 @@ NOMS_MOIS = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
 
 
 def _peut_acceder():
+    """Lecture autorisée pour directeur, comptable et responsable."""
+    return session.get('profil') in ('directeur', 'comptable', 'responsable')
+
+
+def _peut_modifier():
+    """Import, suppression et modification des taux réservés aux directeurs/comptables."""
     return session.get('profil') in ('directeur', 'comptable')
+
+
+def _est_responsable():
+    return session.get('profil') == 'responsable'
 
 
 def _get_libelles_pcg(conn):
@@ -52,9 +63,23 @@ def bilan_secteurs():
     annee_courante = now.year
     annees = list(range(annee_courante - 3, annee_courante + 2))
 
+    est_resp = _est_responsable()
+    secteur_resp_id = session.get('secteur_id') if est_resp else None
+
+    if est_resp and not secteur_resp_id:
+        flash('Aucun secteur n\'est assigné à votre compte. Contactez un administrateur.', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
     conn = get_db()
     try:
-        secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY nom').fetchall()
+        if est_resp:
+            secteurs = conn.execute(
+                'SELECT id, nom FROM secteurs WHERE id = ? ORDER BY nom',
+                (secteur_resp_id,)
+            ).fetchall()
+        else:
+            secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY nom').fetchall()
+
         actions = conn.execute('SELECT id, nom FROM comptabilite_actions ORDER BY nom').fetchall()
 
         # Annees ayant des donnees importees
@@ -65,7 +90,9 @@ def bilan_secteurs():
         return render_template('bilan_secteurs.html',
                                annees=annees, annee_courante=annee_courante,
                                secteurs=secteurs, actions=actions,
-                               annees_importees=[r['annee'] for r in annees_importees])
+                               annees_importees=[r['annee'] for r in annees_importees],
+                               est_responsable=est_resp,
+                               secteur_responsable_id=secteur_resp_id)
     finally:
         conn.close()
 
@@ -108,7 +135,7 @@ def api_import_bi():
     Montant Débit | Montant Crédit | Mode de règlement | Date d'échéance |
     Type d'écriture | Compte analytique | Lettrage
     """
-    if not _peut_acceder():
+    if not _peut_modifier():
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     fichier = request.files.get('fichier')
@@ -262,7 +289,7 @@ def api_import_bi():
 @login_required
 def api_supprimer_annee(annee):
     """Supprime toutes les donnees FEC d'une annee."""
-    if not _peut_acceder():
+    if not _peut_modifier():
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     conn = get_db()
@@ -295,6 +322,13 @@ def api_bilan_donnees():
     annee = request.args.get('annee', type=int)
     secteur_id = request.args.get('secteur_id', type=int)
     action_id = request.args.get('action_id', type=int)
+
+    # Restriction responsable : forcer leur secteur assigné, quelle que soit la requête
+    if _est_responsable():
+        secteur_resp = session.get('secteur_id')
+        if not secteur_resp:
+            return jsonify({'error': 'Aucun secteur assigné à votre compte.'}), 403
+        secteur_id = secteur_resp
 
     if not annee:
         return jsonify({'error': 'Année requise.'}), 400
@@ -430,6 +464,13 @@ def api_detail_compte():
     secteur_id = request.args.get('secteur_id', type=int)
     action_id = request.args.get('action_id', type=int)
 
+    # Restriction responsable : forcer leur secteur assigné
+    if _est_responsable():
+        secteur_resp = session.get('secteur_id')
+        if not secteur_resp:
+            return jsonify({'error': 'Aucun secteur assigné à votre compte.'}), 403
+        secteur_id = secteur_resp
+
     if not annee or not compte_num:
         return jsonify({'error': 'Paramètres manquants.'}), 400
 
@@ -487,7 +528,7 @@ def api_detail_compte():
 @login_required
 def api_save_taux_logistique():
     """Sauvegarde les taux de logistique pour une annee."""
-    if not _peut_acceder():
+    if not _peut_modifier():
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     data = request.get_json() or {}
@@ -559,6 +600,14 @@ def api_export_pdf():
     secteur_id = request.args.get('secteur_id', type=int)
     action_id = request.args.get('action_id', type=int)
     taux_selectionne = request.args.get('taux_selectionne', 'global')
+
+    # Restriction responsable : forcer leur secteur assigné
+    if _est_responsable():
+        secteur_resp = session.get('secteur_id')
+        if not secteur_resp:
+            flash('Aucun secteur assigné à votre compte.', 'error')
+            return redirect(url_for('bilan_secteurs_bp.bilan_secteurs'))
+        secteur_id = secteur_resp
 
     if not annee:
         flash('Année requise.', 'error')

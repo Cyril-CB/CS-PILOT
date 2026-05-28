@@ -41,6 +41,7 @@ def _populate_session(user):
     session['nom'] = user['nom']
     session['prenom'] = user['prenom']
     session['profil'] = user['profil']
+    session['secteur_id'] = user['secteur_id']
     session['force_password_change'] = bool(user['force_password_change'])
 
 
@@ -114,7 +115,7 @@ def login():
         conn = get_db()
         try:
             user = conn.execute(
-                'SELECT id, nom, prenom, profil, password, force_password_change '
+                'SELECT id, nom, prenom, profil, password, force_password_change, secteur_id '
                 'FROM users WHERE login = ? AND actif = 1',
                 (login_val,)
             ).fetchone()
