@@ -5,7 +5,9 @@
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <h2>📊 Bilan secteurs / actions</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        {% if not est_responsable %}
         <a href="{{ url_for('import_bi_bp.import_bi') }}" class="btn btn-secondary">📥 Importer BI</a>
+        {% endif %}
         <button class="btn btn-secondary" id="btnExportPdf" style="display:none;" onclick="exporterPdf()">📄 Export PDF</button>
     </div>
 </div>
@@ -21,11 +23,13 @@
         </select>
     </div>
     <div class="form-group" style="margin:0;">
-        <label>Secteur <small>(facultatif)</small></label>
-        <select id="filtreSecteur" class="form-select" onchange="chargerBilan()">
+        <label>Secteur {% if not est_responsable %}<small>(facultatif)</small>{% endif %}</label>
+        <select id="filtreSecteur" class="form-select" onchange="chargerBilan()" {% if est_responsable %}disabled{% endif %}>
+            {% if not est_responsable %}
             <option value="">— Tous —</option>
+            {% endif %}
             {% for s in secteurs %}
-            <option value="{{ s.id }}">{{ s.nom }}</option>
+            <option value="{{ s.id }}" {% if est_responsable %}selected{% endif %}>{{ s.nom }}</option>
             {% endfor %}
         </select>
     </div>
@@ -67,19 +71,19 @@
 
     {# ── Taux de logistique ── #}
     <div style="margin-top:32px;padding:20px;background:var(--bg-secondary, #f8f9fa);border-radius:12px;">
-        <h3>🏗️ Taux de logistique</h3>
+        <h3>🏗️ Taux de logistique{% if est_responsable %} <small style="font-size:0.7em;font-weight:normal;color:var(--text-muted);">(lecture seule)</small>{% endif %}</h3>
         <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;margin-top:12px;">
             <div class="form-group" style="margin:0;">
-                <label><input type="radio" name="tauxSel" value="site1" onchange="saveTaux()"> Site 1</label>
-                <input type="text" id="tauxSite1" class="form-control" placeholder="0,00" style="width:120px;" onchange="saveTaux()">
+                <label><input type="radio" name="tauxSel" value="site1" {% if est_responsable %}disabled{% else %}onchange="saveTaux()"{% endif %}> Site 1</label>
+                <input type="text" id="tauxSite1" class="form-control" placeholder="0,00" style="width:120px;" {% if est_responsable %}readonly{% else %}onchange="saveTaux()"{% endif %}>
             </div>
             <div class="form-group" style="margin:0;">
-                <label><input type="radio" name="tauxSel" value="site2" onchange="saveTaux()"> Site 2</label>
-                <input type="text" id="tauxSite2" class="form-control" placeholder="0,00" style="width:120px;" onchange="saveTaux()">
+                <label><input type="radio" name="tauxSel" value="site2" {% if est_responsable %}disabled{% else %}onchange="saveTaux()"{% endif %}> Site 2</label>
+                <input type="text" id="tauxSite2" class="form-control" placeholder="0,00" style="width:120px;" {% if est_responsable %}readonly{% else %}onchange="saveTaux()"{% endif %}>
             </div>
             <div class="form-group" style="margin:0;">
-                <label><input type="radio" name="tauxSel" value="global" checked onchange="saveTaux()"> Global</label>
-                <input type="text" id="tauxGlobal" class="form-control" placeholder="0,00" style="width:120px;" onchange="saveTaux()">
+                <label><input type="radio" name="tauxSel" value="global" checked {% if not est_responsable %}onchange="saveTaux()"{% endif %}> Global</label>
+                <input type="text" id="tauxGlobal" class="form-control" placeholder="0,00" style="width:120px;" {% if est_responsable %}readonly{% else %}onchange="saveTaux()"{% endif %}>
             </div>
         </div>
         <div id="logistiqueCalc" style="margin-top:16px;font-size:1.05em;"></div>
@@ -106,6 +110,8 @@
 </div>
 
 <script>
+var EST_RESPONSABLE = {{ 'true' if est_responsable else 'false' }};
+
 var NOMS_CATEGORIES = {
     '60': 'Achats', '61': 'Services extérieurs', '62': 'Autres services ext.',
     '63': 'Impôts et taxes', '64': 'Charges de personnel', '65': 'Autres charges de gestion',
@@ -238,6 +244,10 @@ function voirDetail(compteNum) {
 
 // Taux de logistique
 function saveTaux() {
+    if (EST_RESPONSABLE) {
+        if (bilanData) calculerResultat(bilanData);
+        return;
+    }
     var annee = document.getElementById('filtreAnnee').value;
     var sel = document.querySelector('input[name="tauxSel"]:checked');
     var data = {
@@ -286,6 +296,13 @@ function calculerResultat(data) {
     resHtml += ' <small>(Produits ' + fmt(totalProduits) + ' − Charges ' + fmt(totalCharges) + ' − Logistique ' + fmt(logistique) + ')</small></div>';
 
     document.getElementById('resultatDisplay').innerHTML = resHtml;
+}
+
+// Pour les responsables, le secteur est pré-sélectionné : charger automatiquement
+if (EST_RESPONSABLE) {
+    document.addEventListener('DOMContentLoaded', function() {
+        chargerBilan();
+    });
 }
 
 // Export PDF
