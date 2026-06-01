@@ -123,6 +123,42 @@ class TestValidationMois:
             assert validation is not None
             assert validation['bloque'] == 1  # Verrouillé !
 
+    def test_directeur_responsable_valide_les_deux_roles(self, app, db, sample_users):
+        """Un directeur responsable du secteur pose les validations responsable
+        ET directeur en une seule action, et la fiche est verrouillée.
+
+        Régression : auparavant la chaîne if/elif ne posait que la validation
+        directeur, donc validation_responsable restait vide et la fiche ne se
+        verrouillait jamais.
+        """
+        mois, annee = 6, 2024
+        with app.app_context():
+            # Le directeur (admin) devient aussi responsable du secteur du salarié
+            db.execute(
+                "UPDATE users SET secteur_id = ? WHERE id = ?",
+                (sample_users['secteur_id'], sample_users['directeur_id'])
+            )
+            db.commit()
+
+            _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+
+            client_dir = app.test_client()
+            client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
+            client_dir.post('/valider_mois', data={
+                'user_id': sample_users['salarie_id'],
+                'mois': mois,
+                'annee': annee,
+            }, follow_redirects=True)
+
+            validation = db.execute(
+                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                (sample_users['salarie_id'], mois, annee)
+            ).fetchone()
+            assert validation is not None
+            assert validation['validation_responsable'] is not None
+            assert validation['validation_directeur'] is not None
+            assert validation['bloque'] == 1  # Verrouillé en une seule validation
+
     def test_refus_validation_mois_en_cours(self, auth_client, app, db, sample_users):
         """On ne peut pas valider le mois en cours."""
         now = datetime.now()
