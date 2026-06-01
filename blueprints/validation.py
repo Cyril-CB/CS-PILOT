@@ -48,24 +48,33 @@ def valider_mois():
 
     try:
         # Vérifier les droits
-        peut_valider = False
-        type_validation = None
+        # Un même utilisateur peut cumuler plusieurs rôles de validation.
+        # Cas notable : un directeur qui est aussi responsable du secteur du
+        # salarié doit poser à la fois la validation responsable ET directeur,
+        # sinon la fiche ne se verrouille jamais (cf. verrouillage plus bas).
+        types_validation = []
+        profil = session.get('profil')
 
         if user_id == session['user_id']:
-            peut_valider = True
-            type_validation = 'salarie'
-        elif session.get('profil') == 'responsable':
-            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            types_validation.append('salarie')
+        else:
+            # Validation responsable : le valideur est responsable du secteur
+            # du salarié (un directeur ayant un secteur assigné agit aussi
+            # comme responsable de ce secteur).
+            if profil in ('responsable', 'directeur'):
+                user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
+                valideur_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
 
-            if user_to_validate and responsable_secteur and user_to_validate['secteur_id'] == responsable_secteur['secteur_id']:
-                peut_valider = True
-                type_validation = 'responsable'
-        elif session.get('profil') == 'directeur':
-            peut_valider = True
-            type_validation = 'directeur'
+                if (user_to_validate and valideur_secteur
+                        and valideur_secteur['secteur_id'] is not None
+                        and user_to_validate['secteur_id'] == valideur_secteur['secteur_id']):
+                    types_validation.append('responsable')
 
-        if not peut_valider:
+            # Validation directeur : un directeur peut valider toute fiche.
+            if profil == 'directeur':
+                types_validation.append('directeur')
+
+        if not types_validation:
             flash('Vous n\'avez pas le droit de valider cette fiche', 'error')
             return redirect(url_for('validation_bp.vue_mensuelle'))
 
@@ -78,41 +87,35 @@ def valider_mois():
         user_info = get_user_info(session['user_id'])
         validation_nom = f"{user_info['prenom']} {user_info['nom']}"
 
+        # Champs (colonne validation, colonne date) par type de validation.
+        # Les noms de colonnes proviennent de ce mapping fixe, pas d'une saisie
+        # utilisateur : aucun risque d'injection SQL.
+        champs_validation = {
+            'salarie': ('validation_salarie', 'date_salarie'),
+            'responsable': ('validation_responsable', 'date_responsable'),
+            'directeur': ('validation_directeur', 'date_directeur'),
+        }
+
         if not validation:
-            if type_validation == 'salarie':
-                conn.execute('''
-                    INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, mois, annee, validation_nom, now))
-            elif type_validation == 'responsable':
-                conn.execute('''
-                    INSERT INTO validations (user_id, mois, annee, validation_responsable, date_responsable)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, mois, annee, validation_nom, now))
-            elif type_validation == 'directeur':
-                conn.execute('''
-                    INSERT INTO validations (user_id, mois, annee, validation_directeur, date_directeur)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, mois, annee, validation_nom, now))
-        else:
-            if type_validation == 'salarie':
-                conn.execute('''
-                    UPDATE validations
-                    SET validation_salarie = ?, date_salarie = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
-                ''', (validation_nom, now, user_id, mois, annee))
-            elif type_validation == 'responsable':
-                conn.execute('''
-                    UPDATE validations
-                    SET validation_responsable = ?, date_responsable = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
-                ''', (validation_nom, now, user_id, mois, annee))
-            elif type_validation == 'directeur':
-                conn.execute('''
-                    UPDATE validations
-                    SET validation_directeur = ?, date_directeur = ?
-                    WHERE user_id = ? AND mois = ? AND annee = ?
-                ''', (validation_nom, now, user_id, mois, annee))
+            conn.execute('''
+                INSERT INTO validations (user_id, mois, annee)
+                VALUES (?, ?, ?)
+            ''', (user_id, mois, annee))
+
+        set_clauses = []
+        params = []
+        for type_validation in types_validation:
+            col_validation, col_date = champs_validation[type_validation]
+            set_clauses.append(f'{col_validation} = ?')
+            set_clauses.append(f'{col_date} = ?')
+            params.extend([validation_nom, now])
+
+        params.extend([user_id, mois, annee])
+        conn.execute(f'''
+            UPDATE validations
+            SET {', '.join(set_clauses)}
+            WHERE user_id = ? AND mois = ? AND annee = ?
+        ''', params)
 
         # Vérifier si la fiche doit être verrouillée (responsable + directeur validés)
         validation_updated = conn.execute('''
