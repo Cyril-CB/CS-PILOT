@@ -58,16 +58,32 @@ def valider_mois():
         if user_id == session['user_id']:
             types_validation.append('salarie')
         else:
-            # Validation responsable : le valideur est responsable du secteur
-            # du salarié (un directeur ayant un secteur assigné agit aussi
-            # comme responsable de ce secteur).
+            # Validation responsable : le valideur est responsable du salarié.
+            # Deux façons d'être responsable d'un salarié :
+            #  - être responsable de son secteur (même secteur_id) ;
+            #  - être son responsable hiérarchique direct (responsable_id).
+            # Le second cas couvre notamment un directeur désigné comme
+            # responsable hiérarchique : le champ « Responsable hiérarchique »
+            # liste aussi les directeurs (cf. admin.py).
             if profil in ('responsable', 'directeur'):
-                user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
-                valideur_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+                user_to_validate = conn.execute(
+                    'SELECT secteur_id, responsable_id FROM users WHERE id = ?', (user_id,)
+                ).fetchone()
+                valideur_secteur = conn.execute(
+                    'SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)
+                ).fetchone()
 
-                if (user_to_validate and valideur_secteur
-                        and valideur_secteur['secteur_id'] is not None
-                        and user_to_validate['secteur_id'] == valideur_secteur['secteur_id']):
+                meme_secteur = bool(
+                    user_to_validate and valideur_secteur
+                    and valideur_secteur['secteur_id'] is not None
+                    and user_to_validate['secteur_id'] == valideur_secteur['secteur_id']
+                )
+                est_responsable_hierarchique = bool(
+                    user_to_validate
+                    and user_to_validate['responsable_id'] == session['user_id']
+                )
+
+                if meme_secteur or est_responsable_hierarchique:
                     types_validation.append('responsable')
 
             # Validation directeur : un directeur peut valider toute fiche.

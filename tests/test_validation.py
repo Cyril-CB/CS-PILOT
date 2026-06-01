@@ -123,7 +123,7 @@ class TestValidationMois:
             assert validation is not None
             assert validation['bloque'] == 1  # Verrouillé !
 
-    def test_directeur_responsable_valide_les_deux_roles(self, app, db, sample_users):
+    def test_directeur_responsable_secteur_valide_les_deux_roles(self, app, db, sample_users):
         """Un directeur responsable du secteur pose les validations responsable
         ET directeur en une seule action, et la fiche est verrouillée.
 
@@ -137,6 +137,47 @@ class TestValidationMois:
             db.execute(
                 "UPDATE users SET secteur_id = ? WHERE id = ?",
                 (sample_users['secteur_id'], sample_users['directeur_id'])
+            )
+            db.commit()
+
+            _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+
+            client_dir = app.test_client()
+            client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
+            client_dir.post('/valider_mois', data={
+                'user_id': sample_users['salarie_id'],
+                'mois': mois,
+                'annee': annee,
+            }, follow_redirects=True)
+
+            validation = db.execute(
+                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                (sample_users['salarie_id'], mois, annee)
+            ).fetchone()
+            assert validation is not None
+            assert validation['validation_responsable'] is not None
+            assert validation['validation_directeur'] is not None
+            assert validation['bloque'] == 1  # Verrouillé en une seule validation
+
+    def test_directeur_responsable_hierarchique_valide_les_deux_roles(self, app, db, sample_users):
+        """Un directeur désigné comme responsable hiérarchique (responsable_id)
+        d'un salarié pose les validations responsable ET directeur, même sans
+        partager le secteur du salarié.
+
+        Cas réel : un directeur supervise plusieurs secteurs (pas de secteur_id
+        unique) mais est le responsable hiérarchique direct du salarié.
+        """
+        mois, annee = 6, 2024
+        with app.app_context():
+            # Le directeur n'a PAS de secteur, mais est le responsable
+            # hiérarchique direct du salarié.
+            db.execute(
+                "UPDATE users SET secteur_id = NULL WHERE id = ?",
+                (sample_users['directeur_id'],)
+            )
+            db.execute(
+                "UPDATE users SET responsable_id = ? WHERE id = ?",
+                (sample_users['directeur_id'], sample_users['salarie_id'])
             )
             db.commit()
 
