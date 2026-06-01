@@ -200,6 +200,42 @@ class TestValidationMois:
             assert validation['validation_directeur'] is not None
             assert validation['bloque'] == 1  # Verrouillé en une seule validation
 
+    def test_directeur_responsable_hierarchique_comptable(self, app, db, sample_users):
+        """Cas concret : le comptable (profil non 'salarie') a le directeur pour
+        responsable hiérarchique. Le directeur verrouille sa fiche en une
+        validation, sans partager de secteur.
+        """
+        mois, annee = 6, 2024
+        with app.app_context():
+            db.execute(
+                "UPDATE users SET secteur_id = NULL WHERE id = ?",
+                (sample_users['directeur_id'],)
+            )
+            db.execute(
+                "UPDATE users SET responsable_id = ? WHERE id = ?",
+                (sample_users['directeur_id'], sample_users['comptable_id'])
+            )
+            db.commit()
+
+            _creer_saisie_mois(db, sample_users['comptable_id'], mois, annee)
+
+            client_dir = app.test_client()
+            client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
+            client_dir.post('/valider_mois', data={
+                'user_id': sample_users['comptable_id'],
+                'mois': mois,
+                'annee': annee,
+            }, follow_redirects=True)
+
+            validation = db.execute(
+                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                (sample_users['comptable_id'], mois, annee)
+            ).fetchone()
+            assert validation is not None
+            assert validation['validation_responsable'] is not None
+            assert validation['validation_directeur'] is not None
+            assert validation['bloque'] == 1
+
     def test_refus_validation_mois_en_cours(self, auth_client, app, db, sample_users):
         """On ne peut pas valider le mois en cours."""
         now = datetime.now()
