@@ -236,6 +236,44 @@ class TestValidationMois:
             assert validation['validation_directeur'] is not None
             assert validation['bloque'] == 1
 
+    def test_fiche_responsable_verrouillee_par_directeur_seul(self, app, db, sample_users):
+        """La fiche d'un responsable (pas de supérieur au-dessus de lui) est
+        verrouillée par la seule validation du directeur.
+
+        Régression : le verrouillage exigeait validation_responsable ET
+        directeur. Un responsable n'ayant pas de responsable assigné, sa fiche
+        ne se verrouillait jamais même après validation du directeur.
+        """
+        mois, annee = 6, 2024
+        with app.app_context():
+            _creer_saisie_mois(db, sample_users['responsable_id'], mois, annee)
+
+            # Le responsable valide sa propre fiche
+            client_resp = app.test_client()
+            client_resp.post('/login', data={'login': 'resp_test', 'password': 'resp123'})
+            client_resp.post('/valider_mois', data={
+                'user_id': sample_users['responsable_id'],
+                'mois': mois,
+                'annee': annee,
+            }, follow_redirects=True)
+
+            # Le directeur valide la fiche du responsable
+            client_dir = app.test_client()
+            client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
+            client_dir.post('/valider_mois', data={
+                'user_id': sample_users['responsable_id'],
+                'mois': mois,
+                'annee': annee,
+            }, follow_redirects=True)
+
+            validation = db.execute(
+                "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+                (sample_users['responsable_id'], mois, annee)
+            ).fetchone()
+            assert validation is not None
+            assert validation['validation_directeur'] is not None
+            assert validation['bloque'] == 1  # Verrouillée par le directeur seul
+
     def test_refus_validation_mois_en_cours(self, auth_client, app, db, sample_users):
         """On ne peut pas valider le mois en cours."""
         now = datetime.now()

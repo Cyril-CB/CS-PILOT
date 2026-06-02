@@ -133,12 +133,27 @@ def valider_mois():
             WHERE user_id = ? AND mois = ? AND annee = ?
         ''', params)
 
-        # Vérifier si la fiche doit être verrouillée (responsable + directeur validés)
+        # Vérifier si la fiche doit être verrouillée.
+        # Cas général : validation responsable ET directeur.
+        # Cas des responsables : ils n'ont pas de supérieur au-dessus d'eux
+        # (hormis le directeur), donc la validation directeur suffit à
+        # verrouiller leur fiche.
         validation_updated = conn.execute('''
             SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
         ''', (user_id, mois, annee)).fetchone()
 
-        if validation_updated and validation_updated['validation_responsable'] and validation_updated['validation_directeur']:
+        user_valide = conn.execute(
+            'SELECT profil FROM users WHERE id = ?', (user_id,)
+        ).fetchone()
+        valide_est_responsable = bool(user_valide and user_valide['profil'] == 'responsable')
+
+        doit_verrouiller = bool(
+            validation_updated
+            and validation_updated['validation_directeur']
+            and (validation_updated['validation_responsable'] or valide_est_responsable)
+        )
+
+        if doit_verrouiller:
             conn.execute('''
                 UPDATE validations SET bloque = 1
                 WHERE user_id = ? AND mois = ? AND annee = ?
