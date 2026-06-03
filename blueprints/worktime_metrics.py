@@ -45,6 +45,27 @@ def _get_semaine_alternance(conn, user_id: int, date_str: str) -> str:
     if not ref:
         return "fixe"
 
+    still_alternating = conn.execute(
+        """
+        SELECT 1 FROM planning_theorique p
+        WHERE p.user_id = ?
+          AND p.type_alternance IN ('semaine_1', 'semaine_2')
+          AND p.date_debut_validite <= ?
+          AND NOT EXISTS (
+              SELECT 1 FROM planning_theorique p2
+              WHERE p2.user_id = p.user_id
+                AND p2.type_periode = p.type_periode
+                AND p2.type_alternance = 'fixe'
+                AND p2.date_debut_validite > p.date_debut_validite
+                AND p2.date_debut_validite <= ?
+          )
+        LIMIT 1
+        """,
+        (user_id, date_str, date_str),
+    ).fetchone()
+    if not still_alternating:
+        return "fixe"
+
     date_ref = datetime.strptime(ref["date_reference"], "%Y-%m-%d")
     date_actuelle = datetime.strptime(date_str, "%Y-%m-%d")
     semaines_ecoulees = (date_actuelle - date_ref).days // 7
@@ -75,7 +96,7 @@ def get_planning_cached(conn, user_id: int, date_str: str, planning_cache: dict,
                 (user_id, type_periode_recherche, date_str),
             ).fetchone()
 
-        return conn.execute(
+        planning = conn.execute(
             """
             SELECT *
             FROM planning_theorique
@@ -88,6 +109,24 @@ def get_planning_cached(conn, user_id: int, date_str: str, planning_cache: dict,
             """,
             (user_id, type_periode_recherche, semaine_type, date_str),
         ).fetchone()
+
+        # Fallback : si aucun planning alterné pour ce type_periode, utiliser le planning fixe
+        if not planning:
+            planning = conn.execute(
+                """
+                SELECT *
+                FROM planning_theorique
+                WHERE user_id = ?
+                  AND type_periode = ?
+                  AND (type_alternance IS NULL OR type_alternance = 'fixe')
+                  AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+                """,
+                (user_id, type_periode_recherche, date_str),
+            ).fetchone()
+
+        return planning
 
     planning = _chercher_planning(type_periode)
     if not planning and type_periode == "vacances":

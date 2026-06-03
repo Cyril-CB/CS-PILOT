@@ -171,6 +171,16 @@ def supprimer_planning(planning_id):
             return redirect(url_for('planning_bp.planning_theorique'))
 
         conn.execute('DELETE FROM planning_theorique WHERE id = ?', (planning_id,))
+
+        # Nettoyer alternance_reference si plus aucun planning alterné ne reste
+        restants = conn.execute(
+            "SELECT COUNT(*) as nb FROM planning_theorique "
+            "WHERE user_id = ? AND type_alternance IN ('semaine_1', 'semaine_2')",
+            (session['user_id'],)
+        ).fetchone()
+        if restants['nb'] == 0:
+            conn.execute('DELETE FROM alternance_reference WHERE user_id = ?', (session['user_id'],))
+
         conn.commit()
         flash(f'Planning du {planning["date_debut_validite"]} supprimé.', 'success')
     except Exception as e:
