@@ -5,16 +5,35 @@ d'un serveur (VPS source — ex. le serveur de test actuel) vers un nouveau
 serveur (VPS cible — ex. celui du centre), **avec toutes les données** : base
 de données et documents uploadés.
 
-L'application est mono-instance : un fichier SQLite (`cspilot.db`) + un dossier
-`documents/`. La migration consiste donc à transférer ces deux éléments puis à
-remonter le service. Deux scripts automatisent l'export/import des données ;
-la reconstruction du service systemd et du reverse proxy Nginx est décrite
-ci-dessous (à faire à la main sur le nouveau serveur).
+L'application est mono-instance : un fichier SQLite (`cspilot.db`) + des dossiers
+de données sur disque. La migration transfère **toutes** les données puis remonte
+le service. Deux scripts automatisent l'export/import ; la reconstruction du
+service systemd et du reverse proxy Nginx est décrite ci-dessous (à faire à la
+main sur le nouveau serveur).
 
-> **Note sur le `SECRET_KEY`** : cette procédure **génère une nouvelle clé** sur
-> le serveur cible. Le `.env` de la source n'est volontairement pas copié. Les
-> sessions actives de l'ancien serveur seront donc invalidées : les utilisateurs
-> devront simplement se reconnecter. C'est sans impact sur les données.
+Ce qui est transféré :
+
+- **`cspilot.db`** — toute la base (utilisateurs, saisies, absences, factures, etc.) ;
+- les **dossiers de données** : `documents/`, `factures/`, `modeles_contrats/`,
+  `contrats_generes/`, `exports/` (ceux présents) ;
+- les **paramètres** stockés dans la table `app_settings` (config SMTP/notifications,
+  clés API OpenAI/Anthropic/Groq, tarifs ALSH, salaire socle, options d'affichage).
+
+> **`SECRET_KEY` et paramètres chiffrés.** Les paramètres de `app_settings` sont
+> chiffrés avec une clé dérivée du `SECRET_KEY` (`utils.py`). Cette procédure
+> **génère un nouveau `SECRET_KEY`** sur la cible : le `.env` source n'est pas
+> réutilisé. Pour ne rien perdre, le script d'export embarque la **clé d'origine
+> de façon transitoire** dans l'archive, et le script d'import **re-chiffre**
+> automatiquement tous les paramètres avec la nouvelle clé
+> (`scripts/migration/reencrypt_settings.py`). Résultat : rien à reconfigurer,
+> et le serveur cible tourne ensuite avec une clé neuve.
+>
+> Les sessions actives de l'ancien serveur sont invalidées (nouveau `SECRET_KEY`) :
+> les utilisateurs se reconnectent simplement.
+
+> ⚠️ **L'archive de migration est sensible** : elle contient toute la base **et** la
+> clé d'origine. Le script la crée en permissions `600`. Transférez-la uniquement
+> via SSH (scp) et **supprimez-la des deux côtés** une fois la migration validée.
 
 ---
 
@@ -114,11 +133,22 @@ cd /opt/cs-pilot
 ```
 
 Le script :
-- **sauvegarde** toute base/documents déjà présents (dans `backups/`, horodaté) ;
-- restaure `cspilot.db` et `documents/` ;
+- **sauvegarde** toute base/dossiers déjà présents (dans `backups/`, horodaté) ;
+- restaure `cspilot.db` et les dossiers de données (`documents/`, `factures/`,
+  `modeles_contrats/`, `contrats_generes/`, `exports/`) ;
 - conserve le `.env` (et son nouveau `SECRET_KEY`) déjà généré à l'étape 1 ;
+- **re-chiffre tous les paramètres** de `app_settings` (SMTP, clés API, tarifs
+  ALSH...) avec la nouvelle clé, à partir de la clé d'origine de l'archive →
+  aucune reconfiguration manuelle nécessaire ;
 - **rejoue les migrations de schéma en attente** si le code de la cible est plus
   récent que celui de la source, puis affiche la version du schéma.
+
+Après import, supprimez l'archive (elle contient la clé d'origine) :
+
+```bash
+rm -f ~/cspilot-migration-AAAAMMJJ-HHMMSS.tar.gz   # sur la cible
+# et sur la source aussi
+```
 
 ---
 
@@ -210,15 +240,19 @@ sudo certbot --nginx -d cspilot.votre-domaine.fr
 
 - **Connexion** : ouvrez l'application et connectez-vous (les comptes existants
   fonctionnent ; seules les sessions sont à refaire à cause du nouveau `SECRET_KEY`).
-- **Documents** : ouvrez quelques justificatifs / factures / pièces de subvention
-  pour confirmer que les fichiers sont bien présents.
+- **Documents et fichiers** : ouvrez quelques justificatifs, factures et contrats
+  pour confirmer que les fichiers (`documents/`, `factures/`, `modeles_contrats/`...)
+  sont bien présents.
+- **Paramètres re-chiffrés** : vérifiez que la **configuration e-mail** et les
+  **clés API** sont toujours renseignées (pages *Configuration email* et *Gestion
+  des clés API*). Faites un envoi d'e-mail de test si possible.
 - **Schéma** : dans le panneau **Administration**, vérifiez qu'aucune migration
   n'est en attente et que la version du schéma correspond à la source.
 - **Comptage** (optionnel) — comparer la source et la cible :
 
   ```bash
   sqlite3 cspilot.db "SELECT name FROM sqlite_master WHERE type='table';"
-  sqlite3 cspilot.db "SELECT COUNT(*) FROM utilisateurs;"
+  sqlite3 cspilot.db "SELECT COUNT(*) FROM users;"
   ```
 
 ---
@@ -235,7 +269,5 @@ sudo certbot --nginx -d cspilot.votre-domaine.fr
 
 ## Hors périmètre
 
-- **Secrets / SMTP** : les éventuels réglages de notification e-mail sont à
-  reconfigurer manuellement sur la cible.
 - **Zéro interruption / haute dispo** : non couvert (architecture mono-instance
   SQLite — une courte coupure pendant la bascule est normale).

@@ -6,9 +6,15 @@
 # A lancer sur le VPS CIBLE (le nouveau serveur), APRES avoir clone le depot
 # et installe les dependances (ex. via ./lancer.sh une premiere fois).
 #
-# Restaure la base de donnees et les documents depuis l'archive produite par
-# export-data.sh. Un .env neuf (avec un nouveau SECRET_KEY) est genere s'il
-# n'existe pas encore. Toute donnee existante est sauvegardee avant ecrasement.
+# Restaure depuis l'archive produite par export-data.sh :
+#   - la base de donnees,
+#   - les dossiers de donnees (documents, factures, modeles_contrats,
+#     contrats_generes, exports).
+# Un .env neuf (nouveau SECRET_KEY) est genere s'il n'existe pas, puis tous les
+# parametres chiffres de app_settings (SMTP, cles API, tarifs ALSH...) sont
+# RE-CHIFFRES avec cette nouvelle cle a partir de la cle d'origine transmise
+# dans l'archive : rien a reconfigurer manuellement.
+# Toute donnee existante est sauvegardee avant ecrasement.
 #
 # Usage :
 #   ./scripts/migration/import-data.sh cspilot-migration-AAAAMMJJ-HHMMSS.tar.gz
@@ -24,6 +30,7 @@ err()   { echo -e "${RED}[ERREUR]${NC} $*" >&2; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DATA_DIR="$PROJECT_DIR"   # mode script : DATA_DIR == dossier du projet (cf. database.py)
+DATA_FOLDERS=(documents factures modeles_contrats contrats_generes exports)
 
 ARCHIVE="${1:-}"
 if [ -z "$ARCHIVE" ]; then
@@ -74,11 +81,12 @@ if [ -f "$DATA_DIR/cspilot.db" ]; then
     cp "$DATA_DIR/cspilot.db" "$BACKUP_DIR/cspilot-pre-import-$TS.db"
     info "Sauvegarde : backups/cspilot-pre-import-$TS.db"
 fi
-if [ -d "$DATA_DIR/documents" ] && [ -n "$(ls -A "$DATA_DIR/documents" 2>/dev/null)" ]; then
-    warn "Documents existants detectes : archivage avant ecrasement."
-    tar -czf "$BACKUP_DIR/documents-pre-import-$TS.tar.gz" -C "$DATA_DIR" documents
-    info "Archive : backups/documents-pre-import-$TS.tar.gz"
-fi
+for folder in "${DATA_FOLDERS[@]}"; do
+    if [ -d "$DATA_DIR/$folder" ] && [ -n "$(ls -A "$DATA_DIR/$folder" 2>/dev/null)" ]; then
+        warn "Dossier '$folder' existant : archivage avant ecrasement."
+        tar -czf "$BACKUP_DIR/$folder-pre-import-$TS.tar.gz" -C "$DATA_DIR" "$folder"
+    fi
+done
 
 # --- Extraction de l'archive ---
 TMP_DIR="$(mktemp -d)"
@@ -93,30 +101,45 @@ rm -f "$DATA_DIR/cspilot.db-wal" "$DATA_DIR/cspilot.db-shm"
 cp "$TMP_DIR/cspilot.db" "$DATA_DIR/cspilot.db"
 info "Base de donnees restauree ($(du -h "$DATA_DIR/cspilot.db" | cut -f1))."
 
-# --- Mise en place des documents ---
-if [ -d "$TMP_DIR/documents" ]; then
-    rm -rf "$DATA_DIR/documents"
-    cp -a "$TMP_DIR/documents" "$DATA_DIR/documents"
-    DOC_COUNT="$(find "$DATA_DIR/documents" -type f | wc -l | tr -d ' ')"
-    info "Documents restaures ($DOC_COUNT fichiers)."
-fi
+# --- Mise en place des dossiers de donnees ---
+for folder in "${DATA_FOLDERS[@]}"; do
+    if [ -d "$TMP_DIR/$folder" ]; then
+        rm -rf "$DATA_DIR/$folder"
+        cp -a "$TMP_DIR/$folder" "$DATA_DIR/$folder"
+        n="$(find "$DATA_DIR/$folder" -type f | wc -l | tr -d ' ')"
+        info "Dossier '$folder' restaure ($n fichiers)."
+    fi
+done
 
-# --- Generation d'un .env neuf (nouveau SECRET_KEY) ---
+# --- .env / SECRET_KEY (genere si absent) + recuperation de la NOUVELLE cle ---
 ENV_FILE="$DATA_DIR/.env"
 if [ -f "$ENV_FILE" ]; then
     info ".env deja present : SECRET_KEY existant conserve."
 else
     warn "Generation d'un nouveau .env avec SECRET_KEY aleatoire..."
-    NEW_KEY="$("$PY" -c "import secrets; print(secrets.token_hex(32))")"
+    GEN_KEY="$("$PY" -c "import secrets; print(secrets.token_hex(32))")"
     cat > "$ENV_FILE" <<EOF
 # Genere automatiquement lors de la migration ($TS)
 # Pour regenerer une cle : python -c "import secrets; print(secrets.token_hex(32))"
-SECRET_KEY=$NEW_KEY
+SECRET_KEY=$GEN_KEY
 
 # Decommentez si l'application est derriere un reverse proxy / HTTPS (Nginx, Cloudflare...)
 # BEHIND_PROXY=true
 EOF
+    chmod 600 "$ENV_FILE"
     info ".env cree avec un nouveau SECRET_KEY."
+fi
+NEW_KEY="$(grep -E '^[[:space:]]*SECRET_KEY=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d ' \r\"')"
+
+# --- Re-chiffrement des parametres avec la nouvelle cle ---
+OLD_KEY_FILE="$TMP_DIR/_migration/old_secret_key"
+if [ -f "$OLD_KEY_FILE" ]; then
+    OLD_KEY="$(cat "$OLD_KEY_FILE")"
+    warn "Re-chiffrement des parametres (SMTP, cles API, tarifs ALSH...) avec la nouvelle cle..."
+    "$PY" "$SCRIPT_DIR/reencrypt_settings.py" "$OLD_KEY" "$NEW_KEY" "$DATA_DIR/cspilot.db"
+else
+    warn "Cle d'origine absente de l'archive : pas de re-chiffrement automatique."
+    warn "Les parametres chiffres (SMTP, cles API...) devront etre reconfigures via l'UI."
 fi
 
 # --- Application des migrations de schema en attente ---
@@ -140,8 +163,9 @@ else
     echo "  - Demarrer l'application :  sudo systemctl start cspilot"
     echo "    (ou ./lancer.sh pour un test manuel)"
 fi
-echo "  - Se connecter et verifier : donnees, documents, version du schema"
-echo "    (panneau Administration)."
+echo "  - Se connecter et verifier : donnees, documents, parametres (SMTP, cles API)."
+echo "  - Supprimer l'archive de migration (contient la cle d'origine) :"
+echo "       rm -f \"$ARCHIVE\""
 echo ""
 echo "Note : le SECRET_KEY ayant change, les sessions de l'ancien serveur sont"
 echo "       invalidees. Les utilisateurs devront se reconnecter (normal)."
