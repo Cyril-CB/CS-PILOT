@@ -243,7 +243,7 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
                 LIMIT 1
             ''', (user_id, type_periode_recherche, date_str)).fetchone()
 
-        return conn.execute('''
+        planning = conn.execute('''
             SELECT * FROM planning_theorique
             WHERE user_id = ?
             AND type_periode = ?
@@ -252,6 +252,20 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
             ORDER BY date_debut_validite DESC
             LIMIT 1
         ''', (user_id, type_periode_recherche, semaine_type, date_str)).fetchone()
+
+        # Fallback : si aucun planning alterné pour ce type_periode, utiliser le planning fixe
+        if not planning:
+            planning = conn.execute('''
+                SELECT * FROM planning_theorique
+                WHERE user_id = ?
+                AND type_periode = ?
+                AND (type_alternance IS NULL OR type_alternance = 'fixe')
+                AND date_debut_validite <= ?
+                ORDER BY date_debut_validite DESC
+                LIMIT 1
+            ''', (user_id, type_periode_recherche, date_str)).fetchone()
+
+        return planning
 
     planning = _chercher_planning_pour_type(type_periode)
 
