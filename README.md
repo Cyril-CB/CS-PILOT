@@ -109,6 +109,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 ## Documentation
 
 - **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
+- **[Migration d'un VPS à un autre](docs/migration-vps.md)** — transférer une installation (base de données + documents) vers un nouveau serveur, avec scripts d'export/import et reconstruction du service systemd + Nginx.
 
 ## Installation
 
