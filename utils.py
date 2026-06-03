@@ -185,9 +185,32 @@ def get_semaine_alternance(user_id, date_str):
         LIMIT 1
     ''', (user_id, date_str)).fetchone()
 
+    if not ref:
+        conn.close()
+        return 'fixe'
+
+    # Vérifier qu'au moins un planning alterné est encore actif (non supersédé par un planning fixe
+    # plus récent pour le même type_periode) — évite de bloquer les heures théoriques si tous les
+    # plannings alternés ont été supprimés ou remplacés par des plannings fixes.
+    still_alternating = conn.execute('''
+        SELECT 1 FROM planning_theorique p
+        WHERE p.user_id = ?
+          AND p.type_alternance IN ('semaine_1', 'semaine_2')
+          AND p.date_debut_validite <= ?
+          AND NOT EXISTS (
+              SELECT 1 FROM planning_theorique p2
+              WHERE p2.user_id = p.user_id
+                AND p2.type_periode = p.type_periode
+                AND p2.type_alternance = 'fixe'
+                AND p2.date_debut_validite > p.date_debut_validite
+                AND p2.date_debut_validite <= ?
+          )
+        LIMIT 1
+    ''', (user_id, date_str, date_str)).fetchone()
+
     conn.close()
 
-    if not ref:
+    if not still_alternating:
         return 'fixe'
 
     date_ref = datetime.strptime(ref['date_reference'], '%Y-%m-%d')
