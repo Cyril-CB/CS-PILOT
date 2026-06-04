@@ -444,6 +444,35 @@ def mes_demandes_recup():
     
     return render_template('mes_demandes_recup.html', demandes=demandes)
 
+
+@recup_bp.route('/supprimer_demande_recup', methods=['POST'])
+@login_required
+def supprimer_demande_recup():
+    """Permet au salarié de supprimer une de ses demandes de récup non validée."""
+    demande_id = request.form.get('demande_id', type=int)
+    if not demande_id:
+        flash('Demande introuvable', 'error')
+        return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+    conn = get_db()
+    try:
+        # Supprimer uniquement sa propre demande tant qu'elle n'est pas validée
+        cursor = conn.execute('''
+            DELETE FROM demandes_recup
+            WHERE id = ? AND user_id = ? AND statut != 'validee'
+        ''', (demande_id, session['user_id']))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            flash('Demande de récupération supprimée', 'success')
+        else:
+            flash('Cette demande ne peut pas être supprimée (déjà validée ou introuvable)', 'info')
+    finally:
+        conn.close()
+
+    return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+
 @recup_bp.route('/validation_demandes_recup', methods=['GET', 'POST'])
 @login_required
 def validation_demandes_recup():
@@ -885,6 +914,34 @@ def mes_demandes_conges():
     conn.close()
 
     return render_template('mes_demandes_conges.html', demandes=demandes)
+
+
+@recup_bp.route('/supprimer_demande_conge', methods=['POST'])
+@login_required
+def supprimer_demande_conge():
+    """Permet au salarié de supprimer une de ses demandes de congé non validée."""
+    demande_id = request.form.get('demande_id', type=int)
+    if not demande_id:
+        flash('Demande introuvable', 'error')
+        return redirect(url_for('recup_bp.mes_demandes_conges'))
+
+    conn = get_db()
+    try:
+        cursor = conn.execute('''
+            DELETE FROM demandes_conges
+            WHERE id = ? AND user_id = ? AND statut != 'validee'
+        ''', (demande_id, session['user_id']))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            flash('Demande de congé supprimée', 'success')
+        else:
+            flash('Cette demande ne peut pas être supprimée (déjà validée ou introuvable)', 'info')
+    finally:
+        conn.close()
+
+    return redirect(url_for('recup_bp.mes_demandes_conges'))
+
 
 
 # ==================== FORFAIT JOUR (DIRECTEURS) ====================

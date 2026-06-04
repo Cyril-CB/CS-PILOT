@@ -133,3 +133,56 @@ def test_validation_partielle_reporte_journee(admin_client, app, db, sample_user
         # Le solde de récup a baissé de 3h
         solde = calculer_solde_recup(sample_users['salarie_id'])
         assert solde == -3.0
+
+
+def _creer_demande_recup(db, user_id, statut='en_attente_responsable'):
+    cur = db.execute('''
+        INSERT INTO demandes_recup
+        (user_id, date_debut, date_fin, nb_jours, nb_heures, motif_demande, statut)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (user_id, JOUR_TEST, JOUR_TEST, 1, 7.0, 'Test', statut))
+    db.commit()
+    return cur.lastrowid
+
+
+def test_suppression_demande_recup_non_validee(auth_client, app, db, sample_users):
+    """Le salarié peut supprimer sa demande de récup non validée."""
+    with app.app_context():
+        demande_id = _creer_demande_recup(db, sample_users['salarie_id'])
+
+    response = auth_client.post('/supprimer_demande_recup', data={
+        'demande_id': demande_id,
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    with app.app_context():
+        row = db.execute("SELECT * FROM demandes_recup WHERE id = ?", (demande_id,)).fetchone()
+        assert row is None
+
+
+def test_suppression_demande_recup_validee_interdite(auth_client, app, db, sample_users):
+    """Une demande déjà validée ne peut pas être supprimée."""
+    with app.app_context():
+        demande_id = _creer_demande_recup(db, sample_users['salarie_id'], statut='validee')
+
+    auth_client.post('/supprimer_demande_recup', data={
+        'demande_id': demande_id,
+    }, follow_redirects=True)
+
+    with app.app_context():
+        row = db.execute("SELECT * FROM demandes_recup WHERE id = ?", (demande_id,)).fetchone()
+        assert row is not None
+
+
+def test_suppression_demande_recup_autre_salarie_interdite(auth_client, app, db, sample_users):
+    """Un salarié ne peut pas supprimer la demande d'un autre utilisateur."""
+    with app.app_context():
+        demande_id = _creer_demande_recup(db, sample_users['responsable_id'])
+
+    auth_client.post('/supprimer_demande_recup', data={
+        'demande_id': demande_id,
+    }, follow_redirects=True)
+
+    with app.app_context():
+        row = db.execute("SELECT * FROM demandes_recup WHERE id = ?", (demande_id,)).fetchone()
+        assert row is not None

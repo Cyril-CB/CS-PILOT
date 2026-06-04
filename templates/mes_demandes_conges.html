@@ -26,6 +26,7 @@
                     <th>Statut</th>
                     <th>Suivi des validations</th>
                     <th>Motif</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -81,6 +82,19 @@
                         {% endif %}
                     </td>
                     <td data-label="Motif">{{ d.motif_demande or '-' }}</td>
+                    <td data-label="Actions">
+                        {% if d.statut != 'validee' %}
+                        <form method="POST" action="{{ url_for('recup_bp.supprimer_demande_conge') }}" style="display: inline;"
+                              onsubmit="return confirm('Supprimer définitivement cette demande de congé ?');">
+                            <input type="hidden" name="demande_id" value="{{ d.id }}">
+                            <button type="submit" class="btn" style="background: var(--danger); color: white; font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                                🗑 Supprimer
+                            </button>
+                        </form>
+                        {% else %}
+                        <span style="color: var(--gray-400);">-</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
