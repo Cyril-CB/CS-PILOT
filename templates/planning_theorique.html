@@ -4,9 +4,30 @@
 
 {% block content %}
 <div class="form-container">
+    {% if user_cible and user_cible.id != session.user_id %}
+    <h1>Planning théorique — {{ user_cible.prenom }} {{ user_cible.nom }}</h1>
+    <p class="subtitle">Définissez les horaires habituels de ce salarié selon les périodes (par jour de la semaine)</p>
+    {% else %}
     <h1>Planning théorique</h1>
     <p class="subtitle">Définissez vos horaires habituels selon les périodes (par jour de la semaine)</p>
-    
+    {% endif %}
+
+    {% if peut_gerer and salaries %}
+    <div class="section" style="margin-bottom: 1.5rem;">
+        <div class="form-group">
+            <label for="select-salarie"><strong>👤 Salarié</strong></label>
+            <select id="select-salarie" onchange="changerSalarie(this.value)">
+                {% for s in salaries %}
+                <option value="{{ s.id }}" {% if s.id == user_id_cible %}selected{% endif %}>
+                    {{ s.nom }} {{ s.prenom }}{% if s.secteur_nom %} — {{ s.secteur_nom }}{% endif %}{% if s.id == session.user_id %} (moi){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <p class="help-text">Sélectionnez le salarié dont vous souhaitez saisir le planning théorique.</p>
+        </div>
+    </div>
+    {% endif %}
+
     {% if semaine_actuelle and semaine_actuelle != 'fixe' %}
     <div class="planning-alternance-banner">
         <h3 style="color: var(--primary-dark); margin-bottom: 0.5rem;">
@@ -169,6 +190,7 @@
         <h2>{% if plannings %}Modifier{% else %}Créer{% endif %} un planning</h2>
         
         <form method="POST" action="{{ url_for('planning_bp.planning_theorique') }}">
+            <input type="hidden" name="user_id" value="{{ user_id_cible }}">
             <div class="form-group">
                 <label for="type_periode">Type de période *</label>
                 <select id="type_periode" name="type_periode" required>
@@ -414,6 +436,13 @@
 </div>
 
 <script>
+// Changement de salarié cible (sélecteur direction / comptable / responsable)
+function changerSalarie(userId) {
+    if (userId) {
+        window.location.href = "{{ url_for('planning_bp.planning_theorique') }}?user_id=" + userId;
+    }
+}
+
 function ouvrirModaleSuppression(planningId, datePlanning) {
     document.getElementById('modal-date-planning').textContent = datePlanning;
     document.getElementById('form-suppression').action = '/planning_theorique/supprimer/' + planningId;
