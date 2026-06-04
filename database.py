@@ -69,8 +69,10 @@ ALL_MIGRATION_VERSIONS = [
     ('0029', 'Ajout module budget previsionnel'),
     ('0030', 'Ameliorations subventions'),
     ('0031', 'Ajout demandes conges'),
+    ('0032', 'Ajout force_password_change'),
     ('0033', 'Ajout commandes salaries et delegations'),
     ('0034', 'Prevention sante au travail'),
+    ('0035', 'Recuperation partielle'),
 ]
 
 # Postes de depense par defaut (migration 0012)
