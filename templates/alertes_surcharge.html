@@ -49,51 +49,40 @@
     <div class="section">
         <h2>Liste des alertes</h2>
         {% if alertes %}
-        <div style="overflow-x: auto;">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Salarié</th>
-                        <th>Catégorie</th>
-                        <th>Score</th>
-                        <th>Solde actuel</th>
-                        <th>Solde dernier mois</th>
-                        <th>Détail du score</th>
-                        <th>Évolution 60 jours</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for alerte in alertes %}
-                    <tr>
-                        <td>
-                            <strong>{{ alerte.nom_complet }}</strong><br>
-                            <span style="color: var(--gray-500); font-size: 0.9rem;">{{ alerte.secteur_nom }}</span>
-                        </td>
-                        <td>
-                            <span style="display:inline-flex;align-items:center;justify-content:center;padding:0.35rem 0.75rem;border-radius:999px;font-weight:700;background:{{ alerte.category.color }}22;color:{{ alerte.category.text_color }};border:1px solid {{ alerte.category.color }}55;">
-                                {{ alerte.category.label }}
+        <div class="surcharge-list">
+            {% for alerte in alertes %}
+            <div class="surcharge-card">
+                <div class="surcharge-card-main">
+                    <div class="surcharge-identity">
+                        <div class="surcharge-name">{{ alerte.nom_complet }}</div>
+                        <div class="surcharge-sector">{{ alerte.secteur_nom }}</div>
+                    </div>
+
+                    <div class="surcharge-metrics">
+                        <span class="surcharge-category-badge"
+                              style="background:{{ alerte.category.color }}22;color:{{ alerte.category.text_color }};border:1px solid {{ alerte.category.color }}55;">
+                            {{ alerte.category.label }}
+                        </span>
+
+                        <div class="surcharge-metric">
+                            <span class="surcharge-metric-label">Score</span>
+                            <span class="surcharge-metric-value">{{ alerte.score }}/100</span>
+                        </div>
+
+                        <div class="surcharge-metric">
+                            <span class="surcharge-metric-label">Solde actuel</span>
+                            <span class="surcharge-metric-value">{{ "%.1f"|format(alerte.solde_actuel) }}h</span>
+                        </div>
+
+                        <div class="surcharge-metric">
+                            <span class="surcharge-metric-label">Dernier mois</span>
+                            <span class="surcharge-metric-value">
+                                {% if alerte.solde_dernier_mois >= 0 %}+{% endif %}{{ "%.1f"|format(alerte.solde_dernier_mois) }}h
                             </span>
-                        </td>
-                        <td style="font-weight: 700; font-size: 1.05rem;">{{ alerte.score }}/100</td>
-                        <td>
-                            <strong>{{ "%.1f"|format(alerte.solde_actuel) }}h</strong>
-                        </td>
-                        <td>
-                            {% if alerte.solde_dernier_mois >= 0 %}
-                            +{{ "%.1f"|format(alerte.solde_dernier_mois) }}h
-                            {% else %}
-                            {{ "%.1f"|format(alerte.solde_dernier_mois) }}h
-                            {% endif %}
-                        </td>
-                        <td>
-                            <ul style="margin: 0; padding-left: 1rem;">
-                                {% for ligne in alerte.breakdown if ligne.points > 0 %}
-                                <li><strong>{{ ligne.points }} pts</strong> — {{ ligne.label }}<br><span style="color: var(--gray-500); font-size: 0.85rem;">{{ ligne.detail }}</span></li>
-                                {% endfor %}
-                            </ul>
-                        </td>
-                        <td style="min-width: 150px;">
+                        </div>
+
+                        <div class="surcharge-metric">
+                            <span class="surcharge-metric-label">Évolution 60 j</span>
                             <canvas
                                 class="surcharge-sparkline"
                                 width="140"
@@ -103,16 +92,35 @@
                                 data-color="{{ alerte.category.color }}"
                                 aria-label="Évolution du solde d'heures supplémentaires sur 60 jours pour {{ alerte.nom_complet }}">
                             </canvas>
-                        </td>
-                        <td>
-                            <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=alerte.user_id, mois=mois, annee=annee) }}" class="btn btn-primary">
-                                📅 Vue mensuelle
-                            </a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </div>
+                    </div>
+
+                    <div class="surcharge-action">
+                        <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=alerte.user_id, mois=mois, annee=annee) }}" class="btn btn-primary">
+                            📅 Vue mensuelle
+                        </a>
+                    </div>
+                </div>
+
+                {% set lignes_score = alerte.breakdown|selectattr('points', 'gt', 0)|list %}
+                {% if lignes_score %}
+                <div class="surcharge-breakdown">
+                    <div class="surcharge-breakdown-title">Détail du score</div>
+                    <div class="surcharge-breakdown-grid">
+                        {% for ligne in lignes_score %}
+                        <div class="surcharge-breakdown-item">
+                            <span class="surcharge-breakdown-points">{{ ligne.points }} pts</span>
+                            <div class="surcharge-breakdown-text">
+                                <div class="surcharge-breakdown-label">{{ ligne.label }}</div>
+                                <div class="surcharge-breakdown-detail">{{ ligne.detail }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
         </div>
         {% else %}
         <div class="direction-empty">

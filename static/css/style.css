@@ -3469,3 +3469,177 @@ a.btn-icon:-webkit-any-link {
         display: block;
     }
 }
+
+/* === ALERTES SURCHARGE (cartes) === */
+.surcharge-list {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    animation: fadeIn var(--transition-slow) both;
+}
+
+.surcharge-card {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--gray-200);
+    transition: background var(--transition-fast);
+}
+
+.surcharge-card:last-child {
+    border-bottom: none;
+}
+
+/* Alternance clair / foncé pour bien séparer les salariés */
+.surcharge-card:nth-child(odd) {
+    background: var(--white);
+}
+
+.surcharge-card:nth-child(even) {
+    background: var(--gray-50);
+}
+
+.surcharge-card:hover {
+    background: var(--gray-100);
+}
+
+/* Ligne principale : infos salarié + indicateurs + action */
+.surcharge-card-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.25rem;
+}
+
+.surcharge-identity {
+    flex: 1 1 200px;
+    min-width: 180px;
+}
+
+.surcharge-identity .surcharge-name {
+    font-weight: 700;
+    color: var(--gray-900);
+    font-size: 1.02rem;
+}
+
+.surcharge-identity .surcharge-sector {
+    color: var(--gray-500);
+    font-size: 0.85rem;
+}
+
+.surcharge-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.surcharge-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 70px;
+}
+
+.surcharge-metric .surcharge-metric-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-500);
+    font-weight: 600;
+}
+
+.surcharge-metric .surcharge-metric-value {
+    font-weight: 700;
+    color: var(--gray-900);
+    font-size: 1.05rem;
+}
+
+.surcharge-category-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.surcharge-action {
+    margin-left: auto;
+}
+
+/* Détail du score : pleine largeur sous la ligne principale */
+.surcharge-breakdown {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--gray-200);
+}
+
+.surcharge-breakdown-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gray-500);
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+}
+
+.surcharge-breakdown-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.6rem;
+}
+
+.surcharge-breakdown-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-sm);
+}
+
+.surcharge-card:nth-child(even) .surcharge-breakdown-item {
+    background: var(--white);
+}
+
+.surcharge-breakdown-points {
+    flex: 0 0 auto;
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--gray-900);
+    background: var(--gray-200);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    white-space: nowrap;
+}
+
+.surcharge-breakdown-text .surcharge-breakdown-label {
+    font-weight: 600;
+    color: var(--gray-700);
+    font-size: 0.88rem;
+}
+
+.surcharge-breakdown-text .surcharge-breakdown-detail {
+    color: var(--gray-500);
+    font-size: 0.82rem;
+    margin-top: 0.1rem;
+}
+
+@media (max-width: 768px) {
+    .surcharge-card {
+        padding: 1rem;
+    }
+
+    .surcharge-action {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .surcharge-action .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
