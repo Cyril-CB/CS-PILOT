@@ -69,8 +69,10 @@ ALL_MIGRATION_VERSIONS = [
     ('0029', 'Ajout module budget previsionnel'),
     ('0030', 'Ameliorations subventions'),
     ('0031', 'Ajout demandes conges'),
+    ('0032', 'Ajout force_password_change'),
     ('0033', 'Ajout commandes salaries et delegations'),
     ('0034', 'Prevention sante au travail'),
+    ('0035', 'Recuperation partielle'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -1389,6 +1391,22 @@ def init_db():
         cursor.execute("SELECT temps_hebdo FROM contrats LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE contrats ADD COLUMN temps_hebdo REAL")
+
+    # Migration 0035 : colonnes de recuperation partielle si elles n'existent pas
+    # (fallback indispensable : sur une base ancienne ayant deja demandes_recup
+    # mais un schema_migrations vide, 0035 est marquee appliquee sans etre executee)
+    try:
+        cursor.execute("SELECT type_demande FROM demandes_recup LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE demandes_recup ADD COLUMN type_demande TEXT DEFAULT 'journee'")
+    try:
+        cursor.execute("SELECT heure_debut FROM demandes_recup LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE demandes_recup ADD COLUMN heure_debut TEXT")
+    try:
+        cursor.execute("SELECT heure_fin FROM demandes_recup LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE demandes_recup ADD COLUMN heure_fin TEXT")
 
     conn.commit()
     conn.close()
