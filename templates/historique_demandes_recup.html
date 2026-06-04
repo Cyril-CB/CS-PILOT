@@ -79,13 +79,22 @@
                     </td>
                     <td>{{ d.date_demande[:10] }}</td>
                     <td>
+                        {% if d.demande_type == 'recup' and d.type_demande == 'partielle' %}
+                        Le {{ d.date_debut }}<br>
+                        <span class="badge" style="background: #ede9fe; color: #5b21b6;">Partielle {{ d.heure_debut }}-{{ d.heure_fin }}</span>
+                        {% else %}
                         Du {{ d.date_debut }}<br>
                         au {{ d.date_fin }}
+                        {% endif %}
                     </td>
                     <td>
+                        {% if d.demande_type == 'recup' and d.type_demande == 'partielle' %}
+                        <strong>{{ "%.2f"|format(d.nb_heures) }}h</strong>
+                        {% else %}
                         <strong>{{ "%.1f"|format(d.nb_jours) }} jour(s)</strong>
                         {% if d.demande_type == 'recup' and d.nb_heures %}
                         <br><span style="color: var(--gray-500); font-size: 0.85rem;">{{ "%.2f"|format(d.nb_heures) }}h</span>
+                        {% endif %}
                         {% endif %}
                     </td>
                     <td>

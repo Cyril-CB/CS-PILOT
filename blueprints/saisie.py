@@ -147,7 +147,7 @@ def saisie_heures():
             # DÉTECTION DES ANOMALIES
             if anciennes_donnees:
                 # 1. Détection récup validée modifiée/supprimée
-                if anciennes_donnees['type_saisie'] == 'recup_journee':
+                if anciennes_donnees['type_saisie'] in ('recup_journee', 'recup_partielle'):
                     # Vérifier si c'était une récup validée (commentaire contient "Demande #")
                     if anciennes_donnees['commentaire'] and 'Demande #' in anciennes_donnees['commentaire']:
                         # ANOMALIE CRITIQUE : Récup validée modifiée
