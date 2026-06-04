@@ -456,17 +456,19 @@ def supprimer_demande_recup():
 
     conn = get_db()
     try:
-        # Supprimer uniquement sa propre demande tant qu'elle n'est pas validée
+        # Supprimer uniquement sa propre demande tant qu'elle est en attente
+        # (les demandes validées ou refusées sont conservées comme trace)
         cursor = conn.execute('''
             DELETE FROM demandes_recup
-            WHERE id = ? AND user_id = ? AND statut != 'validee'
+            WHERE id = ? AND user_id = ?
+              AND statut IN ('en_attente_responsable', 'en_attente_direction')
         ''', (demande_id, session['user_id']))
         conn.commit()
 
         if cursor.rowcount > 0:
             flash('Demande de récupération supprimée', 'success')
         else:
-            flash('Cette demande ne peut pas être supprimée (déjà validée ou introuvable)', 'info')
+            flash('Cette demande ne peut pas être supprimée (déjà traitée ou introuvable)', 'info')
     finally:
         conn.close()
 
@@ -927,16 +929,18 @@ def supprimer_demande_conge():
 
     conn = get_db()
     try:
+        # Les demandes validées ou refusées sont conservées comme trace
         cursor = conn.execute('''
             DELETE FROM demandes_conges
-            WHERE id = ? AND user_id = ? AND statut != 'validee'
+            WHERE id = ? AND user_id = ?
+              AND statut IN ('en_attente_responsable', 'en_attente_direction')
         ''', (demande_id, session['user_id']))
         conn.commit()
 
         if cursor.rowcount > 0:
             flash('Demande de congé supprimée', 'success')
         else:
-            flash('Cette demande ne peut pas être supprimée (déjà validée ou introuvable)', 'info')
+            flash('Cette demande ne peut pas être supprimée (déjà traitée ou introuvable)', 'info')
     finally:
         conn.close()
 

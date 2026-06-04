@@ -161,9 +161,23 @@ def test_suppression_demande_recup_non_validee(auth_client, app, db, sample_user
 
 
 def test_suppression_demande_recup_validee_interdite(auth_client, app, db, sample_users):
-    """Une demande déjà validée ne peut pas être supprimée."""
+    """Une demande déjà validée est conservée (non supprimable)."""
     with app.app_context():
         demande_id = _creer_demande_recup(db, sample_users['salarie_id'], statut='validee')
+
+    auth_client.post('/supprimer_demande_recup', data={
+        'demande_id': demande_id,
+    }, follow_redirects=True)
+
+    with app.app_context():
+        row = db.execute("SELECT * FROM demandes_recup WHERE id = ?", (demande_id,)).fetchone()
+        assert row is not None
+
+
+def test_suppression_demande_recup_refusee_interdite(auth_client, app, db, sample_users):
+    """Une demande refusée est conservée comme trace (non supprimable)."""
+    with app.app_context():
+        demande_id = _creer_demande_recup(db, sample_users['salarie_id'], statut='refusee')
 
     auth_client.post('/supprimer_demande_recup', data={
         'demande_id': demande_id,

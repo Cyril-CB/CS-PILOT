@@ -81,7 +81,7 @@
                     </td>
                     <td data-label="Motif">{{ d.motif_demande or '-' }}</td>
                     <td data-label="Actions">
-                        {% if d.statut != 'validee' %}
+                        {% if d.statut in ['en_attente_responsable', 'en_attente_direction'] %}
                         <form method="POST" action="{{ url_for('recup_bp.supprimer_demande_recup') }}" style="display: inline;"
                               onsubmit="return confirm('Supprimer définitivement cette demande de récupération ?');">
                             <input type="hidden" name="demande_id" value="{{ d.id }}">
