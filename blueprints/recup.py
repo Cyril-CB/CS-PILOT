@@ -7,7 +7,7 @@ import sqlite3
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                   calculer_jours_ouvres, calculer_solde_recup)
+                   calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle)
 from email_service import (
     is_email_configured, peut_envoyer_email, notifier_nouvelle_demande_recup,
     notifier_demande_recup_validee_responsable, notifier_demande_recup_decision,
@@ -22,6 +22,65 @@ def _safe_nb_heures(row):
         return row['nb_heures'] or 0
     except (IndexError, KeyError):
         return 0
+
+
+def _get_type_demande(demande):
+    """Retourne le type de demande de récup ('journee' par défaut, compat anciens enreg.)."""
+    try:
+        return demande['type_demande'] or 'journee'
+    except (IndexError, KeyError):
+        return 'journee'
+
+
+def _reporter_recup_partielle(conn, demande, demande_id):
+    """Reporte une récup partielle validée dans heures_reelles.
+
+    Crée pour la journée concernée une saisie avec les horaires réellement
+    travaillés (planning théorique moins le créneau d'absence). Le solde de
+    récupération est ainsi diminué du volume d'heures absentes.
+
+    Retourne True si la journée a été reportée, False sinon (mois verrouillé,
+    planning absent ou créneau hors horaires).
+    """
+    user_id = demande['user_id']
+    date_str = demande['date_debut']
+    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+    jour_semaine = date_obj.weekday()
+
+    if jour_semaine > 4:
+        return False
+
+    # Refuser si le mois est verrouillé
+    validation = conn.execute('''
+        SELECT bloque FROM validations
+        WHERE user_id = ? AND mois = ? AND annee = ?
+    ''', (user_id, date_obj.month, date_obj.year)).fetchone()
+    if validation and validation['bloque']:
+        return False
+
+    type_periode = get_type_periode(date_str)
+    planning = get_planning_valide_a_date(user_id, type_periode, date_str)
+    calcul = calculer_recup_partielle(
+        planning, jour_semaine, demande['heure_debut'], demande['heure_fin']
+    )
+    if not calcul or calcul['heures_recup'] <= 0:
+        return False
+
+    commentaire = (f"Récup. partielle {demande['heure_debut']}-{demande['heure_fin']} "
+                   f"({calcul['heures_recup']:.2f}h) - Demande #{demande_id} validée")
+
+    # Remplacer l'entrée existante pour ce jour
+    conn.execute('DELETE FROM heures_reelles WHERE user_id = ? AND date = ?',
+                 (user_id, date_str))
+    conn.execute('''
+        INSERT INTO heures_reelles
+        (user_id, date, type_saisie, commentaire, declaration_conforme,
+         heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem)
+        VALUES (?, ?, 'recup_partielle', ?, 0, ?, ?, ?, ?)
+    ''', (user_id, date_str, commentaire,
+          calcul['matin_debut'], calcul['matin_fin'],
+          calcul['aprem_debut'], calcul['aprem_fin']))
+    return True
 
 
 def _creer_absence_depuis_conge(conn, demande, demande_id, saisi_par):
@@ -57,26 +116,140 @@ def _creer_absence_depuis_conge(conn, demande, demande_id, saisi_par):
     _actualiser_compteurs_conges(conn, user_id, type_conge, nb_jours, ajout=True)
 
 
+def _creer_demande_recup_partielle(motif_demande):
+    """Crée une demande de récupération partielle (créneau d'absence sur 1 jour).
+
+    Le volume d'heures de récupération est calculé à partir du planning théorique
+    du jour et du créneau d'absence saisi. La journée sera reportée dans le suivi
+    avec les horaires réellement travaillés une fois la demande validée.
+    """
+    date_jour = request.form.get('date_debut')
+    heure_debut = request.form.get('heure_debut')
+    heure_fin = request.form.get('heure_fin')
+
+    if not date_jour or not heure_debut or not heure_fin:
+        flash('La date et le créneau d\'absence (début et fin) sont obligatoires', 'error')
+        return redirect(url_for('recup_bp.demande_recup'))
+
+    try:
+        date_obj = datetime.strptime(date_jour, '%Y-%m-%d')
+    except ValueError:
+        flash('Date invalide', 'error')
+        return redirect(url_for('recup_bp.demande_recup'))
+
+    jour_semaine = date_obj.weekday()
+    if jour_semaine > 4:
+        flash('La récupération partielle ne concerne que les jours ouvrés (lundi-vendredi)', 'error')
+        return redirect(url_for('recup_bp.demande_recup'))
+
+    # Récupérer le bon planning à cette date et calculer le volume d'heures
+    type_periode = get_type_periode(date_jour)
+    planning = get_planning_valide_a_date(session['user_id'], type_periode, date_jour)
+    calcul = calculer_recup_partielle(planning, jour_semaine, heure_debut, heure_fin)
+
+    if not calcul:
+        flash('Aucun horaire prévu ce jour-là : impossible de calculer la récupération', 'error')
+        return redirect(url_for('recup_bp.demande_recup'))
+
+    nb_heures = calcul['heures_recup']
+    if nb_heures <= 0:
+        flash('Le créneau d\'absence ne chevauche pas vos horaires prévus ce jour-là', 'error')
+        return redirect(url_for('recup_bp.demande_recup'))
+
+    heures_theoriques = calcul['heures_theoriques']
+    # Part de journée (pour les statistiques), ex : 0.5 pour une demi-journée
+    nb_jours = round(nb_heures / heures_theoriques, 2) if heures_theoriques else 0
+
+    conn = get_db()
+
+    # Solde de récupération disponible (avertissement si dépassement)
+    solde_recup = calculer_solde_recup(session['user_id'])
+    if nb_heures > solde_recup:
+        solde_apres = solde_recup - nb_heures
+        flash(f'⚠️ Attention : votre solde passera à {solde_apres:.2f}h (solde négatif). '
+              f'La demande doit être justifiée auprès de votre responsable.', 'warning')
+
+    # Statut initial selon le profil
+    if session.get('profil') == 'responsable':
+        statut_initial = 'en_attente_direction'
+    else:
+        statut_initial = 'en_attente_responsable'
+
+    try:
+        conn.execute('''
+            INSERT INTO demandes_recup
+            (user_id, date_debut, date_fin, nb_jours, nb_heures,
+             type_demande, heure_debut, heure_fin, motif_demande, statut)
+            VALUES (?, ?, ?, ?, ?, 'partielle', ?, ?, ?, ?)
+        ''', (session['user_id'], date_jour, date_jour, nb_jours, nb_heures,
+              heure_debut, heure_fin, motif_demande, statut_initial))
+        conn.commit()
+        flash(f'Demande de récupération partielle créée : {heure_debut}-{heure_fin} '
+              f'= {nb_heures:.2f}h le {date_jour}', 'success')
+
+        # Notification email au responsable (si configuré)
+        if is_email_configured() and statut_initial == 'en_attente_responsable':
+            demandeur = conn.execute('SELECT nom, prenom, responsable_id FROM users WHERE id = ?',
+                                     (session['user_id'],)).fetchone()
+            if demandeur and demandeur['responsable_id']:
+                resp = conn.execute('SELECT prenom, email FROM users WHERE id = ?',
+                                    (demandeur['responsable_id'],)).fetchone()
+                if resp and resp['email']:
+                    demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
+                    notifier_nouvelle_demande_recup(
+                        demandeur_nom, resp['email'], resp['prenom'],
+                        date_jour, date_jour, nb_jours, nb_heures
+                    )
+
+        # Si responsable -> notifier directement la direction
+        if is_email_configured() and statut_initial == 'en_attente_direction':
+            demandeur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+                                     (session['user_id'],)).fetchone()
+            if demandeur:
+                demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
+                directeurs = conn.execute(
+                    "SELECT prenom, email FROM users WHERE profil = 'directeur' AND actif = 1 AND email IS NOT NULL AND email != ''",
+                ).fetchall()
+                for d in directeurs:
+                    notifier_demande_recup_validee_responsable(
+                        d['email'], d['prenom'], demandeur_nom, demandeur_nom,
+                        date_jour, date_jour, nb_jours
+                    )
+    except Exception as e:
+        flash(f'Erreur : {str(e)}', 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+
 @recup_bp.route('/demande_recup', methods=['GET', 'POST'])
 @login_required
 def demande_recup():
     """Créer une demande de récupération"""
     if request.method == 'POST':
+        type_demande = request.form.get('type_demande', 'journee')
+        motif_demande = request.form.get('motif_demande', '').strip()
+
+        # --- Récupération partielle (créneau d'absence sur une seule journée) ---
+        if type_demande == 'partielle':
+            return _creer_demande_recup_partielle(motif_demande)
+
+        # --- Récupération en journée(s) complète(s) (comportement historique) ---
         date_debut = request.form.get('date_debut')
         date_fin = request.form.get('date_fin')
-        motif_demande = request.form.get('motif_demande', '').strip()
-        
+
         if not date_debut or not date_fin:
             flash('Les dates sont obligatoires', 'error')
             return redirect(url_for('recup_bp.demande_recup'))
-        
+
         # Calculer le nombre de jours ouvrés
         nb_jours = calculer_jours_ouvres(date_debut, date_fin)
-        
+
         if nb_jours <= 0:
             flash('Période invalide', 'error')
             return redirect(url_for('recup_bp.demande_recup'))
-        
+
         # Récupérer le solde de récup disponible
         conn = get_db()
         
@@ -271,6 +444,37 @@ def mes_demandes_recup():
     
     return render_template('mes_demandes_recup.html', demandes=demandes)
 
+
+@recup_bp.route('/supprimer_demande_recup', methods=['POST'])
+@login_required
+def supprimer_demande_recup():
+    """Permet au salarié de supprimer une de ses demandes de récup non validée."""
+    demande_id = request.form.get('demande_id', type=int)
+    if not demande_id:
+        flash('Demande introuvable', 'error')
+        return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+    conn = get_db()
+    try:
+        # Supprimer uniquement sa propre demande tant qu'elle est en attente
+        # (les demandes validées ou refusées sont conservées comme trace)
+        cursor = conn.execute('''
+            DELETE FROM demandes_recup
+            WHERE id = ? AND user_id = ?
+              AND statut IN ('en_attente_responsable', 'en_attente_direction')
+        ''', (demande_id, session['user_id']))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            flash('Demande de récupération supprimée', 'success')
+        else:
+            flash('Cette demande ne peut pas être supprimée (déjà traitée ou introuvable)', 'info')
+    finally:
+        conn.close()
+
+    return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+
 @recup_bp.route('/validation_demandes_recup', methods=['GET', 'POST'])
 @login_required
 def validation_demandes_recup():
@@ -389,6 +593,18 @@ def validation_demandes_recup():
                             _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
                             conn.commit()
                             flash(f'Demande de congé validée définitivement - {nb_jours:.0f} jour(s) ajouté(s) à l\'historique des absences', 'success')
+                        elif _get_type_demande(demande) == 'partielle':
+                            # Récupération partielle : reporter la journée avec les
+                            # horaires réellement travaillés (planning - créneau d'absence)
+                            ok = _reporter_recup_partielle(conn, demande, demande_id)
+                            conn.commit()
+                            if ok:
+                                flash(f'Demande de récupération partielle validée définitivement - '
+                                      f'journée du {demande["date_debut"]} reportée au calendrier '
+                                      f'({demande["heure_debut"]}-{demande["heure_fin"]})', 'success')
+                            else:
+                                flash('Demande validée, mais la journée n\'a pas pu être reportée '
+                                      '(mois verrouillé ou planning absent)', 'warning')
                         else:
                             # Créer automatiquement les entrées de récupération dans heures_reelles
                             date_debut = datetime.strptime(demande['date_debut'], '%Y-%m-%d')
@@ -700,6 +916,36 @@ def mes_demandes_conges():
     conn.close()
 
     return render_template('mes_demandes_conges.html', demandes=demandes)
+
+
+@recup_bp.route('/supprimer_demande_conge', methods=['POST'])
+@login_required
+def supprimer_demande_conge():
+    """Permet au salarié de supprimer une de ses demandes de congé non validée."""
+    demande_id = request.form.get('demande_id', type=int)
+    if not demande_id:
+        flash('Demande introuvable', 'error')
+        return redirect(url_for('recup_bp.mes_demandes_conges'))
+
+    conn = get_db()
+    try:
+        # Les demandes validées ou refusées sont conservées comme trace
+        cursor = conn.execute('''
+            DELETE FROM demandes_conges
+            WHERE id = ? AND user_id = ?
+              AND statut IN ('en_attente_responsable', 'en_attente_direction')
+        ''', (demande_id, session['user_id']))
+        conn.commit()
+
+        if cursor.rowcount > 0:
+            flash('Demande de congé supprimée', 'success')
+        else:
+            flash('Cette demande ne peut pas être supprimée (déjà traitée ou introuvable)', 'info')
+    finally:
+        conn.close()
+
+    return redirect(url_for('recup_bp.mes_demandes_conges'))
+
 
 
 # ==================== FORFAIT JOUR (DIRECTEURS) ====================

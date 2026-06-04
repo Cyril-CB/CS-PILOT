@@ -157,6 +157,132 @@ def get_heures_theoriques_jour(planning, jour_semaine):
     return heures_matin + heures_aprem
 
 
+def _heure_vers_minutes(h):
+    """Convertit une heure 'HH:MM' en minutes depuis minuit. None si invalide."""
+    if not h:
+        return None
+    try:
+        dt = datetime.strptime(h, '%H:%M')
+        return dt.hour * 60 + dt.minute
+    except ValueError:
+        return None
+
+
+def _minutes_vers_heure(m):
+    """Convertit des minutes depuis minuit en chaine 'HH:MM'."""
+    m = int(round(m))
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _soustraire_creneau(intervalle_debut, intervalle_fin, abs_debut, abs_fin):
+    """Retire un creneau d'absence d'un intervalle horaire.
+
+    Tous les arguments sont des chaines 'HH:MM'. Retourne la liste des
+    segments restants (parties travaillees) sous forme de tuples (debut, fin)
+    en chaines 'HH:MM'. Peut contenir 0, 1 ou 2 segments.
+    """
+    i_deb = _heure_vers_minutes(intervalle_debut)
+    i_fin = _heure_vers_minutes(intervalle_fin)
+    if i_deb is None or i_fin is None or i_fin <= i_deb:
+        return []
+
+    a_deb = _heure_vers_minutes(abs_debut)
+    a_fin = _heure_vers_minutes(abs_fin)
+    if a_deb is None or a_fin is None or a_fin <= a_deb:
+        # Pas d'absence valide : tout l'intervalle est travaille
+        return [(intervalle_debut, intervalle_fin)]
+
+    # Pas de chevauchement
+    if a_fin <= i_deb or a_deb >= i_fin:
+        return [(intervalle_debut, intervalle_fin)]
+
+    segments = []
+    # Partie avant l'absence
+    if a_deb > i_deb:
+        segments.append((_minutes_vers_heure(i_deb), _minutes_vers_heure(min(a_deb, i_fin))))
+    # Partie apres l'absence
+    if a_fin < i_fin:
+        segments.append((_minutes_vers_heure(max(a_fin, i_deb)), _minutes_vers_heure(i_fin)))
+
+    return segments
+
+
+def _fusionner_segments(segments):
+    """Reduit une liste de segments en un seul (debut, fin) conservant le
+    volume horaire total. Cas courant : 0 ou 1 segment (rendu exact). Pour le
+    cas rare d'une absence au milieu d'une demi-journee (2 segments), on
+    represente le temps travaille restant de facon contigue a partir du debut
+    du premier segment afin de conserver le bon nombre d'heures.
+    """
+    if not segments:
+        return (None, None)
+    if len(segments) == 1:
+        return segments[0]
+
+    total_minutes = 0
+    for deb, fin in segments:
+        total_minutes += _heure_vers_minutes(fin) - _heure_vers_minutes(deb)
+    debut = _heure_vers_minutes(segments[0][0])
+    return (_minutes_vers_heure(debut), _minutes_vers_heure(debut + total_minutes))
+
+
+def calculer_recup_partielle(planning, jour_semaine, abs_debut, abs_fin):
+    """Calcule une recuperation partielle sur un creneau d'absence.
+
+    A partir du planning theorique du jour, retire le creneau d'absence
+    [abs_debut, abs_fin] et determine :
+    - les heures de recuperation consommees (chevauchement de l'absence avec
+      les horaires reellement prevus) ;
+    - les horaires travailles restants (matin / apres-midi) a reporter dans
+      le suivi.
+
+    Retourne un dict :
+        {
+            'heures_recup': float,
+            'matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin',  # 'HH:MM' ou None
+            'heures_theoriques': float,
+        }
+    Retourne None si le jour n'est pas travaille (planning vide).
+    """
+    if not planning or jour_semaine < 0 or jour_semaine > 4:
+        return None
+
+    jours = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
+    jour_nom = jours[jour_semaine]
+
+    matin_debut = planning[f'{jour_nom}_matin_debut']
+    matin_fin = planning[f'{jour_nom}_matin_fin']
+    aprem_debut = planning[f'{jour_nom}_aprem_debut']
+    aprem_fin = planning[f'{jour_nom}_aprem_fin']
+
+    heures_theoriques = (
+        calculer_heures(matin_debut, matin_fin)
+        + calculer_heures(aprem_debut, aprem_fin)
+    )
+    if heures_theoriques <= 0:
+        return None
+
+    segs_matin = _soustraire_creneau(matin_debut, matin_fin, abs_debut, abs_fin)
+    segs_aprem = _soustraire_creneau(aprem_debut, aprem_fin, abs_debut, abs_fin)
+
+    matin_d, matin_f = _fusionner_segments(segs_matin)
+    aprem_d, aprem_f = _fusionner_segments(segs_aprem)
+
+    heures_travaillees = (
+        calculer_heures(matin_d, matin_f) + calculer_heures(aprem_d, aprem_f)
+    )
+    heures_recup = round(heures_theoriques - heures_travaillees, 2)
+
+    return {
+        'heures_recup': heures_recup,
+        'matin_debut': matin_d,
+        'matin_fin': matin_f,
+        'aprem_debut': aprem_d,
+        'aprem_fin': aprem_f,
+        'heures_theoriques': heures_theoriques,
+    }
+
+
 def get_type_periode(date_str):
     """Déterminer si on est en période scolaire ou vacances selon les périodes définies"""
     conn = get_db()

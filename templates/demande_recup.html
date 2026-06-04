@@ -6,36 +6,69 @@
 <div class="form-container">
     <h1>Demande de récupération</h1>
     <p class="subtitle">Votre solde actuel : <strong style="color: {% if solde_recup >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.2f"|format(solde_recup) }}h</strong></p>
-    
+
     <form method="POST" action="{{ url_for('recup_bp.demande_recup') }}">
         <div class="form-group">
-            <label for="date_debut">Date de début *</label>
-            <input type="date" id="date_debut" name="date_debut" required>
-            <p class="help-text">Premier jour de récupération</p>
+            <label>Type de récupération *</label>
+            <div style="display: flex; gap: 1.5rem; margin-top: 0.5rem;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: normal;">
+                    <input type="radio" name="type_demande" value="journee" checked onchange="majTypeDemande()"> Journée(s) complète(s)
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-weight: normal;">
+                    <input type="radio" name="type_demande" value="partielle" onchange="majTypeDemande()"> Absence partielle (un jour)
+                </label>
+            </div>
         </div>
-        
+
         <div class="form-group">
+            <label for="date_debut" id="label_date_debut">Date de début *</label>
+            <input type="date" id="date_debut" name="date_debut" required>
+            <p class="help-text" id="help_date_debut">Premier jour de récupération</p>
+        </div>
+
+        <div class="form-group" id="group_date_fin">
             <label for="date_fin">Date de fin *</label>
-            <input type="date" id="date_fin" name="date_fin" required>
+            <input type="date" id="date_fin" name="date_fin">
             <p class="help-text">Dernier jour de récupération (inclus)</p>
         </div>
-        
+
+        <div class="form-row" id="group_creneau" style="display: none; gap: 1rem;">
+            <div class="form-group" style="flex: 1;">
+                <label for="heure_debut">Début de l'absence *</label>
+                <input type="time" id="heure_debut" name="heure_debut">
+            </div>
+            <div class="form-group" style="flex: 1;">
+                <label for="heure_fin">Fin de l'absence *</label>
+                <input type="time" id="heure_fin" name="heure_fin">
+            </div>
+        </div>
+
         <div class="form-group">
             <label for="motif_demande">Motif (optionnel)</label>
-            <textarea id="motif_demande" name="motif_demande" rows="3" placeholder="Ex: Raisons personnelles, récupération heures supplémentaires..."></textarea>
+            <textarea id="motif_demande" name="motif_demande" rows="3" placeholder="Ex: Raisons personnelles, rendez-vous, récupération heures supplémentaires..."></textarea>
         </div>
-        
-        <div class="help-box">
-            <h4>Informations importantes</h4>
+
+        <div class="help-box" id="help_journee">
+            <h4>Récupération en journée(s) complète(s)</h4>
             <ul>
                 <li>Seuls les <strong>jours ouvrés</strong> (lundi-vendredi) sont comptés</li>
-                <li>Les heures seront <strong>calculées exactement selon votre planning</strong> jour par jour</li>
+                <li>Les heures sont <strong>calculées exactement selon votre planning</strong> jour par jour</li>
                 <li>Exemple : si vous travaillez 8h le lundi et 4h le mercredi, poser ces 2 jours = 12h déduites</li>
                 <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
-                <li>Vous pouvez suivre l'état de votre demande dans "Mes demandes"</li>
             </ul>
         </div>
-        
+
+        <div class="help-box" id="help_partielle" style="display: none;">
+            <h4>Récupération partielle (créneau d'absence)</h4>
+            <ul>
+                <li>Indiquez le <strong>jour</strong> et le <strong>créneau d'absence</strong> (heure de début et de fin)</li>
+                <li>Le volume d'heures de récupération est <strong>calculé automatiquement selon vos horaires prévus</strong> ce jour-là</li>
+                <li>Exemple : absence de 14h à 17h alors que vous travaillez 13h30-17h = 3h de récupération</li>
+                <li>Une fois validée, la <strong>journée est reportée dans votre suivi</strong> avec les horaires réellement travaillés</li>
+                <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
+            </ul>
+        </div>
+
         <div class="actions">
             <button type="submit" class="btn btn-primary">Créer la demande</button>
             <a href="{{ url_for('recup_bp.mes_demandes_recup') }}" class="btn btn-secondary">Mes demandes</a>
@@ -43,4 +76,24 @@
         </div>
     </form>
 </div>
+
+<script>
+function majTypeDemande() {
+    var partielle = document.querySelector('input[name="type_demande"]:checked').value === 'partielle';
+
+    document.getElementById('group_date_fin').style.display = partielle ? 'none' : '';
+    document.getElementById('group_creneau').style.display = partielle ? 'flex' : 'none';
+    document.getElementById('help_journee').style.display = partielle ? 'none' : '';
+    document.getElementById('help_partielle').style.display = partielle ? '' : 'none';
+
+    document.getElementById('label_date_debut').textContent = partielle ? 'Jour de l\'absence *' : 'Date de début *';
+    document.getElementById('help_date_debut').textContent = partielle ? 'Jour concerné par la récupération' : 'Premier jour de récupération';
+
+    // Gérer les champs obligatoires selon le mode pour ne pas bloquer la soumission
+    document.getElementById('date_fin').required = !partielle;
+    document.getElementById('heure_debut').required = partielle;
+    document.getElementById('heure_fin').required = partielle;
+}
+document.addEventListener('DOMContentLoaded', majTypeDemande);
+</script>
 {% endblock %}
