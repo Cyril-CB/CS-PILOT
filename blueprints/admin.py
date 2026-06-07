@@ -533,6 +533,21 @@ def gestion_jours_feries():
                 flash(f'Jour férié ajouté : {libelle}', 'success')
             except sqlite3.IntegrityError:
                 flash('Ce jour férié existe déjà', 'error')
+            else:
+                # Réconcilier le calendrier forfait jour : un jour férié n'est
+                # pas « travaillé ». Si l'année avait été pré-remplie avant la
+                # déclaration de ce férié, on retire les journées « travaillé »
+                # générées par défaut sur cette date (sans valeur réelle), tout
+                # en préservant toute saisie effective (horaires ou commentaire).
+                conn.execute('''
+                    DELETE FROM presence_forfait_jour
+                    WHERE date = ?
+                      AND type_journee = 'travaille'
+                      AND (commentaire IS NULL OR commentaire = '')
+                      AND matin_debut IS NULL AND matin_fin IS NULL
+                      AND aprem_debut IS NULL AND aprem_fin IS NULL
+                ''', (date,))
+                conn.commit()
             finally:
                 conn.close()
         

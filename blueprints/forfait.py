@@ -5,9 +5,57 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 from io import BytesIO
 from database import get_db
-from utils import login_required, get_user_info, calculer_stats_forfait_jour
+from utils import login_required, get_user_info, calculer_stats_forfait_jour, calculer_heures
 
 forfait_bp = Blueprint('forfait_bp', __name__)
+
+
+def initialiser_annee_forfait_jour(conn, user_id, annee):
+    """Pré-remplit le calendrier forfait jour d'une année.
+
+    Par défaut, chaque jour ouvré (lundi → vendredi) qui n'est pas férié est
+    marqué comme « travaillé ». Les week-ends et les jours fériés sont laissés
+    de côté. La direction n'a donc plus qu'à modifier les jours d'absence
+    (congés, RTT, maladie…), y compris pour des dates futures, afin d'établir
+    un prévisionnel et de se projeter sur l'année.
+
+    L'initialisation n'a lieu qu'une seule fois par utilisateur et par année,
+    lorsque celle-ci est encore vierge de toute saisie : les saisies déjà
+    existantes ne sont jamais écrasées (INSERT OR IGNORE + garde « année vide »).
+
+    Retourne True si l'année vient d'être initialisée, False sinon.
+    """
+    deja_initialisee = conn.execute(
+        "SELECT 1 FROM presence_forfait_jour "
+        "WHERE user_id = ? AND strftime('%Y', date) = ? LIMIT 1",
+        (user_id, str(annee))
+    ).fetchone()
+    if deja_initialisee:
+        return False
+
+    feries = conn.execute(
+        "SELECT date FROM jours_feries WHERE annee = ?", (annee,)
+    ).fetchall()
+    feries_set = {f['date'] for f in feries}
+
+    jours_a_inserer = []
+    jour = datetime(annee, 1, 1)
+    fin = datetime(annee, 12, 31)
+    while jour <= fin:
+        date_str = jour.strftime('%Y-%m-%d')
+        # weekday() : 0 = lundi … 4 = vendredi ; on exclut les fériés
+        if jour.weekday() < 5 and date_str not in feries_set:
+            jours_a_inserer.append((user_id, date_str, 'travaille'))
+        jour += timedelta(days=1)
+
+    if jours_a_inserer:
+        conn.executemany(
+            "INSERT OR IGNORE INTO presence_forfait_jour "
+            "(user_id, date, type_journee) VALUES (?, ?, ?)",
+            jours_a_inserer
+        )
+        conn.commit()
+    return True
 
 
 @forfait_bp.route('/dashboard_forfait_jour')
@@ -19,10 +67,16 @@ def dashboard_forfait_jour():
         return redirect(url_for('dashboard_bp.dashboard'))
     
     annee = request.args.get('annee', datetime.now().year, type=int)
-    
+
+    # Pré-remplir l'année (jours ouvrés = travaillé) si elle est encore vierge,
+    # afin que les statistiques reflètent le calendrier par défaut.
+    conn = get_db()
+    initialiser_annee_forfait_jour(conn, session['user_id'], annee)
+    conn.close()
+
     # Calculer les statistiques
     stats = calculer_stats_forfait_jour(session['user_id'], annee)
-    
+
     return render_template('dashboard_forfait_jour.html', stats=stats, annee=annee)
 
 @forfait_bp.route('/calendrier_forfait_jour', methods=['GET', 'POST'])
@@ -37,41 +91,76 @@ def calendrier_forfait_jour():
         date = request.form.get('date')
         type_journee = request.form.get('type_journee')
         commentaire = request.form.get('commentaire', '').strip()
-        
+
+        # Horaires facultatifs (le forfait jour n'impose pas d'horaire, mais la
+        # direction peut noter les heures travaillées matin / après-midi)
+        matin_debut = request.form.get('matin_debut', '').strip() or None
+        matin_fin = request.form.get('matin_fin', '').strip() or None
+        aprem_debut = request.form.get('aprem_debut', '').strip() or None
+        aprem_fin = request.form.get('aprem_fin', '').strip() or None
+
         if not date or not type_journee:
             flash('Date et type obligatoires', 'error')
             return redirect(url_for('forfait_bp.calendrier_forfait_jour'))
-        
+
         conn = get_db()
         try:
             conn.execute('''
-                INSERT OR REPLACE INTO presence_forfait_jour 
-                (user_id, date, type_journee, commentaire)
-                VALUES (?, ?, ?, ?)
-            ''', (session['user_id'], date, type_journee, commentaire))
+                INSERT OR REPLACE INTO presence_forfait_jour
+                (user_id, date, type_journee, commentaire,
+                 matin_debut, matin_fin, aprem_debut, aprem_fin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (session['user_id'], date, type_journee, commentaire,
+                  matin_debut, matin_fin, aprem_debut, aprem_fin))
             conn.commit()
             flash('Journée enregistrée', 'success')
         except Exception as e:
             flash(f'Erreur : {str(e)}', 'error')
         finally:
             conn.close()
-        
+
         return redirect(url_for('forfait_bp.calendrier_forfait_jour'))
     
     # GET : afficher le calendrier
     mois = request.args.get('mois', datetime.now().month, type=int)
     annee = request.args.get('annee', datetime.now().year, type=int)
-    
-    # Récupérer les présences du mois
+
     conn = get_db()
+
+    # Pré-remplir l'année (jours ouvrés = travaillé, hors fériés) si elle est
+    # encore vierge. La direction peut ensuite poser à l'avance ses absences
+    # (congés, RTT…), y compris sur des dates futures, pour un prévisionnel.
+    initialiser_annee_forfait_jour(conn, session['user_id'], annee)
+
+    # Récupérer les présences du mois
     presences = conn.execute('''
-        SELECT date, type_journee, commentaire
+        SELECT date, type_journee, commentaire,
+               matin_debut, matin_fin, aprem_debut, aprem_fin
         FROM presence_forfait_jour
         WHERE user_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
-    
-    # Convertir en dictionnaire
-    presences_dict = {p['date']: {'type': p['type_journee'], 'commentaire': p['commentaire']} for p in presences}
+
+    # Convertir en dictionnaire (avec horaires et total d'heures calculé)
+    presences_dict = {}
+    for p in presences:
+        heures = calculer_heures(p['matin_debut'], p['matin_fin']) + \
+                 calculer_heures(p['aprem_debut'], p['aprem_fin'])
+        parts = []
+        if p['matin_debut'] and p['matin_fin']:
+            parts.append(f"{p['matin_debut']}-{p['matin_fin']}")
+        if p['aprem_debut'] and p['aprem_fin']:
+            parts.append(f"{p['aprem_debut']}-{p['aprem_fin']}")
+        presences_dict[p['date']] = {
+            'type': p['type_journee'],
+            'commentaire': p['commentaire'] or '',
+            'matin_debut': p['matin_debut'] or '',
+            'matin_fin': p['matin_fin'] or '',
+            'aprem_debut': p['aprem_debut'] or '',
+            'aprem_fin': p['aprem_fin'] or '',
+            'horaire_str': ' / '.join(parts),
+            'heures': round(heures, 2),
+            'heures_str': f"{heures:g}h" if heures else '',
+        }
     
     # Récupérer les jours fériés du mois
     jours_feries = conn.execute('''
@@ -135,12 +224,13 @@ def rapport_forfait_jour_pdf(mois, annee):
     
     # Récupérer les présences du mois
     presences = conn.execute('''
-        SELECT date, type_journee, commentaire
+        SELECT date, type_journee, commentaire,
+               matin_debut, matin_fin, aprem_debut, aprem_fin
         FROM presence_forfait_jour
         WHERE user_id = ? AND strftime('%Y', date) = ? AND strftime('%m', date) = ?
         ORDER BY date
     ''', (session['user_id'], str(annee), f'{mois:02d}')).fetchall()
-    
+
     # Calculer les stats du mois
     stats_mois = {
         'travaille': 0,
@@ -152,11 +242,21 @@ def rapport_forfait_jour_pdf(mois, annee):
         'sans_solde': 0,
         'autre': 0
     }
-    
+
+    # Total des heures travaillées saisies et nombre de jours renseignés
+    total_heures = 0
+    nb_jours_horaires = 0
+
     for p in presences:
         if p['type_journee'] in stats_mois:
             stats_mois[p['type_journee']] += 1
-    
+        heures_jour = calculer_heures(p['matin_debut'], p['matin_fin']) + \
+                      calculer_heures(p['aprem_debut'], p['aprem_fin'])
+        if heures_jour > 0:
+            total_heures += heures_jour
+            nb_jours_horaires += 1
+    total_heures = round(total_heures, 2)
+
     # Stats cumulées année
     stats_annee = calculer_stats_forfait_jour(session['user_id'], annee)
     
@@ -271,8 +371,19 @@ def rapport_forfait_jour_pdf(mois, annee):
         ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e2e8f0'))
     ]))
     elements.append(table_bilan)
+
+    # Total des heures travaillées saisies (suivi facultatif des horaires)
+    if nb_jours_horaires > 0:
+        jours_label = 'jour' if nb_jours_horaires == 1 else 'jours'
+        elements.append(Spacer(1, 0.3*cm))
+        elements.append(Paragraph(
+            f"<b>Heures travaillées :</b> {total_heures:g} heures "
+            f"({nb_jours_horaires} {jours_label} avec horaires saisies)",
+            styles['Normal']
+        ))
+
     elements.append(Spacer(1, 0.5*cm))
-    
+
     # Soldes cumulés année
     elements.append(Paragraph("SOLDES CUMULÉS (ANNÉE)", heading_style))
     data_cumul = [
