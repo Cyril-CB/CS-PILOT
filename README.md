@@ -42,7 +42,8 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Suivi des absences par type et par salarie
 
 ### Forfait jours
-- Calendrier forfait jour
+- Calendrier forfait jour (jours ouvres pre-remplis en "travaille", hors feries)
+- Saisie previsionnelle des absences (conges, RTT...), y compris sur dates futures
 - Tableau de bord dedie
 
 ### Comptabilite & Finances

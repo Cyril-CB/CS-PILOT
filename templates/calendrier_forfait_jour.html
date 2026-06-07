@@ -13,6 +13,11 @@
         </div>
     </div>
     
+    <div style="margin-bottom: 1.5rem; padding: 0.85rem 1rem; background: var(--gray-50); border-left: 3px solid var(--primary); border-radius: 6px; font-size: 0.85rem; color: var(--gray-700); line-height: 1.5;">
+        ℹ️ Par défaut, chaque jour ouvré (lundi → vendredi) hors jour férié est marqué comme <strong>✓ Travaillé</strong> dès le début de l'année.
+        Cliquez sur une journée — <strong>y compris dans le futur</strong> — pour poser un congé, un RTT ou une absence et construire votre <strong>prévisionnel</strong>.
+    </div>
+
     <div style="margin-bottom: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 0.5rem;">
             <div class="cal-swatch cal-day-travaille"></div>
@@ -57,7 +62,13 @@
             {% for j in jours %}
             {% set classe_jour = 'cal-day-default' %}
             {% set texte_type = '' %}
-            {% if j.presence %}
+            {# Une saisie explicite (congé, RTT, maladie…) l'emporte sur tout ;
+               un jour férié l'emporte sur la valeur « travaillé » par défaut. #}
+            {% set saisie_explicite = j.presence and j.presence.type != 'travaille' %}
+            {% if j.ferie and not saisie_explicite %}
+                {% set classe_jour = 'cal-day-ferie' %}
+                {% set texte_type = '🎉 ' + j.ferie %}
+            {% elif j.presence %}
                 {% if j.presence.type == 'travaille' %}
                     {% set classe_jour = 'cal-day-travaille' %}
                     {% set texte_type = '✓ Travaillé' %}
@@ -83,9 +94,6 @@
                     {% set classe_jour = 'cal-day-autre' %}
                     {% set texte_type = 'Autre' %}
                 {% endif %}
-            {% elif j.ferie %}
-                {% set classe_jour = 'cal-day-ferie' %}
-                {% set texte_type = '🎉 ' + j.ferie %}
             {% elif j.jour_semaine >= 5 %}
                 {% set classe_jour = 'cal-day-weekend' %}
             {% endif %}

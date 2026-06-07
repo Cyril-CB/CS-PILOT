@@ -10,6 +10,54 @@ from utils import login_required, get_user_info, calculer_stats_forfait_jour
 forfait_bp = Blueprint('forfait_bp', __name__)
 
 
+def initialiser_annee_forfait_jour(conn, user_id, annee):
+    """Pré-remplit le calendrier forfait jour d'une année.
+
+    Par défaut, chaque jour ouvré (lundi → vendredi) qui n'est pas férié est
+    marqué comme « travaillé ». Les week-ends et les jours fériés sont laissés
+    de côté. La direction n'a donc plus qu'à modifier les jours d'absence
+    (congés, RTT, maladie…), y compris pour des dates futures, afin d'établir
+    un prévisionnel et de se projeter sur l'année.
+
+    L'initialisation n'a lieu qu'une seule fois par utilisateur et par année,
+    lorsque celle-ci est encore vierge de toute saisie : les saisies déjà
+    existantes ne sont jamais écrasées (INSERT OR IGNORE + garde « année vide »).
+
+    Retourne True si l'année vient d'être initialisée, False sinon.
+    """
+    deja_initialisee = conn.execute(
+        "SELECT 1 FROM presence_forfait_jour "
+        "WHERE user_id = ? AND strftime('%Y', date) = ? LIMIT 1",
+        (user_id, str(annee))
+    ).fetchone()
+    if deja_initialisee:
+        return False
+
+    feries = conn.execute(
+        "SELECT date FROM jours_feries WHERE annee = ?", (annee,)
+    ).fetchall()
+    feries_set = {f['date'] for f in feries}
+
+    jours_a_inserer = []
+    jour = datetime(annee, 1, 1)
+    fin = datetime(annee, 12, 31)
+    while jour <= fin:
+        date_str = jour.strftime('%Y-%m-%d')
+        # weekday() : 0 = lundi … 4 = vendredi ; on exclut les fériés
+        if jour.weekday() < 5 and date_str not in feries_set:
+            jours_a_inserer.append((user_id, date_str, 'travaille'))
+        jour += timedelta(days=1)
+
+    if jours_a_inserer:
+        conn.executemany(
+            "INSERT OR IGNORE INTO presence_forfait_jour "
+            "(user_id, date, type_journee) VALUES (?, ?, ?)",
+            jours_a_inserer
+        )
+        conn.commit()
+    return True
+
+
 @forfait_bp.route('/dashboard_forfait_jour')
 @login_required
 def dashboard_forfait_jour():
@@ -19,10 +67,16 @@ def dashboard_forfait_jour():
         return redirect(url_for('dashboard_bp.dashboard'))
     
     annee = request.args.get('annee', datetime.now().year, type=int)
-    
+
+    # Pré-remplir l'année (jours ouvrés = travaillé) si elle est encore vierge,
+    # afin que les statistiques reflètent le calendrier par défaut.
+    conn = get_db()
+    initialiser_annee_forfait_jour(conn, session['user_id'], annee)
+    conn.close()
+
     # Calculer les statistiques
     stats = calculer_stats_forfait_jour(session['user_id'], annee)
-    
+
     return render_template('dashboard_forfait_jour.html', stats=stats, annee=annee)
 
 @forfait_bp.route('/calendrier_forfait_jour', methods=['GET', 'POST'])
@@ -61,9 +115,15 @@ def calendrier_forfait_jour():
     # GET : afficher le calendrier
     mois = request.args.get('mois', datetime.now().month, type=int)
     annee = request.args.get('annee', datetime.now().year, type=int)
-    
-    # Récupérer les présences du mois
+
     conn = get_db()
+
+    # Pré-remplir l'année (jours ouvrés = travaillé, hors fériés) si elle est
+    # encore vierge. La direction peut ensuite poser à l'avance ses absences
+    # (congés, RTT…), y compris sur des dates futures, pour un prévisionnel.
+    initialiser_annee_forfait_jour(conn, session['user_id'], annee)
+
+    # Récupérer les présences du mois
     presences = conn.execute('''
         SELECT date, type_journee, commentaire
         FROM presence_forfait_jour
