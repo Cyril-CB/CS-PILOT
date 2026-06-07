@@ -159,3 +159,147 @@ def test_acces_refuse_non_directeur(auth_client):
     resp = auth_client.get('/calendrier_forfait_jour', follow_redirects=True)
     assert resp.status_code == 200
     assert b'Calendrier Forfait Jour' not in resp.data
+
+
+# --- Suivi facultatif des heures travaillées (horaires matin / après-midi) ---
+
+def _premier_jour_ouvre(annee, mois, decalage=0):
+    """Retourne le (1 + decalage)-ième jour ouvré du mois, format YYYY-MM-DD."""
+    jour = datetime(annee, mois, 1)
+    trouves = 0
+    while True:
+        if jour.weekday() < 5:
+            if trouves == decalage:
+                return jour.strftime('%Y-%m-%d')
+            trouves += 1
+        jour += timedelta(days=1)
+
+
+def test_saisie_horaires_enregistree(app, admin_client, sample_users):
+    """Les horaires matin / après-midi saisis sont enregistrés en base."""
+    annee = 2026
+    date = _premier_jour_ouvre(annee, 4)
+
+    resp = admin_client.post('/calendrier_forfait_jour', data={
+        'date': date,
+        'type_journee': 'travaille',
+        'matin_debut': '08:30', 'matin_fin': '12:00',
+        'aprem_debut': '13:30', 'aprem_fin': '17:00',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    import database
+    with app.app_context():
+        conn = database.get_db()
+        row = conn.execute(
+            "SELECT matin_debut, matin_fin, aprem_debut, aprem_fin "
+            "FROM presence_forfait_jour WHERE user_id = ? AND date = ?",
+            (sample_users['directeur_id'], date)
+        ).fetchone()
+        conn.close()
+
+    assert row['matin_debut'] == '08:30'
+    assert row['matin_fin'] == '12:00'
+    assert row['aprem_debut'] == '13:30'
+    assert row['aprem_fin'] == '17:00'
+
+
+def test_horaires_affiches_sur_calendrier(admin_client):
+    """Les horaires et le total d'heures apparaissent sur le calendrier."""
+    annee = 2026
+    date = _premier_jour_ouvre(annee, 4)
+
+    admin_client.post('/calendrier_forfait_jour', data={
+        'date': date,
+        'type_journee': 'travaille',
+        'matin_debut': '08:30', 'matin_fin': '12:00',
+        'aprem_debut': '13:30', 'aprem_fin': '17:00',
+    }, follow_redirects=True)
+
+    resp = admin_client.get(f'/calendrier_forfait_jour?mois=4&annee={annee}')
+    html = resp.data.decode('utf-8')
+    assert '08:30-12:00' in html
+    assert '13:30-17:00' in html
+    assert '7h' in html  # total d'heures de la journée (3,5 + 3,5)
+
+
+def test_horaires_vides_par_defaut(admin_client):
+    """Sans saisie d'horaire, aucune plage horaire n'est affichée."""
+    import re
+    annee = 2026
+    resp = admin_client.get(f'/calendrier_forfait_jour?mois=1&annee={annee}')
+    html = resp.data.decode('utf-8')
+    # aucune plage HH:MM-HH:MM ne doit apparaître tant qu'aucun horaire n'est saisi
+    assert not re.search(r'\d{2}:\d{2}-\d{2}:\d{2}', html)
+
+
+def test_pdf_bilan_total_heures(admin_client):
+    """Le bilan du PDF mensuel affiche le total d'heures et le nb de jours."""
+    import pdfplumber
+    from io import BytesIO
+
+    annee, mois = 2026, 4
+    j1 = _premier_jour_ouvre(annee, mois, 0)
+    j2 = _premier_jour_ouvre(annee, mois, 1)
+
+    # 08:30-12:00 + 13:30-17:00 = 7h
+    admin_client.post('/calendrier_forfait_jour', data={
+        'date': j1, 'type_journee': 'travaille',
+        'matin_debut': '08:30', 'matin_fin': '12:00',
+        'aprem_debut': '13:30', 'aprem_fin': '17:00',
+    }, follow_redirects=True)
+    # 09:00-12:00 + 14:00-17:00 = 6h
+    admin_client.post('/calendrier_forfait_jour', data={
+        'date': j2, 'type_journee': 'travaille',
+        'matin_debut': '09:00', 'matin_fin': '12:00',
+        'aprem_debut': '14:00', 'aprem_fin': '17:00',
+    }, follow_redirects=True)
+
+    resp = admin_client.get(f'/rapport_forfait_jour_pdf/{mois}/{annee}')
+    assert resp.status_code == 200
+    assert resp.headers['Content-Type'] == 'application/pdf'
+
+    with pdfplumber.open(BytesIO(resp.data)) as pdf:
+        texte = '\n'.join(page.extract_text() or '' for page in pdf.pages)
+    norm = ' '.join(texte.split())
+
+    # 7h + 6h = 13h réparties sur 2 jours
+    assert '13 heures' in norm
+    assert '2 jours avec horaires saisies' in norm
+
+
+def test_migration_0036_ajoute_colonnes_horaires(tmp_path):
+    """La migration 0036 ajoute les colonnes d'horaires sur une base existante."""
+    import os
+    import sqlite3
+    from migration_manager import _load_migration_module, MIGRATIONS_DIR
+
+    db_path = str(tmp_path / 'old.db')
+    conn = sqlite3.connect(db_path)
+    # Ancienne table, sans les colonnes d'horaires
+    conn.execute('''
+        CREATE TABLE presence_forfait_jour (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            type_journee TEXT NOT NULL,
+            commentaire TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, date)
+        )
+    ''')
+    conn.commit()
+
+    module = _load_migration_module(
+        os.path.join(MIGRATIONS_DIR, '0036_horaires_forfait_jour.py')
+    )
+    module.upgrade(conn)
+    module.upgrade(conn)  # idempotent : un second passage ne casse rien
+
+    cols = [r[1] for r in conn.execute(
+        'PRAGMA table_info(presence_forfait_jour)'
+    ).fetchall()]
+    conn.close()
+
+    for col in ('matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin'):
+        assert col in cols

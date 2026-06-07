@@ -99,10 +99,23 @@
             {% endif %}
 
             <div class="cal-day {{ classe_jour }}" style="{% if j.jour_semaine >= 5 %}opacity: 0.6;{% endif %}"
-                 onclick="ouvrirModal('{{ j.date }}', {{ j.jour }}, '{{ j.presence.type if j.presence else '' }}', '{{ j.presence.commentaire if j.presence else '' }}')">
+                 data-date="{{ j.date }}"
+                 data-jour="{{ j.jour }}"
+                 data-type="{{ j.presence.type if j.presence else '' }}"
+                 data-commentaire="{{ j.presence.commentaire if j.presence else '' }}"
+                 data-matin-debut="{{ j.presence.matin_debut if j.presence else '' }}"
+                 data-matin-fin="{{ j.presence.matin_fin if j.presence else '' }}"
+                 data-aprem-debut="{{ j.presence.aprem_debut if j.presence else '' }}"
+                 data-aprem-fin="{{ j.presence.aprem_fin if j.presence else '' }}"
+                 onclick="ouvrirModalFromCell(this)">
                 <div style="font-weight: 700; font-size: 1.1rem; margin-bottom: 0.25rem;">{{ j.jour }}</div>
                 {% if texte_type %}
                 <div style="font-size: 0.8rem; font-weight: 600; color: var(--gray-700);">{{ texte_type }}</div>
+                {% endif %}
+                {% if j.presence and j.presence.horaire_str %}
+                <div style="font-size: 0.72rem; color: var(--gray-600); margin-top: 0.2rem; line-height: 1.25;">
+                    🕐 {{ j.presence.horaire_str }}{% if j.presence.heures_str %} · <strong>{{ j.presence.heures_str }}</strong>{% endif %}
+                </div>
                 {% endif %}
                 {% if j.presence and j.presence.commentaire %}
                 <div style="font-size: 0.75rem; color: var(--gray-500); margin-top: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -144,10 +157,35 @@
             </div>
             
             <div class="form-group">
+                <label>Horaires travaillés (optionnel)</label>
+                <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                    <div>
+                        <div style="font-size: 0.8rem; color: var(--gray-600); margin-bottom: 0.25rem;">Matin</div>
+                        <div style="display: flex; gap: 0.4rem; align-items: center;">
+                            <input type="time" name="matin_debut" id="matin_debut" style="max-width: 8rem;">
+                            <span style="color: var(--gray-500);">→</span>
+                            <input type="time" name="matin_fin" id="matin_fin" style="max-width: 8rem;">
+                        </div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.8rem; color: var(--gray-600); margin-bottom: 0.25rem;">Après-midi</div>
+                        <div style="display: flex; gap: 0.4rem; align-items: center;">
+                            <input type="time" name="aprem_debut" id="aprem_debut" style="max-width: 8rem;">
+                            <span style="color: var(--gray-500);">→</span>
+                            <input type="time" name="aprem_fin" id="aprem_fin" style="max-width: 8rem;">
+                        </div>
+                    </div>
+                </div>
+                <small style="display: block; margin-top: 0.5rem; color: var(--gray-500);">
+                    Le forfait jour n'impose pas d'horaire : ces champs sont facultatifs et servent au suivi des heures travaillées.
+                </small>
+            </div>
+
+            <div class="form-group">
                 <label for="commentaire">Commentaire (optionnel)</label>
                 <textarea id="commentaire" name="commentaire" rows="2" placeholder="Précisions éventuelles..."></textarea>
             </div>
-            
+
             <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
                 <button type="submit" class="btn btn-primary">Enregistrer</button>
                 <button type="button" onclick="fermerModal()" class="btn btn-secondary">Annuler</button>
@@ -157,11 +195,16 @@
 </div>
 
 <script>
-function ouvrirModal(date, jour, typeActuel, commentaireActuel) {
-    document.getElementById('inputDate').value = date;
-    document.getElementById('modalJour').textContent = jour;
-    document.getElementById('type_journee').value = typeActuel || '';
-    document.getElementById('commentaire').value = commentaireActuel || '';
+function ouvrirModalFromCell(el) {
+    const d = el.dataset;
+    document.getElementById('inputDate').value = d.date;
+    document.getElementById('modalJour').textContent = d.jour;
+    document.getElementById('type_journee').value = d.type || '';
+    document.getElementById('commentaire').value = d.commentaire || '';
+    document.getElementById('matin_debut').value = d.matinDebut || '';
+    document.getElementById('matin_fin').value = d.matinFin || '';
+    document.getElementById('aprem_debut').value = d.apremDebut || '';
+    document.getElementById('aprem_fin').value = d.apremFin || '';
     document.getElementById('modalSaisie').style.display = 'flex';
 }
 

@@ -73,6 +73,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0033', 'Ajout commandes salaries et delegations'),
     ('0034', 'Prevention sante au travail'),
     ('0035', 'Recuperation partielle'),
+    ('0036', 'Horaires forfait jour'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -397,6 +398,10 @@ def init_db():
             date TEXT NOT NULL,
             type_journee TEXT NOT NULL,
             commentaire TEXT,
+            matin_debut TEXT,
+            matin_fin TEXT,
+            aprem_debut TEXT,
+            aprem_fin TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, date)
@@ -1407,6 +1412,14 @@ def init_db():
         cursor.execute("SELECT heure_fin FROM demandes_recup LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE demandes_recup ADD COLUMN heure_fin TEXT")
+
+    # Migration 0036 : colonnes d'horaires forfait jour si elles n'existent pas
+    # (suivi facultatif des heures matin / apres-midi par la direction)
+    for col in ('matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin'):
+        try:
+            cursor.execute(f"SELECT {col} FROM presence_forfait_jour LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(f"ALTER TABLE presence_forfait_jour ADD COLUMN {col} TEXT")
 
     conn.commit()
     conn.close()
