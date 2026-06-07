@@ -303,3 +303,60 @@ def test_migration_0036_ajoute_colonnes_horaires(tmp_path):
 
     for col in ('matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin'):
         assert col in cols
+
+
+# --- Réconciliation des fériés déclarés après le pré-remplissage ---
+
+def test_ajout_ferie_retire_travaille_par_defaut(app, admin_client, sample_users):
+    """Déclarer un férié après le pré-remplissage retire la journée « travaillé »
+    générée par défaut et corrige les stats (pas de sur-comptage)."""
+    import utils
+    annee = 2026
+    # pré-remplir l'année (jours ouvrés = travaillé)
+    admin_client.get(f'/calendrier_forfait_jour?mois=5&annee={annee}')
+
+    ferie = _premier_jour_ouvre(annee, 5)
+    presences = _presences(app, sample_users['directeur_id'], annee)
+    assert presences.get(ferie) == 'travaille'
+
+    with app.app_context():
+        travaille_avant = utils.calculer_stats_forfait_jour(
+            sample_users['directeur_id'], annee)['travaille']
+
+    # déclarer ce jour comme férié via la page de gestion
+    resp = admin_client.post('/gestion_jours_feries', data={
+        'action': 'ajouter', 'date': ferie, 'libelle': 'Jour de test',
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    # la journée « travaillé » par défaut a été retirée
+    presences = _presences(app, sample_users['directeur_id'], annee)
+    assert ferie not in presences
+
+    # les statistiques ne comptent plus ce jour comme travaillé
+    with app.app_context():
+        travaille_apres = utils.calculer_stats_forfait_jour(
+            sample_users['directeur_id'], annee)['travaille']
+    assert travaille_apres == travaille_avant - 1
+
+
+def test_ajout_ferie_preserve_saisie_reelle(app, admin_client, sample_users):
+    """Une journée avec horaires saisis n'est pas supprimée si elle devient férié."""
+    annee = 2026
+    date = _premier_jour_ouvre(annee, 6)
+
+    # saisie réelle : journée travaillée avec horaires
+    admin_client.post('/calendrier_forfait_jour', data={
+        'date': date, 'type_journee': 'travaille',
+        'matin_debut': '08:30', 'matin_fin': '12:00',
+        'aprem_debut': '13:30', 'aprem_fin': '17:00',
+    }, follow_redirects=True)
+
+    # le jour est ensuite déclaré férié
+    admin_client.post('/gestion_jours_feries', data={
+        'action': 'ajouter', 'date': date, 'libelle': 'Férié test',
+    }, follow_redirects=True)
+
+    # la saisie réelle (avec horaires) est conservée
+    presences = _presences(app, sample_users['directeur_id'], annee)
+    assert presences.get(date) == 'travaille'
