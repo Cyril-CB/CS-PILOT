@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash
 from datetime import datetime, date
 from database import get_db
 from utils import login_required
+from blueprints.worktime_metrics import compute_day_metrics
 
 rh_statistiques_bp = Blueprint('rh_statistiques_bp', __name__)
 
@@ -72,21 +73,32 @@ def rh_statistiques():
     ''', (debut_12_mois,)).fetchall()
     maladie_par_user = {r['user_id']: r['nb_jours'] or 0 for r in absences_maladie}
 
-    # ── 3. Heures supplémentaires sur 12 mois ──
-    # On filtre par (annee * 100 + mois) >= cutoff
-    cutoff_annee = int(debut_12_mois[:4])
-    cutoff_mois = int(debut_12_mois[5:7])
-    cutoff_num = cutoff_annee * 100 + cutoff_mois
+    # ── 3. Heures supplémentaires effectuées sur 12 mois ──
+    # On somme, jour par jour, le surplus d'heures réellement travaillées
+    # par rapport au planning théorique (delta positif). Les jours en déficit
+    # (récup) ne viennent pas diminuer ce total d'heures supp effectuées.
+    heures_rows = conn.execute('''
+        SELECT hr.user_id, hr.date,
+               hr.heure_debut_matin, hr.heure_fin_matin,
+               hr.heure_debut_aprem, hr.heure_fin_aprem,
+               hr.declaration_conforme
+        FROM heures_reelles hr
+        JOIN users u ON hr.user_id = u.id
+        WHERE hr.date >= ?
+          AND u.actif = 1
+          AND u.profil NOT IN ('directeur', 'prestataire')
+        ORDER BY hr.user_id, hr.date
+    ''', (debut_12_mois,)).fetchall()
 
-    heures_supp_rows = conn.execute('''
-        SELECT u.id as user_id, u.secteur_id,
-               SUM(CASE WHEN vp.heures_supps > 0 THEN vp.heures_supps ELSE 0 END) as total_supp
-        FROM variables_paie vp
-        JOIN users u ON vp.user_id = u.id
-        WHERE (vp.annee * 100 + vp.mois) >= ?
-        GROUP BY u.id
-    ''', (cutoff_num,)).fetchall()
-    supp_par_user = {r['user_id']: r['total_supp'] or 0 for r in heures_supp_rows}
+    supp_par_user = {}
+    planning_cache = {}
+    type_periode_cache = {}
+    for row in heures_rows:
+        metrics = compute_day_metrics(conn, row['user_id'], row,
+                                      planning_cache, type_periode_cache)
+        delta = metrics['delta']
+        if delta > 0:
+            supp_par_user[row['user_id']] = supp_par_user.get(row['user_id'], 0) + delta
 
     conn.close()
 

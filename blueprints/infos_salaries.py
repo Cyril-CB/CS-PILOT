@@ -388,6 +388,76 @@ def ajouter_contrat():
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
 
+@infos_salaries_bp.route('/infos_salaries/contrat/<int:contrat_id>/pdf', methods=['POST'])
+@login_required
+def ajouter_pdf_contrat(contrat_id):
+    """Ajouter le PDF d'un contrat existant qui n'en a pas encore."""
+    if not _peut_gerer():
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    contrat = conn.execute(
+        'SELECT * FROM contrats WHERE id = ?', (contrat_id,)
+    ).fetchone()
+    if not contrat:
+        conn.close()
+        flash("Contrat introuvable.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    if not _est_salarie_visible(conn, contrat['user_id']):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    user_id = contrat['user_id']
+
+    # Cette action sert uniquement a completer un contrat sans PDF.
+    # On refuse d'ecraser un fichier deja present (resoumission, page obsolete...).
+    if contrat['fichier_path']:
+        conn.close()
+        flash("Ce contrat possede deja un PDF.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    fichier = request.files.get('fichier_contrat')
+    if not fichier or not fichier.filename:
+        conn.close()
+        flash("Veuillez selectionner un fichier PDF.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    ext = os.path.splitext(fichier.filename)[1].lower()
+    if ext not in EXTENSIONS_PDF:
+        conn.close()
+        flash("Le contrat doit etre un fichier PDF.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    salarie = conn.execute('SELECT nom, prenom FROM users WHERE id = ?', (user_id,)).fetchone()
+    if not salarie:
+        conn.close()
+        flash("Salarie introuvable.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    nom_fichier = _construire_nom_contrat(
+        contrat['date_debut'], salarie['nom'], salarie['prenom'],
+        contrat['type_contrat'], ext
+    )
+    fichier_path = _sauvegarder_fichier(fichier, nom_fichier)
+
+    try:
+        conn.execute(
+            'UPDATE contrats SET fichier_path = ?, fichier_nom = ? WHERE id = ?',
+            (fichier_path, fichier.filename, contrat_id)
+        )
+        conn.commit()
+        flash("PDF du contrat ajoute avec succes.", 'success')
+    except Exception as e:
+        flash(f"Erreur : {str(e)}", 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+
 @infos_salaries_bp.route('/infos_salaries/document', methods=['POST'])
 @login_required
 def ajouter_document():
