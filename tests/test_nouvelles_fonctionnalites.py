@@ -249,6 +249,45 @@ class TestAjouterPdfContrat:
             conn.close()
         assert fichier_path is None
 
+    def test_refus_si_pdf_existant(self, client, users_with_contracts):
+        """On ne doit pas pouvoir ecraser le PDF d'un contrat qui en a deja un."""
+        import io
+        sal1_id = users_with_contracts['sal1_id']
+        _login(client, 'dir_test', 'Dir1234')
+
+        # Donner un PDF existant au contrat
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            contrat_id = conn.execute(
+                'SELECT id FROM contrats WHERE user_id=?', (sal1_id,)
+            ).fetchone()['id']
+            conn.execute(
+                'UPDATE contrats SET fichier_path=?, fichier_nom=? WHERE id=?',
+                ('existant.pdf', 'existant.pdf', contrat_id)
+            )
+            conn.commit()
+            conn.close()
+
+        resp = client.post(
+            f'/infos_salaries/contrat/{contrat_id}/pdf',
+            data={'fichier_contrat': (io.BytesIO(b'%PDF-1.4 nouveau'), 'nouveau.pdf')},
+            content_type='multipart/form-data',
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        # Le fichier existant ne doit pas avoir ete remplace
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            row = conn.execute(
+                'SELECT fichier_path, fichier_nom FROM contrats WHERE id=?', (contrat_id,)
+            ).fetchone()
+            conn.close()
+        assert row['fichier_path'] == 'existant.pdf'
+        assert row['fichier_nom'] == 'existant.pdf'
+
 
 # ── Tests heures supplémentaires effectuées (RH/statistiques) ──────────────────
 

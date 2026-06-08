@@ -412,6 +412,13 @@ def ajouter_pdf_contrat(contrat_id):
 
     user_id = contrat['user_id']
 
+    # Cette action sert uniquement a completer un contrat sans PDF.
+    # On refuse d'ecraser un fichier deja present (resoumission, page obsolete...).
+    if contrat['fichier_path']:
+        conn.close()
+        flash("Ce contrat possede deja un PDF.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
     fichier = request.files.get('fichier_contrat')
     if not fichier or not fichier.filename:
         conn.close()
@@ -434,8 +441,6 @@ def ajouter_pdf_contrat(contrat_id):
         contrat['date_debut'], salarie['nom'], salarie['prenom'],
         contrat['type_contrat'], ext
     )
-    # Supprimer un eventuel ancien fichier avant d'enregistrer le nouveau
-    _supprimer_fichier(contrat['fichier_path'])
     fichier_path = _sauvegarder_fichier(fichier, nom_fichier)
 
     try:
