@@ -166,7 +166,14 @@
                         {% if c.fichier_path %}
                         <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm">Telecharger</a>
                         {% else %}
-                        <span style="color: var(--gray-400);">Aucun PDF</span>
+                        <form method="POST" action="{{ url_for('infos_salaries_bp.ajouter_pdf_contrat', contrat_id=c.id) }}"
+                              enctype="multipart/form-data" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                            <span style="color: var(--gray-400);">Aucun PDF</span>
+                            <input type="file" name="fichier_contrat" id="pdf_contrat_{{ c.id }}" accept=".pdf"
+                                   required onchange="this.form.submit()" style="display: none;">
+                            <label for="pdf_contrat_{{ c.id }}" class="btn btn-sm" title="Ajouter le PDF du contrat"
+                                   style="cursor: pointer;">📤 Ajouter</label>
+                        </form>
                         {% endif %}
                     </td>
                     <td style="font-size: 0.85rem;">{{ c.saisi_par_nom }} {{ c.saisi_par_prenom }}<br>

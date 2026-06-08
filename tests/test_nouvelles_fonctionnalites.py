@@ -178,3 +178,73 @@ class TestBudgetPrevisionnelBoutons:
         assert 'Supprimer année importée' not in html
         # Les boutons PDF sont toujours là
         assert 'Export PDF' in html
+
+
+# ── Tests ajout PDF sur contrat existant ──────────────────────────────────────
+
+class TestAjouterPdfContrat:
+
+    def test_ajout_pdf_sur_contrat_sans_fichier(self, client, users_with_contracts):
+        """Un contrat sans PDF peut recevoir un PDF via la nouvelle route."""
+        import io
+        sal1_id = users_with_contracts['sal1_id']
+        _login(client, 'dir_test', 'Dir1234')
+
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            contrat = conn.execute(
+                'SELECT id, fichier_path FROM contrats WHERE user_id=?', (sal1_id,)
+            ).fetchone()
+            conn.close()
+        contrat_id = contrat['id']
+        assert contrat['fichier_path'] is None
+
+        resp = client.post(
+            f'/infos_salaries/contrat/{contrat_id}/pdf',
+            data={'fichier_contrat': (io.BytesIO(b'%PDF-1.4 test'), 'contrat.pdf')},
+            content_type='multipart/form-data',
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            row = conn.execute(
+                'SELECT fichier_path, fichier_nom FROM contrats WHERE id=?', (contrat_id,)
+            ).fetchone()
+            conn.close()
+        assert row['fichier_path'] is not None
+        assert row['fichier_nom'] == 'contrat.pdf'
+
+    def test_refus_fichier_non_pdf(self, client, users_with_contracts):
+        """Un fichier non-PDF est refusé."""
+        import io
+        sal1_id = users_with_contracts['sal1_id']
+        _login(client, 'dir_test', 'Dir1234')
+
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            contrat_id = conn.execute(
+                'SELECT id FROM contrats WHERE user_id=?', (sal1_id,)
+            ).fetchone()['id']
+            conn.close()
+
+        resp = client.post(
+            f'/infos_salaries/contrat/{contrat_id}/pdf',
+            data={'fichier_contrat': (io.BytesIO(b'image data'), 'photo.jpg')},
+            content_type='multipart/form-data',
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            fichier_path = conn.execute(
+                'SELECT fichier_path FROM contrats WHERE id=?', (contrat_id,)
+            ).fetchone()['fichier_path']
+            conn.close()
+        assert fichier_path is None
