@@ -166,6 +166,7 @@ from blueprints.api_keys import api_keys_bp
 from blueprints.assistant_rh import assistant_rh_bp
 from blueprints.backup import backup_bp
 from blueprints.administration import administration_bp
+from blueprints.securite import securite_bp
 from blueprints.absences import absences_bp
 from blueprints.variables_paie import variables_paie_bp
 from blueprints.infos_salaries import infos_salaries_bp
@@ -217,6 +218,7 @@ app.register_blueprint(api_keys_bp)
 app.register_blueprint(assistant_rh_bp)
 app.register_blueprint(backup_bp)
 app.register_blueprint(administration_bp)
+app.register_blueprint(securite_bp)
 app.register_blueprint(absences_bp)
 app.register_blueprint(variables_paie_bp)
 app.register_blueprint(infos_salaries_bp)

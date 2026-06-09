@@ -74,6 +74,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0034', 'Prevention sante au travail'),
     ('0035', 'Recuperation partielle'),
     ('0036', 'Horaires forfait jour'),
+    ('0037', 'Journal des acces'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -279,6 +280,22 @@ def init_db():
             FOREIGN KEY (modifie_par) REFERENCES users(id)
         )
     ''')
+
+    # ===== Journal des acces (securite, migration 0037) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal_acces (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_heure TEXT DEFAULT CURRENT_TIMESTAMP,
+            login_saisi TEXT,
+            user_id INTEGER,
+            evenement TEXT NOT NULL,
+            adresse_ip TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_journal_acces_date ON journal_acces(date_heure)"
+    )
 
     # ===== Table des demandes de recuperation =====
     cursor.execute('''

@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block title %}Sécurité — Journal des accès{% endblock %}
+
+{% block content %}
+<style>
+    .journal-page { max-width: 1100px; margin: 0 auto; }
+    .journal-filtres {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 18px;
+        margin: 20px 0;
+        box-shadow: var(--shadow-sm);
+    }
+    .journal-filtres-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 14px;
+        align-items: end;
+    }
+    .journal-filtres .form-group { margin: 0; }
+    .journal-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .journal-table-wrap {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 8px;
+        box-shadow: var(--shadow-sm);
+        overflow-x: auto;
+    }
+    .journal-user-login { font-weight: 600; color: var(--gray-900); }
+    .journal-user-nom { font-size: 0.82rem; color: var(--gray-500); }
+    .journal-ip { font-family: monospace; color: var(--gray-500); font-size: 0.85rem; }
+    .journal-date small { color: var(--gray-500); }
+</style>
+
+{% set badges = {
+    'connexion_reussie': ('badge-success', '✅'),
+    'echec_connexion': ('badge-danger', '⛔'),
+    'reinitialisation_demandee': ('badge-info', '🔑'),
+    'mot_de_passe_modifie': ('badge-warning', '🔒')
+} %}
+
+<div class="journal-page">
+    <h1>🔒 Journal des accès</h1>
+    <p class="subtitle">
+        Traçabilité des connexions à l'application — affichage des {{ limite }} entrées les plus récentes.
+    </p>
+
+    <!-- Statistiques rapides (sur les entrées affichées) -->
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-content">
+                <h3>Connexions réussies</h3>
+                <p class="stat-value">{{ entrees|selectattr('evenement', 'equalto', 'connexion_reussie')|list|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">⛔</div>
+            <div class="stat-content">
+                <h3>Échecs de connexion</h3>
+                <p class="stat-value">{{ entrees|selectattr('evenement', 'equalto', 'echec_connexion')|list|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🔑</div>
+            <div class="stat-content">
+                <h3>Réinitialisations</h3>
+                <p class="stat-value">{{ entrees|selectattr('evenement', 'equalto', 'reinitialisation_demandee')|list|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🔒</div>
+            <div class="stat-content">
+                <h3>Mots de passe modifiés</h3>
+                <p class="stat-value">{{ entrees|selectattr('evenement', 'equalto', 'mot_de_passe_modifie')|list|length }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filtres -->
+    <div class="journal-filtres">
+        <form method="GET" action="{{ url_for('securite_bp.journal_acces') }}">
+            <div class="journal-filtres-grid">
+                <div class="form-group">
+                    <label for="evenement">Événement</label>
+                    <select id="evenement" name="evenement">
+                        <option value="">-- Tous les événements --</option>
+                        {% for cle, libelle in evenements_labels.items() %}
+                        <option value="{{ cle }}" {% if evenement == cle %}selected{% endif %}>{{ libelle }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="recherche">Utilisateur / identifiant</label>
+                    <input type="text" id="recherche" name="recherche" value="{{ recherche }}" placeholder="Nom ou identifiant…">
+                </div>
+                <div class="form-group">
+                    <label for="date_debut">Date début</label>
+                    <input type="date" id="date_debut" name="date_debut" value="{{ date_debut }}">
+                </div>
+                <div class="form-group">
+                    <label for="date_fin">Date fin</label>
+                    <input type="date" id="date_fin" name="date_fin" value="{{ date_fin }}">
+                </div>
+            </div>
+            <div class="journal-actions">
+                <button type="submit" class="btn btn-primary">🔍 Filtrer</button>
+                <a href="{{ url_for('securite_bp.journal_acces') }}" class="btn btn-secondary">↻ Réinitialiser</a>
+                <a href="{{ url_for('securite_bp.export_journal_acces', evenement=evenement, recherche=recherche, date_debut=date_debut, date_fin=date_fin) }}" class="btn btn-secondary">⬇️ Télécharger (CSV)</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tableau du journal -->
+    <div class="journal-table-wrap">
+        {% if entrees %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date et heure</th>
+                    <th>Utilisateur</th>
+                    <th>Événement</th>
+                    <th>Adresse IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entrees %}
+                {% set b = badges.get(e.evenement, ('badge-inactive', '•')) %}
+                <tr>
+                    <td class="journal-date" style="white-space: nowrap;">
+                        {% set parts = (e.date_heure or '').split(' ') %}
+                        <strong>{{ parts[0] }}</strong>
+                        {% if parts|length > 1 %}<br><small>{{ parts[1] }}</small>{% endif %}
+                    </td>
+                    <td>
+                        <span class="journal-user-login">{{ e.login_saisi or '—' }}</span>
+                        {% if e.prenom or e.nom %}
+                        <br><span class="journal-user-nom">{{ e.prenom }} {{ e.nom }}</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="badge {{ b[0] }}">{{ b[1] }} {{ evenements_labels.get(e.evenement, e.evenement) }}</span></td>
+                    <td><span class="journal-ip">{{ e.adresse_ip or '—' }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucun accès enregistré pour ces critères.</p>
+        {% endif %}
+    </div>
+
+    <div class="help-box" style="margin-top: 1.5rem;">
+        <h4>ℹ️ À propos du journal des accès</h4>
+        <ul>
+            <li><strong>✅ Connexion réussie</strong> : authentification réussie d'un utilisateur.</li>
+            <li><strong>⛔ Échec de connexion</strong> : identifiant ou mot de passe incorrect.</li>
+            <li><strong>🔑 Réinitialisation demandée</strong> : envoi d'un mot de passe temporaire par email.</li>
+            <li><strong>🔒 Mot de passe modifié</strong> : un utilisateur a défini un nouveau mot de passe.</li>
+        </ul>
+        <p><strong>Confidentialité :</strong> cette page est réservée à la direction. Les heures sont enregistrées au format du serveur.</p>
+    </div>
+</div>
+{% endblock %}
