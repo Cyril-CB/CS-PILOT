@@ -42,17 +42,36 @@ def _lire_filtres():
     }
 
 
-def _construire_requete(filtres, limite):
-    """Construit la requete du journal et le dictionnaire de parametres.
+# Requete du journal : chaine CONSTANTE (jamais derivee d'une saisie
+# utilisateur). Les filtres sont optionnels et appliques via des parametres
+# nommes (:nom) ; une valeur vide neutralise le filtre correspondant.
+# limite = -1 retourne toutes les lignes (illimite en SQLite).
+_JOURNAL_QUERY = '''
+    SELECT j.id, j.date_heure, j.login_saisi, j.evenement, j.adresse_ip,
+           u.nom AS nom, u.prenom AS prenom
+    FROM journal_acces j
+    LEFT JOIN users u ON j.user_id = u.id
+    WHERE (:evenement = '' OR j.evenement = :evenement)
+      AND (:date_debut = '' OR date(j.date_heure) >= date(:date_debut))
+      AND (:date_fin = '' OR date(j.date_heure) <= date(:date_fin))
+      AND (:recherche = ''
+           OR j.login_saisi LIKE :recherche_like
+           OR u.nom LIKE :recherche_like
+           OR u.prenom LIKE :recherche_like)
+    ORDER BY j.date_heure DESC, j.id DESC
+    LIMIT :limite
+'''
 
-    La chaine SQL est CONSTANTE : aucune donnee saisie par l'utilisateur n'y
-    est concatenee. Tous les filtres sont optionnels et exprimes via des
-    parametres nommes (`:nom`) ; une valeur vide neutralise le filtre
-    correspondant. `limite` = -1 retourne toutes les lignes (illimite SQLite).
+
+def _params_filtres(filtres, limite):
+    """Construit le dictionnaire de parametres nommes pour `_JOURNAL_QUERY`.
+
+    Les valeurs saisies par l'utilisateur ne transitent QUE par ces parametres
+    (lies par le moteur SQL) ; elles ne sont jamais concatenees a la requete.
     """
     evenement = filtres['evenement'] if filtres['evenement'] in EVENEMENTS_LABELS else ''
     recherche = filtres['recherche']
-    params = {
+    return {
         'evenement': evenement,
         'date_debut': filtres['date_debut'],
         'date_fin': filtres['date_fin'],
@@ -60,22 +79,6 @@ def _construire_requete(filtres, limite):
         'recherche_like': f'%{recherche}%',
         'limite': limite,
     }
-    query = '''
-        SELECT j.id, j.date_heure, j.login_saisi, j.evenement, j.adresse_ip,
-               u.nom AS nom, u.prenom AS prenom
-        FROM journal_acces j
-        LEFT JOIN users u ON j.user_id = u.id
-        WHERE (:evenement = '' OR j.evenement = :evenement)
-          AND (:date_debut = '' OR date(j.date_heure) >= date(:date_debut))
-          AND (:date_fin = '' OR date(j.date_heure) <= date(:date_fin))
-          AND (:recherche = ''
-               OR j.login_saisi LIKE :recherche_like
-               OR u.nom LIKE :recherche_like
-               OR u.prenom LIKE :recherche_like)
-        ORDER BY j.date_heure DESC, j.id DESC
-        LIMIT :limite
-    '''
-    return query, params
 
 
 @securite_bp.route('/securite/journal-acces')
@@ -87,11 +90,10 @@ def journal_acces():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     filtres = _lire_filtres()
-    query, params = _construire_requete(filtres, LIMITE_AFFICHAGE)
 
     conn = get_db()
     try:
-        entrees = conn.execute(query, params).fetchall()
+        entrees = conn.execute(_JOURNAL_QUERY, _params_filtres(filtres, LIMITE_AFFICHAGE)).fetchall()
     finally:
         conn.close()
 
@@ -113,12 +115,11 @@ def export_journal_acces():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     filtres = _lire_filtres()
-    # limite = -1 : export complet (pas de plafond d'affichage)
-    query, params = _construire_requete(filtres, -1)
 
     conn = get_db()
     try:
-        entrees = conn.execute(query, params).fetchall()
+        # limite = -1 : export complet (pas de plafond d'affichage)
+        entrees = conn.execute(_JOURNAL_QUERY, _params_filtres(filtres, -1)).fetchall()
     finally:
         conn.close()
 
