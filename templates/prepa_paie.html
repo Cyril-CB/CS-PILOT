@@ -26,7 +26,7 @@
         <input type="hidden" name="mois" value="{{ mois }}">
         <input type="hidden" name="annee" value="{{ annee }}">
 
-        <div style="overflow-x: auto;">
+        <div class="prepa-paie-scroll">
             <table class="data-table prepa-paie-table">
                 <thead>
                     <tr>
@@ -141,9 +141,22 @@
 </div>
 
 <style>
+/* ── Conteneur scrollable : permet de figer l'en-tete au defilement ── */
+.prepa-paie-scroll {
+    max-height: calc(100vh - 300px);
+    overflow: auto;
+    border: 1px solid var(--gray-200, #e0e0e0);
+    border-radius: var(--radius-md, 10px);
+}
+
 /* ── Base ── */
 .prepa-paie-table {
     border-collapse: collapse;
+    /* Le cadre est porte par .prepa-paie-scroll ; "overflow: visible" est
+       indispensable pour que l'en-tete sticky se cale sur le conteneur. */
+    border: none;
+    overflow: visible;
+    margin: 0;
 }
 .prepa-paie-table td,
 .prepa-paie-table th {
@@ -155,12 +168,19 @@
 .prepa-paie-table td:last-child {
     border-right: none;
 }
+/* En-tete fige : reste visible quand on defile vers le bas */
 .prepa-paie-table thead th {
     font-size: 0.82rem;
     padding: 8px 8px;
     text-align: center;
     white-space: nowrap;
-    border-bottom: 2px solid var(--gray-300, #bbb);
+    background: var(--gray-100, #f1f3f5);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    /* Trait sous l'en-tete via box-shadow pour rester colle a la cellule
+       sticky (un border-bottom disparaitrait avec border-collapse au defilement). */
+    box-shadow: inset 0 -2px 0 var(--gray-300, #bbb);
 }
 
 /* ── Row alternation ── */
@@ -193,13 +213,15 @@
     border-right-color: var(--gray-600, #444);
 }
 [data-theme="dark"] .prepa-paie-table thead th {
-    border-bottom-color: var(--gray-500, #555);
+    box-shadow: inset 0 -2px 0 var(--gray-500, #555);
 }
 [data-theme="dark"] .prepa-paie-table tr.row-odd td {
-    background: var(--gray-800, #1e1e1e);
+    background: var(--white, #1a1a1a);
 }
 [data-theme="dark"] .prepa-paie-table tr.row-even td {
-    background: var(--gray-700, #2a2a2a);
+    /* En theme sombre l'echelle de gris est inversee (--gray-700 est clair) :
+       on reprend --gray-50, qui vaut bien une teinte sombre, comme en clair. */
+    background: var(--gray-50, #242424);
 }
 [data-theme="dark"] .prepa-paie-table tr.row-separator td {
     border-bottom-color: var(--gray-600, #555);
