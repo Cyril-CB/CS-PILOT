@@ -9,6 +9,13 @@ import string
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from access_log import (
+    EVT_CONNEXION_REUSSIE,
+    EVT_ECHEC_CONNEXION,
+    EVT_MOT_DE_PASSE_MODIFIE,
+    EVT_REINITIALISATION_DEMANDEE,
+    enregistrer_acces,
+)
 from database import get_db
 from email_service import envoyer_email, is_email_configured
 from extensions import limiter
@@ -128,12 +135,14 @@ def login():
 
         if password_ok:
             _populate_session(user)
+            enregistrer_acces(EVT_CONNEXION_REUSSIE, login_saisi=login_val, user_id=user['id'])
             flash(f'Bienvenue {user["prenom"]} {user["nom"]} !', 'success')
             if user['force_password_change']:
                 flash('Votre mot de passe temporaire doit être remplacé avant de continuer.', 'warning')
                 return redirect(url_for('auth.changer_mot_de_passe'))
             return _redirect_after_login(user['profil'])
 
+        enregistrer_acces(EVT_ECHEC_CONNEXION, login_saisi=login_val)
         flash('Identifiants incorrects', 'error')
 
     return render_template('login.html')
@@ -203,7 +212,7 @@ def changer_mot_de_passe():
     conn = get_db()
     try:
         user = conn.execute(
-            'SELECT id, nom, prenom, profil, password, force_password_change '
+            'SELECT id, nom, prenom, profil, password, force_password_change, login '
             'FROM users WHERE id = ? AND actif = 1',
             (session['user_id'],)
         ).fetchone()
@@ -240,6 +249,11 @@ def changer_mot_de_passe():
             )
             conn.commit()
             session['force_password_change'] = False
+            enregistrer_acces(
+                EVT_MOT_DE_PASSE_MODIFIE,
+                login_saisi=user['login'],
+                user_id=user['id'],
+            )
             flash('Votre mot de passe a été mis à jour.', 'success')
             return _redirect_after_login(user['profil'])
     finally:
@@ -303,6 +317,11 @@ def mot_de_passe_oublie():
             )
             if ok:
                 conn.commit()
+                enregistrer_acces(
+                    EVT_REINITIALISATION_DEMANDEE,
+                    login_saisi=user['login'],
+                    user_id=user['id'],
+                )
                 flash(generic_message, 'info')
                 return redirect(url_for('auth.login'))
 

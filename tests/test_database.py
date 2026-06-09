@@ -28,7 +28,7 @@ class TestInitDb:
         'historique_modifications', 'demandes_recup', 'jours_feries',
         'planning_enfance_config', 'absences', 'app_settings',
         'presence_forfait_jour', 'validation_forfait_jour', 'schema_migrations',
-        'prevention_dismissals',
+        'prevention_dismissals', 'journal_acces',
         # Tables ajoutées par les migrations, maintenant dans le schéma initial
         'variables_paie_defauts', 'variables_paie', 'contrats',
         'documents_salaries', 'prepa_paie_statut', 'conges_cloture_mensuelle',
