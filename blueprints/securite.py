@@ -42,31 +42,39 @@ def _lire_filtres():
     }
 
 
-def _construire_requete(filtres):
-    """Construit la requete SQL filtree et la liste de parametres associee."""
+def _construire_requete(filtres, limite):
+    """Construit la requete du journal et le dictionnaire de parametres.
+
+    La chaine SQL est CONSTANTE : aucune donnee saisie par l'utilisateur n'y
+    est concatenee. Tous les filtres sont optionnels et exprimes via des
+    parametres nommes (`:nom`) ; une valeur vide neutralise le filtre
+    correspondant. `limite` = -1 retourne toutes les lignes (illimite SQLite).
+    """
+    evenement = filtres['evenement'] if filtres['evenement'] in EVENEMENTS_LABELS else ''
+    recherche = filtres['recherche']
+    params = {
+        'evenement': evenement,
+        'date_debut': filtres['date_debut'],
+        'date_fin': filtres['date_fin'],
+        'recherche': recherche,
+        'recherche_like': f'%{recherche}%',
+        'limite': limite,
+    }
     query = '''
         SELECT j.id, j.date_heure, j.login_saisi, j.evenement, j.adresse_ip,
                u.nom AS nom, u.prenom AS prenom
         FROM journal_acces j
         LEFT JOIN users u ON j.user_id = u.id
-        WHERE 1=1
+        WHERE (:evenement = '' OR j.evenement = :evenement)
+          AND (:date_debut = '' OR date(j.date_heure) >= date(:date_debut))
+          AND (:date_fin = '' OR date(j.date_heure) <= date(:date_fin))
+          AND (:recherche = ''
+               OR j.login_saisi LIKE :recherche_like
+               OR u.nom LIKE :recherche_like
+               OR u.prenom LIKE :recherche_like)
+        ORDER BY j.date_heure DESC, j.id DESC
+        LIMIT :limite
     '''
-    params = []
-
-    if filtres['evenement'] and filtres['evenement'] in EVENEMENTS_LABELS:
-        query += ' AND j.evenement = ?'
-        params.append(filtres['evenement'])
-    if filtres['date_debut']:
-        query += ' AND date(j.date_heure) >= date(?)'
-        params.append(filtres['date_debut'])
-    if filtres['date_fin']:
-        query += ' AND date(j.date_heure) <= date(?)'
-        params.append(filtres['date_fin'])
-    if filtres['recherche']:
-        like = f"%{filtres['recherche']}%"
-        query += ' AND (j.login_saisi LIKE ? OR u.nom LIKE ? OR u.prenom LIKE ?)'
-        params.extend([like, like, like])
-
     return query, params
 
 
@@ -79,9 +87,7 @@ def journal_acces():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     filtres = _lire_filtres()
-    query, params = _construire_requete(filtres)
-    query += ' ORDER BY j.date_heure DESC, j.id DESC LIMIT ?'
-    params.append(LIMITE_AFFICHAGE)
+    query, params = _construire_requete(filtres, LIMITE_AFFICHAGE)
 
     conn = get_db()
     try:
@@ -107,8 +113,8 @@ def export_journal_acces():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     filtres = _lire_filtres()
-    query, params = _construire_requete(filtres)
-    query += ' ORDER BY j.date_heure DESC, j.id DESC'
+    # limite = -1 : export complet (pas de plafond d'affichage)
+    query, params = _construire_requete(filtres, -1)
 
     conn = get_db()
     try:

@@ -117,6 +117,40 @@ class TestPageJournalAcces:
         assert response.status_code == 200
 
 
+class TestFiltrageJournal:
+    """Verifie que les filtres du journal fonctionnent (requete parametree)."""
+
+    def _seed(self, app, db):
+        with app.app_context():
+            db.execute(
+                "INSERT INTO journal_acces (login_saisi, evenement, adresse_ip) VALUES (?, ?, ?)",
+                ('alice_login', 'connexion_reussie', '10.0.0.1')
+            )
+            db.execute(
+                "INSERT INTO journal_acces (login_saisi, evenement, adresse_ip) VALUES (?, ?, ?)",
+                ('bob_login', 'echec_connexion', '10.0.0.2')
+            )
+            db.commit()
+
+    def test_filtre_par_evenement_isole_le_bon_type(self, admin_client, app, db):
+        self._seed(app, db)
+        html = admin_client.get('/securite/journal-acces?evenement=echec_connexion').get_data(as_text=True)
+        assert 'bob_login' in html
+        assert 'alice_login' not in html
+
+    def test_filtre_recherche_par_login(self, admin_client, app, db):
+        self._seed(app, db)
+        html = admin_client.get('/securite/journal-acces?recherche=alice').get_data(as_text=True)
+        assert 'alice_login' in html
+        assert 'bob_login' not in html
+
+    def test_export_respecte_le_filtre(self, admin_client, app, db):
+        self._seed(app, db)
+        body = admin_client.get('/securite/journal-acces/export?evenement=connexion_reussie').get_data(as_text=True)
+        assert 'alice_login' in body
+        assert 'bob_login' not in body
+
+
 class TestExportJournalAcces:
     """Verifie l'export CSV du journal."""
 
