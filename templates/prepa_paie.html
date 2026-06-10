@@ -30,8 +30,8 @@
             <table class="data-table prepa-paie-table">
                 <thead>
                     <tr>
-                        <th>Traite</th>
-                        <th>Nom Prenom</th>
+                        <th class="pp-col-traite">Traite</th>
+                        <th class="pp-col-nom">Nom Prenom</th>
                         <th>Secteur</th>
                         <th style="min-width: 280px;">Contrat</th>
                         <th>Forfait</th>
@@ -47,19 +47,18 @@
                         <th>Autres regul.</th>
                         <th style="min-width: 150px;">Commentaire</th>
                         <th style="min-width: 300px;">Absences du mois</th>
-                        <th style="white-space: nowrap;">Nom Prenom</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in grille %}
-                    <input type="hidden" name="user_ids" value="{{ row.user_id }}">
                     <tr class="{% if row.traite %}row-traite{% elif loop.index is odd %}row-odd{% else %}row-even{% endif %} row-separator">
-                        <td style="text-align: center;">
+                        <td class="pp-col-traite" style="text-align: center;">
+                            <input type="hidden" name="user_ids" value="{{ row.user_id }}">
                             <input type="checkbox" name="traite_{{ row.user_id }}" value="1"
                                    {% if row.traite %}checked{% endif %}
                                    style="width: 18px; height: 18px; cursor: pointer;">
                         </td>
-                        <td style="white-space: nowrap;">
+                        <td class="pp-col-nom">
                             <strong>{{ row.nom }}</strong> {{ row.prenom }}
                         </td>
                         <td style="font-size: 0.85rem;">{{ row.secteur }}</td>
@@ -117,9 +116,6 @@
                             <span style="color: var(--gray-400); font-size: 0.85rem;">Aucune</span>
                             {% endif %}
                         </td>
-                        <td style="white-space: nowrap;">
-                            <strong>{{ row.nom }}</strong> {{ row.prenom }}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -151,7 +147,11 @@
 
 /* ── Base ── */
 .prepa-paie-table {
-    border-collapse: collapse;
+    /* "separate" (et non "collapse") : avec collapse, les bordures
+       appartiennent au tableau et ne suivent pas les cellules figees
+       (position: sticky) au defilement. */
+    border-collapse: separate;
+    border-spacing: 0;
     /* Le cadre est porte par .prepa-paie-scroll ; "overflow: visible" est
        indispensable pour que l'en-tete sticky se cale sur le conteneur. */
     border: none;
@@ -181,6 +181,34 @@
     /* Trait sous l'en-tete via box-shadow pour rester colle a la cellule
        sticky (un border-bottom disparaitrait avec border-collapse au defilement). */
     box-shadow: inset 0 -2px 0 var(--gray-300, #bbb);
+}
+
+/* ── Colonnes figees a gauche (Traite + Nom Prenom) ── */
+.prepa-paie-table .pp-col-traite,
+.prepa-paie-table .pp-col-nom {
+    position: sticky;
+    z-index: 3; /* au-dessus des cellules qui defilent dessous */
+}
+.prepa-paie-table .pp-col-traite {
+    left: 0;
+    width: 60px;
+    min-width: 60px;
+}
+.prepa-paie-table .pp-col-nom {
+    left: 60px; /* = largeur de la colonne Traite */
+    white-space: nowrap;
+    /* Bord droit renforce pour marquer la limite de la zone figee */
+    border-right: none;
+    box-shadow: inset -2px 0 0 var(--gray-300, #bbb);
+}
+.prepa-paie-table thead th.pp-col-traite,
+.prepa-paie-table thead th.pp-col-nom {
+    z-index: 6; /* coins : au-dessus des autres en-tetes (z-index 5) */
+}
+.prepa-paie-table thead th.pp-col-nom {
+    /* Cumule le bord droit de la zone figee et le trait sous l'en-tete */
+    box-shadow: inset -2px 0 0 var(--gray-300, #bbb),
+                inset 0 -2px 0 var(--gray-300, #bbb);
 }
 
 /* ── Row alternation ── */
@@ -214,6 +242,13 @@
 }
 [data-theme="dark"] .prepa-paie-table thead th {
     box-shadow: inset 0 -2px 0 var(--gray-500, #555);
+}
+[data-theme="dark"] .prepa-paie-table .pp-col-nom {
+    box-shadow: inset -2px 0 0 var(--gray-500, #555);
+}
+[data-theme="dark"] .prepa-paie-table thead th.pp-col-nom {
+    box-shadow: inset -2px 0 0 var(--gray-500, #555),
+                inset 0 -2px 0 var(--gray-500, #555);
 }
 [data-theme="dark"] .prepa-paie-table tr.row-odd td {
     background: var(--white, #1a1a1a);
