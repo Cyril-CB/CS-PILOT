@@ -117,7 +117,9 @@ def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mo
             'secteur': sal['secteur_nom'],
             'traite': statuts.get(uid, 0),
             'contrats': [dict(c) for c in contrats],
-            'mutuelle': vp.get('mutuelle', 0),
+            # int() : sur les bases anterieures a la migration 0038, la
+            # colonne TEXT renvoie '0'/'1' et '0' serait affiche "Oui".
+            'mutuelle': int(vp.get('mutuelle') or 0),
             'nb_enfants': vp.get('nb_enfants', 0),
             'heures_reelles': vp.get('heures_reelles'),
             'heures_supps': vp.get('heures_supps'),

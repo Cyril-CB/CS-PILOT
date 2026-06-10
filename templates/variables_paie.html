@@ -25,11 +25,11 @@
         <input type="hidden" name="mois" value="{{ mois }}">
         <input type="hidden" name="annee" value="{{ annee }}">
 
-        <div style="overflow-x: auto;">
+        <div class="vp-table-scroll">
             <table class="data-table variables-paie-table">
                 <thead>
                     <tr>
-                        <th style="min-width: 160px; position: sticky; left: 0; background: var(--gray-100); z-index: 2;">Salarie</th>
+                        <th class="vp-sticky-col" style="min-width: 160px;">Salarie</th>
                         <th style="min-width: 100px;">Secteur</th>
                         <th style="min-width: 80px; background: #e8f5e9;">Mutuelle</th>
                         <th style="min-width: 80px; background: #e8f5e9;">Nb enfants</th>
@@ -46,9 +46,9 @@
                 </thead>
                 <tbody>
                     {% for row in grille %}
-                    <input type="hidden" name="user_ids" value="{{ row.user_id }}">
                     <tr>
-                        <td style="position: sticky; left: 0; background: var(--white, #fff); z-index: 1; white-space: nowrap;">
+                        <td class="vp-sticky-col">
+                            <input type="hidden" name="user_ids" value="{{ row.user_id }}">
                             <strong>{{ row.nom }}</strong> {{ row.prenom }}
                         </td>
                         <td style="font-size: 0.85rem;">{{ row.secteur }}</td>
@@ -168,6 +168,42 @@
 </div>
 
 <style>
+/* Conteneur de defilement limite a la hauteur de l'ecran : les barres de
+   defilement (notamment horizontale) restent accessibles sans descendre en
+   bas de la page, et les en-tetes / la colonne Salarie restent figes. */
+.vp-table-scroll {
+    overflow: auto;
+    max-height: max(420px, calc(100vh - 310px));
+    border: 1px solid var(--gray-200, #e0e0e0);
+    border-radius: var(--radius-md, 10px);
+}
+.variables-paie-table {
+    /* .data-table pose overflow:hidden, ce qui neutralise position:sticky ;
+       le rognage des coins est assure par .vp-table-scroll. */
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+}
+.variables-paie-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--gray-100, #f5f5f5);
+}
+.variables-paie-table th.vp-sticky-col {
+    left: 0;
+    z-index: 4; /* coin Salarie : au-dessus des autres en-tetes et de la colonne */
+}
+.variables-paie-table td.vp-sticky-col {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--white, #fff);
+    white-space: nowrap;
+}
+.variables-paie-table tbody tr:hover td.vp-sticky-col {
+    background: var(--gray-50, #fafafa);
+}
 .variables-paie-table input[type="number"],
 .variables-paie-table input[type="text"] {
     padding: 4px 6px;
@@ -197,12 +233,6 @@
 }
 [data-theme="dark"] .variables-paie-table td[style*="f1f8e9"] {
     background: #1b3a1b !important;
-}
-[data-theme="dark"] .variables-paie-table td[style*="sticky"] {
-    background: var(--gray-800, #1e1e1e) !important;
-}
-[data-theme="dark"] .variables-paie-table thead th[style*="sticky"] {
-    background: var(--gray-700, #333) !important;
 }
 [data-theme="dark"] span[style*="e8f5e9"] {
     background: #1b5e20 !important;

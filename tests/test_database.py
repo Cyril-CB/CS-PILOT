@@ -85,6 +85,11 @@ class TestInitDb:
         versions = {m['version'] for m in lister_fichiers_migrations()}
         assert '0034' in versions
 
+    def test_fichier_migration_0038_present(self):
+        """La migration 0038 doit exister sous forme de fichier."""
+        versions = {m['version'] for m in lister_fichiers_migrations()}
+        assert '0038' in versions
+
     def test_postes_depense_initialises(self, app, db):
         """Les postes de dépense par défaut doivent être créés."""
         with app.app_context():
