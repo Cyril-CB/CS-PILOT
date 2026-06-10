@@ -35,6 +35,19 @@ class TestJournalisationAcces:
         assert entry['login_saisi'] == 'admin'
         assert entry['user_id'] is None
 
+    def test_adresse_ip_client_via_x_forwarded_for(self, client, app, db, sample_users):
+        """L'IP enregistree doit etre celle du client (1er X-Forwarded-For),
+        et non celle du serveur/proxy."""
+        client.post(
+            '/login',
+            data={'login': 'admin', 'password': 'Admin1234'},
+            headers={'X-Forwarded-For': '203.0.113.7, 10.0.0.1'},
+        )
+        with app.app_context():
+            entry = _derniere_entree(db, 'connexion_reussie')
+        assert entry is not None
+        assert entry['adresse_ip'] == '203.0.113.7'
+
     def test_echec_connexion_utilisateur_inconnu_journalise(self, client, app, db, sample_users):
         client.post('/login', data={'login': 'inconnu', 'password': 'peu_importe'})
         with app.app_context():
@@ -96,9 +109,10 @@ class TestPageJournalAcces:
         response = auth_client.get('/securite/journal-acces', follow_redirects=False)
         assert response.status_code == 302
 
-    def test_acces_refuse_comptable(self, comptable_client):
-        response = comptable_client.get('/securite/journal-acces', follow_redirects=False)
-        assert response.status_code == 302
+    def test_acces_autorise_comptable(self, comptable_client):
+        response = comptable_client.get('/securite/journal-acces')
+        assert response.status_code == 200
+        assert 'Journal des accès' in response.get_data(as_text=True)
 
     def test_acces_refuse_non_connecte(self, client, sample_users):
         response = client.get('/securite/journal-acces', follow_redirects=False)
@@ -164,6 +178,11 @@ class TestExportJournalAcces:
         body = response.get_data(as_text=True)
         assert 'Date et heure' in body
 
+    def test_export_comptable_ok(self, comptable_client):
+        response = comptable_client.get('/securite/journal-acces/export')
+        assert response.status_code == 200
+        assert 'text/csv' in response.content_type
+
     def test_export_refuse_salarie(self, auth_client):
         response = auth_client.get('/securite/journal-acces/export', follow_redirects=False)
         assert response.status_code == 302
@@ -177,8 +196,13 @@ class TestMenuSecurite:
         assert '🔒 Sécurité' in html
         assert url_securite() in html
 
-    def test_lien_absent_pour_comptable(self, comptable_client):
+    def test_lien_present_pour_comptable(self, comptable_client):
         html = comptable_client.get('/dashboard_comptable').get_data(as_text=True)
+        assert '🔒 Sécurité' in html
+        assert url_securite() in html
+
+    def test_lien_absent_pour_salarie(self, auth_client):
+        html = auth_client.get('/dashboard').get_data(as_text=True)
         assert '🔒 Sécurité' not in html
 
 

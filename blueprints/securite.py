@@ -6,7 +6,7 @@ connexions reussies, echecs de connexion, demandes de reinitialisation et
 modifications de mot de passe. Le journal peut etre consulte directement dans
 l'interface ou telecharge au format CSV.
 
-Accessible uniquement aux directeurs (la direction).
+Accessible aux profils de direction et de comptabilite (directeur, comptable).
 """
 import csv
 import io
@@ -27,9 +27,13 @@ securite_bp = Blueprint('securite_bp', __name__)
 LIMITE_AFFICHAGE = 500
 
 
-def _check_direction():
-    """Verifie que l'utilisateur connecte fait partie de la direction."""
-    return session.get('profil') == 'directeur'
+def _check_acces():
+    """Verifie que l'utilisateur peut consulter le journal (direction/comptable).
+
+    Pour l'instant le comptable dispose des memes acces que la direction ;
+    ce perimetre pourra etre restreint ulterieurement si besoin.
+    """
+    return session.get('profil') in ('directeur', 'comptable')
 
 
 def _lire_filtres():
@@ -84,8 +88,8 @@ def _params_filtres(filtres, limite):
 @securite_bp.route('/securite/journal-acces')
 @login_required
 def journal_acces():
-    """Affiche le journal des acces (direction uniquement)."""
-    if not _check_direction():
+    """Affiche le journal des acces (direction et comptabilite)."""
+    if not _check_acces():
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
@@ -110,7 +114,7 @@ def journal_acces():
 @login_required
 def export_journal_acces():
     """Telecharge le journal des acces (filtre applique) au format CSV."""
-    if not _check_direction():
+    if not _check_acces():
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
