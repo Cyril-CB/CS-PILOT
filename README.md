@@ -102,7 +102,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 
 ### Securite
 - Authentification par login/mot de passe
-- Journal des acces consultable par la direction (Administration > Securite) : connexions reussies, echecs de connexion, demandes de reinitialisation et changements de mot de passe (consultation directe ou export CSV)
+- Journal des acces consultable par la direction et la comptabilite (Administration > Securite) : connexions reussies, echecs de connexion, demandes de reinitialisation et changements de mot de passe (consultation directe ou export CSV)
 - Migration automatique des anciens hash SHA256 vers werkzeug (bcrypt)
 - Cle secrete chargee depuis variable d'environnement (generee automatiquement au premier demarrage)
 - Protection contre le path traversal sur les sauvegardes

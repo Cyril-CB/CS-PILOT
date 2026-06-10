@@ -31,14 +31,30 @@ EVENEMENTS_LABELS = {
 
 
 def _adresse_ip():
-    """Retourne l'adresse IP du client courant si un contexte requete existe."""
+    """Retourne l'adresse IP du client (et non celle du serveur/proxy).
+
+    Derriere un proxy ou un tunnel (ngrok, Cloudflare, reverse proxy...),
+    request.remote_addr vaut l'adresse du proxy local et serait donc toujours
+    identique. On privilegie l'en-tete X-Forwarded-For (la premiere adresse de
+    la liste correspond au client d'origine), puis X-Real-IP, avec repli sur
+    request.remote_addr lorsqu'aucun en-tete n'est present.
+    """
     try:
         from flask import request, has_request_context
-        if has_request_context():
-            return request.remote_addr
+        if not has_request_context():
+            return None
+        forwarded = request.headers.get('X-Forwarded-For', '')
+        if forwarded:
+            # Format "client, proxy1, proxy2" : la 1re adresse = client d'origine
+            client = forwarded.split(',')[0].strip()
+            if client:
+                return client
+        real_ip = (request.headers.get('X-Real-IP') or '').strip()
+        if real_ip:
+            return real_ip
+        return request.remote_addr
     except Exception:
-        pass
-    return None
+        return None
 
 
 def enregistrer_acces(evenement, login_saisi=None, user_id=None, adresse_ip=None):
