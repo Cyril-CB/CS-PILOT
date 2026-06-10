@@ -94,6 +94,10 @@ def variables_paie():
                 'autres_regularisation': 0,
                 'commentaire': '',
             }
+        # Normaliser en entier : sur les bases anterieures a la migration
+        # 0038, la colonne TEXT renvoie '0'/'1' et '0' serait considere
+        # comme coche par le template.
+        d['mutuelle'] = int(d.get('mutuelle') or 0)
         grille.append({
             'user_id': uid,
             'nom': sal['nom'],

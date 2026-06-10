@@ -75,6 +75,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0035', 'Recuperation partielle'),
     ('0036', 'Horaires forfait jour'),
     ('0037', 'Journal des acces'),
+    ('0038', 'Correctif types variables paie'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -93,6 +94,101 @@ _POSTES_DEPENSE_DEFAUT = [
     ('Fournitures de bureau', ['administratif']),
     ("Produit d'entretien", ['administratif', 'entretien']),
 ]
+
+
+def _affinite_colonne(cursor, table, colonne):
+    """Retourne le type declare d'une colonne (PRAGMA table_info), ou None."""
+    for row in cursor.execute(f'PRAGMA table_info({table})'):  # noqa: S608 - nom de table en dur
+        if row[1] == colonne:
+            return (row[2] or '').strip().upper()
+    return None
+
+
+def _corriger_types_variables_paie(cursor):
+    """Corrige l'affinite des colonnes numeriques de variables_paie et
+    variables_paie_defauts creees en TEXT par d'anciennes versions du schema.
+
+    SQLite stockait alors 0/1 sous forme de texte ('0'), valeur consideree
+    comme vraie cote Python/Jinja : toutes les cases mutuelle apparaissaient
+    cochees apres enregistrement. Reconstruit les tables avec les types
+    INTEGER/REAL (schema des migrations 0004 et 0010) et convertit les
+    donnees existantes. Idempotent : ne fait rien si les types sont corrects.
+    """
+    def _reconstruire(table, schema_corrige, cibles, conversions):
+        anciennes = {row[1] for row in cursor.execute(f'PRAGMA table_info({table})')}  # noqa: S608
+        cursor.execute(f'DROP TABLE IF EXISTS {table}_corrige')  # noqa: S608
+        cursor.execute(schema_corrige)
+        cols = [c for c in cibles if c in anciennes]
+        exprs = [conversions.get(c, c) for c in cols]
+        # Noms de colonnes et expressions definis en dur ci-dessous, jamais
+        # issus de donnees utilisateur.
+        cursor.execute(  # noqa: S608
+            f"INSERT INTO {table}_corrige ({', '.join(cols)}) "
+            f"SELECT {', '.join(exprs)} FROM {table}"
+        )
+        cursor.execute(f'DROP TABLE {table}')  # noqa: S608
+        cursor.execute(f'ALTER TABLE {table}_corrige RENAME TO {table}')  # noqa: S608
+
+    if _affinite_colonne(cursor, 'variables_paie', 'mutuelle') not in (None, 'INTEGER'):
+        _reconstruire(
+            'variables_paie',
+            '''CREATE TABLE variables_paie_corrige (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                mois INTEGER NOT NULL,
+                annee INTEGER NOT NULL,
+                mutuelle INTEGER NOT NULL DEFAULT 0,
+                nb_enfants INTEGER NOT NULL DEFAULT 0,
+                transport REAL NOT NULL DEFAULT 0,
+                acompte REAL NOT NULL DEFAULT 0,
+                saisie_salaire REAL NOT NULL DEFAULT 0,
+                pret_avance REAL NOT NULL DEFAULT 0,
+                autres_regularisation REAL NOT NULL DEFAULT 0,
+                commentaire TEXT,
+                heures_reelles REAL,
+                heures_supps REAL,
+                saisi_par INTEGER,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (saisi_par) REFERENCES users(id),
+                UNIQUE(user_id, mois, annee)
+            )''',
+            ['id', 'user_id', 'mois', 'annee', 'mutuelle', 'nb_enfants',
+             'transport', 'acompte', 'saisie_salaire', 'pret_avance',
+             'autres_regularisation', 'commentaire', 'heures_reelles',
+             'heures_supps', 'saisi_par', 'created_at', 'updated_at'],
+            {
+                'mutuelle': 'CASE WHEN CAST(mutuelle AS INTEGER) <> 0 THEN 1 ELSE 0 END',
+                'nb_enfants': 'COALESCE(CAST(nb_enfants AS INTEGER), 0)',
+                'transport': 'COALESCE(CAST(transport AS REAL), 0)',
+                'acompte': 'COALESCE(CAST(acompte AS REAL), 0)',
+                'saisie_salaire': 'COALESCE(CAST(saisie_salaire AS REAL), 0)',
+                'pret_avance': 'COALESCE(CAST(pret_avance AS REAL), 0)',
+                'autres_regularisation': 'COALESCE(CAST(autres_regularisation AS REAL), 0)',
+            },
+        )
+
+    if _affinite_colonne(cursor, 'variables_paie_defauts', 'mutuelle') not in (None, 'INTEGER'):
+        _reconstruire(
+            'variables_paie_defauts',
+            '''CREATE TABLE variables_paie_defauts_corrige (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                mutuelle INTEGER NOT NULL DEFAULT 0,
+                nb_enfants INTEGER NOT NULL DEFAULT 0,
+                saisie_salaire REAL NOT NULL DEFAULT 0,
+                pret_avance REAL NOT NULL DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )''',
+            ['id', 'user_id', 'mutuelle', 'nb_enfants', 'saisie_salaire', 'pret_avance'],
+            {
+                'mutuelle': 'CASE WHEN CAST(mutuelle AS INTEGER) <> 0 THEN 1 ELSE 0 END',
+                'nb_enfants': 'COALESCE(CAST(nb_enfants AS INTEGER), 0)',
+                'saisie_salaire': 'COALESCE(CAST(saisie_salaire AS REAL), 0)',
+                'pret_avance': 'COALESCE(CAST(pret_avance AS REAL), 0)',
+            },
+        )
 
 
 def init_db():
@@ -440,14 +536,17 @@ def init_db():
     ''')
 
     # ===== Table variables paie defauts (migration 0004) =====
+    # Types numeriques obligatoires : une affinite TEXT stockerait 0/1 sous
+    # forme de chaine ('0'), valeur consideree comme vraie cote Python/Jinja
+    # (cases mutuelle toutes cochees a l'affichage).
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS variables_paie_defauts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE,
-            mutuelle TEXT,
-            nb_enfants INTEGER DEFAULT 0,
-            saisie_salaire TEXT,
-            pret_avance TEXT,
+            mutuelle INTEGER NOT NULL DEFAULT 0,
+            nb_enfants INTEGER NOT NULL DEFAULT 0,
+            saisie_salaire REAL NOT NULL DEFAULT 0,
+            pret_avance REAL NOT NULL DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
@@ -459,13 +558,13 @@ def init_db():
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
-            mutuelle TEXT,
-            nb_enfants INTEGER DEFAULT 0,
-            transport TEXT,
-            acompte TEXT,
-            saisie_salaire TEXT,
-            pret_avance TEXT,
-            autres_regularisation TEXT,
+            mutuelle INTEGER NOT NULL DEFAULT 0,
+            nb_enfants INTEGER NOT NULL DEFAULT 0,
+            transport REAL NOT NULL DEFAULT 0,
+            acompte REAL NOT NULL DEFAULT 0,
+            saisie_salaire REAL NOT NULL DEFAULT 0,
+            pret_avance REAL NOT NULL DEFAULT 0,
+            autres_regularisation REAL NOT NULL DEFAULT 0,
             commentaire TEXT,
             heures_reelles REAL,
             heures_supps REAL,
@@ -1437,6 +1536,12 @@ def init_db():
             cursor.execute(f"SELECT {col} FROM presence_forfait_jour LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE presence_forfait_jour ADD COLUMN {col} TEXT")
+
+    # Migration 0038 : corriger les colonnes numeriques creees en TEXT dans
+    # variables_paie / variables_paie_defauts (cases mutuelle toutes cochees).
+    # Fallback indispensable : les bases creees par d'anciennes versions
+    # d'init_db ont le schema TEXT alors que 0004 y est marquee appliquee.
+    _corriger_types_variables_paie(cursor)
 
     conn.commit()
     conn.close()
