@@ -229,7 +229,7 @@ def deverrouiller_mois():
         journaliser_action(
             conn, ACTION_DEVERROUILLAGE_MOIS,
             cible_type='user', cible_id=user_id,
-            details=f"mois={mois}/{annee}, motif={motif}",
+            details=f"mois={mois}/{annee}, motif consigne dans l'historique des modifications",
         )
         conn.commit()
     finally:
