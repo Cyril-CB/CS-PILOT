@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Sécurité — Journal des actions{% endblock %}
+
+{% block content %}
+<style>
+    .journal-page { max-width: 1100px; margin: 0 auto; }
+    .journal-filtres {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 18px;
+        margin: 20px 0;
+        box-shadow: var(--shadow-sm);
+    }
+    .journal-filtres-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+        gap: 14px;
+        align-items: end;
+    }
+    .journal-filtres .form-group { margin: 0; }
+    .journal-actions-bar { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .journal-table-wrap {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 8px;
+        box-shadow: var(--shadow-sm);
+        overflow-x: auto;
+    }
+    .journal-user-nom { font-weight: 600; color: var(--gray-900); }
+    .journal-ip { font-family: monospace; color: var(--gray-500); font-size: 0.85rem; }
+    .journal-details { color: var(--gray-600); font-size: 0.85rem; }
+    .journal-date small { color: var(--gray-500); }
+    .journal-tabs { display: flex; gap: 8px; margin: 18px 0 4px; border-bottom: 2px solid var(--gray-200); }
+    .journal-tab {
+        padding: 10px 18px; text-decoration: none; color: var(--gray-600);
+        font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    .journal-tab:hover { color: var(--gray-900); }
+    .journal-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+</style>
+
+{% set badges = {
+    'cloture_conges': 'badge-info',
+    'enregistrement_variables_paie': 'badge-info',
+    'maj_statut_prepa_paie': 'badge-info',
+    'ajout_contrat': 'badge-info',
+    'ajout_pdf_contrat': 'badge-info',
+    'enregistrement_document_salarie': 'badge-info',
+    'generation_contrat': 'badge-info',
+    'creation_user': 'badge-warning',
+    'modification_user': 'badge-warning',
+    'changement_statut_user': 'badge-warning',
+    'validation_mois': 'badge-success',
+    'deverrouillage_mois': 'badge-danger'
+} %}
+
+<div class="journal-page">
+    <h1>🔒 Journal de sécurité</h1>
+    <div class="journal-tabs">
+        <a href="{{ url_for('securite_bp.journal_acces') }}" class="journal-tab">🔑 Connexions</a>
+        <a href="{{ url_for('securite_bp.journal_actions') }}" class="journal-tab active">📋 Actions</a>
+    </div>
+    <p class="subtitle">
+        Traçabilité des actions sensibles (qui a fait quoi, sur quelle cible) — affichage des {{ limite }} entrées les plus récentes.
+    </p>
+
+    <!-- Filtres -->
+    <div class="journal-filtres">
+        <form method="GET" action="{{ url_for('securite_bp.journal_actions') }}">
+            <div class="journal-filtres-grid">
+                <div class="form-group">
+                    <label for="action">Action</label>
+                    <select id="action" name="action">
+                        <option value="">-- Toutes les actions --</option>
+                        {% for cle, libelle in actions_labels.items() %}
+                        <option value="{{ cle }}" {% if action == cle %}selected{% endif %}>{{ libelle }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="recherche">Auteur</label>
+                    <input type="text" id="recherche" name="recherche" value="{{ recherche }}" placeholder="Nom ou prénom…">
+                </div>
+                <div class="form-group">
+                    <label for="date_debut">Date début</label>
+                    <input type="date" id="date_debut" name="date_debut" value="{{ date_debut }}">
+                </div>
+                <div class="form-group">
+                    <label for="date_fin">Date fin</label>
+                    <input type="date" id="date_fin" name="date_fin" value="{{ date_fin }}">
+                </div>
+            </div>
+            <div class="journal-actions-bar">
+                <button type="submit" class="btn btn-primary">🔍 Filtrer</button>
+                <a href="{{ url_for('securite_bp.journal_actions') }}" class="btn btn-secondary">↻ Réinitialiser</a>
+                <a href="{{ url_for('securite_bp.export_journal_actions', action=action, recherche=recherche, date_debut=date_debut, date_fin=date_fin) }}" class="btn btn-secondary">⬇️ Télécharger (CSV)</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tableau du journal -->
+    <div class="journal-table-wrap">
+        {% if entrees %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date et heure</th>
+                    <th>Auteur</th>
+                    <th>Action</th>
+                    <th>Cible</th>
+                    <th>Détails</th>
+                    <th>Adresse IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entrees %}
+                <tr>
+                    <td class="journal-date" style="white-space: nowrap;">
+                        {% set parts = (e.date_heure or '').split(' ') %}
+                        <strong>{{ parts[0] }}</strong>
+                        {% if parts|length > 1 %}<br><small>{{ parts[1] }}</small>{% endif %}
+                    </td>
+                    <td>
+                        <span class="journal-user-nom">
+                            {% if e.auteur_prenom or e.auteur_nom %}{{ e.auteur_prenom }} {{ e.auteur_nom }}{% else %}—{% endif %}
+                        </span>
+                    </td>
+                    <td><span class="badge {{ badges.get(e.action, 'badge-inactive') }}">{{ actions_labels.get(e.action, e.action) }}</span></td>
+                    <td>{{ cible_lisible(e) or '—' }}</td>
+                    <td class="journal-details">{{ e.details or '—' }}</td>
+                    <td><span class="journal-ip">{{ e.adresse_ip or '—' }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucune action enregistrée pour ces critères.</p>
+        {% endif %}
+    </div>
+
+    <div class="help-box" style="margin-top: 1.5rem;">
+        <h4>ℹ️ À propos du journal des actions</h4>
+        <p>
+            Ce journal trace les actions qui <strong>modifient l'état</strong> de l'application
+            (clôture des congés, variables de paie, statut de préparation de paie, contrats et
+            documents salariés, création / modification d'utilisateurs, validation des fiches).
+            Chaque entrée indique l'auteur, la cible et un contexte non sensible.
+        </p>
+        <p><strong>Confidentialité :</strong> page réservée à la direction et à la comptabilité. Aucune donnée personnelle (salaire, numéro de sécurité sociale) n'est consignée dans les détails.</p>
+    </div>
+</div>
+{% endblock %}

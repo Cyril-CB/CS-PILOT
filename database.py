@@ -76,6 +76,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0036', 'Horaires forfait jour'),
     ('0037', 'Journal des acces'),
     ('0038', 'Correctif types variables paie'),
+    ('0039', 'Journal des actions metier'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -391,6 +392,27 @@ def init_db():
     ''')
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_journal_acces_date ON journal_acces(date_heure)"
+    )
+
+    # ===== Journal des actions metier (audit, migration 0039) =====
+    # Trace les actions qui modifient l'etat (cloture conges, variables paie,
+    # documents salaries, generation de contrats...). Complementaire de
+    # journal_acces qui ne couvre que les connexions.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS journal_actions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_heure TEXT DEFAULT CURRENT_TIMESTAMP,
+            user_id INTEGER,
+            action TEXT NOT NULL,
+            cible_type TEXT,
+            cible_id INTEGER,
+            details TEXT,
+            adresse_ip TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_journal_actions_date ON journal_actions(date_heure)"
     )
 
     # ===== Table des demandes de recuperation =====

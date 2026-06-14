@@ -6,11 +6,16 @@ Inclut la cloture mensuelle des conges.
 """
 import json
 import calendar
+import logging
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash)
 from datetime import datetime, date
 from database import get_db
 from utils import login_required, NOMS_MOIS
+from access_log import (journaliser_action, ACTION_ENREG_VARIABLES_PAIE,
+                        ACTION_CLOTURE_CONGES)
+
+logger = logging.getLogger(__name__)
 
 variables_paie_bp = Blueprint('variables_paie_bp', __name__)
 
@@ -215,10 +220,21 @@ def enregistrer_variables_paie():
 
             nb_saved += 1
 
+        # Trace d'audit dans la meme transaction que l'enregistrement
+        journaliser_action(
+            conn, ACTION_ENREG_VARIABLES_PAIE,
+            cible_type='mois_paie',
+            details=f"{nb_saved} salarie(s), mois={mois}/{annee}",
+        )
         conn.commit()
         flash(f"Variables de paie enregistrees pour {nb_saved} salarie(s) - {NOMS_MOIS[mois]} {annee}.", 'success')
-    except Exception as e:
-        flash(f"Erreur lors de l'enregistrement : {str(e)}", 'error')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec enregistrement variables paie (mois=%s, annee=%s, par=%s)",
+            mois, annee, session.get('user_id'),
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 
@@ -346,6 +362,12 @@ def cloturer_conges():
             VALUES (?, ?, ?, ?, ?)
         ''', (mois, annee, session['user_id'], nb_traites, json.dumps(details)))
 
+        # Trace d'audit dans la meme transaction que la cloture
+        journaliser_action(
+            conn, ACTION_CLOTURE_CONGES,
+            cible_type='mois_paie',
+            details=f"{nb_traites} salarie(s) traite(s), mois={mois}/{annee}",
+        )
         conn.commit()
 
         msg = f"Cloture conges {NOMS_MOIS[mois]} {annee} : {nb_traites} salarie(s) traite(s)."
@@ -356,9 +378,13 @@ def cloturer_conges():
             msg += " Bascule acquis → a prendre effectuee."
         flash(msg, 'success')
 
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        flash(f"Erreur lors de la cloture : {str(e)}", 'error')
+        logger.exception(
+            "Echec cloture conges (mois=%s, annee=%s, par=%s)",
+            mois, annee, session.get('user_id'),
+        )
+        flash("Erreur lors de la cloture. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 

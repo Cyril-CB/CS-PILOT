@@ -7,6 +7,7 @@ Onglet 2 : Gestion des modeles DOCX (upload, download, suppression)
 """
 import os
 import re
+import logging
 import unicodedata
 from io import BytesIO
 from flask import (Blueprint, render_template, request, redirect,
@@ -14,7 +15,10 @@ from flask import (Blueprint, render_template, request, redirect,
 from database import get_db, DATA_DIR
 from utils import login_required, get_setting, save_setting
 from app_options import get_option_bool
+from access_log import journaliser_action, ACTION_GENERATION_CONTRAT
 from blueprints.pesee_alisfa import CRITERES_ALISFA as _CRITERES_ALISFA
+
+logger = logging.getLogger(__name__)
 
 # Lookup : _POINTS_PAR_CRITERE[i][niveau] = valeur en points (str) pour le critère i (0-based)
 _POINTS_PAR_CRITERE = [
@@ -393,8 +397,12 @@ def generer_contrat():
     try:
         doc = Document(modele_path)
         _remplacer_dans_document(doc, replacements)
-    except Exception as e:
-        flash(f"Erreur lors de la génération du contrat : {str(e)}", 'error')
+    except Exception:
+        logger.exception(
+            "Echec generation contrat (user_id=%s, modele=%s, par=%s)",
+            user_id, modele['fichier_path'], session.get('user_id'),
+        )
+        flash("Erreur lors de la génération du contrat. L'incident a ete journalise.", 'error')
         return redirect(url_for('generation_contrats_bp.generation_contrats', onglet='1', user_id=user_id))
 
     # Construire le nom du fichier généré
@@ -431,6 +439,11 @@ def generer_contrat():
         INSERT INTO contrats_generes (user_id, fichier_path, fichier_nom, type_contrat, created_by)
         VALUES (?, ?, ?, ?, ?)
     ''', (user_id, nom_fichier, nom_fichier, type_contrat_label, session['user_id']))
+    journaliser_action(
+        conn, ACTION_GENERATION_CONTRAT,
+        cible_type='user', cible_id=user_id,
+        details=f"type={type_contrat_label}",
+    )
     conn.commit()
     conn.close()
 

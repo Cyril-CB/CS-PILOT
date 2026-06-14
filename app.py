@@ -9,10 +9,55 @@ from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
+import logging
+from logging.handlers import RotatingFileHandler
 import app_version
 from database import init_db, get_db, DATA_DIR
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES
 from extensions import csrf, limiter
+
+
+def configure_logging():
+    """Configure le logging applicatif : console + fichier avec rotation.
+
+    Sans handler configure, les logger.info()/logger.exception() des modules
+    partent dans le vide (seul le niveau WARNING atteint la console par defaut).
+    On ecrit dans DATA_DIR/logs/cspilot.log (inscriptible meme en mode .exe)
+    avec rotation pour borner la taille. Neutralise sous pytest, ou la capture
+    des logs est geree par le harnais de test.
+    """
+    if "pytest" in sys.modules:
+        return
+    root = logging.getLogger()
+    if root.handlers:  # deja configure (evite les handlers en double)
+        return
+    root.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    console = logging.StreamHandler()
+    console.setFormatter(fmt)
+    root.addHandler(console)
+
+    try:
+        log_dir = os.path.join(DATA_DIR, 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            os.path.join(log_dir, 'cspilot.log'),
+            maxBytes=2_000_000, backupCount=10, encoding='utf-8',
+        )
+        file_handler.setFormatter(fmt)
+        root.addHandler(file_handler)
+    except OSError:
+        # Repertoire non inscriptible : on conserve au moins la console.
+        logging.getLogger(__name__).warning(
+            "Journalisation fichier indisponible (DATA_DIR non inscriptible)"
+        )
+
+    # Limiter le bruit des logs de requetes HTTP de werkzeug.
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
+
+configure_logging()
 
 
 def generate_env_file(env_path):

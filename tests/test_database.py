@@ -34,7 +34,7 @@ class TestInitDb:
         'documents_salaries', 'prepa_paie_statut', 'conges_cloture_mensuelle',
         'postes_alisfa', 'postes_depense', 'postes_depense_secteur_types',
         'budgets', 'budget_lignes', 'budget_reel_lignes', 'frequentation_creche',
-        'budget_prev_config_codes', 'budget_prev_saisies',
+        'budget_prev_config_codes', 'budget_prev_saisies', 'journal_actions',
     ]
 
     def test_tables_creees(self, app, db):
@@ -89,6 +89,11 @@ class TestInitDb:
         """La migration 0038 doit exister sous forme de fichier."""
         versions = {m['version'] for m in lister_fichiers_migrations()}
         assert '0038' in versions
+
+    def test_fichier_migration_0039_present(self):
+        """La migration 0039 doit exister sous forme de fichier."""
+        versions = {m['version'] for m in lister_fichiers_migrations()}
+        assert '0039' in versions
 
     def test_postes_depense_initialises(self, app, db):
         """Les postes de dépense par défaut doivent être créés."""

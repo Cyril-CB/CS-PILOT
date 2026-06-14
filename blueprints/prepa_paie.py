@@ -4,12 +4,16 @@ Page de preparation de paie mensuelle : synthese de toutes les infos
 necessaires pour le traitement de la paie de chaque salarie.
 Accessible par comptable, directeur et prestataire.
 """
+import logging
 from io import BytesIO
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, make_response)
 from datetime import datetime
 from database import get_db
 from utils import login_required, NOMS_MOIS
+from access_log import journaliser_action, ACTION_MAJ_STATUT_PREPA_PAIE
+
+logger = logging.getLogger(__name__)
 
 prepa_paie_bp = Blueprint('prepa_paie_bp', __name__)
 
@@ -221,10 +225,20 @@ def enregistrer_statut():
                     VALUES (?, ?, ?, ?, ?)
                 ''', (uid, mois, annee, traite, session['user_id']))
 
+        journaliser_action(
+            conn, ACTION_MAJ_STATUT_PREPA_PAIE,
+            cible_type='mois_paie',
+            details=f"mois={mois}/{annee}, {len(user_ids)} ligne(s)",
+        )
         conn.commit()
         flash(f"Statuts enregistres pour {NOMS_MOIS[mois]} {annee}.", 'success')
-    except Exception as e:
-        flash(f"Erreur : {str(e)}", 'error')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec enregistrement statut prepa paie (mois=%s, annee=%s, par=%s)",
+            mois, annee, session.get('user_id'),
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 

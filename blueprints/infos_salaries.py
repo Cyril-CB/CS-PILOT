@@ -5,11 +5,16 @@ Fiche de renseignement salarie : email, contrats, documents
 """
 import os
 import re
+import logging
 import unicodedata
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
 from database import get_db, DATA_DIR
 from utils import login_required
+from access_log import (journaliser_action, ACTION_AJOUT_CONTRAT,
+                        ACTION_AJOUT_PDF_CONTRAT, ACTION_ENREG_DOCUMENT_SALARIE)
+
+logger = logging.getLogger(__name__)
 
 infos_salaries_bp = Blueprint('infos_salaries_bp', __name__)
 
@@ -378,10 +383,19 @@ def ajouter_contrat():
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (user_id, type_contrat, date_debut, date_fin,
               fichier_path, fichier_nom, session['user_id'], forfait, nbr_jours, temps_hebdo))
+        journaliser_action(
+            conn, ACTION_AJOUT_CONTRAT,
+            cible_type='user', cible_id=user_id,
+            details=f"type={type_contrat}",
+        )
         conn.commit()
         flash(f"Contrat {type_contrat} ajoute avec succes.", 'success')
-    except Exception as e:
-        flash(f"Erreur : {str(e)}", 'error')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec ajout contrat (user_id=%s, par=%s)", user_id, session.get('user_id')
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 
@@ -448,10 +462,20 @@ def ajouter_pdf_contrat(contrat_id):
             'UPDATE contrats SET fichier_path = ?, fichier_nom = ? WHERE id = ?',
             (fichier_path, fichier.filename, contrat_id)
         )
+        journaliser_action(
+            conn, ACTION_AJOUT_PDF_CONTRAT,
+            cible_type='contrat', cible_id=contrat_id,
+            details=f"user_id={user_id}",
+        )
         conn.commit()
         flash("PDF du contrat ajoute avec succes.", 'success')
-    except Exception as e:
-        flash(f"Erreur : {str(e)}", 'error')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec ajout PDF contrat (contrat_id=%s, par=%s)",
+            contrat_id, session.get('user_id'),
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 
@@ -528,11 +552,21 @@ def ajouter_document():
                 VALUES (?, ?, ?, ?, ?, ?)
             ''', (user_id, type_document, description, fichier_path,
                   fichier.filename, session['user_id']))
+        journaliser_action(
+            conn, ACTION_ENREG_DOCUMENT_SALARIE,
+            cible_type='user', cible_id=user_id,
+            details=f"type={type_document}",
+        )
         conn.commit()
         label = dict(TYPES_DOCUMENT).get(type_document, type_document)
         flash(f"Document '{label}' enregistre.", 'success')
-    except Exception as e:
-        flash(f"Erreur : {str(e)}", 'error')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec enregistrement document salarie (user_id=%s, par=%s)",
+            user_id, session.get('user_id'),
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
     finally:
         conn.close()
 
