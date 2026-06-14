@@ -1,13 +1,19 @@
 """
-Journalisation des acces a l'application (securite).
+Journalisation de l'application : acces (securite) et actions metier (audit).
 
-Enregistre les evenements lies aux connexions : connexions reussies, echecs de
-connexion, demandes de reinitialisation et modifications de mot de passe. Le
-journal est consultable par la direction via le menu Administration > Securite.
+- enregistrer_acces() trace les evenements de connexion (connexions reussies,
+  echecs, demandes de reinitialisation, changements de mot de passe). Il ouvre
+  sa propre connexion et ne doit JAMAIS interrompre le parcours utilisateur :
+  toute erreur reste silencieuse vis-a-vis de l'appelant (tracee dans les logs).
 
-La journalisation est concue pour ne JAMAIS interrompre le parcours
-utilisateur : toute erreur lors de l'enregistrement est tracee dans les logs
-applicatifs mais reste silencieuse vis-a-vis de l'appelant.
+- journaliser_action() trace les actions qui modifient l'etat (cloture conges,
+  variables de paie, documents salaries, generation de contrats...). A la
+  difference de enregistrer_acces(), il ecrit dans la transaction de
+  l'appelant (atomicite : la ligne d'audit est validee avec l'action) et ne
+  capture pas les exceptions : une action sensible ne doit pas etre validee
+  sans sa trace.
+
+Les deux journaux sont consultables par la direction via Administration > Securite.
 """
 import logging
 
@@ -27,6 +33,27 @@ EVENEMENTS_LABELS = {
     EVT_ECHEC_CONNEXION: 'Échec de connexion',
     EVT_REINITIALISATION_DEMANDEE: 'Réinitialisation demandée',
     EVT_MOT_DE_PASSE_MODIFIE: 'Mot de passe modifié',
+}
+
+# Types d'actions metier journalisees (audit). Valeurs stables : ne pas
+# renommer une fois en production (l'historique y fait reference).
+ACTION_CLOTURE_CONGES = 'cloture_conges'
+ACTION_ENREG_VARIABLES_PAIE = 'enregistrement_variables_paie'
+ACTION_MAJ_STATUT_PREPA_PAIE = 'maj_statut_prepa_paie'
+ACTION_AJOUT_CONTRAT = 'ajout_contrat'
+ACTION_AJOUT_PDF_CONTRAT = 'ajout_pdf_contrat'
+ACTION_ENREG_DOCUMENT_SALARIE = 'enregistrement_document_salarie'
+ACTION_GENERATION_CONTRAT = 'generation_contrat'
+
+# Libelles lisibles des actions metier
+ACTIONS_LABELS = {
+    ACTION_CLOTURE_CONGES: 'Clôture mensuelle des congés',
+    ACTION_ENREG_VARIABLES_PAIE: 'Enregistrement des variables de paie',
+    ACTION_MAJ_STATUT_PREPA_PAIE: 'Mise à jour du statut de préparation de paie',
+    ACTION_AJOUT_CONTRAT: 'Ajout d\'un contrat',
+    ACTION_AJOUT_PDF_CONTRAT: 'Ajout du PDF d\'un contrat',
+    ACTION_ENREG_DOCUMENT_SALARIE: 'Enregistrement d\'un document salarié',
+    ACTION_GENERATION_CONTRAT: 'Génération d\'un contrat',
 }
 
 
@@ -83,3 +110,38 @@ def enregistrer_acces(evenement, login_saisi=None, user_id=None, adresse_ip=None
     finally:
         if conn:
             conn.close()
+
+
+def journaliser_action(conn, action, user_id=None, cible_type=None,
+                       cible_id=None, details=None):
+    """Enregistre une action metier sensible dans le journal d'audit.
+
+    Ecrit la ligne d'audit dans la transaction de l'appelant (`conn`) : elle est
+    donc validee atomiquement avec l'action elle-meme (c'est l'appelant qui
+    appelle commit()). Contrairement a enregistrer_acces(), cette fonction ne
+    capture PAS les exceptions : si l'audit echoue, l'action doit echouer avec,
+    pour ne jamais laisser une modification sensible sans trace. Appeler depuis
+    le bloc try de l'action, juste avant conn.commit().
+
+    Args:
+        conn: connexion/transaction de l'appelant (l'INSERT y est rattache).
+        action: un des ACTION_* (type d'action).
+        user_id: auteur de l'action ; a defaut, repris de la session courante.
+        cible_type: type d'entite visee (ex: 'user', 'mois_paie').
+        cible_id: identifiant de l'entite visee, si applicable.
+        details: contexte libre, NON sensible (compteurs, mois/annee, type).
+            Ne JAMAIS y mettre de donnee personnelle (salaire, numero secu...).
+    """
+    if user_id is None:
+        try:
+            from flask import session, has_request_context
+            if has_request_context():
+                user_id = session.get('user_id')
+        except Exception:
+            user_id = None
+    conn.execute(
+        'INSERT INTO journal_actions '
+        '(user_id, action, cible_type, cible_id, details, adresse_ip) '
+        'VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, action, cible_type, cible_id, details, _adresse_ip())
+    )
