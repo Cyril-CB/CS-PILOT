@@ -44,6 +44,11 @@ ACTION_AJOUT_CONTRAT = 'ajout_contrat'
 ACTION_AJOUT_PDF_CONTRAT = 'ajout_pdf_contrat'
 ACTION_ENREG_DOCUMENT_SALARIE = 'enregistrement_document_salarie'
 ACTION_GENERATION_CONTRAT = 'generation_contrat'
+ACTION_CREATION_USER = 'creation_user'
+ACTION_MODIF_USER = 'modification_user'
+ACTION_STATUT_USER = 'changement_statut_user'
+ACTION_VALIDATION_MOIS = 'validation_mois'
+ACTION_DEVERROUILLAGE_MOIS = 'deverrouillage_mois'
 
 # Libelles lisibles des actions metier
 ACTIONS_LABELS = {
@@ -54,6 +59,11 @@ ACTIONS_LABELS = {
     ACTION_AJOUT_PDF_CONTRAT: 'Ajout du PDF d\'un contrat',
     ACTION_ENREG_DOCUMENT_SALARIE: 'Enregistrement d\'un document salarié',
     ACTION_GENERATION_CONTRAT: 'Génération d\'un contrat',
+    ACTION_CREATION_USER: 'Création d\'un utilisateur',
+    ACTION_MODIF_USER: 'Modification d\'un utilisateur',
+    ACTION_STATUT_USER: 'Activation / désactivation d\'un utilisateur',
+    ACTION_VALIDATION_MOIS: 'Validation mensuelle d\'une fiche',
+    ACTION_DEVERROUILLAGE_MOIS: 'Déverrouillage d\'une fiche validée',
 }
 
 

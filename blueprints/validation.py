@@ -9,6 +9,8 @@ from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_
 from utils import (login_required, get_user_info, calculer_heures,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
 from app_options import get_option_bool
+from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
+                        ACTION_DEVERROUILLAGE_MOIS)
 
 validation_bp = Blueprint('validation_bp', __name__)
 
@@ -162,6 +164,11 @@ def valider_mois():
         else:
             flash('Validation enregistrée', 'success')
 
+        journaliser_action(
+            conn, ACTION_VALIDATION_MOIS,
+            cible_type='user', cible_id=user_id,
+            details=f"mois={mois}/{annee}, type={','.join(types_validation)}",
+        )
         conn.commit()
     finally:
         conn.close()
@@ -219,6 +226,11 @@ def deverrouiller_mois():
             WHERE user_id = ? AND mois = ? AND annee = ?
         ''', (user_id, mois, annee))
 
+        journaliser_action(
+            conn, ACTION_DEVERROUILLAGE_MOIS,
+            cible_type='user', cible_id=user_id,
+            details=f"mois={mois}/{annee}, motif={motif}",
+        )
         conn.commit()
     finally:
         conn.close()

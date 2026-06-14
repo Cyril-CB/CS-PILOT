@@ -33,6 +33,13 @@
     .journal-user-nom { font-size: 0.82rem; color: var(--gray-500); }
     .journal-ip { font-family: monospace; color: var(--gray-500); font-size: 0.85rem; }
     .journal-date small { color: var(--gray-500); }
+    .journal-tabs { display: flex; gap: 8px; margin: 18px 0 4px; border-bottom: 2px solid var(--gray-200); }
+    .journal-tab {
+        padding: 10px 18px; text-decoration: none; color: var(--gray-600);
+        font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    .journal-tab:hover { color: var(--gray-900); }
+    .journal-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 </style>
 
 {% set badges = {
@@ -43,7 +50,11 @@
 } %}
 
 <div class="journal-page">
-    <h1>🔒 Journal des accès</h1>
+    <h1>🔒 Journal de sécurité</h1>
+    <div class="journal-tabs">
+        <a href="{{ url_for('securite_bp.journal_acces') }}" class="journal-tab active">🔑 Connexions</a>
+        <a href="{{ url_for('securite_bp.journal_actions') }}" class="journal-tab">📋 Actions</a>
+    </div>
     <p class="subtitle">
         Traçabilité des connexions à l'application — affichage des {{ limite }} entrées les plus récentes.
     </p>

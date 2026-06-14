@@ -3,12 +3,17 @@ Blueprint admin_bp.
 """
 import re
 import sqlite3
+import logging
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 from database import get_db
 from blueprints.delegations import MISSIONS, MISSIONS_MAP, save_delegation
 from utils import login_required, validate_password_strength
+from access_log import (journaliser_action, ACTION_CREATION_USER,
+                        ACTION_MODIF_USER, ACTION_STATUT_USER)
+
+logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint('admin_bp', __name__)
 
@@ -172,18 +177,28 @@ def creer_user():
             password_hash = generate_password_hash(password)
 
             try:
-                conn.execute('''
+                cur = conn.execute('''
                     INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id,
                                        solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde,
                                        force_password_change)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (nom, prenom, login, password_hash, profil, secteur_id, responsable_id,
                       solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, 1))
+                journaliser_action(
+                    conn, ACTION_CREATION_USER,
+                    cible_type='user', cible_id=cur.lastrowid,
+                    details=f"login={login}, profil={profil}",
+                )
                 conn.commit()
                 flash(f'Utilisateur {prenom} {nom} créé avec succès', 'success')
                 return redirect(url_for('admin_bp.gestion_users'))
-            except Exception as e:
-                flash(f'Erreur: {str(e)}', 'error')
+            except Exception:
+                conn.rollback()
+                logger.exception(
+                    "Echec creation utilisateur (login=%s, par=%s)",
+                    login, session.get('user_id'),
+                )
+                flash("Erreur lors de la creation. L'incident a ete journalise.", 'error')
 
         # Récupérer les secteurs et responsables pour les listes déroulantes
         secteurs = conn.execute('SELECT * FROM secteurs ORDER BY nom').fetchall()
@@ -262,11 +277,21 @@ def modifier_user(user_id):
                     ''', (nom, prenom, login, profil, secteur_id, responsable_id,
                           solde_initial, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde, user_id))
 
+                journaliser_action(
+                    conn, ACTION_MODIF_USER,
+                    cible_type='user', cible_id=user_id,
+                    details=f"profil={profil}, mdp_modifie={'oui' if nouveau_password else 'non'}",
+                )
                 conn.commit()
                 flash(f'Utilisateur {prenom} {nom} modifié avec succès', 'success')
                 return redirect(url_for('admin_bp.gestion_users'))
-            except Exception as e:
-                flash(f'Erreur: {str(e)}', 'error')
+            except Exception:
+                conn.rollback()
+                logger.exception(
+                    "Echec modification utilisateur (user_id=%s, par=%s)",
+                    user_id, session.get('user_id'),
+                )
+                flash("Erreur lors de la modification. L'incident a ete journalise.", 'error')
 
         # Récupérer l'utilisateur
         user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
@@ -301,8 +326,13 @@ def toggle_user(user_id):
         if user:
             nouveau_statut = 0 if user['actif'] == 1 else 1
             conn.execute('UPDATE users SET actif = ? WHERE id = ?', (nouveau_statut, user_id))
-            conn.commit()
             statut_texte = 'activé' if nouveau_statut == 1 else 'désactivé'
+            journaliser_action(
+                conn, ACTION_STATUT_USER,
+                cible_type='user', cible_id=user_id,
+                details=f"statut={statut_texte}",
+            )
+            conn.commit()
             flash(f'Utilisateur {user["prenom"]} {user["nom"]} {statut_texte}', 'success')
     finally:
         conn.close()
