@@ -66,7 +66,7 @@
                             {% for c in row.contrats %}
                             <div style="margin-bottom: 4px; font-size: 0.85rem;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
                                 <span class="badge badge-info">{{ c.type_contrat }}</span>
-                                {{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}{% if c.type_contrat == 'CDD' and c.temps_hebdo %} ({{ "%.1f"|format(c.temps_hebdo) }}h){% endif %}
+                                <span style="white-space: nowrap;">{{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}{% if c.type_contrat == 'CDD' and c.temps_hebdo %} ({{ "%.1f"|format(c.temps_hebdo) }}h){% endif %}</span>
                                 {% if c.fichier_path %}
                                 <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm" style="padding: 1px 6px; font-size: 0.75rem; margin-left: 4px;">PDF</a>
                                 {% endif %}
