@@ -77,3 +77,16 @@ class TestPagePrepaPaie:
 
         # Pas de temps hebdo entre parentheses pour un CDI
         assert '(35.0h)' not in html
+
+    def test_colonne_pdf_separee_du_contrat(self, comptable_client, sample_users, app, db):
+        """Le lien PDF du contrat dispose de sa propre colonne, apres 'Contrat'."""
+        with app.app_context():
+            _inserer_contrat_cdd(db, sample_users['salarie_id'])
+
+        resp = comptable_client.get('/prepa_paie?mois=6&annee=2026')
+        assert resp.status_code == 200
+        html = resp.data.decode('utf-8')
+
+        # En-tete dedie 'PDF' present, place juste apres l'en-tete 'Contrat'
+        assert '>PDF</th>' in html
+        assert html.index('>Contrat</th>') < html.index('>PDF</th>') < html.index('>Forfait</th>')
