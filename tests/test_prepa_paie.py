@@ -15,6 +15,15 @@ def _inserer_contrat(db, user_id):
     db.commit()
 
 
+def _inserer_contrat_cdd(db, user_id, temps_hebdo=28.0):
+    """Cree un CDD actif avec un temps de travail hebdomadaire."""
+    db.execute(
+        "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+        "VALUES (?, 'CDD', '2026-01-01', '2026-12-31', ?)", (user_id, temps_hebdo)
+    )
+    db.commit()
+
+
 class TestPagePrepaPaie:
 
     def test_acces_refuse_salarie(self, auth_client):
@@ -39,3 +48,32 @@ class TestPagePrepaPaie:
         assert html.count('>Nom Prenom</th>') == 1
         # Le nom du salarie n'apparait qu'une fois par ligne (plus de rappel a droite)
         assert html.count('<strong>Martin</strong>') == 1
+
+    def test_cdd_affiche_temps_hebdo_entre_parentheses(self, comptable_client, sample_users, app, db):
+        """Pour un CDD, le temps de travail hebdomadaire suit les dates entre parentheses."""
+        with app.app_context():
+            _inserer_contrat_cdd(db, sample_users['salarie_id'], temps_hebdo=28.0)
+
+        resp = comptable_client.get('/prepa_paie?mois=6&annee=2026')
+        assert resp.status_code == 200
+        html = resp.data.decode('utf-8')
+
+        # Les dates du contrat sont suivies du temps hebdo entre parentheses
+        assert '(28.0h)' in html
+
+    def test_cdi_n_affiche_pas_temps_hebdo(self, comptable_client, sample_users, app, db):
+        """Le temps hebdo entre parentheses est reserve aux CDD (pas les CDI)."""
+        with app.app_context():
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+                "VALUES (?, 'CDI', '2026-01-01', NULL, 35.0)",
+                (sample_users['salarie_id'],)
+            )
+            db.commit()
+
+        resp = comptable_client.get('/prepa_paie?mois=6&annee=2026')
+        assert resp.status_code == 200
+        html = resp.data.decode('utf-8')
+
+        # Pas de temps hebdo entre parentheses pour un CDI
+        assert '(35.0h)' not in html
