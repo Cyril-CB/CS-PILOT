@@ -90,3 +90,24 @@ class TestPagePrepaPaie:
         # En-tete dedie 'PDF' present, place juste apres l'en-tete 'Contrat'
         assert '>PDF</th>' in html
         assert html.index('>Contrat</th>') < html.index('>PDF</th>') < html.index('>Forfait</th>')
+
+    def test_export_excel_contient_temps_hebdo(self, comptable_client, sample_users, app, db):
+        """L'export Excel comporte une colonne 'Temps Hebdo (h)' renseignee."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        with app.app_context():
+            _inserer_contrat_cdd(db, sample_users['salarie_id'], temps_hebdo=28.0)
+
+        resp = comptable_client.get('/prepa_paie/export_excel?mois=6&annee=2026')
+        assert resp.status_code == 200
+
+        wb = load_workbook(BytesIO(resp.data))
+        ws = wb.active
+        headers = [cell.value for cell in ws[1]]
+        assert 'Temps Hebdo (h)' in headers
+        # La colonne est positionnee juste apres 'Date fin'
+        assert headers.index('Temps Hebdo (h)') == headers.index('Date fin') + 1
+        # La valeur du CDD figure sur la ligne du salarie (ligne 2)
+        col = headers.index('Temps Hebdo (h)') + 1
+        assert ws.cell(row=2, column=col).value == 28.0

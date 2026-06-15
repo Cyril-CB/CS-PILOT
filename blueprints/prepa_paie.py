@@ -288,7 +288,7 @@ def export_excel():
     # En-tetes
     headers = [
         'Traite', 'Nom', 'Prenom', 'Secteur',
-        'Contrat (type)', 'Date debut', 'Date fin',
+        'Contrat (type)', 'Date debut', 'Date fin', 'Temps Hebdo (h)',
         'Forfait', 'Nbr. Jours',
         'Mutuelle', 'Enfants', 'H. reelles', 'H. supps',
         'Transport', 'Acompte',
@@ -327,6 +327,7 @@ def export_excel():
             contrat.get('type_contrat', ''),
             contrat.get('date_debut', ''),
             contrat.get('date_fin', ''),
+            contrat.get('temps_hebdo') or '',
             contrat.get('forfait', ''),
             contrat.get('nbr_jours', ''),
             'Oui' if item['mutuelle'] else 'Non',
@@ -362,15 +363,16 @@ def export_excel():
             ws.cell(row=row_num, column=5, value=extra_contrat.get('type_contrat', '')).border = thin_border
             ws.cell(row=row_num, column=6, value=extra_contrat.get('date_debut', '')).border = thin_border
             ws.cell(row=row_num, column=7, value=extra_contrat.get('date_fin', '')).border = thin_border
-            ws.cell(row=row_num, column=8, value=extra_contrat.get('forfait', '')).border = thin_border
-            ws.cell(row=row_num, column=9, value=extra_contrat.get('nbr_jours', '')).border = thin_border
-            for c in range(10, len(headers) + 1):  # Colonnes après contrat
+            ws.cell(row=row_num, column=8, value=extra_contrat.get('temps_hebdo') or '').border = thin_border
+            ws.cell(row=row_num, column=9, value=extra_contrat.get('forfait', '')).border = thin_border
+            ws.cell(row=row_num, column=10, value=extra_contrat.get('nbr_jours', '')).border = thin_border
+            for c in range(11, len(headers) + 1):  # Colonnes après contrat
                 ws.cell(row=row_num, column=c, value='').border = thin_border
 
         row_num += 1
 
     # Ajuster largeurs de colonnes
-    col_widths = [8, 15, 15, 15, 12, 12, 12, 12, 10, 10, 8, 10, 10, 10, 10, 12, 12, 12, 20, 40]
+    col_widths = [8, 15, 15, 15, 12, 12, 12, 12, 12, 10, 10, 8, 10, 10, 10, 10, 12, 12, 12, 20, 40]
     for i, w in enumerate(col_widths, 1):
         ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
 
