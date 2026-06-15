@@ -34,6 +34,7 @@
                         <th class="pp-col-nom">Nom Prenom</th>
                         <th>Secteur</th>
                         <th style="min-width: 280px;">Contrat</th>
+                        <th>PDF</th>
                         <th>Forfait</th>
                         <th>Nbr. Jours</th>
                         <th>Mutuelle</th>
@@ -64,11 +65,19 @@
                         <td style="font-size: 0.85rem;">{{ row.secteur }}</td>
                         <td>
                             {% for c in row.contrats %}
-                            <div style="margin-bottom: 4px; font-size: 0.85rem;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
+                            <div style="margin-bottom: 4px; font-size: 0.85rem; white-space: nowrap;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
                                 <span class="badge badge-info">{{ c.type_contrat }}</span>
-                                <span style="white-space: nowrap;">{{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}{% if c.type_contrat == 'CDD' and c.temps_hebdo %} ({{ "%.1f"|format(c.temps_hebdo) }}h){% endif %}</span>
+                                {{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}{% if c.type_contrat == 'CDD' and c.temps_hebdo %} ({{ "%.1f"|format(c.temps_hebdo) }}h){% endif %}
+                            </div>
+                            {% endfor %}
+                        </td>
+                        <td style="text-align: center;">
+                            {% for c in row.contrats %}
+                            <div style="margin-bottom: 4px; font-size: 0.85rem;{% if not loop.first %} border-top: 1px solid var(--gray-200); padding-top: 4px;{% endif %}">
                                 {% if c.fichier_path %}
-                                <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm" style="padding: 1px 6px; font-size: 0.75rem; margin-left: 4px;">PDF</a>
+                                <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn btn-sm" style="padding: 1px 6px; font-size: 0.75rem;">PDF</a>
+                                {% else %}
+                                <span style="color: var(--gray-400);">-</span>
                                 {% endif %}
                             </div>
                             {% endfor %}
