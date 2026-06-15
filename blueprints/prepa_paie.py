@@ -90,7 +90,7 @@ def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mo
         # Contrats actifs sur le mois
         contrats = conn.execute('''
             SELECT id, type_contrat, date_debut, date_fin, forfait, nbr_jours,
-                   fichier_path, fichier_nom
+                   temps_hebdo, fichier_path, fichier_nom
             FROM contrats
             WHERE user_id = ?
             AND date_debut <= ?
