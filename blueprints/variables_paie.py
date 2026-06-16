@@ -25,6 +25,34 @@ def _peut_gerer_variables_paie():
     return session.get('profil') in ['comptable', 'directeur']
 
 
+def _variables_modifiees(ancien, nouveau):
+    """Indique si les variables de paie visibles en prepa paie ont change.
+
+    `ancien` : ligne variables_paie existante (sqlite Row / dict) ou None
+    lorsqu'aucune donnee n'a encore ete enregistree pour ce salarie ce mois-la.
+    `nouveau` : dict des valeurs issues du formulaire.
+
+    La comparaison porte sur les memes champs (et avec la meme tolerance
+    "valeur vide = 0") que ceux repris dans la grille de preparation de paie :
+    on ne retire la validation du prestataire que lorsqu'une donnee qu'il voit
+    change reellement. En l'absence de ligne existante, la reference est l'etat
+    "tout a zero" affiche en prepa paie tant que rien n'a ete saisi.
+    """
+    a = dict(ancien) if ancien else {}
+
+    if int(a.get('mutuelle') or 0) != int(nouveau['mutuelle'] or 0):
+        return True
+    if int(a.get('nb_enfants') or 0) != int(nouveau['nb_enfants'] or 0):
+        return True
+    for champ in ('heures_reelles', 'heures_supps', 'transport', 'acompte',
+                  'saisie_salaire', 'pret_avance', 'autres_regularisation'):
+        if float(a.get(champ) or 0) != float(nouveau[champ] or 0):
+            return True
+    if (a.get('commentaire') or '') != (nouveau['commentaire'] or ''):
+        return True
+    return False
+
+
 @variables_paie_bp.route('/variables_paie', methods=['GET'])
 @login_required
 def variables_paie():
@@ -155,6 +183,9 @@ def enregistrer_variables_paie():
 
     conn = get_db()
     nb_saved = 0
+    # Salaries dont une variable de paie change ce mois-ci : leur validation
+    # eventuelle en preparation de paie sera retiree (case a recocher).
+    uids_modifies = []
 
     try:
         for uid in user_ids:
@@ -171,12 +202,29 @@ def enregistrer_variables_paie():
             autres_reg = request.form.get(f'autres_regularisation_{uid}', 0, type=float)
             commentaire = request.form.get(f'commentaire_{uid}', '').strip() or None
 
-            # Upsert donnees mensuelles
+            # Donnees existantes (sert a la fois a detecter un changement et a
+            # l'upsert ci-dessous).
             existing = conn.execute(
-                'SELECT id FROM variables_paie WHERE user_id = ? AND mois = ? AND annee = ?',
+                'SELECT * FROM variables_paie WHERE user_id = ? AND mois = ? AND annee = ?',
                 (uid, mois, annee)
             ).fetchone()
 
+            nouveau = {
+                'mutuelle': mutuelle,
+                'nb_enfants': nb_enfants,
+                'heures_reelles': heures_reelles,
+                'heures_supps': heures_supps,
+                'transport': transport,
+                'acompte': acompte,
+                'saisie_salaire': saisie_salaire,
+                'pret_avance': pret_avance,
+                'autres_regularisation': autres_reg,
+                'commentaire': commentaire,
+            }
+            if _variables_modifiees(existing, nouveau):
+                uids_modifies.append(uid)
+
+            # Upsert donnees mensuelles
             if existing:
                 conn.execute('''
                     UPDATE variables_paie
@@ -220,14 +268,35 @@ def enregistrer_variables_paie():
 
             nb_saved += 1
 
+        # Toute modification d'une variable retire la validation "traite" de la
+        # preparation de paie pour ce salarie/mois : le prestataire doit ainsi
+        # revoir et revalider les bulletins concernes. On ne touche que les
+        # lignes encore cochees (traite = 1) afin de compter les seules
+        # devalidations reelles.
+        nb_devalidees = 0
+        if uids_modifies:
+            placeholders = ','.join('?' for _ in uids_modifies)
+            cur = conn.execute(f'''
+                UPDATE prepa_paie_statut
+                SET traite = 0, updated_at = CURRENT_TIMESTAMP
+                WHERE mois = ? AND annee = ? AND traite = 1
+                  AND user_id IN ({placeholders})
+            ''', (mois, annee, *uids_modifies))
+            nb_devalidees = cur.rowcount
+
         # Trace d'audit dans la meme transaction que l'enregistrement
         journaliser_action(
             conn, ACTION_ENREG_VARIABLES_PAIE,
             cible_type='mois_paie',
-            details=f"{nb_saved} salarie(s), mois={mois}/{annee}",
+            details=f"{nb_saved} salarie(s), mois={mois}/{annee}, "
+                    f"{nb_devalidees} prepa paie devalidee(s)",
         )
         conn.commit()
-        flash(f"Variables de paie enregistrees pour {nb_saved} salarie(s) - {NOMS_MOIS[mois]} {annee}.", 'success')
+        msg = f"Variables de paie enregistrees pour {nb_saved} salarie(s) - {NOMS_MOIS[mois]} {annee}."
+        if nb_devalidees:
+            msg += (f" {nb_devalidees} validation(s) de preparation de paie retiree(s) "
+                    "suite a modification (a revalider par le prestataire).")
+        flash(msg, 'success')
     except Exception:
         conn.rollback()
         logger.exception(

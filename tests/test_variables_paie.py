@@ -220,3 +220,101 @@ class TestPageVariablesPaie:
             ).fetchone()
             assert row['t'] == 'integer'
             assert row['mutuelle'] == 1
+
+
+class TestDevalidationPrepaPaie:
+    """Toute modification d'une variable de paie retire la validation 'traite'
+    de la preparation de paie pour le(s) salarie(s) reellement modifie(s)."""
+
+    def _valider_prepa(self, db, user_id, mois=6, annee=2026):
+        """Marque un salarie comme 'traite' en preparation de paie."""
+        db.execute(
+            'INSERT INTO prepa_paie_statut (user_id, mois, annee, traite) '
+            'VALUES (?, ?, ?, 1)', (user_id, mois, annee)
+        )
+        db.commit()
+
+    def _traite(self, db, user_id, mois=6, annee=2026):
+        """Retourne la valeur 'traite' (ou None si aucune ligne)."""
+        row = db.execute(
+            'SELECT traite FROM prepa_paie_statut '
+            'WHERE user_id = ? AND mois = ? AND annee = ?',
+            (user_id, mois, annee)
+        ).fetchone()
+        return row['traite'] if row else None
+
+    def test_modification_retire_la_validation(self, comptable_client, sample_users, app, db):
+        """Modifier une variable d'un salarie deja valide retire sa case."""
+        salarie_id = sample_users['salarie_id']
+        with app.app_context():
+            self._valider_prepa(db, salarie_id)
+
+        comptable_client.post('/variables_paie/enregistrer', data={
+            'mois': '6', 'annee': '2026',
+            'user_ids': [str(salarie_id)],
+            f'transport_{salarie_id}': '50',
+        }, follow_redirects=True)
+
+        with app.app_context():
+            assert self._traite(db, salarie_id) == 0
+
+    def test_sans_modification_conserve_la_validation(self, comptable_client, sample_users, app, db):
+        """Re-enregistrer a l'identique ne doit PAS retirer la validation.
+
+        Le formulaire resoumet toutes les lignes : sans detection de
+        changement, la validation du prestataire serait effacee a chaque clic.
+        """
+        salarie_id = sample_users['salarie_id']
+        # Etat de reference enregistre
+        comptable_client.post('/variables_paie/enregistrer', data={
+            'mois': '6', 'annee': '2026',
+            'user_ids': [str(salarie_id)],
+            f'transport_{salarie_id}': '50',
+        }, follow_redirects=True)
+        with app.app_context():
+            self._valider_prepa(db, salarie_id)
+
+        # Nouvel enregistrement avec exactement les memes valeurs
+        comptable_client.post('/variables_paie/enregistrer', data={
+            'mois': '6', 'annee': '2026',
+            'user_ids': [str(salarie_id)],
+            f'transport_{salarie_id}': '50',
+        }, follow_redirects=True)
+
+        with app.app_context():
+            assert self._traite(db, salarie_id) == 1
+
+    def test_seul_salarie_modifie_est_devalide(self, comptable_client, sample_users, app, db):
+        """Seule la validation du salarie modifie est retiree (pas les autres)."""
+        salarie_id = sample_users['salarie_id']
+        responsable_id = sample_users['responsable_id']
+        with app.app_context():
+            self._valider_prepa(db, salarie_id)
+            self._valider_prepa(db, responsable_id)
+
+        # Le formulaire envoie les deux lignes, mais seul le salarie change
+        comptable_client.post('/variables_paie/enregistrer', data={
+            'mois': '6', 'annee': '2026',
+            'user_ids': [str(salarie_id), str(responsable_id)],
+            f'transport_{salarie_id}': '50',
+        }, follow_redirects=True)
+
+        with app.app_context():
+            assert self._traite(db, salarie_id) == 0
+            assert self._traite(db, responsable_id) == 1
+
+    def test_modification_autre_mois_sans_effet(self, comptable_client, sample_users, app, db):
+        """Une modification sur un mois ne touche pas la validation d'un autre mois."""
+        salarie_id = sample_users['salarie_id']
+        with app.app_context():
+            self._valider_prepa(db, salarie_id, mois=5, annee=2026)
+
+        # Modification sur juin : la validation de mai doit rester intacte
+        comptable_client.post('/variables_paie/enregistrer', data={
+            'mois': '6', 'annee': '2026',
+            'user_ids': [str(salarie_id)],
+            f'transport_{salarie_id}': '50',
+        }, follow_redirects=True)
+
+        with app.app_context():
+            assert self._traite(db, salarie_id, mois=5, annee=2026) == 1
