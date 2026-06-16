@@ -33,6 +33,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 
 ### Preparation de la paie
 - Module de preparation de paie avec statut par salarie
+- Toute modification des variables de paie d'un mois retire automatiquement la validation "traite" du salarie concerne en preparation de paie : le prestataire revalide apres verification
 - Variables de paie configurables
 - Informations complementaires salaries
 - Generation de contrats de travail a partir de modeles DOCX
