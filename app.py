@@ -244,6 +244,7 @@ from blueprints.compte_resultat import compte_resultat_bp
 from blueprints.indicateurs_financiers import indicateurs_financiers_bp
 from blueprints.import_bi import import_bi_bp
 from blueprints.commandes_salaries import commandes_salaries_bp
+from blueprints.cse import cse_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -294,6 +295,7 @@ app.register_blueprint(compte_resultat_bp)
 app.register_blueprint(indicateurs_financiers_bp)
 app.register_blueprint(import_bi_bp)
 app.register_blueprint(commandes_salaries_bp)
+app.register_blueprint(cse_bp)
 
 
 # ==================== Context Processors ====================
@@ -408,6 +410,36 @@ def inject_app_options():
             'generation_contrats_responsable_autorise': True,
             'budget_previsionnel_responsable_autorise': True,
         }
+
+
+@app.context_processor
+def inject_cse_context():
+    """Injecte le contexte CSE (rôle et message actif) dans tous les templates."""
+    defaults = {
+        'is_cse_membre': False,
+        'is_cse_gestionnaire': False,
+        'cse_message_actif': None,
+    }
+    if 'user_id' not in session:
+        return defaults
+
+    profil = session.get('profil', '')
+    conn = None
+    try:
+        from blueprints.cse import est_membre_cse, get_message_actif, PROFILS_GESTION
+        conn = get_db()
+        is_membre = est_membre_cse(conn, session.get('user_id'))
+        message_actif = get_message_actif(conn) if profil != 'prestataire' else None
+        return {
+            'is_cse_membre': is_membre,
+            'is_cse_gestionnaire': profil in PROFILS_GESTION,
+            'cse_message_actif': message_actif,
+        }
+    except Exception:
+        return defaults
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.errorhandler(429)

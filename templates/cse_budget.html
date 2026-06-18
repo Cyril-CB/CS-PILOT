@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}CSE · Budget - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="cse-page">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div>
+            <h1>💶 Budget du CSE</h1>
+            <p class="subtitle" style="margin:0;">
+                <a href="{{ url_for('cse_bp.cse_accueil') }}">← Espace CSE</a>
+            </p>
+        </div>
+        <a href="{{ url_for('cse_bp.cse_bilan') }}" class="btn btn-secondary">🖨️ Bilan annuel</a>
+    </div>
+
+    {# ── Soldes courants ── #}
+    <div class="cse-solde-grid" style="margin-top:1.5rem;">
+        <div class="cse-solde-card">
+            <div class="cse-solde-label">🏦 Banque</div>
+            <div class="cse-solde-value">{{ soldes_courants.banque }}</div>
+        </div>
+        <div class="cse-solde-card">
+            <div class="cse-solde-label">💵 Caisse</div>
+            <div class="cse-solde-value">{{ soldes_courants.caisse }}</div>
+        </div>
+        <div class="cse-solde-card cse-solde-total">
+            <div class="cse-solde-label">Σ Total</div>
+            <div class="cse-solde-value">{{ soldes_courants.total }}</div>
+        </div>
+    </div>
+
+    {# ── Soldes de départ ── #}
+    <div class="section">
+        <h2>Soldes de départ</h2>
+        <p style="color:var(--gray-500);margin-top:-0.25rem;">
+            Définissez le solde initial de chaque compte avec sa date de référence.
+        </p>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;">
+            {% for compte_key, compte_label in comptes.items() %}
+            <form method="POST" action="{{ url_for('cse_bp.definir_solde') }}"
+                  style="border:1px solid var(--gray-200);border-radius:var(--radius-md);padding:1rem 1.25rem;background:var(--white);">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="compte" value="{{ compte_key }}">
+                <h3 style="margin:0 0 0.75rem;font-size:1rem;">
+                    {% if compte_key == 'banque' %}🏦{% else %}💵{% endif %} {{ compte_label }}
+                    {% if soldes_init[compte_key].defini %}
+                    <span style="font-weight:400;color:var(--gray-500);font-size:0.85rem;">
+                        — actuel : {{ soldes_init[compte_key].montant_fmt }}
+                    </span>
+                    {% endif %}
+                </h3>
+                <div class="form-group">
+                    <label for="date_solde_{{ compte_key }}">Date du solde</label>
+                    <input type="date" id="date_solde_{{ compte_key }}" name="date_solde" required
+                           value="{{ soldes_init[compte_key].date or aujourd_hui }}">
+                </div>
+                <div class="form-group">
+                    <label for="montant_{{ compte_key }}">Montant (€)</label>
+                    <input type="text" inputmode="decimal" id="montant_{{ compte_key }}" name="montant" required
+                           placeholder="0,00"
+                           value="{% if soldes_init[compte_key].defini %}{{ '%.2f'|format(soldes_init[compte_key].montant)|replace('.', ',') }}{% endif %}">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">💾 Enregistrer</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# ── Nouveau mouvement ── #}
+    <div class="section">
+        <h2>Ajouter un mouvement</h2>
+        <form method="POST" action="{{ url_for('cse_bp.ajouter_mouvement') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="type">Type</label>
+                    <select id="type" name="type" required>
+                        {% for type_key, type_label in types_mouvement.items() %}
+                        <option value="{{ type_key }}">{{ type_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="compte">Compte</label>
+                    <select id="compte" name="compte" required>
+                        {% for compte_key, compte_label in comptes.items() %}
+                        <option value="{{ compte_key }}">{{ compte_label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="date_mouvement">Date</label>
+                    <input type="date" id="date_mouvement" name="date_mouvement" required value="{{ aujourd_hui }}">
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="montant_mvt">Montant (€)</label>
+                    <input type="text" inputmode="decimal" id="montant_mvt" name="montant" required placeholder="0,00">
+                </div>
+            </div>
+            <div class="form-group" style="margin-top:1rem;">
+                <label for="commentaire">Commentaire <span style="color:var(--gray-500);font-weight:400;">(facultatif)</span></label>
+                <input type="text" id="commentaire" name="commentaire" maxlength="255" placeholder="Ex : Cotisation, achat cadeaux…">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">➕ Enregistrer le mouvement</button>
+            </div>
+        </form>
+    </div>
+
+    {# ── Liste des mouvements ── #}
+    <div class="section">
+        <h2>Mouvements</h2>
+        {% if mouvements %}
+        <div class="table-responsive">
+            <table class="data-table data-table-cards">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Compte</th>
+                        <th>Type</th>
+                        <th style="text-align:right;">Montant</th>
+                        <th>Commentaire</th>
+                        <th style="text-align:right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in mouvements %}
+                    <tr>
+                        <td data-label="Date">{{ m.date[8:10] }}/{{ m.date[5:7] }}/{{ m.date[0:4] }}</td>
+                        <td data-label="Compte">{{ m.compte_label }}</td>
+                        <td data-label="Type">{{ m.type_label }}</td>
+                        <td data-label="Montant" style="text-align:right;">
+                            <span class="{% if m.type == 'entree' %}cse-amount-in{% else %}cse-amount-out{% endif %}">
+                                {% if m.type == 'entree' %}+{% else %}−{% endif %}{{ m.montant_fmt }}
+                            </span>
+                        </td>
+                        <td data-label="Commentaire">{{ m.commentaire or '—' }}</td>
+                        <td data-label="Action" style="text-align:right;">
+                            <form method="POST" action="{{ url_for('cse_bp.supprimer_mouvement', mouvement_id=m.id) }}"
+                                  style="display:inline;" onsubmit="return confirm('Supprimer ce mouvement ?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn-icon" title="Supprimer">🗑️</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun mouvement enregistré.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

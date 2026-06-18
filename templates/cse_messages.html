@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}CSE · Messages - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="cse-page">
+    <h1>📢 Message aux salariés</h1>
+    <p class="subtitle">
+        <a href="{{ url_for('cse_bp.cse_accueil') }}">← Espace CSE</a>
+    </p>
+
+    <div class="alert alert-info" style="display:block;">
+        ℹ️ <strong>Un seul message peut être affiché à la fois.</strong>
+        Publier un nouveau message archivera automatiquement le précédent.
+        Lorsque la date de validité est dépassée, le message est retiré de l'affichage
+        et conservé dans les archives ci-dessous.
+    </div>
+
+    {# ── Message actuellement affiché ── #}
+    <div class="section">
+        <h2>Message actuellement affiché</h2>
+        {% if message_actif %}
+        <div style="border:1px solid var(--gray-200);border-left:4px solid var(--primary);border-radius:var(--radius-md);padding:1rem 1.25rem;background:var(--white);">
+            {% if message_actif.titre %}
+            <h3 style="margin:0 0 0.5rem;">{{ message_actif.titre }}</h3>
+            {% endif %}
+            <p style="white-space:pre-wrap;word-break:break-word;line-height:1.6;margin:0 0 0.75rem;color:var(--gray-700);">{{ message_actif.contenu }}</p>
+            <p style="font-size:0.8rem;color:var(--gray-500);margin:0 0 0.75rem;">
+                Valable jusqu'au {{ message_actif.date_validite[8:10] }}/{{ message_actif.date_validite[5:7] }}/{{ message_actif.date_validite[0:4] }}
+                {% if message_actif.auteur_prenom %} · publié par {{ message_actif.auteur_prenom }} {{ message_actif.auteur_nom }}{% endif %}
+            </p>
+            <form method="POST" action="{{ url_for('cse_bp.archiver_message', message_id=message_actif.id) }}"
+                  onsubmit="return confirm('Retirer ce message de l\'affichage ?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-secondary" style="padding:6px 12px;">🗑️ Retirer ce message</button>
+            </form>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun message n'est actuellement affiché aux salariés.</p>
+        {% endif %}
+    </div>
+
+    {# ── Nouveau message ── #}
+    <div class="section">
+        <h2>{% if message_actif %}Remplacer le message{% else %}Publier un message{% endif %}</h2>
+        <form method="POST" action="{{ url_for('cse_bp.creer_message') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group">
+                <label for="titre">Titre <span style="color:var(--gray-500);font-weight:400;">(facultatif)</span></label>
+                <input type="text" id="titre" name="titre" maxlength="150" placeholder="Ex : Réunion CSE du mois">
+            </div>
+            <div class="form-group">
+                <label for="contenu">Message <span style="color:var(--danger);">*</span></label>
+                <textarea id="contenu" name="contenu" rows="5" required
+                          placeholder="Votre message à l'attention des salariés…"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="date_validite">Date de validité <span style="color:var(--danger);">*</span></label>
+                <input type="date" id="date_validite" name="date_validite" required min="{{ aujourd_hui }}">
+                <small style="color:var(--gray-500);">Le message sera affiché jusqu'à cette date incluse.</small>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">📤 Publier le message</button>
+            </div>
+        </form>
+    </div>
+
+    {# ── Archives ── #}
+    <div class="section">
+        <h2>🗄️ Messages archivés</h2>
+        {% if archives %}
+        <div class="table-responsive">
+            <table class="data-table data-table-cards">
+                <thead>
+                    <tr>
+                        <th>Titre / message</th>
+                        <th>Validité</th>
+                        <th>Publié le</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in archives %}
+                    <tr>
+                        <td data-label="Titre / message">
+                            {% if a.titre %}<strong>{{ a.titre }}</strong><br>{% endif %}
+                            <span style="color:var(--gray-500);">{{ a.contenu|truncate(120) }}</span>
+                        </td>
+                        <td data-label="Validité">jusqu'au {{ a.date_validite[8:10] }}/{{ a.date_validite[5:7] }}/{{ a.date_validite[0:4] }}</td>
+                        <td data-label="Publié le">{{ a.created_at[8:10] }}/{{ a.created_at[5:7] }}/{{ a.created_at[0:4] }}</td>
+                        <td data-label="Statut"><span class="badge badge-inactive">Supprimé (archivé)</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun message archivé.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

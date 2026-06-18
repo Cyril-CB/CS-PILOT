@@ -77,6 +77,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0037', 'Journal des acces'),
     ('0038', 'Correctif types variables paie'),
     ('0039', 'Journal des actions metier'),
+    ('0040', 'Module CSE'),
 ]
 
 # Postes de depense par defaut (migration 0012)
@@ -885,6 +886,58 @@ def init_db():
             FOREIGN KEY (delegated_by_user_id) REFERENCES users(id)
         )
     ''')
+
+    # ===== Module CSE (migration 0040) =====
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cse_membres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            ajoute_par INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (ajoute_par) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cse_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            titre TEXT,
+            contenu TEXT NOT NULL,
+            date_validite TEXT NOT NULL,
+            statut TEXT NOT NULL DEFAULT 'actif',
+            cree_par INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            archive_le TEXT,
+            FOREIGN KEY (cree_par) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cse_soldes_initiaux (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte TEXT NOT NULL UNIQUE,
+            date_solde TEXT NOT NULL,
+            montant REAL NOT NULL DEFAULT 0,
+            updated_par INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (updated_par) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cse_mouvements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte TEXT NOT NULL DEFAULT 'banque',
+            type TEXT NOT NULL,
+            date_mouvement TEXT NOT NULL,
+            montant REAL NOT NULL,
+            commentaire TEXT,
+            cree_par INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (cree_par) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cse_mouvements_date ON cse_mouvements(date_mouvement)"
+    )
 
     # ===== Tables salles (migration 0018) =====
     cursor.execute('''

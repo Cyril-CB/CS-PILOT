@@ -3643,3 +3643,154 @@ a.btn-icon:-webkit-any-link {
         justify-content: center;
     }
 }
+
+/* === Bannière "Message du CSE à lire" (tableau de bord) === */
+.cse-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    margin-bottom: 1.25rem;
+    padding: 0.85rem 1.1rem;
+    border: 1px solid var(--primary-light);
+    border-left: 4px solid var(--primary);
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(47, 93, 80, 0.10), rgba(47, 93, 80, 0.04));
+    color: var(--gray-900);
+    font-family: inherit;
+    font-size: 0.95rem;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cse-banner:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.cse-banner-icon {
+    font-size: 1.35rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.cse-banner-text {
+    flex: 1;
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cse-banner-cta {
+    flex-shrink: 0;
+    font-weight: 700;
+    color: var(--primary);
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .cse-banner {
+    background: linear-gradient(135deg, rgba(63, 118, 102, 0.22), rgba(63, 118, 102, 0.08));
+    color: var(--gray-900);
+}
+
+@media (max-width: 600px) {
+    .cse-banner {
+        font-size: 0.9rem;
+        padding: 0.75rem 0.9rem;
+        gap: 0.5rem;
+    }
+    .cse-banner-text {
+        white-space: normal;
+    }
+}
+
+/* === Module CSE === */
+.cse-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.cse-nav-card {
+    display: block;
+    padding: 1.25rem;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+    text-decoration: none;
+    color: var(--gray-900);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.cse-nav-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary-light);
+}
+
+.cse-nav-card .cse-nav-icon {
+    font-size: 1.8rem;
+}
+
+.cse-nav-card h3 {
+    margin: 0.5rem 0 0.35rem;
+    font-size: 1.05rem;
+}
+
+.cse-nav-card p {
+    margin: 0;
+    color: var(--gray-500);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.cse-solde-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.cse-solde-card {
+    padding: 1.1rem 1.25rem;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    background: var(--white);
+    box-shadow: var(--shadow-sm);
+}
+
+.cse-solde-card .cse-solde-label {
+    font-size: 0.82rem;
+    color: var(--gray-500);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.cse-solde-card .cse-solde-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 0.25rem;
+}
+
+.cse-solde-card.cse-solde-total {
+    border-color: var(--primary-light);
+    background: linear-gradient(135deg, rgba(47, 93, 80, 0.08), rgba(47, 93, 80, 0.02));
+}
+
+.cse-amount-in { color: var(--success); font-weight: 600; }
+.cse-amount-out { color: var(--danger); font-weight: 600; }
+
+@media print {
+    .sidebar, .sidebar-toggle, .sidebar-overlay, footer,
+    #cspChatBtn, #cspChatWindow, .no-print, .cse-banner {
+        display: none !important;
+    }
+    .main-content.has-sidebar { margin-left: 0 !important; }
+    .cse-print-only { display: block !important; }
+    .data-table { font-size: 0.85em; }
+}
