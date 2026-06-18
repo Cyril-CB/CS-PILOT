@@ -109,6 +109,54 @@ def test_salarie_ne_peut_ajouter_membre(auth_client, db, sample_users):
     assert row is None
 
 
+def test_ajout_membre_journalise(admin_client, db, sample_users):
+    admin_client.post(
+        '/cse/membres/ajouter',
+        data={'user_id': sample_users['salarie_id']},
+        follow_redirects=True,
+    )
+    row = db.execute(
+        "SELECT * FROM journal_actions WHERE action = 'ajout_membre_cse' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    assert row['user_id'] == sample_users['directeur_id']   # auteur = directeur connecté
+    assert row['cible_type'] == 'user'
+    assert row['cible_id'] == sample_users['salarie_id']     # cible = salarié ajouté
+
+
+def test_retrait_membre_journalise(admin_client, db, sample_users):
+    admin_client.post('/cse/membres/ajouter', data={'user_id': sample_users['salarie_id']})
+    membre = db.execute(
+        "SELECT id FROM cse_membres WHERE user_id = ?", (sample_users['salarie_id'],)
+    ).fetchone()
+    admin_client.post(f"/cse/membres/{membre['id']}/supprimer", follow_redirects=True)
+    row = db.execute(
+        "SELECT * FROM journal_actions WHERE action = 'retrait_membre_cse' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    assert row['cible_id'] == sample_users['salarie_id']
+
+
+def test_auto_designation_comptable_est_tracee(comptable_client, db, sample_users):
+    """Cas visé : un comptable qui se désigne lui-même laisse une trace (auteur == cible)."""
+    comptable_client.post(
+        '/cse/membres/ajouter',
+        data={'user_id': sample_users['comptable_id']},
+        follow_redirects=True,
+    )
+    row = db.execute(
+        "SELECT * FROM journal_actions WHERE action = 'ajout_membre_cse' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    assert row['user_id'] == sample_users['comptable_id']    # auteur
+    assert row['cible_id'] == sample_users['comptable_id']   # cible = lui-même
+
+    # L'action apparaît, avec son libellé, dans le journal de sécurité.
+    page = comptable_client.get('/securite/journal-actions')
+    assert page.status_code == 200
+    assert 'membre du CSE' in page.get_data(as_text=True)
+
+
 def test_supprimer_membre(admin_client, db, sample_users):
     admin_client.post('/cse/membres/ajouter', data={'user_id': sample_users['salarie_id']})
     membre = db.execute(
