@@ -16,6 +16,11 @@ from flask import (
     Blueprint, flash, redirect, render_template, request, session, url_for
 )
 
+from access_log import (
+    ACTION_AJOUT_MEMBRE_CSE,
+    ACTION_RETRAIT_MEMBRE_CSE,
+    journaliser_action,
+)
 from database import get_db
 from utils import login_required
 
@@ -359,7 +364,7 @@ def ajouter_membre():
     conn = get_db()
     try:
         salarie = conn.execute(
-            "SELECT id, prenom, nom FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            "SELECT id, prenom, nom, profil FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
             (user_id,)
         ).fetchone()
         if not salarie:
@@ -376,6 +381,11 @@ def ajouter_membre():
         conn.execute(
             "INSERT INTO cse_membres (user_id, ajoute_par) VALUES (?, ?)",
             (user_id, session['user_id'])
+        )
+        journaliser_action(
+            conn, ACTION_AJOUT_MEMBRE_CSE,
+            cible_type='user', cible_id=user_id,
+            details=f"profil={salarie['profil']}",
         )
         conn.commit()
         flash(f"{salarie['prenom']} {salarie['nom']} a été ajouté(e) au CSE.", "success")
@@ -397,7 +407,7 @@ def supprimer_membre(membre_id):
     try:
         membre = conn.execute(
             '''
-            SELECT m.id, u.prenom, u.nom
+            SELECT m.id, m.user_id, u.prenom, u.nom, u.profil
             FROM cse_membres m JOIN users u ON u.id = m.user_id
             WHERE m.id = ?
             ''',
@@ -408,6 +418,11 @@ def supprimer_membre(membre_id):
             return redirect(url_for('cse_bp.cse_accueil'))
 
         conn.execute("DELETE FROM cse_membres WHERE id = ?", (membre_id,))
+        journaliser_action(
+            conn, ACTION_RETRAIT_MEMBRE_CSE,
+            cible_type='user', cible_id=membre['user_id'],
+            details=f"profil={membre['profil']}",
+        )
         conn.commit()
         flash(f"{membre['prenom']} {membre['nom']} a été retiré(e) du CSE.", "success")
     finally:

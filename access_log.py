@@ -49,6 +49,8 @@ ACTION_MODIF_USER = 'modification_user'
 ACTION_STATUT_USER = 'changement_statut_user'
 ACTION_VALIDATION_MOIS = 'validation_mois'
 ACTION_DEVERROUILLAGE_MOIS = 'deverrouillage_mois'
+ACTION_AJOUT_MEMBRE_CSE = 'ajout_membre_cse'
+ACTION_RETRAIT_MEMBRE_CSE = 'retrait_membre_cse'
 
 # Libelles lisibles des actions metier
 ACTIONS_LABELS = {
@@ -64,6 +66,8 @@ ACTIONS_LABELS = {
     ACTION_STATUT_USER: 'Activation / désactivation d\'un utilisateur',
     ACTION_VALIDATION_MOIS: 'Validation mensuelle d\'une fiche',
     ACTION_DEVERROUILLAGE_MOIS: 'Déverrouillage d\'une fiche validée',
+    ACTION_AJOUT_MEMBRE_CSE: 'Ajout d\'un membre du CSE',
+    ACTION_RETRAIT_MEMBRE_CSE: 'Retrait d\'un membre du CSE',
 }
 
 
