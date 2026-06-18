@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}CSE · Bilan annuel - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="cse-page">
+    <div class="no-print" style="display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;flex-wrap:wrap;">
+        <div>
+            <h1>🖨️ Bilan annuel du CSE</h1>
+            <p class="subtitle" style="margin:0;">
+                <a href="{{ url_for('cse_bp.cse_budget') }}">← Budget</a>
+            </p>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:flex-end;flex-wrap:wrap;">
+            <form method="GET" action="{{ url_for('cse_bp.cse_bilan') }}" style="margin:0;">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="annee">Année</label>
+                    <select id="annee" name="annee" onchange="this.form.submit()">
+                        {% for a in annees %}
+                        <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <noscript><button type="submit" class="btn btn-secondary">Afficher</button></noscript>
+            </form>
+            <button type="button" class="btn btn-primary" onclick="window.print()">🖨️ Imprimer</button>
+        </div>
+    </div>
+
+    {# ── En-tête (visible à l'impression) ── #}
+    <div class="cse-print-header" style="margin:1.5rem 0;">
+        <h2 style="margin:0;">Bilan annuel du CSE — Année {{ annee }}</h2>
+        <p style="margin:0.25rem 0 0;color:var(--gray-500);font-size:0.85rem;">Édité le {{ genere_le }}</p>
+    </div>
+
+    {# ── Synthèse par compte ── #}
+    <div class="section">
+        <h2>Synthèse</h2>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Compte</th>
+                        <th style="text-align:right;">Solde au 01/01</th>
+                        <th style="text-align:right;">Entrées</th>
+                        <th style="text-align:right;">Sorties</th>
+                        <th style="text-align:right;">Variation</th>
+                        <th style="text-align:right;">Solde au 31/12</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ck, cl in comptes.items() %}
+                    <tr>
+                        <td>{{ cl }}</td>
+                        <td style="text-align:right;">{{ bilan.comptes[ck].solde_debut_fmt }}</td>
+                        <td style="text-align:right;" class="cse-amount-in">{{ bilan.comptes[ck].entrees_fmt }}</td>
+                        <td style="text-align:right;" class="cse-amount-out">{{ bilan.comptes[ck].sorties_fmt }}</td>
+                        <td style="text-align:right;">{{ bilan.comptes[ck].variation_fmt }}</td>
+                        <td style="text-align:right;"><strong>{{ bilan.comptes[ck].solde_fin_fmt }}</strong></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td><strong>Total</strong></td>
+                        <td style="text-align:right;"><strong>{{ bilan.total.solde_debut_fmt }}</strong></td>
+                        <td style="text-align:right;"><strong>{{ bilan.total.entrees_fmt }}</strong></td>
+                        <td style="text-align:right;"><strong>{{ bilan.total.sorties_fmt }}</strong></td>
+                        <td style="text-align:right;"><strong>{{ bilan.total.variation_fmt }}</strong></td>
+                        <td style="text-align:right;"><strong>{{ bilan.total.solde_fin_fmt }}</strong></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    {# ── Détail des mouvements ── #}
+    <div class="section">
+        <h2>Détail des mouvements {{ annee }}</h2>
+        {% if bilan.lignes %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Compte</th>
+                        <th>Type</th>
+                        <th style="text-align:right;">Montant</th>
+                        <th>Commentaire</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in bilan.lignes %}
+                    <tr>
+                        <td>{{ l.date[8:10] }}/{{ l.date[5:7] }}/{{ l.date[0:4] }}</td>
+                        <td>{{ l.compte_label }}</td>
+                        <td>{{ l.type_label }}</td>
+                        <td style="text-align:right;" class="{% if l.type == 'entree' %}cse-amount-in{% else %}cse-amount-out{% endif %}">
+                            {% if l.type == 'entree' %}+{% else %}−{% endif %}{{ l.montant_fmt }}
+                        </td>
+                        <td>{{ l.commentaire or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun mouvement pour l'année {{ annee }}.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

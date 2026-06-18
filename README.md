@@ -71,6 +71,15 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Gestion des dossiers de subventions en kanban (Nouveau → Envoye → Accepte / Refuse)
 - Gestion des benevoles avec suivi des heures assignees
 
+### CSE (Comite Social et Economique)
+- Accessible depuis le menu **RH & Paie**
+- Designation des membres du CSE par la direction et la comptabilite (liste deroulante des salaries, ajout / suppression)
+- Espace reserve aux membres du CSE :
+  - Message a l'attention des salaries avec date de validite (un seul message affiche a la fois ; archivage automatique a l'expiration)
+  - Budget simplifie : soldes de depart banque / caisse (avec date), entrees et sorties (date, montant, commentaire)
+  - Bilan annuel imprimable reprenant l'ensemble des mouvements de l'annee selectionnee
+- Bandeau "Message du CSE a lire" en haut du tableau de bord (ouverture dans une fenetre, compatible mobile)
+
 ### Tableau de bord direction
 - Vue d'ensemble effectifs, absences, validations et anomalies
 - Demandes de recuperation en attente et top conges cumules
@@ -210,6 +219,7 @@ CS-PILOT/
 │   ├── subventions.py         # Gestion des subventions (kanban)
 │   ├── benevoles.py           # Gestion des benevoles
 │   ├── salles.py              # Reservations de salles
+│   ├── cse.py                 # CSE (membres, messages, budget, bilan)
 │   ├── parametres.py          # Parametres personnels
 │   ├── api_keys.py            # Gestion des cles API
 │   └── notifications.py       # Notifications email

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}CSE - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="cse-page">
+    <h1>🧑‍⚖️ CSE</h1>
+    <p class="subtitle">Comité Social et Économique</p>
+
+    {% if is_gestionnaire %}
+    {# ── Gestion des membres (direction / comptable) ── #}
+    <div class="section">
+        <h2>👥 Membres du CSE</h2>
+        <p style="color:var(--gray-500);margin-top:-0.25rem;">
+            Désignez les salariés membres du CSE. Ils accèderont alors à leur espace
+            (messages aux salariés et budget) depuis ce menu.
+        </p>
+
+        <form method="POST" action="{{ url_for('cse_bp.ajouter_membre') }}" class="cse-add-form"
+              style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end;margin:1rem 0 1.5rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-group" style="flex:1;min-width:240px;margin-bottom:0;">
+                <label for="user_id">Ajouter un salarié</label>
+                <select id="user_id" name="user_id" required {% if not salaries %}disabled{% endif %}>
+                    {% if salaries %}
+                    <option value="">— Sélectionner un salarié —</option>
+                    {% for s in salaries %}
+                    <option value="{{ s.id }}">{{ s.prenom }} {{ s.nom }}{% if s.profil %} ({{ profils_labels.get(s.profil, s.profil) }}){% endif %}</option>
+                    {% endfor %}
+                    {% else %}
+                    <option value="">Aucun salarié disponible</option>
+                    {% endif %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary" {% if not salaries %}disabled{% endif %}>➕ Ajouter</button>
+        </form>
+
+        {% if membres %}
+        <div class="table-responsive">
+            <table class="data-table data-table-cards">
+                <thead>
+                    <tr>
+                        <th>Nom</th>
+                        <th>Profil</th>
+                        <th>Désigné le</th>
+                        <th style="text-align:right;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in membres %}
+                    <tr>
+                        <td data-label="Nom"><strong>{{ m.prenom }} {{ m.nom }}</strong></td>
+                        <td data-label="Profil">{{ profils_labels.get(m.profil, m.profil) }}</td>
+                        <td data-label="Désigné le">{{ m.created_at[8:10] }}/{{ m.created_at[5:7] }}/{{ m.created_at[0:4] }}</td>
+                        <td data-label="Action" style="text-align:right;">
+                            <form method="POST" action="{{ url_for('cse_bp.supprimer_membre', membre_id=m.id) }}"
+                                  style="display:inline;" onsubmit="return confirm('Retirer {{ m.prenom }} {{ m.nom }} du CSE ?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-secondary" style="padding:6px 12px;">🗑️ Retirer</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun membre du CSE pour le moment.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if is_membre %}
+    {# ── Espace membre du CSE ── #}
+    <div class="section">
+        <h2>📂 Mon espace CSE</h2>
+        {% if message_actif %}
+        <p style="color:var(--gray-500);margin-top:-0.25rem;">
+            ✅ Un message est actuellement affiché aux salariés
+            (valable jusqu'au {{ message_actif.date_validite[8:10] }}/{{ message_actif.date_validite[5:7] }}/{{ message_actif.date_validite[0:4] }}).
+        </p>
+        {% else %}
+        <p style="color:var(--gray-500);margin-top:-0.25rem;">
+            Aucun message n'est actuellement affiché aux salariés.
+        </p>
+        {% endif %}
+
+        <div class="cse-cards">
+            <a class="cse-nav-card" href="{{ url_for('cse_bp.cse_messages') }}">
+                <div class="cse-nav-icon">📢</div>
+                <h3>Message aux salariés</h3>
+                <p>Publier un message avec une date de validité. Un seul message affiché à la fois.</p>
+            </a>
+            <a class="cse-nav-card" href="{{ url_for('cse_bp.cse_budget') }}">
+                <div class="cse-nav-icon">💶</div>
+                <h3>Budget du CSE</h3>
+                <p>Soldes de départ (banque / caisse), entrées et sorties.</p>
+            </a>
+            <a class="cse-nav-card" href="{{ url_for('cse_bp.cse_bilan') }}">
+                <div class="cse-nav-icon">🖨️</div>
+                <h3>Bilan annuel</h3>
+                <p>Récapitulatif des mouvements d'une année, imprimable.</p>
+            </a>
+        </div>
+    </div>
+    {% elif is_gestionnaire %}
+    <div class="section">
+        <p class="no-data" style="margin:0;">
+            L'espace CSE (messages et budget) est réservé aux membres du CSE.
+            Désignez-vous comme membre ci-dessus pour y accéder.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

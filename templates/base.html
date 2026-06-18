@@ -74,6 +74,7 @@
                     <a href="{{ url_for('variables_paie_bp.variables_paie') }}">💰 Variables Paie</a>
                     <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prépa Paie</a>
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                    <a href="{{ url_for('cse_bp.cse_accueil') }}">🧑‍⚖️ CSE</a>
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
@@ -190,6 +191,7 @@
                     <a href="{{ url_for('variables_paie_bp.variables_paie') }}">💰 Variables Paie</a>
                     <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prépa Paie</a>
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                    <a href="{{ url_for('cse_bp.cse_accueil') }}">🧑‍⚖️ CSE</a>
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
@@ -309,6 +311,9 @@
                     <a href="{{ url_for('generation_contrats_bp.generation_contrats') }}">📝 Génération contrats</a>
                     {% endif %}
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
+                    {% if is_cse_membre %}
+                    <a href="{{ url_for('cse_bp.cse_accueil') }}">🧑‍⚖️ CSE</a>
+                    {% endif %}
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
@@ -346,6 +351,9 @@
                 </div>
 	            </div>
                 <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+                {% if is_cse_membre %}
+                <a href="{{ url_for('cse_bp.cse_accueil') }}" class="sidebar-link">🧑‍⚖️ CSE</a>
+                {% endif %}
                 <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
                 {% if can_access_vue_ensemble_validation %}
                 <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble</a>
@@ -371,6 +379,14 @@
 
     <div class="main-content{% if session.user_id %} has-sidebar{% endif %}">
         <div class="container">
+            {% set cse_dashboard_endpoints = ['dashboard_bp.dashboard', 'dashboard_direction_bp.dashboard_direction', 'dashboard_comptable_bp.dashboard_comptable', 'dashboard_responsable_bp.dashboard_responsable'] %}
+            {% if cse_message_actif and request.endpoint in cse_dashboard_endpoints %}
+            <button type="button" class="cse-banner" onclick="cseOpenMessage()">
+                <span class="cse-banner-icon">📢</span>
+                <span class="cse-banner-text">Message du CSE à lire{% if cse_message_actif.titre %} — {{ cse_message_actif.titre }}{% endif %}</span>
+                <span class="cse-banner-cta">Lire&nbsp;›</span>
+            </button>
+            {% endif %}
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -388,6 +404,36 @@
             <p>CS-PILOT - Version {{ app_version }}</p>
         </footer>
     </div>
+
+    {% if cse_message_actif and request.endpoint in cse_dashboard_endpoints %}
+    {# ── Modale message du CSE ── #}
+    <div id="cseMessageModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)cseCloseMessage()">
+        <div class="modal-content" style="max-width:560px;">
+            <div class="modal-header">
+                <h3>📢 Message du CSE</h3>
+                <button class="modal-close" type="button" onclick="cseCloseMessage()" aria-label="Fermer">&times;</button>
+            </div>
+            <div style="padding:0 1.5rem 1.5rem;">
+                {% if cse_message_actif.titre %}
+                <h4 style="margin:0 0 .75rem;color:var(--gray-900);font-size:1.05rem;">{{ cse_message_actif.titre }}</h4>
+                {% endif %}
+                <p style="white-space:pre-wrap;word-break:break-word;line-height:1.6;color:var(--gray-700);margin:0 0 1rem;">{{ cse_message_actif.contenu }}</p>
+                <p style="font-size:.8rem;color:var(--gray-500);margin:0;">
+                    {% if cse_message_actif.auteur_prenom %}Publié par {{ cse_message_actif.auteur_prenom }} {{ cse_message_actif.auteur_nom }} · {% endif %}
+                    Valable jusqu'au {{ cse_message_actif.date_validite[8:10] }}/{{ cse_message_actif.date_validite[5:7] }}/{{ cse_message_actif.date_validite[0:4] }}
+                </p>
+                <div class="actions" style="margin-top:1.25rem;">
+                    <button type="button" class="btn btn-primary" onclick="cseCloseMessage()">J'ai lu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        function cseOpenMessage(){var m=document.getElementById('cseMessageModal');if(m)m.style.display='flex';}
+        function cseCloseMessage(){var m=document.getElementById('cseMessageModal');if(m)m.style.display='none';}
+        document.addEventListener('keydown',function(e){if(e.key==='Escape')cseCloseMessage();});
+    </script>
+    {% endif %}
 
     {% if session.user_id and chatbot_enabled %}
     {# ── Chatbot contextuel flottant ── #}
