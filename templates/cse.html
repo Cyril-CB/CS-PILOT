@@ -54,7 +54,7 @@
                         <td data-label="Désigné le">{{ m.created_at[8:10] }}/{{ m.created_at[5:7] }}/{{ m.created_at[0:4] }}</td>
                         <td data-label="Action" style="text-align:right;">
                             <form method="POST" action="{{ url_for('cse_bp.supprimer_membre', membre_id=m.id) }}"
-                                  style="display:inline;" onsubmit="return confirm('Retirer {{ m.prenom }} {{ m.nom }} du CSE ?');">
+                                  class="cse-remove-form" data-membre="{{ m.prenom }} {{ m.nom }}" style="display:inline;">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-secondary" style="padding:6px 12px;">🗑️ Retirer</button>
                             </form>
@@ -112,4 +112,18 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+    // Confirmation de retrait : le nom est lu depuis un attribut data- (donnée,
+    // jamais interprétée comme du code), ce qui évite toute injection ou rupture
+    // de la chaîne JS lorsqu'un nom contient une apostrophe.
+    document.querySelectorAll('.cse-remove-form').forEach(function (form) {
+        form.addEventListener('submit', function (e) {
+            var nom = form.dataset.membre || 'ce membre';
+            if (!confirm('Retirer ' + nom + ' du CSE ?')) {
+                e.preventDefault();
+            }
+        });
+    });
+</script>
 {% endblock %}

@@ -332,3 +332,51 @@ def test_calcul_bilan_soldes(auth_client, db, sample_users):
     assert abs(banque['entrees'] - 300.0) < 0.001
     assert abs(banque['sorties'] - 100.0) < 0.001
     assert abs(banque['solde_fin'] - 700.0) < 0.001     # 500 + 300 - 100
+
+
+def test_bilan_ignore_solde_initial_date_apres_annee(auth_client, db, sample_users):
+    """Un solde de départ daté après l'année du bilan ne doit pas la gonfler."""
+    _faire_membre(db, sample_users['salarie_id'], sample_users['directeur_id'])
+    db.execute("INSERT INTO cse_soldes_initiaux (compte, date_solde, montant) VALUES ('banque','2026-01-01',1000)")
+    db.execute("INSERT INTO cse_mouvements (compte, type, date_mouvement, montant) VALUES ('banque','entree','2025-06-10',300)")
+    db.commit()
+
+    from blueprints.cse import _calculer_bilan_annuel
+    import database
+    conn = database.get_db()
+    try:
+        bilan_2025 = _calculer_bilan_annuel(conn, '2025')
+        bilan_2026 = _calculer_bilan_annuel(conn, '2026')
+    finally:
+        conn.close()
+
+    # 2025 : le solde de départ daté 2026 ne compte pas (300 de mouvement seul).
+    assert abs(bilan_2025['comptes']['banque']['solde_fin'] - 300.0) < 0.001
+    assert abs(bilan_2025['comptes']['banque']['solde_debut'] - 0.0) < 0.001
+    # 2026 : le solde de départ est désormais pris en compte (1000 + 300).
+    assert abs(bilan_2026['comptes']['banque']['solde_fin'] - 1300.0) < 0.001
+
+
+def test_suppression_membre_nom_avec_apostrophe(admin_client, db):
+    """Un nom avec apostrophe ne doit pas casser le JS ni permettre d'injection."""
+    from werkzeug.security import generate_password_hash
+    db.execute(
+        "INSERT INTO users (nom, prenom, login, password, profil) VALUES (?,?,?,?,?)",
+        ("D'Arc", "O'Neil", 'oneil', generate_password_hash('Oneil1234'), 'salarie')
+    )
+    db.commit()
+    uid = db.execute("SELECT id FROM users WHERE login = 'oneil'").fetchone()['id']
+    db.execute("INSERT INTO cse_membres (user_id, ajoute_par) VALUES (?, ?)", (uid, uid))
+    db.commit()
+
+    resp = admin_client.get('/cse')
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    # Le nom passe par un attribut data- (échappé) et plus par un confirm() inline.
+    assert 'cse-remove-form' in html
+    assert 'data-membre=' in html
+    assert 'onsubmit="return confirm' not in html
+    # Le nom n'apparaît jamais brut (non échappé) dans la page.
+    assert "O'Neil D'Arc" not in html
+    # L'apostrophe est échappée en entité HTML.
+    assert 'D&#39;Arc' in html or 'D&#x27;Arc' in html

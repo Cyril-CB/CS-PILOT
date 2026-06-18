@@ -251,7 +251,10 @@ def _calculer_bilan_annuel(conn, annee):
         sorties = sum(m['montant'] for m in mouvements
                       if m['compte'] == compte and m['type'] == 'sortie')
 
-        base = soldes_init[compte]['montant'] if soldes_init[compte] else 0.0
+        # Le solde de départ ne compte que si sa date de référence est atteinte
+        # à la fin de l'année du bilan (sinon il gonflerait les années antérieures).
+        solde_row = soldes_init[compte]
+        base = solde_row['montant'] if (solde_row and solde_row['date_solde'] <= fin_annee) else 0.0
         agg = conn.execute(
             '''
             SELECT
