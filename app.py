@@ -6,7 +6,7 @@ import os
 import sys
 import secrets
 from dotenv import load_dotenv
-from flask import Flask, session, render_template, flash, redirect, url_for
+from flask import Flask, session, render_template, flash, redirect, url_for, request
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
@@ -58,6 +58,7 @@ def configure_logging():
 
 
 configure_logging()
+logger = logging.getLogger(__name__)
 
 
 def generate_env_file(env_path):
@@ -459,6 +460,15 @@ def ratelimit_handler(e):
 @app.errorhandler(CSRFError)
 def handle_csrf_error(e):
     """Gestion des erreurs CSRF : redirige vers login avec message explicite."""
+    # Trace l'echec CSRF (sinon invisible) : un POST AJAX rejete est redirige
+    # vers /login (HTML), ce que le navigateur affiche a tort comme une
+    # "Erreur reseau". La raison (jeton expire / absent / non concordant) aide
+    # a diagnostiquer ces echecs d'enregistrement.
+    logger.warning(
+        "Echec CSRF: %s | endpoint=%s method=%s path=%s user_id=%s",
+        getattr(e, 'description', 'inconnu'),
+        request.endpoint, request.method, request.path, session.get('user_id'),
+    )
     session.clear()
     flash('Votre session a expiré ou est invalide. Veuillez vous reconnecter.', 'error')
     return redirect(url_for('auth.login'))
