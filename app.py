@@ -191,6 +191,13 @@ else:
     app.config['SESSION_COOKIE_SECURE'] = False
 
 # ==================== Initialisation des extensions ====================
+# Le jeton CSRF reste valide tant que la session l'est (pas d'expiration au
+# bout d'1h). Evite l'echec des enregistrements AJAX quand une page reste
+# ouverte longtemps (ex: saisie d'un budget secteur avec de nombreuses
+# colonnes), qui se manifestait par une redirection vers /login interpretee
+# a tort comme une "Erreur reseau" cote navigateur. La protection CSRF reste
+# entiere (jeton toujours requis et lie a la session).
+app.config['WTF_CSRF_TIME_LIMIT'] = None
 csrf.init_app(app)
 limiter.init_app(app)
 

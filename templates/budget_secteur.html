@@ -657,6 +657,23 @@
         recalculate();
     }
 
+    // Lecture robuste de la reponse : une reponse non-JSON traduit une
+    // redirection (session / jeton CSRF expire) et non une panne reseau.
+    function readSaveResponse(resp) {
+        var ct = resp.headers.get('Content-Type') || '';
+        if (ct.indexOf('application/json') === -1) {
+            var e = new Error('session'); e.sessionError = true; throw e;
+        }
+        return resp.json().then(function(data) { return {ok: resp.ok, data: data}; });
+    }
+
+    function showSaveError(statusEl, err) {
+        statusEl.textContent = (err && err.sessionError)
+            ? '✗ Session expirée ou invalide. Rechargez la page (F5) puis réessayez.'
+            : '✗ Erreur réseau. Vérifiez votre connexion puis réessayez.';
+        statusEl.className = 'budget-save-status budget-save-error';
+    }
+
     // ============================================================
     // SAUVEGARDE PARAMETRAGE
     // ============================================================
@@ -691,7 +708,7 @@
                 lignes: lignes
             })
         })
-        .then(function(resp) { return resp.json().then(function(data) { return {ok: resp.ok, data: data}; }); })
+        .then(readSaveResponse)
         .then(function(result) {
             btnEl.disabled = false;
             if (result.ok && result.data.success) {
@@ -707,8 +724,7 @@
         })
         .catch(function(err) {
             btnEl.disabled = false;
-            statusEl.textContent = '✗ Erreur réseau';
-            statusEl.className = 'budget-save-status budget-save-error';
+            showSaveError(statusEl, err);
         });
     };
 
@@ -742,7 +758,7 @@
                 lignes: lignes
             })
         })
-        .then(function(resp) { return resp.json().then(function(data) { return {ok: resp.ok, data: data}; }); })
+        .then(readSaveResponse)
         .then(function(result) {
             btnEl.disabled = false;
             if (result.ok && result.data.success) {
@@ -756,8 +772,7 @@
         })
         .catch(function(err) {
             btnEl.disabled = false;
-            statusEl.textContent = '✗ Erreur réseau';
-            statusEl.className = 'budget-save-status budget-save-error';
+            showSaveError(statusEl, err);
         });
     };
 })();

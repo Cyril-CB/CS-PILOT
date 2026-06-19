@@ -88,6 +88,56 @@ def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):
     assert 'Budget général' not in html
 
 
+def test_jeton_csrf_sans_expiration(app):
+    """Le jeton CSRF ne doit pas expirer (sinon enregistrements AJAX rejetés)."""
+    assert app.config.get('WTF_CSRF_TIME_LIMIT') is None
+
+
+def test_responsable_enregistre_budget_de_son_secteur(resp_client, db, sample_users):
+    """Un responsable peut enregistrer les montants du budget de SON secteur."""
+    sid = sample_users['secteur_id']
+    db.execute("INSERT INTO budgets (secteur_id, annee, montant_global) VALUES (?, 2026, 5000)", (sid,))
+    poste_id = db.execute("SELECT id FROM postes_depense ORDER BY id LIMIT 1").fetchone()['id']
+    db.commit()
+
+    resp = resp_client.post('/api/budget/save', json={
+        'secteur_id': sid, 'annee': 2026, 'montant_global': None,
+        'lignes': [{'poste_depense_id': poste_id, 'periode': 'annuel', 'montant': 1000}],
+    })
+    assert resp.status_code == 200
+    assert resp.is_json
+    assert resp.get_json().get('success') is True
+    row = db.execute(
+        "SELECT montant FROM budget_lignes WHERE poste_depense_id = ? AND periode = 'annuel'",
+        (poste_id,)
+    ).fetchone()
+    assert row is not None and abs(row['montant'] - 1000) < 0.001
+
+
+def test_responsable_ne_peut_pas_enregistrer_autre_secteur(resp_client, db):
+    """Un responsable ne peut pas enregistrer le budget d'un autre secteur."""
+    db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Autre secteur','administratif')")
+    autre = db.execute("SELECT id FROM secteurs WHERE nom='Autre secteur'").fetchone()['id']
+    db.execute("INSERT INTO budgets (secteur_id, annee, montant_global) VALUES (?, 2026, 5000)", (autre,))
+    db.commit()
+
+    resp = resp_client.post('/api/budget/save', json={
+        'secteur_id': autre, 'annee': 2026, 'montant_global': None, 'lignes': [],
+    })
+    assert resp.status_code == 403
+
+
+def test_budget_secteur_distingue_session_expiree_de_panne_reseau(resp_client, sample_users):
+    """Le template doit afficher un message clair en cas de réponse non-JSON
+    (session / jeton CSRF expiré) plutôt qu'une simple « Erreur réseau »."""
+    sid = sample_users['secteur_id']
+    resp = resp_client.get(f'/budget_secteur/{sid}?annee=2026')
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert 'readSaveResponse' in html
+    assert 'Session expirée ou invalide' in html
+
+
 def test_api_budget_previsionnel_initial_calcule_temp(app, db, admin_client, sample_users):
     n = datetime.now().year
     secteur_id = sample_users['secteur_id']
