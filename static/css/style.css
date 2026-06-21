@@ -3249,19 +3249,20 @@ a.btn-icon:-webkit-any-link {
 }
 
 /* Robustesse mobile : empeche le debordement horizontal des modales.
-   min-width:0 autorise l'element flex a se reduire sous la largeur de son
-   contenu (sinon un texte long fait deborder la fenetre hors de l'ecran). */
+   - min-width:0 : autorise l'element flex a respecter sa largeur (sinon un
+     contenu long le pousse au-dela de l'ecran) ;
+   - max-width plafonne a la largeur de l'ecran (vw) quel que soit le contexte ;
+   - overflow-x:hidden : filet de securite contre tout debordement residuel.
+   box-sizing est deja global (border-box). */
 .modal-content {
-    box-sizing: border-box;
     min-width: 0;
+    max-width: min(600px, calc(100vw - 24px));
+    overflow-x: hidden;
 }
 
 @media (max-width: 600px) {
-    .modal-overlay {
-        padding: 12px;
-    }
     .modal-content {
-        width: 100%;
+        width: calc(100vw - 24px);
         max-height: 88vh;
     }
     .modal-header {
