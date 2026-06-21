@@ -182,6 +182,12 @@ body {
     font-size: 15px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* Empeche tout debordement horizontal de la page (sinon les elements
+       position:fixed comme la modale du CSE apparaissent decales sur mobile).
+       overflow-x:clip ne cree pas de conteneur de defilement : position:sticky
+       (en-tetes de tableaux) reste fonctionnel. 'hidden' = repli navigateurs anciens. */
+    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 /* === NAVIGATION SIDEBAR === */
