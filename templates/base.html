@@ -415,9 +415,9 @@
             </div>
             <div style="padding:0 1.5rem 1.5rem;">
                 {% if cse_message_actif.titre %}
-                <h4 style="margin:0 0 .75rem;color:var(--gray-900);font-size:1.05rem;">{{ cse_message_actif.titre }}</h4>
+                <h4 style="margin:0 0 .75rem;color:var(--gray-900);font-size:1.05rem;overflow-wrap:anywhere;">{{ cse_message_actif.titre }}</h4>
                 {% endif %}
-                <p style="white-space:pre-wrap;word-break:break-word;line-height:1.6;color:var(--gray-700);margin:0 0 1rem;">{{ cse_message_actif.contenu }}</p>
+                <p style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;color:var(--gray-700);margin:0 0 1rem;">{{ cse_message_actif.contenu }}</p>
                 <p style="font-size:.8rem;color:var(--gray-500);margin:0;">
                     {% if cse_message_actif.auteur_prenom %}Publié par {{ cse_message_actif.auteur_prenom }} {{ cse_message_actif.auteur_nom }} · {% endif %}
                     Valable jusqu'au {{ cse_message_actif.date_validite[8:10] }}/{{ cse_message_actif.date_validite[5:7] }}/{{ cse_message_actif.date_validite[0:4] }}
