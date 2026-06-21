@@ -104,21 +104,23 @@
                 </div>
             </div>
             {% if heures|length > 0 %}
-            <table class="data-table">
+            <div class="table-responsive">
+            <table class="data-table data-table-cards">
                 <thead><tr><th>Date</th><th>Reel</th><th>Theorique</th><th>Ecart</th></tr></thead>
                 <tbody>
                     {% for h in heures %}
                     <tr>
-                        <td>{{ h.date[8:10] }}/{{ h.date[5:7] }}/{{ h.date[0:4] }}</td>
-                        <td>{{ "%.1f"|format(h.total_reel) }}h</td>
-                        <td>{{ "%.1f"|format(h.total_theorique) }}h</td>
-                        <td style="color:{% if h.ecart > 0 %}var(--success){% elif h.ecart < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
+                        <td data-label="Date">{{ h.date[8:10] }}/{{ h.date[5:7] }}/{{ h.date[0:4] }}</td>
+                        <td data-label="Reel">{{ "%.1f"|format(h.total_reel) }}h</td>
+                        <td data-label="Theorique">{{ "%.1f"|format(h.total_theorique) }}h</td>
+                        <td data-label="Ecart" style="color:{% if h.ecart > 0 %}var(--success){% elif h.ecart < 0 %}var(--danger){% else %}var(--gray-500){% endif %};">
                             {{ "%+.1f"|format(h.ecart) }}h
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="direction-empty"><p>Aucune saisie recente</p></div>
             {% endif %}
@@ -134,18 +136,19 @@
                 Verification : contrat (PDF), carte d'identite, carte vitale pour chaque salarie sous contrat actif.
             </p>
             {% if salaries_docs_manquants|length > 0 %}
-            <table class="data-table">
+            <div class="table-responsive">
+            <table class="data-table data-table-cards">
                 <thead><tr><th>Salarie</th><th>Contrat</th><th>Manquant{{ 's' if salaries_docs_manquants|length > 1 }}</th></tr></thead>
                 <tbody>
                     {% for s in salaries_docs_manquants %}
                     <tr>
-                        <td>
+                        <td data-label="Salarie">
                             <a href="{{ url_for('infos_salaries_bp.infos_salaries', user_id=s.id) }}" style="font-weight:600;">
                                 {{ s.nom }} {{ s.prenom }}
                             </a>
                         </td>
-                        <td><span class="badge {% if s.type_contrat == 'CDI' %}badge-success{% elif s.type_contrat == 'CDD' %}badge-info{% else %}badge-warning{% endif %}">{{ s.type_contrat }}</span></td>
-                        <td>
+                        <td data-label="Contrat"><span class="badge {% if s.type_contrat == 'CDI' %}badge-success{% elif s.type_contrat == 'CDD' %}badge-info{% else %}badge-warning{% endif %}">{{ s.type_contrat }}</span></td>
+                        <td data-label="Manquants">
                             {% for m in s.manquants %}
                             <span class="badge badge-danger" style="font-size:0.75rem;">{{ m }}</span>
                             {% endfor %}
@@ -154,6 +157,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="direction-empty direction-empty-ok"><p>✅ Tous les documents sont a jour</p></div>
             {% endif %}
@@ -249,14 +253,15 @@
             {% else %}
             <details class="direction-details" style="margin-top:0.75rem;">
                 <summary>{{ fiches_non_validees|length }} fiche{{ 's' if fiches_non_validees|length > 1 }} non completee{{ 's' if fiches_non_validees|length > 1 }}</summary>
-                <table class="data-table">
+                <div class="table-responsive">
+                <table class="data-table data-table-cards">
                     <thead><tr><th>Salarie</th><th>Secteur</th><th>Etapes manquantes</th></tr></thead>
                     <tbody>
                         {% for f in fiches_non_validees[:15] %}
                         <tr>
-                            <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
-                            <td style="font-size:0.85rem;">{{ f.secteur }}</td>
-                            <td>
+                            <td data-label="Salarie"><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
+                            <td data-label="Secteur" style="font-size:0.85rem;">{{ f.secteur }}</td>
+                            <td data-label="Etapes manquantes">
                                 {% for e in f.etapes_manquantes %}
                                 <span class="badge badge-warning">{{ e }}</span>
                                 {% endfor %}
@@ -264,10 +269,11 @@
                         </tr>
                         {% endfor %}
                         {% if fiches_non_validees|length > 15 %}
-                        <tr><td colspan="3" style="text-align:center;color:var(--gray-500);">+ {{ fiches_non_validees|length - 15 }} autres</td></tr>
+                        <tr><td colspan="3" data-label="" style="text-align:center;color:var(--gray-500);">+ {{ fiches_non_validees|length - 15 }} autres</td></tr>
                         {% endif %}
                     </tbody>
                 </table>
+                </div>
             </details>
             {% endif %}
             {% else %}
@@ -317,13 +323,14 @@
             <div>
                 <h3 style="font-size:1rem;margin-bottom:0.5rem;">📊 Bilan secteurs / actions</h3>
                 {% if bilan_imports|length > 0 %}
-                <table class="data-table">
+                <div class="table-responsive">
+                <table class="data-table data-table-cards">
                     <thead><tr><th>Annee</th><th>Mois disponibles</th><th>Ecritures</th></tr></thead>
                     <tbody>
                         {% for bi in bilan_imports %}
                         <tr>
-                            <td><strong>{{ bi.annee }}</strong></td>
-                            <td>
+                            <td data-label="Annee"><strong>{{ bi.annee }}</strong></td>
+                            <td data-label="Mois disponibles">
                                 {% if bi.mois_min and bi.mois_max %}
                                     {% if bi.mois_min == bi.mois_max %}
                                     {{ bi.mois_min }}
@@ -334,11 +341,12 @@
                                 —
                                 {% endif %}
                             </td>
-                            <td>{{ bi.nb_ecritures }}</td>
+                            <td data-label="Ecritures">{{ bi.nb_ecritures }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% else %}
                 <div class="direction-empty"><p>Aucun import Bilan</p></div>
                 {% endif %}
@@ -351,24 +359,26 @@
             <div>
                 <h3 style="font-size:1rem;margin-bottom:0.5rem;">📈 Tresorerie / Budget previsionnel</h3>
                 {% if treso_imports|length > 0 %}
-                <table class="data-table">
+                <div class="table-responsive">
+                <table class="data-table data-table-cards">
                     <thead><tr><th>Annee</th><th>Mois disponibles</th><th>Lignes</th></tr></thead>
                     <tbody>
                         {% for ti in treso_imports %}
                         <tr>
-                            <td><strong>{{ ti.annee }}</strong></td>
-                            <td>
+                            <td data-label="Annee"><strong>{{ ti.annee }}</strong></td>
+                            <td data-label="Mois disponibles">
                                 {% if ti.mois_min == ti.mois_max %}
                                 {{ ti.mois_min }}
                                 {% else %}
                                 {{ ti.mois_min }} a {{ ti.mois_max }}
                                 {% endif %}
                             </td>
-                            <td>{{ ti.nb_lignes }}</td>
+                            <td data-label="Lignes">{{ ti.nb_lignes }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% else %}
                 <div class="direction-empty"><p>Aucun import Tresorerie</p></div>
                 {% endif %}
