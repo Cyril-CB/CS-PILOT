@@ -3248,6 +3248,27 @@ a.btn-icon:-webkit-any-link {
     color: var(--gray-900);
 }
 
+/* Robustesse mobile : empeche le debordement horizontal des modales.
+   min-width:0 autorise l'element flex a se reduire sous la largeur de son
+   contenu (sinon un texte long fait deborder la fenetre hors de l'ecran). */
+.modal-content {
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+@media (max-width: 600px) {
+    .modal-overlay {
+        padding: 12px;
+    }
+    .modal-content {
+        width: 100%;
+        max-height: 88vh;
+    }
+    .modal-header {
+        padding: 1rem 1.1rem;
+    }
+}
+
 /* ============================================================
    RESPONSIVE MOBILE – Pages salariés
    (dashboard, demande_recup, demande_conge,
