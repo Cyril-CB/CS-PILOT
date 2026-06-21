@@ -145,26 +145,28 @@
                                 {{ secteur }}
                                 <span class="badge badge-warning">{{ liste|length }}</span>
                             </h4>
-                            <table class="data-table">
+                            <div class="table-responsive">
+                            <table class="data-table data-table-cards">
                                 <thead>
                                     <tr><th>Salarie</th><th>Motif</th><th>Du</th><th>Au</th><th>Jours</th></tr>
                                 </thead>
                                 <tbody>
                                     {% for ab in liste %}
                                     <tr>
-                                        <td><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
-                                        <td>
+                                        <td data-label="Salarie"><strong>{{ ab.salarie_nom }} {{ ab.salarie_prenom }}</strong></td>
+                                        <td data-label="Motif">
                                             <span class="badge {% if ab.motif == 'Arret maladie' or ab.motif == 'Arrêt maladie' %}badge-danger{% elif 'Conge' in ab.motif or 'Congé' in ab.motif %}badge-info{% else %}badge-warning{% endif %}">
                                                 {{ ab.motif }}
                                             </span>
                                         </td>
-                                        <td>{{ ab.date_debut }}</td>
-                                        <td>{{ ab.date_fin }}</td>
-                                        <td><strong>{{ ab.jours_ouvres }}</strong></td>
+                                        <td data-label="Du">{{ ab.date_debut }}</td>
+                                        <td data-label="Au">{{ ab.date_fin }}</td>
+                                        <td data-label="Jours"><strong>{{ ab.jours_ouvres }}</strong></td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
+                            </div>
                         </div>
                         {% endfor %}
                     </div>
@@ -274,7 +276,7 @@
                     {% endfor %}
                 </div>
                 {% if total_subv_accorde > 0 or total_subv_demande > 0 %}
-                <div style="display:flex;gap:1.5rem;justify-content:center;margin-bottom:1rem;">
+                <div style="display:flex;flex-wrap:wrap;gap:1.5rem;justify-content:center;margin-bottom:1rem;">
                     <div class="direction-mini-stat">
                         <span class="direction-mini-value" style="font-size:1.3rem;">{{ "{:,.0f}".format(total_subv_demande).replace(",", " ") }} €</span>
                         <span class="direction-mini-label">demande</span>
@@ -376,27 +378,29 @@
         {% if fiches_en_attente|length > 0 %}
         <details class="direction-details">
             <summary>Voir les {{ fiches_en_attente|length }} fiche{{ 's' if fiches_en_attente|length > 1 }} non completee{{ 's' if fiches_en_attente|length > 1 }}</summary>
-            <table class="data-table">
+            <div class="table-responsive">
+            <table class="data-table data-table-cards">
                 <thead>
                     <tr><th>Salarie</th><th>Secteur</th><th>Etapes manquantes</th><th>Actions</th></tr>
                 </thead>
                 <tbody>
                     {% for f in fiches_en_attente %}
                     <tr>
-                        <td><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
-                        <td>{{ f.secteur }}</td>
-                        <td>
+                        <td data-label="Salarie"><strong>{{ f.nom }} {{ f.prenom }}</strong></td>
+                        <td data-label="Secteur">{{ f.secteur }}</td>
+                        <td data-label="Etapes manquantes">
                             {% for e in f.etapes_manquantes %}
                             <span class="badge badge-warning">{{ e }}</span>
                             {% endfor %}
                         </td>
-                        <td>
+                        <td data-label="Actions">
                             <a href="{{ url_for('validation_bp.vue_mensuelle', user_id=f.user_id, mois=mois_validation, annee=annee_validation) }}" class="btn btn-sm btn-primary">Voir</a>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
         </details>
         {% endif %}
     </div>
@@ -409,19 +413,20 @@
         <div class="section">
             <h2>🧾 Factures a approuver</h2>
             {% if factures_en_attente|length > 0 %}
-            <table class="data-table">
+            <div class="table-responsive">
+            <table class="data-table data-table-cards">
                 <thead>
                     <tr><th>Fournisseur</th><th>Montant</th><th>Echeance</th></tr>
                 </thead>
                 <tbody>
                     {% for f in factures_en_attente %}
                     <tr>
-                        <td>
+                        <td data-label="Fournisseur">
                             <strong>{{ f.fournisseur_nom or 'N/A' }}</strong>
                             {% if f.numero_facture %}<br><small style="color:var(--gray-500);">{{ f.numero_facture }}</small>{% endif %}
                         </td>
-                        <td style="font-weight:600;">{{ "{:,.2f}".format(f.montant_ttc).replace(",", " ") }} €</td>
-                        <td>
+                        <td data-label="Montant" style="font-weight:600;">{{ "{:,.2f}".format(f.montant_ttc).replace(",", " ") }} €</td>
+                        <td data-label="Echeance">
                             {% if f.date_echeance %}
                             <span class="badge {% if f.date_echeance < today.strftime('%Y-%m-%d') %}badge-danger{% else %}badge-info{% endif %}">{{ f.date_echeance }}</span>
                             {% else %}—{% endif %}
@@ -430,6 +435,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% if nb_factures_attente > factures_en_attente|length %}
             <div style="text-align:center;font-size:0.85rem;color:var(--gray-500);margin-top:0.5rem;">
                 + {{ nb_factures_attente - factures_en_attente|length }} autre{{ 's' if nb_factures_attente - factures_en_attente|length > 1 }}
@@ -447,26 +453,27 @@
         <div class="section">
             <h2>🏖️ Demandes récup & congés</h2>
             {% if demandes_recup|length > 0 or demandes_conges|default([])|length > 0 %}
-            <table class="data-table">
+            <div class="table-responsive">
+            <table class="data-table data-table-cards">
                 <thead>
                     <tr><th>Type</th><th>Demandeur</th><th>Jours</th><th>Statut</th></tr>
                 </thead>
                 <tbody>
                     {% for d in demandes_conges|default([]) %}
                     <tr>
-                        <td>
+                        <td data-label="Type">
                             {% if d.type_conge == 'Congé payé' %}
                             <span class="badge" style="background: #dbeafe; color: #1e40af;">CP</span>
                             {% else %}
                             <span class="badge" style="background: #fae8ff; color: #86198f;">CC</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td data-label="Demandeur">
                             <strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong>
                             <br><small style="color:var(--gray-500);">{{ d.secteur_nom or '' }}</small>
                         </td>
-                        <td><strong>{{ d.nb_jours }}</strong> j</td>
-                        <td>
+                        <td data-label="Jours"><strong>{{ d.nb_jours }}</strong> j</td>
+                        <td data-label="Statut">
                             {% if d.statut == 'en_attente_responsable' %}
                             <span class="badge badge-warning">Resp.</span>
                             {% elif d.statut == 'en_attente_direction' %}
@@ -477,13 +484,13 @@
                     {% endfor %}
                     {% for d in demandes_recup %}
                     <tr>
-                        <td><span class="badge" style="background: #dcfce7; color: #166534;">Récup</span></td>
-                        <td>
+                        <td data-label="Type"><span class="badge" style="background: #dcfce7; color: #166534;">Récup</span></td>
+                        <td data-label="Demandeur">
                             <strong>{{ d.demandeur_nom }} {{ d.demandeur_prenom }}</strong>
                             <br><small style="color:var(--gray-500);">{{ d.secteur_nom or '' }}</small>
                         </td>
-                        <td><strong>{{ d.nb_jours }}</strong> j</td>
-                        <td>
+                        <td data-label="Jours"><strong>{{ d.nb_jours }}</strong> j</td>
+                        <td data-label="Statut">
                             {% if d.statut == 'en_attente_responsable' %}
                             <span class="badge badge-warning">Resp.</span>
                             {% elif d.statut == 'en_attente_direction' %}
@@ -494,6 +501,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% else %}
             <div class="direction-empty direction-empty-ok"><p>✅ Aucune demande en attente</p></div>
             {% endif %}
@@ -537,26 +545,27 @@
     <div class="section">
         <h2>🏖️ Top conges cumules</h2>
         {% if top_conges|length > 0 %}
-        <table class="data-table">
+        <div class="table-responsive">
+        <table class="data-table data-table-cards">
             <thead>
                 <tr><th>Salarie</th><th>Secteur</th><th>CP solde</th><th>CC solde</th><th>Total</th></tr>
             </thead>
             <tbody>
                 {% for tc in top_conges %}
                 <tr>
-                    <td><strong>{{ tc.nom }} {{ tc.prenom }}</strong></td>
-                    <td style="font-size:0.85rem;">{{ tc.secteur_nom }}</td>
-                    <td>
+                    <td data-label="Salarie"><strong>{{ tc.nom }} {{ tc.prenom }}</strong></td>
+                    <td data-label="Secteur" style="font-size:0.85rem;">{{ tc.secteur_nom }}</td>
+                    <td data-label="CP solde">
                         <span style="color:{% if (tc.cp_a_prendre - tc.cp_pris) > 10 %}var(--warning){% elif (tc.cp_a_prendre - tc.cp_pris) > 0 %}var(--success){% else %}var(--gray-500){% endif %};">
                             {{ "%.1f"|format(tc.cp_a_prendre - tc.cp_pris) }} j
                         </span>
                     </td>
-                    <td>
+                    <td data-label="CC solde">
                         <span style="color:{% if tc.cc_solde > 4 %}var(--warning){% elif tc.cc_solde > 0 %}var(--success){% else %}var(--gray-500){% endif %};">
                             {{ "%.1f"|format(tc.cc_solde) }} j
                         </span>
                     </td>
-                    <td>
+                    <td data-label="Total">
                         <strong style="color:{% if tc.total_conges > 15 %}var(--danger){% elif tc.total_conges > 10 %}var(--warning){% else %}var(--success){% endif %};">
                             {{ "%.1f"|format(tc.total_conges) }} j
                         </strong>
@@ -565,6 +574,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% else %}
         <div class="direction-empty"><p>Aucun solde de conges</p></div>
         {% endif %}
