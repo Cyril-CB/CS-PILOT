@@ -1834,8 +1834,11 @@ a.btn-icon:-webkit-any-link {
         grid-template-columns: 1fr;
     }
     .direction-mini-stats {
-        flex-direction: column;
-        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .direction-mini-value {
+        font-size: 1.5rem;
     }
 }
 

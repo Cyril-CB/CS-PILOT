@@ -23,7 +23,8 @@ def test_dashboard_comptable_sections_specifiques(comptable_client):
     assert 'Cloture' in html
     assert 'Prepa paie' in html
     # Sections
-    assert 'Documents obligatoires' in html
+    # La section detaillee "Documents obligatoires" a ete retiree du dashboard.
+    assert 'Documents obligatoires' not in html
     assert 'Ecritures brouillon' in html
     assert 'Pretes a exporter' in html
     assert 'Factures en attente' in html

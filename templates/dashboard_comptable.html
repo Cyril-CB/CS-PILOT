@@ -83,9 +83,9 @@
     </div>
 
     {# ════════════════════════════════════════════════════════════
-       SECTION 2 : MA FICHE D'HEURES + DOCUMENTS MANQUANTS
+       SECTION 2 : MA FICHE D'HEURES
        ════════════════════════════════════════════════════════════ #}
-    <div class="direction-row direction-row-equal">
+    <div>
         {# Ma fiche d'heures #}
         <div class="section">
             <h2>✏️ Ma fiche d'heures</h2>
@@ -126,43 +126,6 @@
             {% endif %}
             <div style="margin-top:0.75rem;text-align:right;">
                 <a href="{{ url_for('saisie_bp.saisie_heures') }}" class="btn btn-sm btn-primary">Saisir mes heures</a>
-            </div>
-        </div>
-
-        {# Documents obligatoires manquants #}
-        <div class="section">
-            <h2>📁 Documents obligatoires</h2>
-            <p style="font-size:0.85rem;color:var(--gray-500);margin-bottom:0.75rem;">
-                Verification : contrat (PDF), carte d'identite, carte vitale pour chaque salarie sous contrat actif.
-            </p>
-            {% if salaries_docs_manquants|length > 0 %}
-            <div class="table-responsive">
-            <table class="data-table data-table-cards">
-                <thead><tr><th>Salarie</th><th>Contrat</th><th>Manquant{{ 's' if salaries_docs_manquants|length > 1 }}</th></tr></thead>
-                <tbody>
-                    {% for s in salaries_docs_manquants %}
-                    <tr>
-                        <td data-label="Salarie">
-                            <a href="{{ url_for('infos_salaries_bp.infos_salaries', user_id=s.id) }}" style="font-weight:600;">
-                                {{ s.nom }} {{ s.prenom }}
-                            </a>
-                        </td>
-                        <td data-label="Contrat"><span class="badge {% if s.type_contrat == 'CDI' %}badge-success{% elif s.type_contrat == 'CDD' %}badge-info{% else %}badge-warning{% endif %}">{{ s.type_contrat }}</span></td>
-                        <td data-label="Manquants">
-                            {% for m in s.manquants %}
-                            <span class="badge badge-danger" style="font-size:0.75rem;">{{ m }}</span>
-                            {% endfor %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-            {% else %}
-            <div class="direction-empty direction-empty-ok"><p>✅ Tous les documents sont a jour</p></div>
-            {% endif %}
-            <div style="margin-top:0.75rem;text-align:right;">
-                <a href="{{ url_for('infos_salaries_bp.infos_salaries') }}" class="btn btn-sm btn-secondary">Fiches salaries</a>
             </div>
         </div>
     </div>
