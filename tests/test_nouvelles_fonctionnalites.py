@@ -151,8 +151,51 @@ class TestContratsTempsHebdo:
         assert row is not None
         assert row['temps_hebdo'] == 35.0
 
+    def test_champ_temps_hebdo_saisie_libre(self, client, users_with_contracts):
+        """Le champ temps_hebdo autorise une saisie libre (plus de pas de 0.5)."""
+        _login(client, 'dir_test', 'Dir1234')
+        resp = client.get(f'/infos_salaries?user_id={users_with_contracts["sal1_id"]}')
+        html = resp.get_data(as_text=True)
+        assert 'name="temps_hebdo" id="temps_hebdo_contrat" step="any"' in html
 
-# ── Tests budget_previsionnel boutons ─────────────────────────────────────────
+    def test_ajout_contrat_temps_hebdo_decimal_libre(self, client, db, users_with_contracts):
+        """Une valeur hors multiple de 0.5 (ex. 33.75) est acceptée et enregistrée."""
+        _login(client, 'dir_test', 'Dir1234')
+        user_id = users_with_contracts['sal1_id']
+        resp = client.post('/infos_salaries/contrat', data={
+            'user_id': user_id,
+            'type_contrat': 'CDI',
+            'date_debut': '2025-02-01',
+            'temps_hebdo': '33.75',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        with client.application.app_context():
+            import database
+            conn = database.get_db()
+            row = conn.execute(
+                'SELECT temps_hebdo FROM contrats WHERE user_id=? ORDER BY id DESC LIMIT 1',
+                (user_id,)
+            ).fetchone()
+            conn.close()
+        assert row is not None
+        assert row['temps_hebdo'] == 33.75
+
+    def test_affichage_temps_hebdo_decimal_non_arrondi(self, client, users_with_contracts):
+        """Le tableau affiche la valeur exacte (33.75h), sans arrondi à 0.1 (33.8h)."""
+        _login(client, 'dir_test', 'Dir1234')
+        user_id = users_with_contracts['sal1_id']
+        client.post('/infos_salaries/contrat', data={
+            'user_id': user_id,
+            'type_contrat': 'CDI',
+            'date_debut': '2025-03-01',
+            'temps_hebdo': '33.75',
+        }, follow_redirects=True)
+        resp = client.get(f'/infos_salaries?user_id={user_id}')
+        html = resp.get_data(as_text=True)
+        assert '33.75h' in html
+        assert '33.8h' not in html
+        # Un temps entier reste affiché sans décimale superflue
+        assert '35h' in html
 
 class TestBudgetPrevisionnelBoutons:
 
