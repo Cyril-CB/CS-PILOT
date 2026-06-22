@@ -507,11 +507,26 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 type_saisie = 'ferie'
                 commentaire = libelle_ferie
             else:
-                if jour_actuel.date() < datetime.now().date() and jour_semaine < 5:
+                # La déclaration n'est requise que pour les jours réellement
+                # travaillés. Un jour non travaillé habituellement (heures
+                # théoriques nulles, ex. un mercredi non travaillé) n'a pas à
+                # être saisi : la saisie y est facultative et ne bloque pas la
+                # validation du mois.
+                if jour_actuel.date() < datetime.now().date() and jour_semaine < 5 and heures_theo_jour > 0:
                     non_declare = True
                 heures_reelles_jour = heures_theo_jour
 
             ecart = heures_reelles_jour - heures_theo_jour
+
+            # Jour de repos habituel : jour ouvré (lun-ven) sans heures
+            # théoriques, ni férié, ni saisi. Permet d'afficher un statut clair
+            # (« Repos ») au lieu d'une journée vide à compléter.
+            est_repos_habituel = (
+                jour_semaine < 5
+                and heures_theo_jour == 0
+                and not est_ferie
+                and not est_saisi
+            )
 
             total_heures_theoriques += heures_theo_jour
             total_heures_reelles += heures_reelles_jour
@@ -532,6 +547,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'est_saisi': est_saisi,
                 'est_declare': est_declare,
                 'non_declare': non_declare,
+                'est_repos_habituel': est_repos_habituel,
                 'type_saisie': type_saisie,
                 'commentaire': commentaire,
                 'type_periode': type_periode,

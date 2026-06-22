@@ -47,6 +47,40 @@ def _ajouter_jour_ferie(db, date_str, libelle):
     db.commit()
 
 
+def _planning_sans_mercredi(db, planning_id):
+    """Helper : retire le mercredi du planning théorique (jour non travaillé habituel)."""
+    db.execute(
+        '''
+        UPDATE planning_theorique
+        SET mercredi_matin_debut = NULL, mercredi_matin_fin = NULL,
+            mercredi_aprem_debut = NULL, mercredi_aprem_fin = NULL
+        WHERE id = ?
+        ''',
+        (planning_id,)
+    )
+    db.commit()
+
+
+def _charger_vue_mensuelle(app, user_id, mois, annee, profil='salarie'):
+    """Helper : charge les données de la fiche mensuelle pour un utilisateur."""
+    with app.test_request_context(f'/vue_mensuelle?mois={mois}&annee={annee}'):
+        from flask import session
+
+        session['user_id'] = user_id
+        session['profil'] = profil
+
+        conn = get_db()
+        try:
+            data, error_redirect = _get_vue_mensuelle_data_impl(
+                conn, mois, annee, None, 'validation_bp.vue_mensuelle'
+            )
+        finally:
+            conn.close()
+
+    assert error_redirect is None
+    return data
+
+
 class TestValidationMois:
     """Tests de la validation mensuelle."""
 
@@ -492,6 +526,69 @@ class TestVueMensuelleJoursFeries:
 
         assert response.status_code == 200
         assert 'Fête du Travail' in html
+
+
+class TestJoursNonTravaillesHabituels:
+    """La saisie des jours non travaillés habituels est facultative.
+
+    Un salarié qui ne travaille pas le mercredi n'a pas à déclarer ce jour : il
+    ne doit pas être marqué « non déclaré » ni empêcher la validation du mois.
+    En décembre 2024, le 02 est un lundi (travaillé) et le 04 un mercredi.
+    """
+
+    def test_mercredi_non_travaille_marque_repos_et_pas_non_declare(self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _planning_sans_mercredi(db, sample_planning['planning_id'])
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        mercredi = next(j for j in data['journees'] if j['date'] == '2024-12-04')
+        assert mercredi['jour_semaine'] == 'Mercredi'
+        assert mercredi['heures_theoriques'] == 0
+        assert mercredi['non_declare'] is False
+        assert mercredi['est_repos_habituel'] is True
+
+    def test_lundi_travaille_non_saisi_reste_non_declare(self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _planning_sans_mercredi(db, sample_planning['planning_id'])
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi = next(j for j in data['journees'] if j['date'] == '2024-12-02')
+        assert lundi['jour_semaine'] == 'Lundi'
+        assert lundi['heures_theoriques'] > 0
+        assert lundi['non_declare'] is True
+        assert lundi['est_repos_habituel'] is False
+
+    def test_validation_possible_sans_saisir_les_mercredis(self, app, db, sample_users, sample_planning):
+        from datetime import timedelta
+
+        with app.app_context():
+            _planning_sans_mercredi(db, sample_planning['planning_id'])
+
+            # Saisir uniquement les jours travaillés (lun, mar, jeu, ven),
+            # en laissant tous les mercredis vides.
+            jour = datetime(2024, 12, 1)
+            fin = datetime(2024, 12, 31)
+            while jour <= fin:
+                if jour.weekday() < 5 and jour.weekday() != 2:  # exclure le mercredi
+                    db.execute(
+                        """INSERT OR IGNORE INTO heures_reelles
+                           (user_id, date, heure_debut_matin, heure_fin_matin,
+                            heure_debut_aprem, heure_fin_aprem, type_saisie, declaration_conforme)
+                           VALUES (?, ?, '08:30', '12:00', '13:30', '17:00', 'heures_modifiees', 0)""",
+                        (sample_users['salarie_id'], jour.strftime('%Y-%m-%d'))
+                    )
+                jour += timedelta(days=1)
+            db.commit()
+
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        assert data['nb_jours_non_declares'] == 0
+        assert data['peut_valider_mois'] is True
+
+        mercredis = [j for j in data['journees'] if j['jour_semaine'] == 'Mercredi']
+        assert mercredis  # le mois en compte plusieurs
+        assert all(j['est_repos_habituel'] for j in mercredis)
+        assert all(not j['non_declare'] for j in mercredis)
 
 
 class TestPlanningTheoriqueAffichage:
