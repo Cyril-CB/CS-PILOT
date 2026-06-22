@@ -176,6 +176,8 @@
                                     {% else %}
                                     <span class="badge badge-success">✏️ Saisi</span>
                                     {% endif %}
+                                {% elif j.est_repos_habituel %}
+                                    <span class="badge" style="background: #e9ecef; color: #6c757d;">💤 Repos</span>
                                 {% else %}
                                     <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
                                 {% endif %}
@@ -431,6 +433,8 @@
                                 {% else %}
                                 <span class="badge badge-success">✏️ Saisi</span>
                                 {% endif %}
+                            {% elif j.est_repos_habituel %}
+                                <span class="badge" style="background: #e9ecef; color: #6c757d;">💤 Repos</span>
                             {% else %}
                                 <span class="badge" style="background: #e9ecef; color: #6c757d;">-</span>
                             {% endif %}

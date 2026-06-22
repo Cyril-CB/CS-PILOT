@@ -456,11 +456,13 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
             heures_theo_jour = 0
             horaires_theoriques = '-'
+            planning_existe = False
             if jour_semaine == 5:
                 heures_theo_jour = 0
             else:
                 planning = get_planning_valide_a_date(user_id_a_afficher, type_periode, date_str)
                 if planning:
+                    planning_existe = True
                     heures_theo_jour = get_heures_theoriques_jour(planning, jour_semaine)
                     jour_nom = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'][jour_semaine]
                     horaires_theoriques = _formater_horaires(
@@ -507,11 +509,34 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 type_saisie = 'ferie'
                 commentaire = libelle_ferie
             else:
-                if jour_actuel.date() < datetime.now().date() and jour_semaine < 5:
+                # Jour de repos planifié : un planning est défini et fixe des
+                # heures théoriques nulles ce jour-là (ex. un mercredi non
+                # travaillé). La déclaration y est facultative et ne bloque pas
+                # la validation du mois.
+                # À l'inverse, si AUCUN planning n'est défini (heures théoriques
+                # nulles faute de configuration), on continue de réclamer la
+                # déclaration afin de ne pas masquer ce manque et permettre la
+                # validation d'une fiche entièrement vide.
+                jour_repos_planifie = planning_existe and heures_theo_jour == 0
+                if (jour_actuel.date() < datetime.now().date()
+                        and jour_semaine < 5
+                        and not jour_repos_planifie):
                     non_declare = True
                 heures_reelles_jour = heures_theo_jour
 
             ecart = heures_reelles_jour - heures_theo_jour
+
+            # Jour de repos habituel : jour ouvré (lun-ven) avec un planning
+            # défini mais sans heures théoriques, ni férié, ni saisi. Permet
+            # d'afficher un statut clair (« Repos ») au lieu d'une journée vide
+            # à compléter. Un jour sans planning n'est PAS un repos habituel.
+            est_repos_habituel = (
+                jour_semaine < 5
+                and planning_existe
+                and heures_theo_jour == 0
+                and not est_ferie
+                and not est_saisi
+            )
 
             total_heures_theoriques += heures_theo_jour
             total_heures_reelles += heures_reelles_jour
@@ -532,6 +557,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'est_saisi': est_saisi,
                 'est_declare': est_declare,
                 'non_declare': non_declare,
+                'est_repos_habituel': est_repos_habituel,
                 'type_saisie': type_saisie,
                 'commentaire': commentaire,
                 'type_periode': type_periode,

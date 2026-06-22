@@ -391,6 +391,8 @@
                     </div>
                     {% elif d.non_declare %}
                     <div class="cal-cell-badge cal-badge-alerte">⚠️</div>
+                    {% elif d.est_repos_habituel %}
+                    <div class="cal-cell-badge" style="background:#e9ecef;color:#6c757d;">💤 Repos</div>
                     {% else %}
                     <div class="cal-cell-info">
                         <span class="cal-cell-heures cal-heures-theo">{{ "%.1f"|format(d.heures_theoriques) }}h</span>
