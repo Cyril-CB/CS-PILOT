@@ -558,6 +558,21 @@ class TestJoursNonTravaillesHabituels:
         assert lundi['non_declare'] is True
         assert lundi['est_repos_habituel'] is False
 
+    def test_jour_sans_planning_reste_non_declare(self, app, db, sample_users):
+        """Sans aucun planning défini, un jour ouvré passé non saisi reste
+        « non déclaré » : on ne masque pas le manque de configuration et on
+        n'autorise pas la validation d'une fiche entièrement vide."""
+        with app.app_context():
+            # Volontairement pas de fixture sample_planning : aucun planning.
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi = next(j for j in data['journees'] if j['date'] == '2024-12-02')
+        assert lundi['heures_theoriques'] == 0
+        assert lundi['non_declare'] is True
+        assert lundi['est_repos_habituel'] is False
+        assert data['nb_jours_non_declares'] > 0
+        assert data['peut_valider_mois'] is False
+
     def test_validation_possible_sans_saisir_les_mercredis(self, app, db, sample_users, sample_planning):
         from datetime import timedelta
 
