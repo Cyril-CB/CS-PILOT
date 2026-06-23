@@ -389,7 +389,7 @@ def test_api_ps_simulation_eaje_calcule_et_reporte(app, db, admin_client, sample
 
     # La simulation est relue avec les mêmes données
     resp_get = admin_client.get(
-        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&type_budget=initial'
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&secteur_id={secteur_id}&type_budget=initial'
     )
     got = resp_get.get_json()
     assert got['found'] is True
@@ -409,17 +409,84 @@ def test_api_ps_simulation_attachee_au_type_et_annee(admin_client, sample_users)
                       json={**base, 'annee': annee, 'type_budget': 'actualise'})
 
     r_init = admin_client.get(
-        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&type_budget=initial'
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&secteur_id={secteur_id}&type_budget=initial'
     ).get_json()
     r_actu = admin_client.get(
-        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&type_budget=actualise'
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&secteur_id={secteur_id}&type_budget=actualise'
     ).get_json()
     assert r_init['found'] is True and r_actu['found'] is True
     # Une année/type non saisi reste vide
     r_vide = admin_client.get(
-        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee + 1}&type_budget=initial'
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee + 1}&secteur_id={secteur_id}&type_budget=initial'
     ).get_json()
     assert r_vide['found'] is False
+
+
+def test_api_ps_simulation_attachee_au_secteur(app, db, admin_client, sample_users):
+    """Deux secteurs (ex. deux crèches) partageant le même compte produit ont
+    des simulations distinctes pour la même année et le même type de budget."""
+    secteur1 = sample_users['secteur_id']
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Crèche B', 'creche')")
+        secteur2 = db.execute("SELECT id FROM secteurs WHERE nom='Crèche B'").fetchone()['id']
+        db.commit()
+    annee = datetime.now().year
+
+    def payload(secteur_id, hfact, part):
+        return {
+            'compte_num': '706000', 'annee': annee, 'type_budget': 'initial',
+            'type_ps': 'eaje', 'secteur_id': secteur_id,
+            'donnees': {'mois': [{'heures_facturees': hfact, 'participation': part, 'places': 10,
+                                  'jours_ouverture': 20, 'amplitude_horaire': 10}]}
+        }
+    admin_client.post('/api/budget-previsionnel/ps-simulation', json=payload(secteur1, 1000, 1500))
+    admin_client.post('/api/budget-previsionnel/ps-simulation', json=payload(secteur2, 2000, 1000))
+
+    # Deux lignes distinctes en base (pas d'écrasement)
+    with app.app_context():
+        rows = db.execute('''
+            SELECT secteur_id FROM budget_ps_simulations
+            WHERE compte_num='706000' AND annee=? AND type_budget='initial'
+            ORDER BY secteur_id
+        ''', (annee,)).fetchall()
+    assert {r['secteur_id'] for r in rows} == {secteur1, secteur2}
+
+    # La relecture par secteur renvoie les données propres à chaque secteur
+    r1 = admin_client.get(
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&secteur_id={secteur1}&type_budget=initial'
+    ).get_json()
+    r2 = admin_client.get(
+        f'/api/budget-previsionnel/ps-simulation?compte_num=706000&annee={annee}&secteur_id={secteur2}&type_budget=initial'
+    ).get_json()
+    assert r1['donnees']['mois'][0]['heures_facturees'] == 1000
+    assert r2['donnees']['mois'][0]['heures_facturees'] == 2000
+
+    # Report sur le budget de chaque secteur séparément
+    with app.app_context():
+        defs = db.execute('''
+            SELECT secteur_id FROM budget_prev_saisies
+            WHERE compte_num='706000' AND annee=? AND type_budget='initial'
+        ''', (annee,)).fetchall()
+    assert {r['secteur_id'] for r in defs} == {secteur1, secteur2}
+
+
+def test_api_ps_simulation_secteur_requis(admin_client):
+    """Le secteur est obligatoire à l'enregistrement d'une simulation."""
+    resp = admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706000', 'annee': datetime.now().year, 'type_budget': 'initial',
+        'type_ps': 'eaje', 'donnees': {}
+    })
+    assert resp.status_code == 400
+
+
+def test_budget_previsionnel_simulateur_echappe_valeurs(admin_client):
+    """Les valeurs persistées sont échappées avant injection HTML (P2 / anti-XSS)."""
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert 'function psAttr(' in html
+    # Plus d'injection brute des valeurs persistées dans les attributs value
+    assert "value=\"' + st.taux_ps + '\"" not in html
+    assert 'psAttr(st.taux_ps)' in html
+    assert 'psAttr(val)' in html
 
 
 def test_api_ps_simulation_refuse_responsable(resp_client, sample_users):

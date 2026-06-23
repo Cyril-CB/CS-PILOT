@@ -1408,9 +1408,10 @@ def api_ps_simulation_get():
         return jsonify({'error': 'Accès non autorisé'}), 403
     compte_num = (request.args.get('compte_num') or '').strip()
     annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
     type_budget = request.args.get('type_budget', 'initial')
-    if not compte_num or not annee:
-        return jsonify({'error': 'Compte et année requis'}), 400
+    if not compte_num or not annee or not secteur_id:
+        return jsonify({'error': 'Compte, secteur et année requis'}), 400
     if type_budget not in ('initial', 'actualise'):
         return jsonify({'error': 'Type de budget invalide'}), 400
     conn = get_db()
@@ -1421,8 +1422,8 @@ def api_ps_simulation_get():
         type_ps = type_row['type_ps'] if type_row else 'eaje'
         row = conn.execute('''
             SELECT donnees, total, type_ps, updated_at FROM budget_ps_simulations
-            WHERE compte_num = ? AND annee = ? AND type_budget = ?
-        ''', (compte_num, annee, type_budget)).fetchone()
+            WHERE compte_num = ? AND annee = ? AND secteur_id = ? AND type_budget = ?
+        ''', (compte_num, annee, secteur_id, type_budget)).fetchone()
         if not row:
             return jsonify({'found': False, 'type_ps': type_ps, 'donnees': None})
         try:
@@ -1459,8 +1460,8 @@ def api_ps_simulation_save():
     if not isinstance(donnees, dict):
         donnees = {}
 
-    if not compte_num or not annee:
-        return jsonify({'error': 'Compte et année requis'}), 400
+    if not compte_num or not annee or not secteur_id:
+        return jsonify({'error': 'Compte, secteur et année requis'}), 400
     if type_budget not in ('initial', 'actualise'):
         return jsonify({'error': 'Type de budget invalide'}), 400
     if type_ps not in PS_TYPES:
@@ -1478,35 +1479,30 @@ def api_ps_simulation_save():
     try:
         conn.execute('''
             INSERT INTO budget_ps_simulations
-            (compte_num, annee, type_budget, type_ps, secteur_id, donnees, total, updated_by, updated_at)
+            (compte_num, annee, secteur_id, type_budget, type_ps, donnees, total, updated_by, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(compte_num, annee, type_budget) DO UPDATE SET
+            ON CONFLICT(compte_num, annee, secteur_id, type_budget) DO UPDATE SET
                 type_ps = excluded.type_ps,
-                secteur_id = excluded.secteur_id,
                 donnees = excluded.donnees,
                 total = excluded.total,
                 updated_by = excluded.updated_by,
                 updated_at = CURRENT_TIMESTAMP
-        ''', (compte_num, int(annee), type_budget, type_ps,
-              int(secteur_id) if secteur_id else None,
+        ''', (compte_num, int(annee), int(secteur_id), type_budget, type_ps,
               json.dumps(donnees), total, user_id))
 
-        # Report du total sur la valeur définitive du compte dans le budget,
-        # en préservant la valeur temporaire et le commentaire éventuels.
-        reported = False
-        if secteur_id:
-            conn.execute('''
-                INSERT INTO budget_prev_saisies
-                (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(type_budget, annee, secteur_id, compte_num) DO UPDATE SET
-                    valeur_def = excluded.valeur_def,
-                    updated_by = excluded.updated_by,
-                    updated_at = CURRENT_TIMESTAMP
-            ''', (type_budget, int(annee), int(secteur_id), compte_num, total, user_id))
-            reported = True
+        # Report du total sur la valeur définitive du compte dans le budget du
+        # secteur, en préservant la valeur temporaire et le commentaire éventuels.
+        conn.execute('''
+            INSERT INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(type_budget, annee, secteur_id, compte_num) DO UPDATE SET
+                valeur_def = excluded.valeur_def,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (type_budget, int(annee), int(secteur_id), compte_num, total, user_id))
 
         conn.commit()
-        return jsonify({'success': True, 'total': total, 'reported': reported, 'computed': computed})
+        return jsonify({'success': True, 'total': total, 'reported': True, 'computed': computed})
     finally:
         conn.close()

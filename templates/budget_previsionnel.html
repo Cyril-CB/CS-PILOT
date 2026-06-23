@@ -553,6 +553,14 @@ var NOMS_MOIS_PS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','
 function fmtR(n, dec){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:dec, maximumFractionDigits:dec}); }
 function fmtPct(r){ return fmtR((Number(r || 0)) * 100, 1) + ' %'; }
 function psNum(v, def){ var n = parseFloat(v); if (isNaN(n)) return (def === undefined ? 0 : def); return n; }
+// Échappe une valeur persistée (potentiellement arbitraire) avant injection
+// dans un attribut HTML. Contrairement à escapeHtml, conserve le « 0 ».
+function psAttr(value){
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 
 function loadPsComptes(){
     return fetch('/api/budget-previsionnel/ps-comptes')
@@ -668,7 +676,7 @@ function openPsSimulator(compteNum){
         ' — ' + compteNum + (libelle ? ' (' + libelle + ')' : '');
     if (type === 'alsh'){ renderAlshSimulator(); showPsModal(); return; }
     var url = '/api/budget-previsionnel/ps-simulation?compte_num=' + encodeURIComponent(compteNum) +
-        '&annee=' + ctx.annee + '&type_budget=' + encodeURIComponent(ctx.type_budget);
+        '&annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id + '&type_budget=' + encodeURIComponent(ctx.type_budget);
     fetch(url).then(r => r.json()).then(data => {
         psSim.state = mergeEajeState((data && data.found) ? data.donnees : null);
         renderEajeSimulator(); showPsModal(); psRecompute();
@@ -778,15 +786,14 @@ function computePsEaje(d){
 
 function psCell(i, key, val, dis){
     var step = (key === 'jours_ouverture') ? '1' : '0.01';
-    var v = (val === null || val === undefined) ? '' : val;
-    return '<td><input class="ps-input" type="number" step="' + step + '" value="' + v +
+    return '<td><input class="ps-input" type="number" step="' + step + '" value="' + psAttr(val) +
         '" data-ps-m="' + i + '" data-ps-key="' + key + '"' + dis + '></td>';
 }
 function psBmRow(seuilKey, seuilVal, montantKey, montantVal, dis){
     return '<div class="ps-field"><label>Jusqu\'à un taux horaire de</label>' +
-        '<input class="ps-input" type="number" step="0.01" value="' + seuilVal + '" data-ps-group="bonus_mixite" data-ps-key="' + seuilKey + '"' + dis + '>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + psAttr(seuilVal) + '" data-ps-group="bonus_mixite" data-ps-key="' + seuilKey + '"' + dis + '>' +
         '<label style="flex:0 0 auto;">→ par place (€)</label>' +
-        '<input class="ps-input" type="number" step="1" value="' + montantVal + '" data-ps-group="bonus_mixite" data-ps-key="' + montantKey + '"' + dis + '></div>';
+        '<input class="ps-input" type="number" step="1" value="' + psAttr(montantVal) + '" data-ps-group="bonus_mixite" data-ps-key="' + montantKey + '"' + dis + '></div>';
 }
 
 function renderEajeSimulator(){
@@ -795,9 +802,9 @@ function renderEajeSimulator(){
     var html = '';
     html += '<div class="ps-params">' +
         '<div class="ps-field"><label>Taux de PS</label>' +
-        '<input class="ps-input" type="number" step="0.01" value="' + st.taux_ps + '" data-ps-top="taux_ps"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.taux_ps) + '" data-ps-top="taux_ps"' + dis + '></div>' +
         '<div class="ps-field"><label>Taux de régime général (%)</label>' +
-        '<input class="ps-input" type="number" step="0.01" value="' + st.taux_regime + '" data-ps-top="taux_regime"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.taux_regime) + '" data-ps-top="taux_regime"' + dis + '></div>' +
         '</div>';
     html += '<div class="ps-legend">Les colonnes <span class="bp-ps-calc">surlignées</span> sont calculées automatiquement.</div>';
     html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
@@ -843,9 +850,9 @@ function renderEajeSimulator(){
     html += '<div class="ps-summary">';
     html += '<div class="ps-card"><h4>PS de préparation à l\'accueil de l\'enfant</h4>' +
         '<div class="ps-field"><label>Nombre d\'enfants inscrits au cours de l\'année</label>' +
-        '<input class="ps-input" type="number" step="1" value="' + st.nb_enfants_inscrits + '" data-ps-top="nb_enfants_inscrits"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="1" value="' + psAttr(st.nb_enfants_inscrits) + '" data-ps-top="nb_enfants_inscrits"' + dis + '></div>' +
         '<div class="ps-field"><label>Financement par enfant (€)</label>' +
-        '<input class="ps-input" type="number" step="0.01" value="' + st.financement_par_enfant + '" data-ps-top="financement_par_enfant"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.financement_par_enfant) + '" data-ps-top="financement_par_enfant"' + dis + '></div>' +
         '<div class="ps-result">PS prépa accueil : <span id="ps-ps_prepa">0,00</span> €</div></div>';
     html += '<div class="ps-card"><h4>Bonus mixité</h4>' +
         '<p class="help-text" style="margin-top:0;">Dépend du taux horaire moyen : <strong id="ps-th-mixite">0,00</strong> €/h.</p>' +
@@ -856,13 +863,13 @@ function renderEajeSimulator(){
         '<div class="ps-result">Montant retenu : <span id="ps-bonus_mixite_place">0,00</span> € / place · Bonus mixité : <span id="ps-bonus_mixite">0,00</span> €</div></div>';
     html += '<div class="ps-card"><h4>Journées pédagogiques</h4>' +
         '<div class="ps-field"><label>Nombre de journées</label>' +
-        '<input class="ps-input" type="number" step="1" value="' + st.journees_peda.nb_journees + '" data-ps-group="journees_peda" data-ps-key="nb_journees"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="1" value="' + psAttr(st.journees_peda.nb_journees) + '" data-ps-group="journees_peda" data-ps-key="nb_journees"' + dis + '></div>' +
         '<div class="ps-field"><label>Nombre d\'heures par journée</label>' +
-        '<input class="ps-input" type="number" step="0.5" value="' + st.journees_peda.nb_heures + '" data-ps-group="journees_peda" data-ps-key="nb_heures"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="0.5" value="' + psAttr(st.journees_peda.nb_heures) + '" data-ps-group="journees_peda" data-ps-key="nb_heures"' + dis + '></div>' +
         '<div class="ps-result">Journées pédagogiques : <span id="ps-journees_peda">0,00</span> €</div></div>';
     html += '<div class="ps-card"><h4>Bonus d\'attractivité</h4>' +
         '<div class="ps-field"><label>Montant par place (€)</label>' +
-        '<input class="ps-input" type="number" step="0.01" value="' + st.bonus_attractivite_taux + '" data-ps-top="bonus_attractivite_taux"' + dis + '></div>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.bonus_attractivite_taux) + '" data-ps-top="bonus_attractivite_taux"' + dis + '></div>' +
         '<div class="ps-field"><label>Nombre de places retenu (moyenne)</label>&nbsp;<span id="ps-places_moyen" style="font-weight:700;">0,00</span></div>' +
         '<div class="ps-result">Bonus attractivité : <span id="ps-bonus_attractivite">0,00</span> €</div></div>';
     html += '</div>';

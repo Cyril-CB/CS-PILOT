@@ -4,7 +4,8 @@ Migration 0042 : Ajout du simulateur de Prestation de Service (PS) CAF.
 - budget_ps_comptes     : comptes de produits (70x) rattachés à une PS CAF
                           (type EAJE = crèche, ALSH = accueil de loisirs)
 - budget_ps_simulations : saisies du simulateur, attachées au compte, à
-                          l'année et au type de budget (initial/actualisé)
+                          l'année, au secteur et au type de budget
+                          (initial/actualisé)
 """
 
 NOM = "Ajout simulateur PS CAF"
@@ -32,16 +33,16 @@ def upgrade(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             compte_num TEXT NOT NULL,
             annee INTEGER NOT NULL,
+            secteur_id INTEGER NOT NULL,
             type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
             type_ps TEXT NOT NULL,
-            secteur_id INTEGER,
             donnees TEXT,
             total REAL DEFAULT 0,
             updated_by INTEGER,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE SET NULL,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
             FOREIGN KEY (updated_by) REFERENCES users(id),
-            UNIQUE(compte_num, annee, type_budget)
+            UNIQUE(compte_num, annee, secteur_id, type_budget)
         )
     ''')
 

@@ -1453,24 +1453,26 @@ def init_db():
         )
     ''')
 
-    # Saisies du simulateur de PS, attachées au compte, à l'année et au type
-    # de budget. Les données détaillées (paramètres + saisie mensuelle) sont
-    # stockées en JSON ; total = montant à reporter sur le compte produit.
+    # Saisies du simulateur de PS, attachées au compte, à l'année, au secteur
+    # et au type de budget. Le secteur fait partie de la clé : un même compte
+    # produit peut être utilisé par deux secteurs (ex. deux crèches). Les
+    # données détaillées (paramètres + saisie mensuelle) sont stockées en
+    # JSON ; total = montant à reporter sur le compte produit.
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS budget_ps_simulations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             compte_num TEXT NOT NULL,
             annee INTEGER NOT NULL,
+            secteur_id INTEGER NOT NULL,
             type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
             type_ps TEXT NOT NULL,
-            secteur_id INTEGER,
             donnees TEXT,
             total REAL DEFAULT 0,
             updated_by INTEGER,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE SET NULL,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
             FOREIGN KEY (updated_by) REFERENCES users(id),
-            UNIQUE(compte_num, annee, type_budget)
+            UNIQUE(compte_num, annee, secteur_id, type_budget)
         )
     ''')
 
