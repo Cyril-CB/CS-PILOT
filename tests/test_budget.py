@@ -292,6 +292,13 @@ def test_budget_previsionnel_config_ps_absente_responsable(resp_client):
     assert 'Comptes concernés par une Prestation de Service' not in html
 
 
+def test_budget_previsionnel_modales_rattachees_au_body(admin_client):
+    """Les modales sont déplacées au <body> pour s'afficher par-dessus le menu."""
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert "'psSimulatorModal', 'psConfigModal'" in html
+    assert 'document.body.appendChild(el)' in html
+
+
 def test_api_ps_comptes_crud_directeur(app, db, admin_client):
     """Le directeur peut rattacher un compte 70 à une PS, le lister puis le retirer."""
     resp = admin_client.post('/api/budget-previsionnel/ps-comptes', json={
