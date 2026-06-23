@@ -50,10 +50,24 @@ for provider_id, provider_info in AI_PROVIDERS.items():
     for model in provider_info['models']:
         MODEL_TO_PROVIDER[model['id']] = provider_id
 
+# Anciens identifiants Anthropic retirés du catalogue mais toujours valides côté
+# API : on continue de les résoudre pour qu'une valeur déjà persistée (ex.
+# chatbot_model) ne casse pas l'assistant tant que la migration 0041 n'a pas été
+# appliquée. La migration nettoie ces valeurs vers les identifiants à jour.
+LEGACY_MODEL_TO_PROVIDER = {
+    'claude-sonnet-4-5-20250929': 'anthropic',
+    'claude-opus-4-6': 'anthropic',
+    'claude-haiku-4-5-20251001': 'anthropic',
+}
+
 
 def get_provider_for_model(model_id):
-    """Retourne l'identifiant du fournisseur pour un modèle donné."""
-    return MODEL_TO_PROVIDER.get(model_id)
+    """Retourne l'identifiant du fournisseur pour un modèle donné.
+
+    Les anciens identifiants restent résolus (compatibilité ascendante) afin
+    qu'une valeur déjà enregistrée ne provoque pas « Modèle inconnu ».
+    """
+    return MODEL_TO_PROVIDER.get(model_id) or LEGACY_MODEL_TO_PROVIDER.get(model_id)
 
 
 # ── Compatibilité des paramètres selon le modèle ──

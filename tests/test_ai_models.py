@@ -11,11 +11,23 @@ Couvre :
 """
 from unittest.mock import MagicMock, patch
 
+import importlib.util
+import os
+
 from blueprints.api_keys import (
     AI_PROVIDERS, MODEL_TO_PROVIDER, get_provider_for_model,
     get_available_models, anthropic_supports_temperature, is_openai_reasoning_model,
 )
 from blueprints import pesee_alisfa
+
+
+def _load_migration_0041():
+    path = os.path.join(os.path.dirname(__file__), '..', 'migrations',
+                        '0041_maj_modeles_ia_chatbot.py')
+    spec = importlib.util.spec_from_file_location('mig0041', path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def _fake_anthropic_response():
@@ -114,3 +126,40 @@ class TestModelesDisponibles:
         ids = {m['id'] for m in models}
         assert 'claude-sonnet-4-6' in ids
         assert all(m['provider'] == 'anthropic' for m in models)
+
+
+class TestCompatibiliteAscendante:
+    """Une valeur déjà persistée avec un ancien identifiant ne doit pas casser."""
+
+    def test_anciens_identifiants_resolus(self):
+        # Retirés du catalogue mais encore résolus pour ne pas casser le chatbot
+        assert get_provider_for_model('claude-sonnet-4-5-20250929') == 'anthropic'
+        assert get_provider_for_model('claude-opus-4-6') == 'anthropic'
+        assert get_provider_for_model('claude-haiku-4-5-20251001') == 'anthropic'
+        # Ne sont pas pour autant proposés dans le catalogue
+        assert 'claude-opus-4-6' not in MODEL_TO_PROVIDER
+
+    def test_identifiant_reellement_inconnu_non_resolu(self):
+        assert get_provider_for_model('modele-bidon') is None
+
+    def test_migration_remappe_chatbot_model(self, app):
+        import database
+        from utils import save_setting, get_setting
+        mig = _load_migration_0041()
+        with app.app_context():
+            save_setting('chatbot_model', 'claude-opus-4-6')
+            conn = database.get_db()
+            mig.upgrade(conn)
+            conn.close()
+            assert get_setting('chatbot_model') == 'claude-opus-4-8'
+
+    def test_migration_laisse_un_modele_a_jour_intact(self, app):
+        import database
+        from utils import save_setting, get_setting
+        mig = _load_migration_0041()
+        with app.app_context():
+            save_setting('chatbot_model', 'claude-sonnet-4-6')
+            conn = database.get_db()
+            mig.upgrade(conn)
+            conn.close()
+            assert get_setting('chatbot_model') == 'claude-sonnet-4-6'

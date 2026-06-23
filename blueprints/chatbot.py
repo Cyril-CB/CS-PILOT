@@ -223,8 +223,8 @@ def _get_system_prompt(page_id):
 
 def _get_api_key_for_model(model):
     """Récupère la clé API correspondant au modèle choisi."""
-    from blueprints.api_keys import AI_PROVIDERS, MODEL_TO_PROVIDER
-    provider_id = MODEL_TO_PROVIDER.get(model)
+    from blueprints.api_keys import AI_PROVIDERS, get_provider_for_model
+    provider_id = get_provider_for_model(model)
     if not provider_id:
         return None, None
     api_key = get_setting(AI_PROVIDERS[provider_id]['key_setting'])
