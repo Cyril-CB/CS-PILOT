@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.db
+.venv/
+venv/
 backups/
 .env
 modeles_contrats/

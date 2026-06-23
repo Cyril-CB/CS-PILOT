@@ -28,9 +28,9 @@ AI_PROVIDERS = {
         'key_setting': 'anthropic_api_key',
         'key_prefix': 'sk-ant-',
         'models': [
-            {'id': 'claude-sonnet-4-5-20250929', 'label': 'claude-sonnet-4-5 (recommande)'},
-            {'id': 'claude-opus-4-6', 'label': 'claude-opus-4-6 (+ puissant)'},
-            {'id': 'claude-haiku-4-5-20251001', 'label': 'claude-haiku-4-5'},
+            {'id': 'claude-sonnet-4-6', 'label': 'claude-sonnet-4-6 (recommande)'},
+            {'id': 'claude-opus-4-8', 'label': 'claude-opus-4-8 (+ puissant)'},
+            {'id': 'claude-haiku-4-5', 'label': 'claude-haiku-4-5 (rapide)'},
         ],
     },
     'groq': {
@@ -54,6 +54,30 @@ for provider_id, provider_info in AI_PROVIDERS.items():
 def get_provider_for_model(model_id):
     """Retourne l'identifiant du fournisseur pour un modèle donné."""
     return MODEL_TO_PROVIDER.get(model_id)
+
+
+# ── Compatibilité des paramètres selon le modèle ──
+
+def anthropic_supports_temperature(model_id):
+    """Indique si un modèle Anthropic accepte le paramètre `temperature`.
+
+    Les modèles récents (Opus 4.7+, Fable/Mythos) rejettent `temperature`
+    (ainsi que `top_p`/`top_k`) avec une erreur 400 : il ne faut alors pas
+    l'inclure dans la requête.
+    """
+    return not str(model_id).startswith((
+        'claude-opus-4-7', 'claude-opus-4-8', 'claude-fable', 'claude-mythos',
+    ))
+
+
+def is_openai_reasoning_model(model_id):
+    """Indique si un modèle OpenAI est un modèle de raisonnement.
+
+    Les modèles o1/o3/o4 et la famille GPT-5 ne supportent pas les paramètres
+    `temperature` / `seed` personnalisés (température figée à 1) : les omettre
+    évite une erreur 400.
+    """
+    return str(model_id).startswith(('o1', 'o3', 'o4', 'gpt-5'))
 
 
 def get_configured_providers():
@@ -122,7 +146,7 @@ def _test_anthropic_key(api_key):
             "anthropic-version": "2023-06-01",
         },
         json={
-            "model": "claude-haiku-4-5-20251001",
+            "model": "claude-haiku-4-5",
             "max_tokens": 5,
             "messages": [{"role": "user", "content": "test"}],
         },
