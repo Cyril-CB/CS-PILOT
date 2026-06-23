@@ -11,6 +11,7 @@ Fonctionnalites :
   responsables ajustent la repartition sans depasser le global
 """
 import io
+import json
 import sqlite3
 from datetime import datetime, date, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, jsonify, current_app
@@ -1164,5 +1165,348 @@ def api_budget_previsionnel_export_pdf():
         resp = current_app.response_class(pdf, mimetype='application/pdf')
         resp.headers['Content-Disposition'] = f'attachment; filename=budget_previsionnel_{annee}.pdf'
         return resp
+    finally:
+        conn.close()
+
+
+# ============================================================
+# SIMULATEUR PRESTATION DE SERVICE (PS) CAF
+# ============================================================
+
+PS_TYPES = ('eaje', 'alsh')
+
+# Valeurs par défaut du simulateur PS EAJE (modifiables dans l'interface).
+PS_EAJE_DEFAULTS = {
+    'taux_ps': 6.63,
+    'taux_regime': 100,
+    'amplitude_horaire': 10,
+    'financement_par_enfant': 8,
+    'bonus_mixite': {
+        'seuil1': 0.91, 'montant1': 2100,
+        'seuil2': 1.20, 'montant2': 800,
+        'seuil3': 1.52, 'montant3': 300,
+    },
+    'journees_peda': {'nb_journees': 3, 'nb_heures': 10},
+    'bonus_attractivite_taux': 970,
+}
+
+
+def _ps_num(value, default=0.0):
+    """Convertit une valeur saisie (str/None) en float, avec valeur par défaut."""
+    try:
+        if value is None or value == '':
+            return float(default)
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _compute_ps_eaje(donnees):
+    """Calcule le détail du simulateur PS EAJE (crèche) à partir des saisies.
+
+    Les colonnes calculées (heures d'ouverture, amplitude totale, taux
+    d'occupation, taux horaire, PSU, PSU - participation), les totaux/moyennes
+    et les bonus sont dérivés ici afin que le montant stocké et reporté sur le
+    compte soit toujours fiable (recalcul côté serveur).
+    """
+    d = donnees or {}
+    taux_ps = _ps_num(d.get('taux_ps'), PS_EAJE_DEFAULTS['taux_ps'])
+    taux_regime_pct = _ps_num(d.get('taux_regime'), PS_EAJE_DEFAULTS['taux_regime'])
+    taux_regime = taux_regime_pct / 100.0
+
+    mois_in = d.get('mois') or []
+    if not isinstance(mois_in, list):
+        mois_in = []
+    mois_out = []
+    tot = {
+        'jours_ouverture': 0.0, 'heures_facturees': 0.0, 'heures_realisees': 0.0,
+        'participation': 0.0, 'amplitude_totale': 0.0, 'psu': 0.0, 'psu_participation': 0.0,
+    }
+    places_list = []
+    for m in mois_in:
+        jours = _ps_num(m.get('jours_ouverture'))
+        h_fact = _ps_num(m.get('heures_facturees'))
+        h_real = _ps_num(m.get('heures_realisees'))
+        participation = _ps_num(m.get('participation'))
+        places = _ps_num(m.get('places'))
+        amplitude_h = _ps_num(m.get('amplitude_horaire'), PS_EAJE_DEFAULTS['amplitude_horaire'])
+        heures_ouv = amplitude_h * jours
+        amplitude_tot = heures_ouv * places
+        taux_occ = (h_fact / amplitude_tot) if amplitude_tot else 0.0
+        taux_horaire = (participation / h_fact) if h_fact else 0.0
+        psu = h_fact * taux_ps * taux_regime
+        psu_part = psu - participation
+        mois_out.append({
+            'prev_reel': m.get('prev_reel') or 'prev',
+            'jours_ouverture': jours, 'heures_facturees': h_fact,
+            'heures_realisees': h_real, 'participation': participation,
+            'places': places, 'amplitude_horaire': amplitude_h,
+            'heures_ouverture': round(heures_ouv, 2),
+            'amplitude_totale': round(amplitude_tot, 2),
+            'taux_occupation': round(taux_occ, 4),
+            'taux_horaire': round(taux_horaire, 4),
+            'psu': round(psu, 2),
+            'psu_participation': round(psu_part, 2),
+        })
+        tot['jours_ouverture'] += jours
+        tot['heures_facturees'] += h_fact
+        tot['heures_realisees'] += h_real
+        tot['participation'] += participation
+        tot['amplitude_totale'] += amplitude_tot
+        tot['psu'] += psu
+        tot['psu_participation'] += psu_part
+        if places > 0:
+            places_list.append(places)
+
+    # Le nombre de places est généralement constant : sinon on prend la moyenne
+    # des mois renseignés (places > 0).
+    places_moyen = (sum(places_list) / len(places_list)) if places_list else 0.0
+    # Moyennes pondérées (cohérentes avec le calcul CAF du taux de participation).
+    taux_occ_moyen = (tot['heures_facturees'] / tot['amplitude_totale']) if tot['amplitude_totale'] else 0.0
+    taux_horaire_moyen = (tot['participation'] / tot['heures_facturees']) if tot['heures_facturees'] else 0.0
+
+    nb_enfants = _ps_num(d.get('nb_enfants_inscrits'))
+    financement_enfant = _ps_num(d.get('financement_par_enfant'), PS_EAJE_DEFAULTS['financement_par_enfant'])
+    ps_prepa = nb_enfants * financement_enfant * taux_regime
+
+    bm = d.get('bonus_mixite') or {}
+    bm_def = PS_EAJE_DEFAULTS['bonus_mixite']
+    seuil1 = _ps_num(bm.get('seuil1'), bm_def['seuil1'])
+    montant1 = _ps_num(bm.get('montant1'), bm_def['montant1'])
+    seuil2 = _ps_num(bm.get('seuil2'), bm_def['seuil2'])
+    montant2 = _ps_num(bm.get('montant2'), bm_def['montant2'])
+    seuil3 = _ps_num(bm.get('seuil3'), bm_def['seuil3'])
+    montant3 = _ps_num(bm.get('montant3'), bm_def['montant3'])
+    if taux_horaire_moyen <= seuil1:
+        bonus_mixite_place = montant1
+    elif taux_horaire_moyen <= seuil2:
+        bonus_mixite_place = montant2
+    elif taux_horaire_moyen <= seuil3:
+        bonus_mixite_place = montant3
+    else:
+        bonus_mixite_place = 0.0
+    bonus_mixite = bonus_mixite_place * places_moyen
+
+    jp = d.get('journees_peda') or {}
+    jp_def = PS_EAJE_DEFAULTS['journees_peda']
+    jp_nb = _ps_num(jp.get('nb_journees'), jp_def['nb_journees'])
+    jp_h = _ps_num(jp.get('nb_heures'), jp_def['nb_heures'])
+    journees_peda = jp_nb * jp_h * taux_ps * taux_regime * places_moyen
+
+    bonus_attr_taux = _ps_num(d.get('bonus_attractivite_taux'), PS_EAJE_DEFAULTS['bonus_attractivite_taux'])
+    bonus_attractivite = bonus_attr_taux * places_moyen
+
+    total = tot['psu_participation'] + ps_prepa + bonus_mixite + journees_peda + bonus_attractivite
+
+    return {
+        'mois': mois_out,
+        'totaux': {k: round(v, 2) for k, v in tot.items()},
+        'taux_occupation_moyen': round(taux_occ_moyen, 4),
+        'taux_horaire_moyen': round(taux_horaire_moyen, 4),
+        'places_moyen': round(places_moyen, 2),
+        'ps_prepa': round(ps_prepa, 2),
+        'bonus_mixite': round(bonus_mixite, 2),
+        'bonus_mixite_place': round(bonus_mixite_place, 2),
+        'journees_peda': round(journees_peda, 2),
+        'bonus_attractivite': round(bonus_attractivite, 2),
+        'total': round(total, 2),
+    }
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-comptes')
+@login_required
+def api_ps_comptes_liste():
+    """Liste des comptes paramétrés comme PS (compte_num -> type_ps)."""
+    profil = session.get('profil')
+    if not _can_access_budget_previsionnel(profil):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            'SELECT compte_num, type_ps FROM budget_ps_comptes ORDER BY compte_num'
+        ).fetchall()
+        return jsonify({'comptes': {r['compte_num']: r['type_ps'] for r in rows}})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-comptes-disponibles')
+@login_required
+def api_ps_comptes_disponibles():
+    """Liste des comptes de produits 70x disponibles pour le paramétrage PS."""
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    conn = get_db()
+    try:
+        comptes = {}
+        for r in conn.execute(
+            "SELECT compte_num, libelle FROM plan_comptable_general WHERE compte_num LIKE '70%'"
+        ).fetchall():
+            comptes[r['compte_num']] = r['libelle'] or r['compte_num']
+        for r in conn.execute(
+            "SELECT DISTINCT compte_num, libelle FROM bilan_fec_donnees WHERE compte_num LIKE '70%'"
+        ).fetchall():
+            comptes.setdefault(r['compte_num'], r['libelle'] or r['compte_num'])
+        liste = [{'compte_num': k, 'libelle': v} for k, v in sorted(comptes.items())]
+        return jsonify({'comptes': liste})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-comptes', methods=['POST'])
+@login_required
+def api_ps_comptes_save():
+    """Rattache un compte 70x à un type de PS (EAJE/ALSH)."""
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    data = request.get_json() or {}
+    compte_num = (data.get('compte_num') or '').strip()
+    type_ps = (data.get('type_ps') or '').strip()
+    if not compte_num:
+        return jsonify({'error': 'Compte requis'}), 400
+    if type_ps not in PS_TYPES:
+        return jsonify({'error': 'Type de PS invalide'}), 400
+    conn = get_db()
+    try:
+        conn.execute('''
+            INSERT INTO budget_ps_comptes (compte_num, type_ps, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(compte_num) DO UPDATE SET
+                type_ps = excluded.type_ps,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (compte_num, type_ps))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-comptes/<compte_num>', methods=['DELETE'])
+@login_required
+def api_ps_comptes_delete(compte_num):
+    """Retire un compte du paramétrage PS."""
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    conn = get_db()
+    try:
+        conn.execute('DELETE FROM budget_ps_comptes WHERE compte_num = ?', (compte_num,))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-simulation')
+@login_required
+def api_ps_simulation_get():
+    """Récupère une simulation PS enregistrée pour (compte, année, type budget)."""
+    profil = session.get('profil')
+    if not _can_access_budget_previsionnel(profil):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    compte_num = (request.args.get('compte_num') or '').strip()
+    annee = request.args.get('annee', type=int)
+    type_budget = request.args.get('type_budget', 'initial')
+    if not compte_num or not annee:
+        return jsonify({'error': 'Compte et année requis'}), 400
+    if type_budget not in ('initial', 'actualise'):
+        return jsonify({'error': 'Type de budget invalide'}), 400
+    conn = get_db()
+    try:
+        type_row = conn.execute(
+            'SELECT type_ps FROM budget_ps_comptes WHERE compte_num = ?', (compte_num,)
+        ).fetchone()
+        type_ps = type_row['type_ps'] if type_row else 'eaje'
+        row = conn.execute('''
+            SELECT donnees, total, type_ps, updated_at FROM budget_ps_simulations
+            WHERE compte_num = ? AND annee = ? AND type_budget = ?
+        ''', (compte_num, annee, type_budget)).fetchone()
+        if not row:
+            return jsonify({'found': False, 'type_ps': type_ps, 'donnees': None})
+        try:
+            donnees = json.loads(row['donnees']) if row['donnees'] else None
+        except (ValueError, TypeError):
+            donnees = None
+        return jsonify({
+            'found': True,
+            'type_ps': row['type_ps'] or type_ps,
+            'donnees': donnees,
+            'total': row['total'],
+            'updated_at': row['updated_at'],
+        })
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ps-simulation', methods=['POST'])
+@login_required
+def api_ps_simulation_save():
+    """Enregistre une simulation PS et reporte le total sur le compte produit."""
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.get_json() or {}
+    compte_num = (data.get('compte_num') or '').strip()
+    annee = data.get('annee')
+    type_budget = data.get('type_budget')
+    type_ps = (data.get('type_ps') or 'eaje').strip()
+    secteur_id = data.get('secteur_id')
+    donnees = data.get('donnees') or {}
+    if not isinstance(donnees, dict):
+        donnees = {}
+
+    if not compte_num or not annee:
+        return jsonify({'error': 'Compte et année requis'}), 400
+    if type_budget not in ('initial', 'actualise'):
+        return jsonify({'error': 'Type de budget invalide'}), 400
+    if type_ps not in PS_TYPES:
+        return jsonify({'error': 'Type de PS invalide'}), 400
+
+    # Le total reporté est recalculé côté serveur pour le simulateur EAJE.
+    if type_ps == 'eaje':
+        computed = _compute_ps_eaje(donnees)
+        total = computed['total']
+    else:
+        computed = None
+        total = 0.0
+
+    conn = get_db()
+    try:
+        conn.execute('''
+            INSERT INTO budget_ps_simulations
+            (compte_num, annee, type_budget, type_ps, secteur_id, donnees, total, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(compte_num, annee, type_budget) DO UPDATE SET
+                type_ps = excluded.type_ps,
+                secteur_id = excluded.secteur_id,
+                donnees = excluded.donnees,
+                total = excluded.total,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (compte_num, int(annee), type_budget, type_ps,
+              int(secteur_id) if secteur_id else None,
+              json.dumps(donnees), total, user_id))
+
+        # Report du total sur la valeur définitive du compte dans le budget,
+        # en préservant la valeur temporaire et le commentaire éventuels.
+        reported = False
+        if secteur_id:
+            conn.execute('''
+                INSERT INTO budget_prev_saisies
+                (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(type_budget, annee, secteur_id, compte_num) DO UPDATE SET
+                    valeur_def = excluded.valeur_def,
+                    updated_by = excluded.updated_by,
+                    updated_at = CURRENT_TIMESTAMP
+            ''', (type_budget, int(annee), int(secteur_id), compte_num, total, user_id))
+            reported = True
+
+        conn.commit()
+        return jsonify({'success': True, 'total': total, 'reported': reported, 'computed': computed})
     finally:
         conn.close()

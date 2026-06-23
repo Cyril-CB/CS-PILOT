@@ -19,12 +19,6 @@
     border-top: 2px solid #c4ced9;
     border-bottom: 2px solid #c4ced9;
 }
-.budget-prev-table .bp-cat-header td {
-    font-size: 0.78rem;
-    color: #556677;
-    background: #f2f6fb !important;
-    border-top: 1px solid #d9e2ec;
-}
 .bp-input-def {
     width: 100%;
     max-width: 135px;
@@ -37,10 +31,200 @@
     min-width: 0;
     box-sizing: border-box;
 }
+/* Étape 1 : en-têtes figés via conteneur défilant + thead sticky */
+.bp-table-scroll {
+    max-height: 70vh;
+    overflow: auto;
+    border: 1px solid var(--gray-200, #e7ddd1);
+    border-radius: 8px;
+}
+.bp-table-scroll .budget-prev-table {
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+    animation: none;
+}
+.budget-prev-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--gray-100, #f3eee7);
+    box-shadow: inset 0 -2px 0 var(--gray-300, #d3c2b1);
+}
+.bp-ps-btn {
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+/* Simulateur PS : modale large */
+.ps-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 10000;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px;
+    overflow-y: auto;
+}
+.ps-modal-overlay.open { display: flex; }
+.ps-modal {
+    background: var(--white);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 1500px;
+    margin: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+.ps-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--gray-200);
+    position: sticky;
+    top: 0;
+    background: var(--white);
+    z-index: 5;
+    border-radius: 12px 12px 0 0;
+}
+.ps-modal-header h3 { margin: 0; font-size: 1.1rem; }
+.ps-modal-body { padding: 16px 20px; }
+.ps-modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    position: sticky;
+    bottom: 0;
+    background: var(--white);
+    border-radius: 0 0 12px 12px;
+}
+.ps-table-scroll { overflow-x: auto; }
+.ps-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.ps-table th, .ps-table td {
+    border: 1px solid var(--gray-200);
+    padding: 4px 6px;
+    text-align: right;
+    white-space: nowrap;
+}
+.ps-table thead th {
+    background: var(--gray-100);
+    text-align: center;
+    font-size: 0.72rem;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.ps-table td.ps-col-mois { text-align: left; font-weight: 600; white-space: nowrap; }
+.ps-table tfoot td { font-weight: 700; background: var(--gray-50); }
+.ps-input {
+    width: 100%;
+    min-width: 64px;
+    padding: 3px 5px;
+    text-align: right;
+    border: 1px solid var(--gray-300);
+    border-radius: 4px;
+    box-sizing: border-box;
+    background: var(--white);
+    color: var(--gray-900);
+    font-size: 0.82rem;
+}
+.ps-input-sel { min-width: 96px; text-align: left; }
+/* Colonnes calculées : couleur spéciale */
+.bp-ps-calc { background: #e8f1fb; }
+.ps-table tfoot td.bp-ps-calc { background: #dce9f7; }
+[data-theme="dark"] .bp-ps-calc { background: #1d2c3f; }
+[data-theme="dark"] .ps-table tfoot td.bp-ps-calc { background: #233349; }
+.ps-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 14px;
+    margin-top: 18px;
+}
+.ps-card {
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 12px 14px;
+    background: var(--gray-50);
+}
+.ps-card h4 { margin: 0 0 10px; font-size: 0.9rem; color: var(--primary); }
+.ps-field { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.ps-field label { font-size: 0.82rem; color: var(--gray-700); flex: 1 1 auto; min-width: 0; }
+.ps-field .ps-input { flex: 0 0 110px; min-width: 90px; }
+.ps-result {
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--gray-300);
+}
+.ps-total-box {
+    margin-top: 16px;
+    padding: 14px 18px;
+    border: 2px solid var(--primary);
+    border-radius: 10px;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 1.05rem;
+}
+.ps-total-box strong { font-size: 1.35rem; }
+.ps-params {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+}
+.ps-params .ps-field { margin-bottom: 0; }
+.ps-legend { font-size: 0.78rem; color: var(--gray-500); margin: 10px 0; }
+.ps-legend .bp-ps-calc { padding: 1px 8px; border-radius: 3px; }
+/* Modale de paramétrage des comptes PS */
+.ps-config-list { list-style: none; padding: 0; margin: 0 0 16px; }
+.ps-config-list li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    margin-bottom: 6px;
+}
+.ps-config-list .ps-config-lib { flex: 1 1 auto; min-width: 0; }
+.ps-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--primary-light);
+    color: #fff;
+    white-space: nowrap;
+}
+[data-theme="dark"] .ps-modal, [data-theme="dark"] .ps-modal-header,
+[data-theme="dark"] .ps-modal-footer { background: var(--white); }
+[data-theme="dark"] .ps-input { background: var(--gray-50); border-color: var(--gray-300); }
 </style>
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
     <h2>💶 Budget prévisionnel</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        {% if profil in ['directeur', 'comptable'] %}
+        <button class="btn btn-secondary" onclick="openPsConfig()">⚙️ Paramétrer les comptes PS</button>
+        {% endif %}
         <button class="btn btn-secondary" onclick="exporterPdf(false)">📄 Export PDF secteur</button>
         {% if profil in ['directeur', 'comptable'] %}
         <button class="btn btn-secondary" onclick="exporterPdf(true)">📄 Export PDF budget global</button>
@@ -98,10 +282,57 @@
 </div>
 {% endif %}
 
+{% if profil in ['directeur', 'comptable'] %}
+<!-- Étape 2 : modale de paramétrage des comptes PS -->
+<div id="psConfigModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closePsConfig()">
+    <div class="modal-content" style="max-width:640px;">
+        <div class="modal-header">
+            <h3>⚙️ Comptes concernés par une Prestation de Service</h3>
+            <button class="modal-close" type="button" onclick="closePsConfig()" aria-label="Fermer">&times;</button>
+        </div>
+        <div style="padding:0 1.5rem 1.5rem;">
+            <p class="help-text" style="margin-top:0;">
+                Sélectionnez un compte de produits 70 et le type de PS associé. Un bouton de
+                simulateur apparaîtra à côté du compte dans le budget. Les comptes restent en mémoire.
+            </p>
+            <ul id="psConfigList" class="ps-config-list"></ul>
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="margin:0;flex:1 1 220px;">
+                    <label>Compte 70</label>
+                    <select id="psConfigCompte" class="form-select" style="width:100%;"></select>
+                </div>
+                <div class="form-group" style="margin:0;flex:0 0 200px;">
+                    <label>Type de PS</label>
+                    <select id="psConfigType" class="form-select" style="width:100%;">
+                        <option value="eaje">PS EAJE (crèche)</option>
+                        <option value="alsh">PS ALSH (Accueil de loisirs)</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" type="button" onclick="addPsCompte()">➕ Ajouter</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Étape 3 : modale du simulateur de PS (contenu généré dynamiquement) -->
+<div id="psSimulatorModal" class="ps-modal-overlay" onclick="if(event.target===this)closePsSimulator()">
+    <div class="ps-modal" role="dialog" aria-modal="true">
+        <div class="ps-modal-header">
+            <h3 id="psSimTitle">Simulateur PS</h3>
+            <button class="modal-close" type="button" onclick="closePsSimulator()" aria-label="Fermer">&times;</button>
+        </div>
+        <div class="ps-modal-body" id="psSimBody"></div>
+        <div class="ps-modal-footer" id="psSimFooter"></div>
+    </div>
+</div>
+
 <script>
 var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
+var canEditPs = {{ 'true' if profil in ['directeur', 'comptable'] else 'false' }};
 var salaryMeta = null;
 var currentRows = [];
+var psComptes = {};   // { compte_num: 'eaje' | 'alsh' }
 
 function fmt(n){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function escapeHtml(value){
@@ -162,6 +393,7 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
                  '<h3 style="margin-top:18px;">Produits</h3>' + buildTable(produits, nTemp, nDef, globalMode);
     document.getElementById(targetId).innerHTML = html;
     bindBudgetInputHandlers(targetId);
+    bindPsButtons(targetId);
 }
 
 function bindBudgetInputHandlers(targetId){
@@ -188,7 +420,7 @@ function bindBudgetInputHandlers(targetId){
 
 function buildTable(rows, labelTemp, labelDef, globalMode){
     if (!rows.length) return '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
-    let html = '<table class="data-table budget-prev-table"><colgroup>' +
+    let html = '<div class="bp-table-scroll"><table class="data-table budget-prev-table"><colgroup>' +
       '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-input"><col class="bp-col-input"><col class="bp-col-comment">' +
       '</colgroup><thead><tr>' +
       '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th><th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th><th>Commentaire</th>' +
@@ -206,9 +438,6 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
             pushCatTotal();
             currentCat = r.categorie;
             catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
-            html += '<tr class="bp-cat-header"><td><small>Compte</small></td><td><small>Libellé</small></td>' +
-              '<td class="bp-col-num"><small>N-2</small></td><td class="bp-col-num"><small>N-1</small></td><td class="bp-col-num"><small>N</small></td>' +
-              '<td class="bp-col-num"><small>' + labelTemp + '</small></td><td class="bp-col-num"><small>' + labelDef + '</small></td><td><small>Commentaire</small></td></tr>';
         }
         catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
         const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
@@ -222,13 +451,16 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
         const commentInput = (!globalMode && !isReadOnly)
             ? '<input class="form-control bp-input-comment" value="' + escapeHtml(r.commentaire || '') + '" data-bp-comment-compte="' + escapeHtml(r.compte_num) + '">'
             : escapeHtml(r.commentaire || '');
+        const psBtn = (!globalMode && psComptes[r.compte_num])
+            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-ps-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de PS">🧮 PS</button>'
+            : '';
         html += '<tr' + rowStyle + '>' +
-          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + '</td>' +
+          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + '</td>' +
           '<td class="bp-col-num">' + fmt(r['N-2']) + '</td><td class="bp-col-num">' + fmt(r['N-1']) + '</td><td class="bp-col-num">' + fmt(r['N']) + '</td>' +
           '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td><td>' + commentInput + '</td></tr>';
     }
     pushCatTotal();
-    html += '</tbody></table>';
+    html += '</tbody></table></div>';
     return html;
 }
 
@@ -313,6 +545,424 @@ function exporterPdf(globalMode){
     window.open(url, '_blank');
 }
 
-chargerBudget();
+// ============================================================
+// Simulateur de Prestation de Service (PS) CAF
+// ============================================================
+var NOMS_MOIS_PS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+function fmtR(n, dec){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:dec, maximumFractionDigits:dec}); }
+function fmtPct(r){ return fmtR((Number(r || 0)) * 100, 1) + ' %'; }
+function psNum(v, def){ var n = parseFloat(v); if (isNaN(n)) return (def === undefined ? 0 : def); return n; }
+
+function loadPsComptes(){
+    return fetch('/api/budget-previsionnel/ps-comptes')
+        .then(r => r.json())
+        .then(data => { psComptes = (data && data.comptes) ? data.comptes : {}; })
+        .catch(() => { psComptes = {}; });
+}
+
+function bindPsButtons(targetId){
+    var root = document.getElementById(targetId);
+    if (!root) return;
+    root.querySelectorAll('button[data-ps-compte]').forEach(function(btn){
+        btn.addEventListener('click', function(){ openPsSimulator(this.dataset.psCompte || ''); });
+    });
+}
+
+function refreshBudgetButtons(){
+    if (currentRows && currentRows.length){
+        renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
+    }
+}
+
+function renderResultFromRows(){
+    if (!salaryMeta) return;
+    var ch = currentRows.filter(function(r){ return r.nature === 'charges'; });
+    var pr = currentRows.filter(function(r){ return r.nature === 'produits'; });
+    var sum = function(arr, key){ return arr.reduce(function(s, r){ return s + Number(r[key] || 0); }, 0); };
+    var tot = {
+        charges_temp: sum(ch, 'temp'), produits_temp: sum(pr, 'temp'),
+        charges_def: sum(ch, 'def'), produits_def: sum(pr, 'def')
+    };
+    tot.resultat_temp = tot.produits_temp - tot.charges_temp;
+    tot.resultat_def = tot.produits_def - tot.charges_def;
+    renderResult('budgetResultat', tot);
+}
+
+// ---- Étape 2 : paramétrage des comptes PS ----
+function openPsConfig(){
+    var modal = document.getElementById('psConfigModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    loadPsCompteOptions();
+    renderPsConfigList();
+}
+function closePsConfig(){
+    var modal = document.getElementById('psConfigModal');
+    if (modal) modal.style.display = 'none';
+}
+function loadPsCompteOptions(){
+    fetch('/api/budget-previsionnel/ps-comptes-disponibles')
+        .then(r => r.json())
+        .then(data => {
+            var sel = document.getElementById('psConfigCompte');
+            if (!sel) return;
+            var list = (data && data.comptes) ? data.comptes : [];
+            if (!list.length){ sel.innerHTML = '<option value="">Aucun compte 70 disponible</option>'; return; }
+            sel.innerHTML = list.map(function(c){
+                return '<option value="' + escapeHtml(c.compte_num) + '">' +
+                    escapeHtml(c.compte_num + ' — ' + (c.libelle || '')) + '</option>';
+            }).join('');
+        });
+}
+function renderPsConfigList(){
+    var ul = document.getElementById('psConfigList');
+    if (!ul) return;
+    var keys = Object.keys(psComptes).sort();
+    if (!keys.length){
+        ul.innerHTML = '<li style="border:none;color:var(--text-muted);">Aucun compte paramétré pour le moment.</li>';
+        return;
+    }
+    ul.innerHTML = keys.map(function(compte){
+        var type = psComptes[compte];
+        var label = type === 'alsh' ? 'PS ALSH' : 'PS EAJE';
+        return '<li><span class="ps-config-lib">' + escapeHtml(compte) + '</span>' +
+            '<span class="ps-badge">' + label + '</span>' +
+            '<button type="button" class="btn btn-sm btn-danger" data-ps-remove="' + escapeHtml(compte) + '">Retirer</button></li>';
+    }).join('');
+    ul.querySelectorAll('button[data-ps-remove]').forEach(function(btn){
+        btn.addEventListener('click', function(){ removePsCompte(this.dataset.psRemove); });
+    });
+}
+function addPsCompte(){
+    var compte = (document.getElementById('psConfigCompte') || {}).value || '';
+    var type = (document.getElementById('psConfigType') || {}).value || 'eaje';
+    if (!compte){ alert('Sélectionnez un compte 70.'); return; }
+    fetch('/api/budget-previsionnel/ps-comptes', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({compte_num: compte, type_ps: type})
+    }).then(r => r.json()).then(data => {
+        if (!data.success){ alert(data.error || 'Erreur'); return; }
+        loadPsComptes().then(function(){ renderPsConfigList(); refreshBudgetButtons(); });
+    });
+}
+function removePsCompte(compte){
+    fetch('/api/budget-previsionnel/ps-comptes/' + encodeURIComponent(compte), {method:'DELETE'})
+        .then(r => r.json()).then(data => {
+            if (!data.success){ alert(data.error || 'Erreur'); return; }
+            loadPsComptes().then(function(){ renderPsConfigList(); refreshBudgetButtons(); });
+        });
+}
+
+// ---- Étape 3 : simulateurs ----
+var psSim = null;  // { compte, type_ps, libelle, ctx, state }
+
+function openPsSimulator(compteNum){
+    var type = psComptes[compteNum] || 'eaje';
+    var rowMeta = currentRows.find(function(r){ return r.compte_num === compteNum; });
+    var libelle = rowMeta ? rowMeta.libelle : '';
+    var ctx = getCurrentBudgetContext();
+    psSim = {compte: compteNum, type_ps: type, libelle: libelle, ctx: ctx, state: null};
+    document.getElementById('psSimTitle').textContent =
+        (type === 'alsh' ? 'Simulateur PS ALSH' : 'Simulateur PS EAJE') +
+        ' — ' + compteNum + (libelle ? ' (' + libelle + ')' : '');
+    if (type === 'alsh'){ renderAlshSimulator(); showPsModal(); return; }
+    var url = '/api/budget-previsionnel/ps-simulation?compte_num=' + encodeURIComponent(compteNum) +
+        '&annee=' + ctx.annee + '&type_budget=' + encodeURIComponent(ctx.type_budget);
+    fetch(url).then(r => r.json()).then(data => {
+        psSim.state = mergeEajeState((data && data.found) ? data.donnees : null);
+        renderEajeSimulator(); showPsModal(); psRecompute();
+    }).catch(function(){
+        psSim.state = mergeEajeState(null);
+        renderEajeSimulator(); showPsModal(); psRecompute();
+    });
+}
+function showPsModal(){ document.getElementById('psSimulatorModal').classList.add('open'); }
+function closePsSimulator(){ document.getElementById('psSimulatorModal').classList.remove('open'); psSim = null; }
+document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && document.getElementById('psSimulatorModal').classList.contains('open')) closePsSimulator();
+});
+
+function renderAlshSimulator(){
+    document.getElementById('psSimBody').innerHTML =
+        '<div style="padding:48px 20px;text-align:center;color:var(--text-muted,#777);">' +
+        '<div style="font-size:2.6rem;margin-bottom:12px;">🚧</div>' +
+        '<p style="font-size:1.08rem;">Le simulateur de <strong>PS ALSH</strong> (Accueil de loisirs) est en cours de réalisation.</p>' +
+        '<p>Il sera disponible prochainement.</p></div>';
+    document.getElementById('psSimFooter').innerHTML =
+        '<button class="btn btn-secondary" type="button" onclick="closePsSimulator()">Fermer</button>';
+}
+
+function defaultEajeState(){
+    var mois = [];
+    for (var i = 0; i < 12; i++){
+        mois.push({prev_reel:'prev', jours_ouverture:'', heures_facturees:'', heures_realisees:'', participation:'', places:'', amplitude_horaire:10});
+    }
+    return {
+        taux_ps:6.63, taux_regime:100, mois:mois,
+        nb_enfants_inscrits:'', financement_par_enfant:8,
+        bonus_mixite:{seuil1:0.91, montant1:2100, seuil2:1.20, montant2:800, seuil3:1.52, montant3:300},
+        journees_peda:{nb_journees:3, nb_heures:10},
+        bonus_attractivite_taux:970
+    };
+}
+function mergeEajeState(saved){
+    var s = defaultEajeState();
+    if (!saved) return s;
+    ['taux_ps','taux_regime','nb_enfants_inscrits','financement_par_enfant','bonus_attractivite_taux'].forEach(function(k){
+        if (saved[k] !== undefined && saved[k] !== null) s[k] = saved[k];
+    });
+    if (saved.bonus_mixite) Object.assign(s.bonus_mixite, saved.bonus_mixite);
+    if (saved.journees_peda) Object.assign(s.journees_peda, saved.journees_peda);
+    if (Array.isArray(saved.mois)){
+        for (var i = 0; i < 12 && i < saved.mois.length; i++){
+            if (saved.mois[i]) Object.assign(s.mois[i], saved.mois[i]);
+        }
+    }
+    return s;
+}
+
+function computePsEaje(d){
+    d = d || {};
+    var tauxPs = psNum(d.taux_ps, 6.63);
+    var tauxRegime = psNum(d.taux_regime, 100) / 100;
+    var mois = d.mois || [];
+    var out = [];
+    var tot = {jours_ouverture:0, heures_facturees:0, heures_realisees:0, participation:0, amplitude_totale:0, psu:0, psu_participation:0};
+    var placesList = [];
+    for (var i = 0; i < mois.length; i++){
+        var m = mois[i] || {};
+        var jours = psNum(m.jours_ouverture);
+        var hFact = psNum(m.heures_facturees);
+        var hReal = psNum(m.heures_realisees);
+        var part = psNum(m.participation);
+        var places = psNum(m.places);
+        var ampH = psNum(m.amplitude_horaire, 10);
+        var hOuv = ampH * jours;
+        var ampTot = hOuv * places;
+        var tauxOcc = ampTot ? hFact / ampTot : 0;
+        var tauxHor = hFact ? part / hFact : 0;
+        var psu = hFact * tauxPs * tauxRegime;
+        var psuPart = psu - part;
+        out.push({heures_ouverture:hOuv, amplitude_totale:ampTot, taux_occupation:tauxOcc, taux_horaire:tauxHor, psu:psu, psu_participation:psuPart});
+        tot.jours_ouverture += jours; tot.heures_facturees += hFact; tot.heures_realisees += hReal;
+        tot.participation += part; tot.amplitude_totale += ampTot; tot.psu += psu; tot.psu_participation += psuPart;
+        if (places > 0) placesList.push(places);
+    }
+    var placesMoyen = placesList.length ? placesList.reduce(function(a,b){ return a + b; }, 0) / placesList.length : 0;
+    var tauxOccMoyen = tot.amplitude_totale ? tot.heures_facturees / tot.amplitude_totale : 0;
+    var tauxHorMoyen = tot.heures_facturees ? tot.participation / tot.heures_facturees : 0;
+    var nbEnfants = psNum(d.nb_enfants_inscrits);
+    var finEnfant = psNum(d.financement_par_enfant, 8);
+    var psPrepa = nbEnfants * finEnfant * tauxRegime;
+    var bm = d.bonus_mixite || {};
+    var s1 = psNum(bm.seuil1, 0.91), m1 = psNum(bm.montant1, 2100);
+    var s2 = psNum(bm.seuil2, 1.20), m2 = psNum(bm.montant2, 800);
+    var s3 = psNum(bm.seuil3, 1.52), m3 = psNum(bm.montant3, 300);
+    var bmPlace;
+    if (tauxHorMoyen <= s1) bmPlace = m1;
+    else if (tauxHorMoyen <= s2) bmPlace = m2;
+    else if (tauxHorMoyen <= s3) bmPlace = m3;
+    else bmPlace = 0;
+    var bonusMixite = bmPlace * placesMoyen;
+    var jp = d.journees_peda || {};
+    var jpNb = psNum(jp.nb_journees, 3), jpH = psNum(jp.nb_heures, 10);
+    var journeesPeda = jpNb * jpH * tauxPs * tauxRegime * placesMoyen;
+    var bonusAttrTaux = psNum(d.bonus_attractivite_taux, 970);
+    var bonusAttr = bonusAttrTaux * placesMoyen;
+    var total = tot.psu_participation + psPrepa + bonusMixite + journeesPeda + bonusAttr;
+    return {mois:out, totaux:tot, taux_occupation_moyen:tauxOccMoyen, taux_horaire_moyen:tauxHorMoyen,
+        places_moyen:placesMoyen, ps_prepa:psPrepa, bonus_mixite:bonusMixite, bonus_mixite_place:bmPlace,
+        journees_peda:journeesPeda, bonus_attractivite:bonusAttr, total:total};
+}
+
+function psCell(i, key, val, dis){
+    var step = (key === 'jours_ouverture') ? '1' : '0.01';
+    var v = (val === null || val === undefined) ? '' : val;
+    return '<td><input class="ps-input" type="number" step="' + step + '" value="' + v +
+        '" data-ps-m="' + i + '" data-ps-key="' + key + '"' + dis + '></td>';
+}
+function psBmRow(seuilKey, seuilVal, montantKey, montantVal, dis){
+    return '<div class="ps-field"><label>Jusqu\'à un taux horaire de</label>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + seuilVal + '" data-ps-group="bonus_mixite" data-ps-key="' + seuilKey + '"' + dis + '>' +
+        '<label style="flex:0 0 auto;">→ par place (€)</label>' +
+        '<input class="ps-input" type="number" step="1" value="' + montantVal + '" data-ps-group="bonus_mixite" data-ps-key="' + montantKey + '"' + dis + '></div>';
+}
+
+function renderEajeSimulator(){
+    var st = psSim.state;
+    var dis = canEditPs ? '' : ' disabled';
+    var html = '';
+    html += '<div class="ps-params">' +
+        '<div class="ps-field"><label>Taux de PS</label>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + st.taux_ps + '" data-ps-top="taux_ps"' + dis + '></div>' +
+        '<div class="ps-field"><label>Taux de régime général (%)</label>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + st.taux_regime + '" data-ps-top="taux_regime"' + dis + '></div>' +
+        '</div>';
+    html += '<div class="ps-legend">Les colonnes <span class="bp-ps-calc">surlignées</span> sont calculées automatiquement.</div>';
+    html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
+        '<th>Mois</th><th>Prév/Réel</th><th>Jours d\'ouv.</th><th>Heures facturées</th><th>Heures réalisées</th>' +
+        '<th>Particip. usagers</th><th>Places</th><th>Amplitude horaire</th>' +
+        '<th class="bp-ps-calc">Heures ouverture</th><th class="bp-ps-calc">Amplitude totale</th>' +
+        '<th class="bp-ps-calc">Taux occup.</th><th class="bp-ps-calc">Taux horaire</th>' +
+        '<th class="bp-ps-calc">PSU</th><th class="bp-ps-calc">PSU − Particip.</th>' +
+        '</tr></thead><tbody>';
+    for (var i = 0; i < 12; i++){
+        var m = st.mois[i];
+        html += '<tr>' +
+            '<td class="ps-col-mois">' + NOMS_MOIS_PS[i] + '</td>' +
+            '<td><select class="ps-input ps-input-sel" data-ps-m="' + i + '" data-ps-key="prev_reel"' + dis + '>' +
+                '<option value="prev"' + (m.prev_reel === 'reel' ? '' : ' selected') + '>Prévisionnel</option>' +
+                '<option value="reel"' + (m.prev_reel === 'reel' ? ' selected' : '') + '>Réel</option>' +
+            '</select></td>' +
+            psCell(i, 'jours_ouverture', m.jours_ouverture, dis) +
+            psCell(i, 'heures_facturees', m.heures_facturees, dis) +
+            psCell(i, 'heures_realisees', m.heures_realisees, dis) +
+            psCell(i, 'participation', m.participation, dis) +
+            psCell(i, 'places', m.places, dis) +
+            psCell(i, 'amplitude_horaire', m.amplitude_horaire, dis) +
+            '<td class="bp-ps-calc" id="psc-' + i + '-ho"></td>' +
+            '<td class="bp-ps-calc" id="psc-' + i + '-at"></td>' +
+            '<td class="bp-ps-calc" id="psc-' + i + '-to"></td>' +
+            '<td class="bp-ps-calc" id="psc-' + i + '-th"></td>' +
+            '<td class="bp-ps-calc" id="psc-' + i + '-psu"></td>' +
+            '<td class="bp-ps-calc" id="psc-' + i + '-psup"></td>' +
+            '</tr>';
+    }
+    html += '</tbody><tfoot>' +
+        '<tr><td colspan="2">Total</td>' +
+        '<td id="pst-jo"></td><td id="pst-hf"></td><td id="pst-hr"></td><td id="pst-pa"></td>' +
+        '<td>—</td><td>—</td>' +
+        '<td class="bp-ps-calc">—</td><td class="bp-ps-calc">—</td><td class="bp-ps-calc">—</td><td class="bp-ps-calc">—</td>' +
+        '<td class="bp-ps-calc" id="pst-psu"></td><td class="bp-ps-calc" id="pst-psup"></td></tr>' +
+        '<tr><td colspan="10">Moyenne (pondérée)</td>' +
+        '<td class="bp-ps-calc" id="psm-to"></td><td class="bp-ps-calc" id="psm-th"></td>' +
+        '<td class="bp-ps-calc" colspan="2">—</td></tr>' +
+        '</tfoot></table></div>';
+
+    html += '<div class="ps-summary">';
+    html += '<div class="ps-card"><h4>PS de préparation à l\'accueil de l\'enfant</h4>' +
+        '<div class="ps-field"><label>Nombre d\'enfants inscrits au cours de l\'année</label>' +
+        '<input class="ps-input" type="number" step="1" value="' + st.nb_enfants_inscrits + '" data-ps-top="nb_enfants_inscrits"' + dis + '></div>' +
+        '<div class="ps-field"><label>Financement par enfant (€)</label>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + st.financement_par_enfant + '" data-ps-top="financement_par_enfant"' + dis + '></div>' +
+        '<div class="ps-result">PS prépa accueil : <span id="ps-ps_prepa">0,00</span> €</div></div>';
+    html += '<div class="ps-card"><h4>Bonus mixité</h4>' +
+        '<p class="help-text" style="margin-top:0;">Dépend du taux horaire moyen : <strong id="ps-th-mixite">0,00</strong> €/h.</p>' +
+        psBmRow('seuil1', st.bonus_mixite.seuil1, 'montant1', st.bonus_mixite.montant1, dis) +
+        psBmRow('seuil2', st.bonus_mixite.seuil2, 'montant2', st.bonus_mixite.montant2, dis) +
+        psBmRow('seuil3', st.bonus_mixite.seuil3, 'montant3', st.bonus_mixite.montant3, dis) +
+        '<p class="help-text">Au-delà du dernier seuil : 0 € / place.</p>' +
+        '<div class="ps-result">Montant retenu : <span id="ps-bonus_mixite_place">0,00</span> € / place · Bonus mixité : <span id="ps-bonus_mixite">0,00</span> €</div></div>';
+    html += '<div class="ps-card"><h4>Journées pédagogiques</h4>' +
+        '<div class="ps-field"><label>Nombre de journées</label>' +
+        '<input class="ps-input" type="number" step="1" value="' + st.journees_peda.nb_journees + '" data-ps-group="journees_peda" data-ps-key="nb_journees"' + dis + '></div>' +
+        '<div class="ps-field"><label>Nombre d\'heures par journée</label>' +
+        '<input class="ps-input" type="number" step="0.5" value="' + st.journees_peda.nb_heures + '" data-ps-group="journees_peda" data-ps-key="nb_heures"' + dis + '></div>' +
+        '<div class="ps-result">Journées pédagogiques : <span id="ps-journees_peda">0,00</span> €</div></div>';
+    html += '<div class="ps-card"><h4>Bonus d\'attractivité</h4>' +
+        '<div class="ps-field"><label>Montant par place (€)</label>' +
+        '<input class="ps-input" type="number" step="0.01" value="' + st.bonus_attractivite_taux + '" data-ps-top="bonus_attractivite_taux"' + dis + '></div>' +
+        '<div class="ps-field"><label>Nombre de places retenu (moyenne)</label>&nbsp;<span id="ps-places_moyen" style="font-weight:700;">0,00</span></div>' +
+        '<div class="ps-result">Bonus attractivité : <span id="ps-bonus_attractivite">0,00</span> €</div></div>';
+    html += '</div>';
+
+    html += '<div class="ps-total-box"><span>Total à renseigner sur le compte ' + escapeHtml(psSim.compte) + '</span>' +
+        '<strong><span id="ps-total">0,00</span> €</strong></div>';
+
+    document.getElementById('psSimBody').innerHTML = html;
+
+    var footer = '';
+    if (canEditPs){
+        footer += '<span id="psSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>';
+        footer += '<button class="btn btn-secondary" type="button" onclick="closePsSimulator()">Annuler</button>';
+        footer += '<button class="btn btn-primary" type="button" onclick="savePsSimulator()">💾 Enregistrer et reporter sur le compte</button>';
+    } else {
+        footer += '<span style="margin-right:auto;color:var(--text-muted);">Lecture seule</span>';
+        footer += '<button class="btn btn-secondary" type="button" onclick="closePsSimulator()">Fermer</button>';
+    }
+    document.getElementById('psSimFooter').innerHTML = footer;
+
+    bindEajeInputs();
+}
+
+function bindEajeInputs(){
+    var body = document.getElementById('psSimBody');
+    if (!body) return;
+    body.querySelectorAll('[data-ps-top]').forEach(function(el){
+        var h = function(){ psSim.state[this.dataset.psTop] = this.value; psRecompute(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-ps-group]').forEach(function(el){
+        var h = function(){ psSim.state[this.dataset.psGroup][this.dataset.psKey] = this.value; psRecompute(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-ps-m]').forEach(function(el){
+        var h = function(){ psSim.state.mois[parseInt(this.dataset.psM, 10)][this.dataset.psKey] = this.value; psRecompute(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+}
+
+function psSet(id, text){ var el = document.getElementById(id); if (el) el.textContent = text; }
+
+function psRecompute(){
+    if (!psSim || !psSim.state) return;
+    var c = computePsEaje(psSim.state);
+    for (var i = 0; i < 12; i++){
+        var mc = c.mois[i] || {};
+        psSet('psc-' + i + '-ho', fmtR(mc.heures_ouverture, 2));
+        psSet('psc-' + i + '-at', fmtR(mc.amplitude_totale, 2));
+        psSet('psc-' + i + '-to', fmtPct(mc.taux_occupation));
+        psSet('psc-' + i + '-th', fmtR(mc.taux_horaire, 2));
+        psSet('psc-' + i + '-psu', fmt(mc.psu));
+        psSet('psc-' + i + '-psup', fmt(mc.psu_participation));
+    }
+    psSet('pst-jo', fmtR(c.totaux.jours_ouverture, 0));
+    psSet('pst-hf', fmtR(c.totaux.heures_facturees, 2));
+    psSet('pst-hr', fmtR(c.totaux.heures_realisees, 2));
+    psSet('pst-pa', fmt(c.totaux.participation));
+    psSet('pst-psu', fmt(c.totaux.psu));
+    psSet('pst-psup', fmt(c.totaux.psu_participation));
+    psSet('psm-to', fmtPct(c.taux_occupation_moyen));
+    psSet('psm-th', fmtR(c.taux_horaire_moyen, 2));
+    psSet('ps-th-mixite', fmtR(c.taux_horaire_moyen, 2));
+    psSet('ps-places_moyen', fmtR(c.places_moyen, 2));
+    psSet('ps-ps_prepa', fmt(c.ps_prepa));
+    psSet('ps-bonus_mixite_place', fmt(c.bonus_mixite_place));
+    psSet('ps-bonus_mixite', fmt(c.bonus_mixite));
+    psSet('ps-journees_peda', fmt(c.journees_peda));
+    psSet('ps-bonus_attractivite', fmt(c.bonus_attractivite));
+    psSet('ps-total', fmt(c.total));
+}
+
+function savePsSimulator(){
+    if (!psSim || !canEditPs) return;
+    var ctx = psSim.ctx || getCurrentBudgetContext();
+    var payload = {
+        compte_num: psSim.compte,
+        annee: ctx.annee,
+        type_budget: ctx.type_budget,
+        secteur_id: ctx.secteur_id,
+        type_ps: 'eaje',
+        donnees: psSim.state
+    };
+    var msg = document.getElementById('psSaveMsg');
+    if (msg) msg.textContent = 'Enregistrement…';
+    fetch('/api/budget-previsionnel/ps-simulation', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+    }).then(r => r.json()).then(data => {
+        if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
+        var row = currentRows.find(function(r){ return r.compte_num === psSim.compte; });
+        if (row){
+            row.def = Number(data.total || 0);
+            renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
+            renderResultFromRows();
+        }
+        if (msg) msg.textContent = '✓ Enregistré · total reporté : ' + fmt(data.total) + ' €';
+    }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
+}
+
+loadPsComptes().then(chargerBudget);
 </script>
 {% endblock %}

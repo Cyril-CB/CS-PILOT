@@ -1441,6 +1441,39 @@ def init_db():
         )
     ''')
 
+    # ===== Tables simulateur Prestation de Service CAF (migration 0042) =====
+    # Comptes de produits (70x) marqués comme relevant d'une PS CAF, avec le
+    # type de simulateur associé (EAJE = crèche, ALSH = accueil de loisirs).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_ps_comptes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL UNIQUE,
+            type_ps TEXT NOT NULL CHECK(type_ps IN ('eaje', 'alsh')),
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Saisies du simulateur de PS, attachées au compte, à l'année et au type
+    # de budget. Les données détaillées (paramètres + saisie mensuelle) sont
+    # stockées en JSON ; total = montant à reporter sur le compte produit.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_ps_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL,
+            annee INTEGER NOT NULL,
+            type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
+            type_ps TEXT NOT NULL,
+            secteur_id INTEGER,
+            donnees TEXT,
+            total REAL DEFAULT 0,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE SET NULL,
+            FOREIGN KEY (updated_by) REFERENCES users(id),
+            UNIQUE(compte_num, annee, type_budget)
+        )
+    ''')
+
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
