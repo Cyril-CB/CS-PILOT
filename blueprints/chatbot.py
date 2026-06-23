@@ -223,8 +223,8 @@ def _get_system_prompt(page_id):
 
 def _get_api_key_for_model(model):
     """Récupère la clé API correspondant au modèle choisi."""
-    from blueprints.api_keys import AI_PROVIDERS, MODEL_TO_PROVIDER
-    provider_id = MODEL_TO_PROVIDER.get(model)
+    from blueprints.api_keys import AI_PROVIDERS, get_provider_for_model
+    provider_id = get_provider_for_model(model)
     if not provider_id:
         return None, None
     api_key = get_setting(AI_PROVIDERS[provider_id]['key_setting'])
@@ -233,12 +233,15 @@ def _get_api_key_for_model(model):
 
 def _call_openai(api_key, messages, model):
     """Appel API OpenAI pour le chatbot."""
+    from blueprints.api_keys import is_openai_reasoning_model
     payload = {
         "model": model,
         "messages": messages,
         "max_completion_tokens": 1000,
-        "temperature": 0.7,
     }
+    # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent pas temperature
+    if not is_openai_reasoning_model(model):
+        payload["temperature"] = 0.7
     resp = http_requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={
@@ -297,12 +300,15 @@ def _call_anthropic(api_key, messages, model):
     if not user_messages:
         user_messages = messages
 
+    from blueprints.api_keys import anthropic_supports_temperature
     payload = {
         "model": model,
         "max_tokens": 1000,
-        "temperature": 0.7,
         "messages": user_messages,
     }
+    # Les modèles récents (Opus 4.7+, Fable) rejettent temperature avec une erreur 400
+    if anthropic_supports_temperature(model):
+        payload["temperature"] = 0.7
     if system_text.strip():
         payload["system"] = system_text.strip()
 

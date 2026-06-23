@@ -26,30 +26,33 @@ Pour chaque facture, tu dois générer les lignes d'écriture comptable suivante
 1. Une ligne de DÉBIT sur le compte de charge approprié (montant TTC)
 2. Une ligne de CRÉDIT sur le compte fournisseur (montant TTC)
 
-Tu DOIS répondre STRICTEMENT au format JSON suivant (un tableau d'écritures) :
-[
-  {
-    "facture_id": 123,
-    "lignes": [
-      {
-        "compte": "606100",
-        "libelle": "FOURNISSEUR FACTURE 2024-001 01/2025",
-        "debit": 1234.56,
-        "credit": 0,
-        "code_analytique": "ANA01",
-        "type": "charge"
-      },
-      {
-        "compte": "FOURN",
-        "libelle": "FOURNISSEUR FACTURE 2024-001 01/2025",
-        "debit": 0,
-        "credit": 1234.56,
-        "code_analytique": null,
-        "type": "fournisseur"
-      }
-    ]
-  }
-]
+Tu DOIS répondre STRICTEMENT au format JSON suivant : un OBJET contenant une clé "ecritures"
+dont la valeur est un tableau d'écritures (une entrée par facture) :
+{
+  "ecritures": [
+    {
+      "facture_id": 123,
+      "lignes": [
+        {
+          "compte": "606100",
+          "libelle": "FOURNISSEUR FACTURE 2024-001 01/2025",
+          "debit": 1234.56,
+          "credit": 0,
+          "code_analytique": "ANA01",
+          "type": "charge"
+        },
+        {
+          "compte": "FOURN",
+          "libelle": "FOURNISSEUR FACTURE 2024-001 01/2025",
+          "debit": 0,
+          "credit": 1234.56,
+          "code_analytique": null,
+          "type": "fournisseur"
+        }
+      ]
+    }
+  ]
+}
 
 Règles IMPÉRATIVES :
 - Le libellé est TOUJOURS EN MAJUSCULES.
@@ -61,6 +64,36 @@ Règles IMPÉRATIVES :
 - S'il n'y a pas de règle applicable, utilise le compte 607000 par défaut.
 - L'échéance est au format JJMMAAAA si elle est connue, sinon null.
 """
+
+
+def _normalize_entries(result):
+    """Normalise la réponse de l'IA en une liste d'écritures.
+
+    Selon le fournisseur, l'IA peut renvoyer :
+    - un tableau d'écritures : ``[{facture_id, lignes}, ...]``
+    - un objet englobant : ``{"ecritures": [...]}`` (imposé par le mode
+      ``response_format=json_object`` d'OpenAI/Groq, qui interdit un tableau
+      au premier niveau) ;
+    - une écriture unique : ``{facture_id, lignes}``.
+
+    Renvoie toujours une liste d'entrées d'écritures.
+    """
+    if isinstance(result, list):
+        return result
+    if isinstance(result, dict):
+        # Écriture unique renvoyée directement
+        if 'facture_id' in result or 'lignes' in result:
+            return [result]
+        # Tableau encapsulé sous une clé connue
+        for key in ('ecritures', 'entries', 'factures', 'data', 'result'):
+            value = result.get(key)
+            if isinstance(value, list):
+                return value
+        # Repli : première valeur de type liste trouvée
+        for value in result.values():
+            if isinstance(value, list):
+                return value
+    return []
 
 
 @ecritures_bp.route('/ecritures')
@@ -174,12 +207,13 @@ def generer_ecritures():
     try:
         raw = call_ai(messages, model)
         result = _extract_json_from_response(raw)
-
-        if not isinstance(result, list):
-            result = [result]
+        entries = _normalize_entries(result)
 
         nb_ecritures = 0
-        for entry in result:
+        nb_factures = 0
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
             facture_id = entry.get('facture_id')
             lignes = entry.get('lignes', [])
 
@@ -228,11 +262,16 @@ def generer_ecritures():
             from blueprints.factures import _add_historique
             _add_historique(conn, facture_id, 'Écritures générées',
                            f'{len(lignes)} ligne(s) d\'écriture générée(s)')
+            nb_factures += 1
 
         conn.commit()
         conn.close()
 
-        flash(f'{nb_ecritures} écriture(s) générée(s) avec succès.', 'success')
+        if nb_ecritures:
+            flash(f'{nb_ecritures} écriture(s) générée(s) pour {nb_factures} facture(s).', 'success')
+        else:
+            flash("Aucune écriture n'a pu être générée à partir de la réponse de l'IA. "
+                  "Vérifiez vos règles comptables actives, puis réessayez.", 'warning')
 
     except Exception as e:
         conn.close()

@@ -252,7 +252,8 @@ def _get_api_key_for_model(model):
 
 def call_openai(api_key, messages, model="gpt-4o"):
     """Appel API OpenAI avec température 0 et seed fixe."""
-    is_reasoning = model.startswith("o3") or model.startswith("o1")
+    from blueprints.api_keys import is_openai_reasoning_model
+    is_reasoning = is_openai_reasoning_model(model)
 
     payload = {
         "model": model,
@@ -260,7 +261,7 @@ def call_openai(api_key, messages, model="gpt-4o"):
         "response_format": {"type": "json_object"},
         "max_completion_tokens": 8000,
     }
-    # Les modèles o3/o1 ne supportent pas temperature ni seed
+    # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent ni temperature ni seed
     if not is_reasoning:
         payload["temperature"] = 0
         payload["seed"] = 42
@@ -312,8 +313,9 @@ def call_groq(api_key, messages, model="llama-3.3-70b-versatile"):
     return resp.json()['choices'][0]['message']['content']
 
 
-def call_anthropic(api_key, messages, model="claude-sonnet-4-5-20250929"):
-    """Appel API Anthropic Claude avec température 0."""
+def call_anthropic(api_key, messages, model="claude-sonnet-4-6"):
+    """Appel API Anthropic Claude (température 0 quand le modèle l'accepte)."""
+    from blueprints.api_keys import anthropic_supports_temperature
     # Séparer le system message des user messages
     system_text = ""
     user_messages = []
@@ -330,9 +332,11 @@ def call_anthropic(api_key, messages, model="claude-sonnet-4-5-20250929"):
     payload = {
         "model": model,
         "max_tokens": 8000,
-        "temperature": 0,
         "messages": user_messages,
     }
+    # Les modèles récents (Opus 4.7+, Fable) rejettent temperature avec une erreur 400
+    if anthropic_supports_temperature(model):
+        payload["temperature"] = 0
     if system_text.strip():
         payload["system"] = system_text.strip()
 
