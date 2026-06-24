@@ -1,4 +1,9 @@
+import importlib.util
+import json
+import os
 from datetime import datetime
+
+from blueprints.budget import _compute_ps_eaje
 
 TEST_SECTOR_TYPE_HIGH_ORDER = 999
 
@@ -503,3 +508,127 @@ def test_api_ps_simulation_refuse_responsable(resp_client, sample_users):
         'type_ps': 'eaje', 'secteur_id': secteur_id, 'donnees': {}
     })
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Simulateur PS EAJE : modes prévisionnel / réel par mois
+# ---------------------------------------------------------------------------
+
+_PS_BASE = {
+    'taux_ps': 6.63, 'taux_regime': 100,
+    'nb_enfants_inscrits': 50, 'financement_par_enfant': 8,
+    'journees_peda': {'nb_journees': 3, 'nb_heures': 10},
+    'bonus_attractivite_taux': 970,
+}
+
+
+def test_compute_ps_eaje_mode_reel_calcule_les_taux():
+    """Réel : heures/participation saisies → taux d'occupation et horaire calculés."""
+    d = dict(_PS_BASE, mois=[{
+        'prev_reel': 'reel', 'jours_ouverture': 20, 'heures_facturees': 1000,
+        'heures_realisees': 1100, 'participation': 1500, 'places': 20, 'amplitude_horaire': 10,
+    }])
+    c = _compute_ps_eaje(d)
+    m = c['mois'][0]
+    assert m['taux_occupation'] == 0.25      # 1000 / (10*20*20)
+    assert m['taux_horaire'] == 1.5          # 1500 / 1000
+    assert m['heures_realisees'] == 1100     # saisie indépendante en réel
+
+
+def test_compute_ps_eaje_defaut_reel_retrocompat():
+    """Un mois sans prev_reel garde le comportement historique (réel)."""
+    d = dict(_PS_BASE, mois=[{
+        'jours_ouverture': 20, 'heures_facturees': 1000, 'heures_realisees': 1000,
+        'participation': 1500, 'places': 20, 'amplitude_horaire': 10,
+    }])
+    m = _compute_ps_eaje(d)['mois'][0]
+    assert m['taux_occupation'] == 0.25
+    assert m['taux_horaire'] == 1.5
+
+
+def test_compute_ps_eaje_mode_previsionnel_calcule_les_heures():
+    """Prévisionnel : taux occup (%) et taux horaire saisis → heures et participation calculées."""
+    d = dict(_PS_BASE, mois=[{
+        'prev_reel': 'prev', 'jours_ouverture': 20, 'places': 20, 'amplitude_horaire': 10,
+        'taux_occupation': 25, 'taux_horaire': 1.5,
+    }])
+    m = _compute_ps_eaje(d)['mois'][0]
+    assert m['heures_facturees'] == 1000.0   # 0.25 * (10*20*20)
+    assert m['heures_realisees'] == 1000.0   # copie des heures facturées
+    assert m['participation'] == 1500.0      # 1.5 * 1000
+
+
+def test_compute_ps_eaje_previsionnel_equivaut_au_reel():
+    """Un mois prévisionnel reproduit le total d'un mois réel équivalent."""
+    reel = dict(_PS_BASE, mois=[{
+        'prev_reel': 'reel', 'jours_ouverture': 20, 'heures_facturees': 1000,
+        'heures_realisees': 1000, 'participation': 1500, 'places': 20, 'amplitude_horaire': 10,
+    }])
+    prev = dict(_PS_BASE, mois=[{
+        'prev_reel': 'prev', 'jours_ouverture': 20, 'places': 20, 'amplitude_horaire': 10,
+        'taux_occupation': 25, 'taux_horaire': 1.5,
+    }])
+    assert abs(_compute_ps_eaje(reel)['total'] - _compute_ps_eaje(prev)['total']) < 0.01
+
+
+def test_api_ps_simulation_previsionnel_reporte_le_total(app, db, admin_client, sample_users):
+    """La saisie prévisionnelle calcule heures/participation côté serveur et reporte le total."""
+    secteur_id = sample_users['secteur_id']
+    annee = datetime.now().year
+    donnees = dict(_PS_BASE, mois=[{
+        'prev_reel': 'prev', 'jours_ouverture': 20, 'places': 20, 'amplitude_horaire': 10,
+        'taux_occupation': 25, 'taux_horaire': 1.5,
+    }] + [{} for _ in range(11)])
+    resp = admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706000', 'annee': annee, 'type_budget': 'initial',
+        'type_ps': 'eaje', 'secteur_id': secteur_id, 'donnees': donnees,
+    })
+    assert resp.status_code == 200
+    # Même total que l'exemple réel équivalent (cf. test_api_ps_simulation_eaje_calcule_et_reporte)
+    assert abs(resp.get_json()['total'] - 34908.0) < 0.01
+
+
+def test_budget_previsionnel_simulateur_mode_par_mois_present(admin_client):
+    """Le simulateur expose le basculement saisie/calcul selon le mode du mois."""
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert 'psToggleCell(' in html
+    assert "prevReel === 'reel'" in html  # calcul inversé selon le mode
+    # Nouvelle simulation : mois en prévisionnel par défaut…
+    assert "prev_reel:'prev'" in html
+    # …mais le repli quand le mode est absent reste « réel » (rétro-compat)
+    assert "|| 'reel'" in html
+    # Un mois enregistré sans mode est réaligné sur « réel » au chargement,
+    # comme le serveur, pour ne pas rouvrir en prévisionnel et écraser les heures.
+    assert "s.mois[i].prev_reel = 'reel'" in html
+
+
+def _load_migration(version_prefix):
+    fname = next(f for f in os.listdir(os.path.join(os.path.dirname(__file__), '..', 'migrations'))
+                 if f.startswith(version_prefix))
+    path = os.path.join(os.path.dirname(__file__), '..', 'migrations', fname)
+    spec = importlib.util.spec_from_file_location('mig_' + version_prefix, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_migration_0043_bascule_mois_eaje_en_reel(app, db, sample_users):
+    """Les simulations EAJE existantes (mois 'prev' = données réelles) passent en 'reel'."""
+    secteur_id = sample_users['secteur_id']
+    donnees = {'mois': [
+        {'prev_reel': 'prev', 'heures_facturees': 1000, 'participation': 1500},
+        {'prev_reel': 'prev', 'heures_facturees': 500, 'participation': 700},
+    ]}
+    with app.app_context():
+        db.execute(
+            "INSERT INTO budget_ps_simulations (compte_num, annee, secteur_id, type_budget, "
+            "type_ps, donnees, total) VALUES ('706000', 2025, ?, 'initial', 'eaje', ?, 0)",
+            (secteur_id, json.dumps(donnees)),
+        )
+        db.commit()
+        _load_migration('0043').upgrade(db)
+        row = db.execute(
+            "SELECT donnees FROM budget_ps_simulations WHERE compte_num='706000'"
+        ).fetchone()
+    mois = json.loads(row['donnees'])['mois']
+    assert all(m['prev_reel'] == 'reel' for m in mois)

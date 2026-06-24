@@ -1224,22 +1224,36 @@ def _compute_ps_eaje(donnees):
     }
     places_list = []
     for m in mois_in:
+        # Par défaut « réel » : c'est le comportement historique (heures saisies,
+        # taux calculés) et le tableau actuel.
+        prev_reel = m.get('prev_reel') or 'reel'
         jours = _ps_num(m.get('jours_ouverture'))
-        h_fact = _ps_num(m.get('heures_facturees'))
-        h_real = _ps_num(m.get('heures_realisees'))
-        participation = _ps_num(m.get('participation'))
         places = _ps_num(m.get('places'))
         amplitude_h = _ps_num(m.get('amplitude_horaire'), PS_EAJE_DEFAULTS['amplitude_horaire'])
         heures_ouv = amplitude_h * jours
         amplitude_tot = heures_ouv * places
-        taux_occ = (h_fact / amplitude_tot) if amplitude_tot else 0.0
-        taux_horaire = (participation / h_fact) if h_fact else 0.0
+        if prev_reel == 'reel':
+            # Réel : heures facturées / réalisées / participation saisies,
+            #        taux d'occupation et taux horaire calculés.
+            h_fact = _ps_num(m.get('heures_facturees'))
+            h_real = _ps_num(m.get('heures_realisees'))
+            participation = _ps_num(m.get('participation'))
+            taux_occ = (h_fact / amplitude_tot) if amplitude_tot else 0.0
+            taux_horaire = (participation / h_fact) if h_fact else 0.0
+        else:
+            # Prévisionnel : taux d'occupation (%) et taux horaire saisis,
+            #                heures facturées / réalisées et participation calculées.
+            taux_occ = _ps_num(m.get('taux_occupation')) / 100.0
+            taux_horaire = _ps_num(m.get('taux_horaire'))
+            h_fact = taux_occ * amplitude_tot
+            h_real = h_fact
+            participation = taux_horaire * h_fact
         psu = h_fact * taux_ps * taux_regime
         psu_part = psu - participation
         mois_out.append({
-            'prev_reel': m.get('prev_reel') or 'prev',
-            'jours_ouverture': jours, 'heures_facturees': h_fact,
-            'heures_realisees': h_real, 'participation': participation,
+            'prev_reel': prev_reel,
+            'jours_ouverture': jours, 'heures_facturees': round(h_fact, 2),
+            'heures_realisees': round(h_real, 2), 'participation': round(participation, 2),
             'places': places, 'amplitude_horaire': amplitude_h,
             'heures_ouverture': round(heures_ouv, 2),
             'amplitude_totale': round(amplitude_tot, 2),
