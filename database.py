@@ -1448,7 +1448,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS budget_ps_comptes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             compte_num TEXT NOT NULL UNIQUE,
-            type_ps TEXT NOT NULL CHECK(type_ps IN ('eaje', 'alsh')),
+            type_ps TEXT NOT NULL CHECK(type_ps IN ('eaje', 'alsh_perisco', 'alsh_extrasco')),
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')

@@ -1173,7 +1173,7 @@ def api_budget_previsionnel_export_pdf():
 # SIMULATEUR PRESTATION DE SERVICE (PS) CAF
 # ============================================================
 
-PS_TYPES = ('eaje', 'alsh')
+PS_TYPES = ('eaje', 'alsh_perisco', 'alsh_extrasco')
 
 # Valeurs par défaut du simulateur PS EAJE (modifiables dans l'interface).
 PS_EAJE_DEFAULTS = {
@@ -1189,6 +1189,10 @@ PS_EAJE_DEFAULTS = {
     'journees_peda': {'nb_journees': 3, 'nb_heures': 10},
     'bonus_attractivite_taux': 970,
 }
+
+# Valeurs par défaut des simulateurs PS ALSH.
+PS_ALSH_EXTRASCO_DEFAULTS = {'taux_ps': 0.624, 'taux_compl_inclusif': 3.90, 'taux_regime': 100}
+PS_ALSH_PERISCO_DEFAULTS = {'taux_ps': 0.59, 'taux_compl_inclusif': 3.90, 'mercredis_deduction': 7}
 
 
 def _ps_num(value, default=0.0):
@@ -1327,6 +1331,207 @@ def _compute_ps_eaje(donnees):
     }
 
 
+# ---- PS ALSH : jours ouvrés / mercredis (dérivés du calendrier en base) ----
+
+def _alsh_jours_ouvres_periodes_reelles(conn, annee):
+    """Jours ouvrés (lun-ven hors fériés) par période de vacances de l'année.
+
+    Les périodes proviennent de la page Gestion des vacances (periodes_vacances),
+    bornées à l'année civile du budget.
+    """
+    feries = {r['date'] for r in conn.execute(
+        'SELECT date FROM jours_feries WHERE annee = ?', (annee,)
+    ).fetchall()}
+    rows = conn.execute('''
+        SELECT id, nom, date_debut, date_fin FROM periodes_vacances
+        WHERE date_debut <= ? AND date_fin >= ?
+        ORDER BY date_debut
+    ''', (f'{annee}-12-31', f'{annee}-01-01')).fetchall()
+    result = []
+    for r in rows:
+        try:
+            d0 = max(date.fromisoformat(r['date_debut']), date(annee, 1, 1))
+            d1 = min(date.fromisoformat(r['date_fin']), date(annee, 12, 31))
+        except (ValueError, TypeError):
+            continue
+        nb = 0
+        d = d0
+        while d <= d1:
+            if d.weekday() < 5 and d.isoformat() not in feries:
+                nb += 1
+            d += timedelta(days=1)
+        result.append({
+            'id': r['id'], 'nom': r['nom'],
+            'date_debut': r['date_debut'], 'date_fin': r['date_fin'],
+            'jours_ouvres': nb,
+        })
+    return result
+
+
+def _alsh_mercredis_scolaires(conn, annee):
+    """Liste ISO des mercredis de l'année en période scolaire (hors vacances/fériés)."""
+    feries = {r['date'] for r in conn.execute(
+        'SELECT date FROM jours_feries WHERE annee = ?', (annee,)
+    ).fetchall()}
+    periodes_vac = conn.execute('''
+        SELECT date_debut, date_fin FROM periodes_vacances
+        WHERE date_debut <= ? AND date_fin >= ?
+    ''', (f'{annee}-12-31', f'{annee}-01-01')).fetchall()
+    jours_vac = set()
+    for pv in periodes_vac:
+        try:
+            d0 = max(date.fromisoformat(pv['date_debut']), date(annee, 1, 1))
+            d1 = min(date.fromisoformat(pv['date_fin']), date(annee, 12, 31))
+        except (ValueError, TypeError):
+            continue
+        d = d0
+        while d <= d1:
+            jours_vac.add(d)
+            d += timedelta(days=1)
+    dates = []
+    d = date(annee, 1, 1)
+    while d.weekday() != 2:  # avancer au premier mercredi
+        d += timedelta(days=1)
+    while d.year == annee:
+        if d not in jours_vac and d.isoformat() not in feries:
+            dates.append(d.isoformat())
+        d += timedelta(days=7)
+    return dates
+
+
+def _compute_ps_alsh_extrasco(donnees, jours_by_periode):
+    """Calcule la PS ALSH EXTRASCO (par période de vacances × tranche d'âge).
+
+    Heures (prévisionnel) = enfants/jour × jours ouvrés × heures/jour ; en mode
+    réel, on saisit directement le nombre d'heures. PS = heures × taux PS × taux
+    régime. Le complément inclusif (bonus handicap) porte sur un total d'heures
+    d'enfants en situation de handicap saisi à part.
+    """
+    d = donnees or {}
+    taux_ps = _ps_num(d.get('taux_ps'), PS_ALSH_EXTRASCO_DEFAULTS['taux_ps'])
+    taux_compl = _ps_num(d.get('taux_compl_inclusif'), PS_ALSH_EXTRASCO_DEFAULTS['taux_compl_inclusif'])
+    taux_regime = _ps_num(d.get('taux_regime'), PS_ALSH_EXTRASCO_DEFAULTS['taux_regime']) / 100.0
+    cells_in = d.get('cellules') or []
+    if not isinstance(cells_in, list):
+        cells_in = []
+    cells_out = []
+    total_heures = 0.0
+    total_ps = 0.0
+    for c in cells_in:
+        if not isinstance(c, dict):
+            continue
+        try:
+            pid = int(c.get('periode_id'))
+        except (TypeError, ValueError):
+            continue
+        jours = float(jours_by_periode.get(pid, 0) or 0)
+        prev_reel = c.get('prev_reel') or 'prev'
+        enfants = _ps_num(c.get('enfants'))
+        heures_jour = _ps_num(c.get('heures_jour'))
+        if prev_reel == 'reel':
+            heures = _ps_num(c.get('heures_reel'))
+        else:
+            heures = enfants * jours * heures_jour
+        ps = heures * taux_ps * taux_regime
+        cells_out.append({
+            'periode_id': pid, 'tranche_id': c.get('tranche_id'),
+            'jours': jours, 'heures': round(heures, 2), 'ps': round(ps, 2),
+        })
+        total_heures += heures
+        total_ps += ps
+    heures_handicap = _ps_num(d.get('heures_handicap'))
+    compl_inclusif = heures_handicap * taux_compl * taux_regime
+    total = total_ps + compl_inclusif
+    return {
+        'cellules': cells_out,
+        'total_heures': round(total_heures, 2),
+        'total_ps': round(total_ps, 2),
+        'heures_handicap': round(heures_handicap, 2),
+        'compl_inclusif': round(compl_inclusif, 2),
+        'total': round(total, 2),
+    }
+
+
+def _compute_ps_alsh_perisco(donnees, jours_initial, jours_restant, type_budget):
+    """Calcule la PS ALSH PERISCO (mercredis périscolaires, par tranche d'âge).
+
+    Budget initial : heures = enfants × jours × heures/jour sur l'ensemble de
+    l'année (jours = mercredis scolaires − déduction). Budget actualisé : on
+    saisit le réel (heures) et on ajoute un prévisionnel sur le reste de l'année
+    (jours restants après la date d'arrêté). PS = heures × taux PS ; complément
+    inclusif = heures d'enfants en situation de handicap × taux complément.
+    """
+    d = donnees or {}
+    taux_ps = _ps_num(d.get('taux_ps'), PS_ALSH_PERISCO_DEFAULTS['taux_ps'])
+    taux_compl = _ps_num(d.get('taux_compl_inclusif'), PS_ALSH_PERISCO_DEFAULTS['taux_compl_inclusif'])
+    actualise = (type_budget == 'actualise')
+    cells_in = d.get('cellules') or []
+    if not isinstance(cells_in, list):
+        cells_in = []
+    cells_out = []
+    total_ps = 0.0
+    total_compl = 0.0
+    total_heures = 0.0
+    for c in cells_in:
+        if not isinstance(c, dict):
+            continue
+        enfants = _ps_num(c.get('enfants'))
+        heures_jour = _ps_num(c.get('heures_jour'))
+        enfants_handicap = _ps_num(c.get('enfants_handicap'))
+        if actualise:
+            heures_reel = _ps_num(c.get('heures_reel'))
+            heures_reste = enfants * jours_restant * heures_jour
+            heures = heures_reel + heures_reste
+            heures_h_reel = _ps_num(c.get('heures_handicap_reel'))
+            heures_h_reste = enfants_handicap * jours_restant * heures_jour
+            heures_h = heures_h_reel + heures_h_reste
+            cell = {'heures_reel': round(heures_reel, 2), 'heures_reste': round(heures_reste, 2),
+                    'heures_handicap_reste': round(heures_h_reste, 2)}
+        else:
+            heures = enfants * jours_initial * heures_jour
+            heures_h = enfants_handicap * jours_initial * heures_jour
+            cell = {}
+        ps = heures * taux_ps
+        compl = heures_h * taux_compl
+        cell.update({
+            'tranche_id': c.get('tranche_id'),
+            'heures': round(heures, 2), 'heures_handicap': round(heures_h, 2),
+            'ps': round(ps, 2), 'compl': round(compl, 2),
+        })
+        cells_out.append(cell)
+        total_ps += ps
+        total_compl += compl
+        total_heures += heures
+    total = total_ps + total_compl
+    return {
+        'cellules': cells_out,
+        'total_ps': round(total_ps, 2),
+        'compl_inclusif': round(total_compl, 2),
+        'total_heures': round(total_heures, 2),
+        'jours_initial': jours_initial,
+        'jours_restant': jours_restant,
+        'total': round(total, 2),
+    }
+
+
+def _perisco_deduction_restant(annee, date_arrete):
+    """Jours à déduire du reste de l'année selon la date d'arrêté du réel :
+    5 jours si l'arrêté est avant fin août, 1 jour s'il est fin août ou après."""
+    return 1 if date_arrete >= f'{annee}-08-31' else 5
+
+
+def _ps_alsh_perisco_jours(conn, annee, donnees):
+    """Retourne (jours_initial, jours_restant) pour la PS PERISCO."""
+    mercredis = _alsh_mercredis_scolaires(conn, annee)
+    jours_initial = max(len(mercredis) - PS_ALSH_PERISCO_DEFAULTS['mercredis_deduction'], 0)
+    date_arrete = ((donnees or {}).get('date_arrete') or '').strip()
+    if not date_arrete:
+        return jours_initial, 0
+    restants = sum(1 for dt in mercredis if dt > date_arrete)
+    jours_restant = max(restants - _perisco_deduction_restant(annee, date_arrete), 0)
+    return jours_initial, jours_restant
+
+
 @budget_bp.route('/api/budget-previsionnel/ps-comptes')
 @login_required
 def api_ps_comptes_liste():
@@ -1413,6 +1618,41 @@ def api_ps_comptes_delete(compte_num):
         conn.close()
 
 
+@budget_bp.route('/api/budget-previsionnel/ps-alsh-context')
+@login_required
+def api_ps_alsh_context():
+    """Contexte des simulateurs ALSH : tranches d'âge, périodes de vacances avec
+    jours ouvrés et mercredis scolaires (déduits du calendrier en base)."""
+    profil = session.get('profil')
+    if not _can_access_budget_previsionnel(profil):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    annee = request.args.get('annee', type=int)
+    if not annee:
+        return jsonify({'error': 'Année requise'}), 400
+    conn = get_db()
+    try:
+        tranches = conn.execute(
+            'SELECT id, libelle FROM alsh_tranches_age WHERE active = 1 ORDER BY ordre, id'
+        ).fetchall()
+        periodes = _alsh_jours_ouvres_periodes_reelles(conn, annee)
+        mercredis = _alsh_mercredis_scolaires(conn, annee)
+        deduction = PS_ALSH_PERISCO_DEFAULTS['mercredis_deduction']
+        return jsonify({
+            'tranches': [dict(t) for t in tranches],
+            'periodes': periodes,
+            'mercredis_dates': mercredis,
+            'mercredis_count': len(mercredis),
+            'mercredis_deduction': deduction,
+            'jours_initial': max(len(mercredis) - deduction, 0),
+            'defaults': {
+                'extrasco': PS_ALSH_EXTRASCO_DEFAULTS,
+                'perisco': PS_ALSH_PERISCO_DEFAULTS,
+            },
+        })
+    finally:
+        conn.close()
+
+
 @budget_bp.route('/api/budget-previsionnel/ps-simulation')
 @login_required
 def api_ps_simulation_get():
@@ -1481,16 +1721,22 @@ def api_ps_simulation_save():
     if type_ps not in PS_TYPES:
         return jsonify({'error': 'Type de PS invalide'}), 400
 
-    # Le total reporté est recalculé côté serveur pour le simulateur EAJE.
-    if type_ps == 'eaje':
-        computed = _compute_ps_eaje(donnees)
-        total = computed['total']
-    else:
-        computed = None
-        total = 0.0
-
     conn = get_db()
     try:
+        # Le total reporté est recalculé côté serveur (source de vérité).
+        if type_ps == 'eaje':
+            computed = _compute_ps_eaje(donnees)
+        elif type_ps == 'alsh_extrasco':
+            periodes = _alsh_jours_ouvres_periodes_reelles(conn, int(annee))
+            jours_by = {p['id']: p['jours_ouvres'] for p in periodes}
+            computed = _compute_ps_alsh_extrasco(donnees, jours_by)
+        elif type_ps == 'alsh_perisco':
+            jours_initial, jours_restant = _ps_alsh_perisco_jours(conn, int(annee), donnees)
+            computed = _compute_ps_alsh_perisco(donnees, jours_initial, jours_restant, type_budget)
+        else:
+            computed = {'total': 0.0}
+        total = computed.get('total', 0.0)
+
         conn.execute('''
             INSERT INTO budget_ps_simulations
             (compte_num, annee, secteur_id, type_budget, type_ps, donnees, total, updated_by, updated_at)

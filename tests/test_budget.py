@@ -3,7 +3,9 @@ import json
 import os
 from datetime import datetime
 
-from blueprints.budget import _compute_ps_eaje
+from blueprints.budget import (
+    _compute_ps_eaje, _compute_ps_alsh_extrasco, _compute_ps_alsh_perisco
+)
 
 TEST_SECTOR_TYPE_HIGH_ORDER = 999
 
@@ -316,9 +318,9 @@ def test_api_ps_comptes_crud_directeur(app, db, admin_client):
 
     # Mise à jour du type
     admin_client.post('/api/budget-previsionnel/ps-comptes', json={
-        'compte_num': '706000', 'type_ps': 'alsh'
+        'compte_num': '706000', 'type_ps': 'alsh_extrasco'
     })
-    assert admin_client.get('/api/budget-previsionnel/ps-comptes').get_json()['comptes'] == {'706000': 'alsh'}
+    assert admin_client.get('/api/budget-previsionnel/ps-comptes').get_json()['comptes'] == {'706000': 'alsh_extrasco'}
 
     resp = admin_client.delete('/api/budget-previsionnel/ps-comptes/706000')
     assert resp.status_code == 200
@@ -632,3 +634,154 @@ def test_migration_0043_bascule_mois_eaje_en_reel(app, db, sample_users):
         ).fetchone()
     mois = json.loads(row['donnees'])['mois']
     assert all(m['prev_reel'] == 'reel' for m in mois)
+
+
+# ============================================================
+# Simulateurs PS ALSH (PERISCO / EXTRASCO)
+# ============================================================
+
+def test_api_ps_comptes_accepte_types_alsh(admin_client):
+    """Le paramétrage accepte les deux types ALSH et refuse l'ancien 'alsh'."""
+    for t in ('alsh_perisco', 'alsh_extrasco'):
+        r = admin_client.post('/api/budget-previsionnel/ps-comptes',
+                              json={'compte_num': '7066' + t[-1], 'type_ps': t})
+        assert r.status_code == 200 and r.get_json().get('success') is True
+    r = admin_client.post('/api/budget-previsionnel/ps-comptes',
+                          json={'compte_num': '706999', 'type_ps': 'alsh'})
+    assert r.status_code == 400
+
+
+def test_compute_ps_alsh_extrasco_unitaire():
+    """heures = enfants×jours×heures/jour ; PS = heures×taux×régime ; + complément."""
+    res = _compute_ps_alsh_extrasco({
+        'taux_ps': 0.624, 'taux_compl_inclusif': 3.90, 'taux_regime': 100,
+        'cellules': [{'periode_id': 1, 'tranche_id': 1, 'prev_reel': 'prev',
+                      'enfants': 20, 'heures_jour': 8}],
+        'heures_handicap': 100,
+    }, {1: 10})
+    assert abs(res['total_ps'] - 998.40) < 0.01
+    assert abs(res['compl_inclusif'] - 390.0) < 0.01
+    assert abs(res['total'] - 1388.40) < 0.01
+
+
+def test_compute_ps_alsh_extrasco_mode_reel():
+    """En mode réel, les heures sont saisies directement."""
+    res = _compute_ps_alsh_extrasco({
+        'taux_ps': 0.624, 'taux_regime': 100,
+        'cellules': [{'periode_id': 1, 'tranche_id': 1, 'prev_reel': 'reel',
+                      'enfants': 999, 'heures_jour': 999, 'heures_reel': 500}],
+    }, {1: 10})
+    assert abs(res['total_heures'] - 500) < 0.01
+    assert abs(res['total_ps'] - 312.0) < 0.01
+
+
+def test_compute_ps_alsh_perisco_initial_et_actualise():
+    base = {'taux_ps': 0.59, 'taux_compl_inclusif': 3.90,
+            'cellules': [{'tranche_id': 1, 'enfants': 15, 'heures_jour': 3, 'enfants_handicap': 1}]}
+    ini = _compute_ps_alsh_perisco(base, 33, 0, 'initial')
+    assert abs(ini['total'] - 1262.25) < 0.01
+    actu = _compute_ps_alsh_perisco({
+        **base, 'cellules': [{'tranche_id': 1, 'enfants': 15, 'heures_jour': 3,
+                              'enfants_handicap': 1, 'heures_reel': 800, 'heures_handicap_reel': 50}]
+    }, 33, 10, 'actualise')
+    # 800 + 15*10*3=450 -> 1250h ; PS=737.50 ; handicap 50 + 1*10*3=30 -> 80h ; compl=312 ; total=1049.50
+    assert abs(actu['total'] - 1049.50) < 0.01
+
+
+def _setup_alsh_calendrier(db, annee):
+    """Crée une période de vacances de 2 semaines (10 jours ouvrés) et l'année."""
+    db.execute(
+        "INSERT INTO periodes_vacances (nom, date_debut, date_fin) VALUES (?, ?, ?)",
+        ('Vacances test', f'{annee}-02-09', f'{annee}-02-20')  # lun 9 -> ven 20
+    )
+    pid = db.execute("SELECT id FROM periodes_vacances ORDER BY id DESC LIMIT 1").fetchone()['id']
+    db.execute("INSERT INTO alsh_tranches_age (libelle, ordre) VALUES ('6-8 ans', 1)")
+    tid = db.execute("SELECT id FROM alsh_tranches_age ORDER BY id DESC LIMIT 1").fetchone()['id']
+    db.commit()
+    return pid, tid
+
+
+def test_api_ps_alsh_context(app, db, admin_client):
+    annee = 2026
+    with app.app_context():
+        pid, tid = _setup_alsh_calendrier(db, annee)
+    data = admin_client.get(f'/api/budget-previsionnel/ps-alsh-context?annee={annee}').get_json()
+    periode = next(p for p in data['periodes'] if p['id'] == pid)
+    assert periode['jours_ouvres'] == 10  # 2 semaines pleines, sans férié
+    assert any(t['id'] == tid for t in data['tranches'])
+    assert data['mercredis_count'] > 0
+    assert data['jours_initial'] == max(data['mercredis_count'] - data['mercredis_deduction'], 0)
+
+
+def test_api_ps_simulation_alsh_extrasco_calcule_et_reporte(app, db, admin_client, sample_users):
+    secteur_id = sample_users['secteur_id']
+    annee = 2026
+    with app.app_context():
+        pid, tid = _setup_alsh_calendrier(db, annee)
+    donnees = {
+        'taux_ps': 0.624, 'taux_compl_inclusif': 3.90, 'taux_regime': 100,
+        'heures_handicap': 100,
+        'cellules': [{'periode_id': pid, 'tranche_id': tid, 'prev_reel': 'prev',
+                      'enfants': 20, 'heures_jour': 8}],
+    }
+    r = admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706600', 'annee': annee, 'type_budget': 'initial',
+        'type_ps': 'alsh_extrasco', 'secteur_id': secteur_id, 'donnees': donnees
+    })
+    assert r.status_code == 200
+    # heures=20*10*8=1600 ; PS=998.40 ; compl=390 ; total=1388.40
+    assert abs(r.get_json()['total'] - 1388.40) < 0.01
+    row = db.execute('''
+        SELECT valeur_def FROM budget_prev_saisies
+        WHERE type_budget='initial' AND annee=? AND secteur_id=? AND compte_num='706600'
+    ''', (annee, secteur_id)).fetchone()
+    assert row is not None and abs(row['valeur_def'] - 1388.40) < 0.01
+
+
+def test_api_ps_simulation_alsh_perisco_initial(app, db, admin_client, sample_users):
+    secteur_id = sample_users['secteur_id']
+    annee = 2026
+    with app.app_context():
+        _setup_alsh_calendrier(db, annee)
+        tid = db.execute("SELECT id FROM alsh_tranches_age ORDER BY id DESC LIMIT 1").fetchone()['id']
+        # jours_initial dépend du calendrier réel ; on le récupère via le contexte
+    ctx = admin_client.get(f'/api/budget-previsionnel/ps-alsh-context?annee={annee}').get_json()
+    jours = ctx['jours_initial']
+    donnees = {'taux_ps': 0.59, 'taux_compl_inclusif': 3.90,
+               'cellules': [{'tranche_id': tid, 'enfants': 15, 'heures_jour': 3, 'enfants_handicap': 1}]}
+    r = admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706700', 'annee': annee, 'type_budget': 'initial',
+        'type_ps': 'alsh_perisco', 'secteur_id': secteur_id, 'donnees': donnees
+    })
+    assert r.status_code == 200
+    expected = (15 * jours * 3) * 0.59 + (1 * jours * 3) * 3.90
+    assert abs(r.get_json()['total'] - round(expected, 2)) < 0.02
+
+
+def test_perisco_deduction_restant_selon_date_arrete():
+    """PERISCO actualisé : 5 jours déduits avant fin août, 1 jour fin août ou après."""
+    from blueprints.budget import _perisco_deduction_restant
+    assert _perisco_deduction_restant(2026, '2026-06-30') == 5
+    assert _perisco_deduction_restant(2026, '2026-08-30') == 5
+    assert _perisco_deduction_restant(2026, '2026-08-31') == 1
+    assert _perisco_deduction_restant(2026, '2026-09-15') == 1
+
+
+def test_suppression_tranche_bloquee_si_utilisee_par_simulation_ps(app, db, admin_client, sample_users):
+    """Une tranche d'âge référencée par une simulation PS ALSH ne peut être supprimée
+    (les tranches sont partagées avec Analyse ALSH)."""
+    secteur_id = sample_users['secteur_id']
+    with app.app_context():
+        db.execute("INSERT INTO alsh_tranches_age (libelle, ordre) VALUES ('3-5 ans', 1)")
+        tid = db.execute("SELECT id FROM alsh_tranches_age ORDER BY id DESC LIMIT 1").fetchone()['id']
+        db.commit()
+    admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706750', 'annee': 2026, 'type_budget': 'initial',
+        'type_ps': 'alsh_perisco', 'secteur_id': secteur_id,
+        'donnees': {'cellules': [{'tranche_id': tid, 'enfants': 10, 'heures_jour': 3}]}
+    })
+    resp = admin_client.delete(f'/api/alsh/tranches-age/{tid}')
+    assert resp.status_code == 400
+    with app.app_context():
+        still = db.execute("SELECT COUNT(*) FROM alsh_tranches_age WHERE id = ?", (tid,)).fetchone()[0]
+    assert still == 1

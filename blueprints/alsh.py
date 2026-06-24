@@ -16,6 +16,7 @@ Fonctionnalites :
 - Accessible aux profils directeur et comptable
 """
 import json
+import sqlite3
 from datetime import datetime, date as _date
 from flask import (Blueprint, render_template, request, session,
                    flash, redirect, url_for, jsonify)
@@ -71,6 +72,32 @@ def _get_taux_logistique_global(conn, annee):
 def _normaliser(s):
     """Normalise une chaîne (minuscules, sans accents) pour la comparaison."""
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode().lower()
+
+
+def _tranche_utilisee_dans_simulations_ps(conn, tranche_id):
+    """Compte les simulations PS ALSH dont une cellule référence cette tranche d'âge.
+
+    Les tranches d'âge sont partagées entre Analyse ALSH et les simulateurs PS :
+    une suppression doit être bloquée si une simulation enregistrée s'en sert,
+    sinon ses saisies seraient orphelinées et le total reporté faussé.
+    """
+    try:
+        rows = conn.execute(
+            'SELECT donnees FROM budget_ps_simulations WHERE donnees IS NOT NULL'
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return 0
+    count = 0
+    for row in rows:
+        try:
+            data = json.loads(row['donnees'])
+        except (ValueError, TypeError):
+            continue
+        for cell in (data.get('cellules') or []):
+            if isinstance(cell, dict) and str(cell.get('tranche_id')) == str(tranche_id):
+                count += 1
+                break
+    return count
 
 
 def _get_tarif_repartition_quotients():
@@ -351,9 +378,14 @@ def api_alsh_supprimer_tranche(tranche_id):
         nb_noe = conn.execute(
             'SELECT COUNT(*) FROM alsh_saisie_noe WHERE tranche_age_id = ?', (tranche_id,)
         ).fetchone()[0]
-        if nb_codes + nb_noe > 0:
+        # Les tranches sont partagees avec les simulateurs PS ALSH : verifier
+        # qu'aucune simulation enregistree ne reference cette tranche (sinon la
+        # suppression orphelinerait des saisies et fausserait le total reporte).
+        nb_ps = _tranche_utilisee_dans_simulations_ps(conn, tranche_id)
+        if nb_codes + nb_noe + nb_ps > 0:
             return jsonify({
-                'error': 'Cette tranche d\'âge est utilisée dans des données existantes.'
+                'error': 'Cette tranche d\'âge est utilisée dans des données existantes '
+                         '(Analyse ALSH ou simulateur PS).'
             }), 400
 
         conn.execute('DELETE FROM alsh_tranches_age WHERE id = ?', (tranche_id,))
