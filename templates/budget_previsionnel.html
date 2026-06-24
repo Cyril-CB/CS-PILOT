@@ -704,7 +704,7 @@ function renderAlshSimulator(){
 function defaultEajeState(){
     var mois = [];
     for (var i = 0; i < 12; i++){
-        mois.push({prev_reel:'prev', jours_ouverture:'', heures_facturees:'', heures_realisees:'', participation:'', places:'', amplitude_horaire:10});
+        mois.push({prev_reel:'reel', jours_ouverture:'', heures_facturees:'', heures_realisees:'', participation:'', taux_occupation:'', taux_horaire:'', places:'', amplitude_horaire:10});
     }
     return {
         taux_ps:6.63, taux_regime:100, mois:mois,
@@ -740,19 +740,29 @@ function computePsEaje(d){
     var placesList = [];
     for (var i = 0; i < mois.length; i++){
         var m = mois[i] || {};
+        var prevReel = m.prev_reel || 'reel';
         var jours = psNum(m.jours_ouverture);
-        var hFact = psNum(m.heures_facturees);
-        var hReal = psNum(m.heures_realisees);
-        var part = psNum(m.participation);
         var places = psNum(m.places);
         var ampH = psNum(m.amplitude_horaire, 10);
         var hOuv = ampH * jours;
         var ampTot = hOuv * places;
-        var tauxOcc = ampTot ? hFact / ampTot : 0;
-        var tauxHor = hFact ? part / hFact : 0;
+        var hFact, hReal, part, tauxOcc, tauxHor;
+        if (prevReel === 'reel'){
+            hFact = psNum(m.heures_facturees);
+            hReal = psNum(m.heures_realisees);
+            part = psNum(m.participation);
+            tauxOcc = ampTot ? hFact / ampTot : 0;
+            tauxHor = hFact ? part / hFact : 0;
+        } else {
+            tauxOcc = psNum(m.taux_occupation) / 100;
+            tauxHor = psNum(m.taux_horaire);
+            hFact = tauxOcc * ampTot;
+            hReal = hFact;
+            part = tauxHor * hFact;
+        }
         var psu = hFact * tauxPs * tauxRegime;
         var psuPart = psu - part;
-        out.push({heures_ouverture:hOuv, amplitude_totale:ampTot, taux_occupation:tauxOcc, taux_horaire:tauxHor, psu:psu, psu_participation:psuPart});
+        out.push({heures_ouverture:hOuv, amplitude_totale:ampTot, heures_facturees:hFact, heures_realisees:hReal, participation:part, taux_occupation:tauxOcc, taux_horaire:tauxHor, psu:psu, psu_participation:psuPart});
         tot.jours_ouverture += jours; tot.heures_facturees += hFact; tot.heures_realisees += hReal;
         tot.participation += part; tot.amplitude_totale += ampTot; tot.psu += psu; tot.psu_participation += psuPart;
         if (places > 0) placesList.push(places);
@@ -789,6 +799,11 @@ function psCell(i, key, val, dis){
     return '<td><input class="ps-input" type="number" step="' + step + '" value="' + psAttr(val) +
         '" data-ps-m="' + i + '" data-ps-key="' + key + '"' + dis + '></td>';
 }
+function psCalcCell(spanId){ return '<td class="bp-ps-calc" id="' + spanId + '"></td>'; }
+function psToggleCell(i, key, val, isInput, spanId, dis){
+    // Selon le mode du mois : cellule éditable (saisie) ou calculée (surlignée).
+    return isInput ? psCell(i, key, val, dis) : psCalcCell(spanId);
+}
 function psBmRow(seuilKey, seuilVal, montantKey, montantVal, dis){
     return '<div class="ps-field"><label>Jusqu\'à un taux horaire de</label>' +
         '<input class="ps-input" type="number" step="0.01" value="' + psAttr(seuilVal) + '" data-ps-group="bonus_mixite" data-ps-key="' + seuilKey + '"' + dis + '>' +
@@ -806,32 +821,37 @@ function renderEajeSimulator(){
         '<div class="ps-field"><label>Taux de régime général (%)</label>' +
         '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.taux_regime) + '" data-ps-top="taux_regime"' + dis + '></div>' +
         '</div>';
-    html += '<div class="ps-legend">Les colonnes <span class="bp-ps-calc">surlignées</span> sont calculées automatiquement.</div>';
+    html += '<div class="ps-legend">Choisissez <strong>Prévisionnel</strong> ou <strong>Réel</strong> pour chaque mois. ' +
+        'Les cellules <span class="bp-ps-calc">surlignées</span> sont calculées automatiquement. ' +
+        'En <em>réel</em> : heures facturées / réalisées et participation se saisissent, le taux d\'occupation (%) et le taux horaire en découlent. ' +
+        'En <em>prévisionnel</em> : le taux d\'occupation (%) et le taux horaire se saisissent, les heures et la participation en découlent.</div>';
     html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
         '<th>Mois</th><th>Prév/Réel</th><th>Jours d\'ouv.</th><th>Heures facturées</th><th>Heures réalisées</th>' +
         '<th>Particip. usagers</th><th>Places</th><th>Amplitude horaire</th>' +
         '<th class="bp-ps-calc">Heures ouverture</th><th class="bp-ps-calc">Amplitude totale</th>' +
-        '<th class="bp-ps-calc">Taux occup.</th><th class="bp-ps-calc">Taux horaire</th>' +
+        '<th>Taux occup. (%)</th><th>Taux horaire</th>' +
         '<th class="bp-ps-calc">PSU</th><th class="bp-ps-calc">PSU − Particip.</th>' +
         '</tr></thead><tbody>';
     for (var i = 0; i < 12; i++){
         var m = st.mois[i];
+        var reel = (m.prev_reel !== 'prev');  // défaut « réel »
         html += '<tr>' +
             '<td class="ps-col-mois">' + NOMS_MOIS_PS[i] + '</td>' +
             '<td><select class="ps-input ps-input-sel" data-ps-m="' + i + '" data-ps-key="prev_reel"' + dis + '>' +
-                '<option value="prev"' + (m.prev_reel === 'reel' ? '' : ' selected') + '>Prévisionnel</option>' +
-                '<option value="reel"' + (m.prev_reel === 'reel' ? ' selected' : '') + '>Réel</option>' +
+                '<option value="prev"' + (reel ? '' : ' selected') + '>Prévisionnel</option>' +
+                '<option value="reel"' + (reel ? ' selected' : '') + '>Réel</option>' +
             '</select></td>' +
             psCell(i, 'jours_ouverture', m.jours_ouverture, dis) +
-            psCell(i, 'heures_facturees', m.heures_facturees, dis) +
-            psCell(i, 'heures_realisees', m.heures_realisees, dis) +
-            psCell(i, 'participation', m.participation, dis) +
+            // Réel : heures saisies / taux calculés — Prévisionnel : l'inverse
+            psToggleCell(i, 'heures_facturees', m.heures_facturees, reel, 'psc-' + i + '-hf', dis) +
+            psToggleCell(i, 'heures_realisees', m.heures_realisees, reel, 'psc-' + i + '-hr', dis) +
+            psToggleCell(i, 'participation', m.participation, reel, 'psc-' + i + '-pa', dis) +
             psCell(i, 'places', m.places, dis) +
             psCell(i, 'amplitude_horaire', m.amplitude_horaire, dis) +
             '<td class="bp-ps-calc" id="psc-' + i + '-ho"></td>' +
             '<td class="bp-ps-calc" id="psc-' + i + '-at"></td>' +
-            '<td class="bp-ps-calc" id="psc-' + i + '-to"></td>' +
-            '<td class="bp-ps-calc" id="psc-' + i + '-th"></td>' +
+            psToggleCell(i, 'taux_occupation', m.taux_occupation, !reel, 'psc-' + i + '-to', dis) +
+            psToggleCell(i, 'taux_horaire', m.taux_horaire, !reel, 'psc-' + i + '-th', dis) +
             '<td class="bp-ps-calc" id="psc-' + i + '-psu"></td>' +
             '<td class="bp-ps-calc" id="psc-' + i + '-psup"></td>' +
             '</tr>';
@@ -905,7 +925,12 @@ function bindEajeInputs(){
         el.addEventListener('input', h); el.addEventListener('change', h);
     });
     body.querySelectorAll('[data-ps-m]').forEach(function(el){
-        var h = function(){ psSim.state.mois[parseInt(this.dataset.psM, 10)][this.dataset.psKey] = this.value; psRecompute(); };
+        var h = function(){
+            psSim.state.mois[parseInt(this.dataset.psM, 10)][this.dataset.psKey] = this.value;
+            // Changer le mode du mois change les cellules saisissables : on redessine.
+            if (this.dataset.psKey === 'prev_reel'){ renderEajeSimulator(); }
+            psRecompute();
+        };
         el.addEventListener('input', h); el.addEventListener('change', h);
     });
 }
@@ -919,8 +944,13 @@ function psRecompute(){
         var mc = c.mois[i] || {};
         psSet('psc-' + i + '-ho', fmtR(mc.heures_ouverture, 2));
         psSet('psc-' + i + '-at', fmtR(mc.amplitude_totale, 2));
-        psSet('psc-' + i + '-to', fmtPct(mc.taux_occupation));
-        psSet('psc-' + i + '-th', fmtR(mc.taux_horaire, 2));
+        // Cellules calculées présentes uniquement dans le mode concerné
+        // (psSet est sans effet si l'élément n'existe pas) :
+        psSet('psc-' + i + '-hf', fmtR(mc.heures_facturees, 2));   // mode prévisionnel
+        psSet('psc-' + i + '-hr', fmtR(mc.heures_realisees, 2));   // mode prévisionnel
+        psSet('psc-' + i + '-pa', fmt(mc.participation));          // mode prévisionnel
+        psSet('psc-' + i + '-to', fmtPct(mc.taux_occupation));     // mode réel
+        psSet('psc-' + i + '-th', fmtR(mc.taux_horaire, 2));       // mode réel
         psSet('psc-' + i + '-psu', fmt(mc.psu));
         psSet('psc-' + i + '-psup', fmt(mc.psu_participation));
     }
