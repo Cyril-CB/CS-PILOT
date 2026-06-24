@@ -597,6 +597,9 @@ def test_budget_previsionnel_simulateur_mode_par_mois_present(admin_client):
     assert "prev_reel:'prev'" in html
     # …mais le repli quand le mode est absent reste « réel » (rétro-compat)
     assert "|| 'reel'" in html
+    # Un mois enregistré sans mode est réaligné sur « réel » au chargement,
+    # comme le serveur, pour ne pas rouvrir en prévisionnel et écraser les heures.
+    assert "s.mois[i].prev_reel = 'reel'" in html
 
 
 def _load_migration(version_prefix):
