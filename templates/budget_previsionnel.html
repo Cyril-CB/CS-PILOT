@@ -704,7 +704,7 @@ function renderAlshSimulator(){
 function defaultEajeState(){
     var mois = [];
     for (var i = 0; i < 12; i++){
-        mois.push({prev_reel:'reel', jours_ouverture:'', heures_facturees:'', heures_realisees:'', participation:'', taux_occupation:'', taux_horaire:'', places:'', amplitude_horaire:10});
+        mois.push({prev_reel:'prev', jours_ouverture:'', heures_facturees:'', heures_realisees:'', participation:'', taux_occupation:'', taux_horaire:'', places:'', amplitude_horaire:10});
     }
     return {
         taux_ps:6.63, taux_regime:100, mois:mois,

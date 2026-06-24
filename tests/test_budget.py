@@ -593,6 +593,10 @@ def test_budget_previsionnel_simulateur_mode_par_mois_present(admin_client):
     html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
     assert 'psToggleCell(' in html
     assert "prevReel === 'reel'" in html  # calcul inversé selon le mode
+    # Nouvelle simulation : mois en prévisionnel par défaut…
+    assert "prev_reel:'prev'" in html
+    # …mais le repli quand le mode est absent reste « réel » (rétro-compat)
+    assert "|| 'reel'" in html
 
 
 def _load_migration(version_prefix):
