@@ -756,3 +756,32 @@ def test_api_ps_simulation_alsh_perisco_initial(app, db, admin_client, sample_us
     assert r.status_code == 200
     expected = (15 * jours * 3) * 0.59 + (1 * jours * 3) * 3.90
     assert abs(r.get_json()['total'] - round(expected, 2)) < 0.02
+
+
+def test_perisco_deduction_restant_selon_date_arrete():
+    """PERISCO actualisé : 5 jours déduits avant fin août, 1 jour fin août ou après."""
+    from blueprints.budget import _perisco_deduction_restant
+    assert _perisco_deduction_restant(2026, '2026-06-30') == 5
+    assert _perisco_deduction_restant(2026, '2026-08-30') == 5
+    assert _perisco_deduction_restant(2026, '2026-08-31') == 1
+    assert _perisco_deduction_restant(2026, '2026-09-15') == 1
+
+
+def test_suppression_tranche_bloquee_si_utilisee_par_simulation_ps(app, db, admin_client, sample_users):
+    """Une tranche d'âge référencée par une simulation PS ALSH ne peut être supprimée
+    (les tranches sont partagées avec Analyse ALSH)."""
+    secteur_id = sample_users['secteur_id']
+    with app.app_context():
+        db.execute("INSERT INTO alsh_tranches_age (libelle, ordre) VALUES ('3-5 ans', 1)")
+        tid = db.execute("SELECT id FROM alsh_tranches_age ORDER BY id DESC LIMIT 1").fetchone()['id']
+        db.commit()
+    admin_client.post('/api/budget-previsionnel/ps-simulation', json={
+        'compte_num': '706750', 'annee': 2026, 'type_budget': 'initial',
+        'type_ps': 'alsh_perisco', 'secteur_id': secteur_id,
+        'donnees': {'cellules': [{'tranche_id': tid, 'enfants': 10, 'heures_jour': 3}]}
+    })
+    resp = admin_client.delete(f'/api/alsh/tranches-age/{tid}')
+    assert resp.status_code == 400
+    with app.app_context():
+        still = db.execute("SELECT COUNT(*) FROM alsh_tranches_age WHERE id = ?", (tid,)).fetchone()[0]
+    assert still == 1

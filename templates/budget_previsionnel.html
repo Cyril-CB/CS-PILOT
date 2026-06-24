@@ -949,10 +949,16 @@ function mergePeriscoState(saved, ctx){
     return st;
 }
 function periscoJours(st, ctx){
+    var annee = psSim.ctx.annee;
     var joursInitial = Math.max((ctx.mercredis_count || 0) - (ctx.mercredis_deduction || 7), 0);
     var dateArrete = (st.date_arrete || '').trim();
     var joursRestant = 0;
-    (ctx.mercredis_dates || []).forEach(function(d){ if (dateArrete && d > dateArrete) joursRestant++; });
+    if (dateArrete){
+        var restants = 0;
+        (ctx.mercredis_dates || []).forEach(function(d){ if (d > dateArrete) restants++; });
+        var ded = (dateArrete >= (annee + '-08-31')) ? 1 : 5;
+        joursRestant = Math.max(restants - ded, 0);
+    }
     return {joursInitial: joursInitial, joursRestant: joursRestant};
 }
 function computePeriscoJS(st, ctx, typeBudget){
@@ -993,7 +999,8 @@ function renderPeriscoSimulator(){
     if (actualise){
         html += '<div class="ps-params"><div class="ps-field"><label>Date d\'arrêté du réel</label>' +
             '<input class="ps-input" type="date" value="' + psAttr(st.date_arrete) + '" data-alsh-top="date_arrete" style="flex:0 0 160px;text-align:left;"' + dis + '></div>' +
-            '<div class="ps-field"><label>Mercredis restants après l\'arrêté</label>&nbsp;<strong id="pe-jours-restant">' + j.joursRestant + '</strong></div></div>';
+            '<div class="ps-field"><label>Mercredis restants (après déduction)</label>&nbsp;<strong id="pe-jours-restant">' + j.joursRestant + '</strong></div></div>';
+        html += '<div class="ps-legend">Reste de l\'année = mercredis scolaires après la date d\'arrêté, moins 5 jours si l\'arrêté est avant fin août (1 jour si fin août ou après).</div>';
     }
     html += alshTranchesBar(ctx);
     if (!(ctx.tranches || []).length){

@@ -1514,13 +1514,21 @@ def _compute_ps_alsh_perisco(donnees, jours_initial, jours_restant, type_budget)
     }
 
 
+def _perisco_deduction_restant(annee, date_arrete):
+    """Jours à déduire du reste de l'année selon la date d'arrêté du réel :
+    5 jours si l'arrêté est avant fin août, 1 jour s'il est fin août ou après."""
+    return 1 if date_arrete >= f'{annee}-08-31' else 5
+
+
 def _ps_alsh_perisco_jours(conn, annee, donnees):
     """Retourne (jours_initial, jours_restant) pour la PS PERISCO."""
     mercredis = _alsh_mercredis_scolaires(conn, annee)
-    deduction = PS_ALSH_PERISCO_DEFAULTS['mercredis_deduction']
-    jours_initial = max(len(mercredis) - deduction, 0)
+    jours_initial = max(len(mercredis) - PS_ALSH_PERISCO_DEFAULTS['mercredis_deduction'], 0)
     date_arrete = ((donnees or {}).get('date_arrete') or '').strip()
-    jours_restant = sum(1 for dt in mercredis if date_arrete and dt > date_arrete)
+    if not date_arrete:
+        return jours_initial, 0
+    restants = sum(1 for dt in mercredis if dt > date_arrete)
+    jours_restant = max(restants - _perisco_deduction_restant(annee, date_arrete), 0)
     return jours_initial, jours_restant
 
 
