@@ -305,7 +305,8 @@
                     <label>Type de PS</label>
                     <select id="psConfigType" class="form-select" style="width:100%;">
                         <option value="eaje">PS EAJE (crèche)</option>
-                        <option value="alsh">PS ALSH (Accueil de loisirs)</option>
+                        <option value="alsh_perisco">PS ALSH Périscolaire</option>
+                        <option value="alsh_extrasco">PS ALSH Extrascolaire</option>
                     </select>
                 </div>
                 <button class="btn btn-primary" type="button" onclick="addPsCompte()">➕ Ajouter</button>
@@ -332,7 +333,7 @@ var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
 var canEditPs = {{ 'true' if profil in ['directeur', 'comptable'] else 'false' }};
 var salaryMeta = null;
 var currentRows = [];
-var psComptes = {};   // { compte_num: 'eaje' | 'alsh' }
+var psComptes = {};   // { compte_num: 'eaje' | 'alsh_perisco' | 'alsh_extrasco' }
 
 function fmt(n){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function escapeHtml(value){
@@ -632,8 +633,7 @@ function renderPsConfigList(){
         return;
     }
     ul.innerHTML = keys.map(function(compte){
-        var type = psComptes[compte];
-        var label = type === 'alsh' ? 'PS ALSH' : 'PS EAJE';
+        var label = psTypeLabel(psComptes[compte]);
         return '<li><span class="ps-config-lib">' + escapeHtml(compte) + '</span>' +
             '<span class="ps-badge">' + label + '</span>' +
             '<button type="button" class="btn btn-sm btn-danger" data-ps-remove="' + escapeHtml(compte) + '">Retirer</button></li>';
@@ -665,25 +665,52 @@ function removePsCompte(compte){
 // ---- Étape 3 : simulateurs ----
 var psSim = null;  // { compte, type_ps, libelle, ctx, state }
 
+function psTypeLabel(type){
+    if (type === 'alsh_extrasco') return 'PS ALSH Extrasco';
+    if (type === 'alsh_perisco') return 'PS ALSH Périsco';
+    return 'PS EAJE';
+}
+function psSimTitle(type){
+    if (type === 'alsh_extrasco') return 'Simulateur PS ALSH Extrascolaire';
+    if (type === 'alsh_perisco') return 'Simulateur PS ALSH Périscolaire';
+    return 'Simulateur PS EAJE';
+}
+
 function openPsSimulator(compteNum){
     var type = psComptes[compteNum] || 'eaje';
     var rowMeta = currentRows.find(function(r){ return r.compte_num === compteNum; });
     var libelle = rowMeta ? rowMeta.libelle : '';
     var ctx = getCurrentBudgetContext();
-    psSim = {compte: compteNum, type_ps: type, libelle: libelle, ctx: ctx, state: null};
+    psSim = {compte: compteNum, type_ps: type, libelle: libelle, ctx: ctx, state: null, alshCtx: null};
     document.getElementById('psSimTitle').textContent =
-        (type === 'alsh' ? 'Simulateur PS ALSH' : 'Simulateur PS EAJE') +
-        ' — ' + compteNum + (libelle ? ' (' + libelle + ')' : '');
-    if (type === 'alsh'){ renderAlshSimulator(); showPsModal(); return; }
-    var url = '/api/budget-previsionnel/ps-simulation?compte_num=' + encodeURIComponent(compteNum) +
-        '&annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id + '&type_budget=' + encodeURIComponent(ctx.type_budget);
-    fetch(url).then(r => r.json()).then(data => {
-        psSim.state = mergeEajeState((data && data.found) ? data.donnees : null);
-        renderEajeSimulator(); showPsModal(); psRecompute();
-    }).catch(function(){
-        psSim.state = mergeEajeState(null);
-        renderEajeSimulator(); showPsModal(); psRecompute();
+        psSimTitle(type) + ' — ' + compteNum + (libelle ? ' (' + libelle + ')' : '');
+    if (type === 'eaje'){
+        fetchPsSimulation().then(function(saved){
+            psSim.state = mergeEajeState(saved);
+            renderEajeSimulator(); showPsModal(); psRecompute();
+        });
+        return;
+    }
+    Promise.all([fetchAlshContext(ctx.annee), fetchPsSimulation()]).then(function(res){
+        psSim.alshCtx = res[0] || {tranches:[], periodes:[], mercredis_dates:[]};
+        var saved = res[1];
+        if (type === 'alsh_extrasco') psSim.state = mergeExtrascoState(saved, psSim.alshCtx);
+        else psSim.state = mergePeriscoState(saved, psSim.alshCtx);
+        renderAlshActive(); showPsModal();
     });
+}
+function fetchPsSimulation(){
+    var ctx = psSim.ctx;
+    var url = '/api/budget-previsionnel/ps-simulation?compte_num=' + encodeURIComponent(psSim.compte) +
+        '&annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id + '&type_budget=' + encodeURIComponent(ctx.type_budget);
+    return fetch(url).then(r => r.json())
+        .then(function(d){ return (d && d.found) ? d.donnees : null; })
+        .catch(function(){ return null; });
+}
+function fetchAlshContext(annee){
+    return fetch('/api/budget-previsionnel/ps-alsh-context?annee=' + annee)
+        .then(r => r.json())
+        .catch(function(){ return {tranches:[], periodes:[], mercredis_dates:[]}; });
 }
 function showPsModal(){ document.getElementById('psSimulatorModal').classList.add('open'); }
 function closePsSimulator(){ document.getElementById('psSimulatorModal').classList.remove('open'); psSim = null; }
@@ -691,14 +718,334 @@ document.addEventListener('keydown', function(e){
     if (e.key === 'Escape' && document.getElementById('psSimulatorModal').classList.contains('open')) closePsSimulator();
 });
 
-function renderAlshSimulator(){
-    document.getElementById('psSimBody').innerHTML =
-        '<div style="padding:48px 20px;text-align:center;color:var(--text-muted,#777);">' +
-        '<div style="font-size:2.6rem;margin-bottom:12px;">🚧</div>' +
-        '<p style="font-size:1.08rem;">Le simulateur de <strong>PS ALSH</strong> (Accueil de loisirs) est en cours de réalisation.</p>' +
-        '<p>Il sera disponible prochainement.</p></div>';
-    document.getElementById('psSimFooter').innerHTML =
+// ===================== Simulateurs PS ALSH (EXTRASCO / PERISCO) =====================
+function renderAlshActive(){
+    if (psSim.type_ps === 'alsh_extrasco') renderExtrascoSimulator();
+    else renderPeriscoSimulator();
+    psRecomputeAlsh();
+}
+function psRecomputeAlsh(){
+    if (!psSim) return;
+    if (psSim.type_ps === 'alsh_extrasco') recomputeExtrasco();
+    else recomputePerisco();
+}
+function psTopField(label, key, val, step, dis){
+    return '<div class="ps-field"><label>' + label + '</label>' +
+        '<input class="ps-input" type="number" step="' + step + '" value="' + psAttr(val) +
+        '" data-alsh-top="' + key + '"' + dis + '></div>';
+}
+function alshCellInput(idx, key, val, dis){
+    return '<input class="ps-input" type="number" step="0.01" value="' + psAttr(val) +
+        '" data-alsh-ci="' + idx + '" data-alsh-key="' + key + '"' + (dis || '') + '>';
+}
+function alshFooter(){
+    if (canEditPs){
+        return '<span id="psSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>' +
+            '<button class="btn btn-secondary" type="button" onclick="closePsSimulator()">Annuler</button>' +
+            '<button class="btn btn-primary" type="button" onclick="savePsSimulator()">💾 Enregistrer et reporter sur le compte</button>';
+    }
+    return '<span style="margin-right:auto;color:var(--text-muted);">Lecture seule</span>' +
         '<button class="btn btn-secondary" type="button" onclick="closePsSimulator()">Fermer</button>';
+}
+function alshTranchesBar(ctx){
+    if (!canEditPs) return '';
+    var chips = (ctx.tranches || []).map(function(t){
+        return '<span class="ps-badge" style="background:var(--gray-300);color:var(--gray-900);">' +
+            escapeHtml(t.libelle) + ' <a href="#" data-alsh-del-tranche="' + t.id +
+            '" title="Retirer" style="color:#b00;text-decoration:none;font-weight:700;">×</a></span>';
+    }).join(' ');
+    return '<div class="ps-params" style="gap:10px;align-items:center;">' +
+        '<div style="flex:1 1 auto;min-width:0;"><strong style="font-size:.8rem;">Tranches d\'âge (partagées avec Analyse ALSH) :</strong> ' +
+        (chips || '<em style="color:var(--gray-500);">aucune</em>') + '</div>' +
+        '<div class="ps-field" style="margin:0;"><input class="ps-input" id="alshNewTranche" placeholder="Ex. 6-8 ans" style="flex:0 0 140px;text-align:left;">' +
+        '<button class="btn btn-sm btn-secondary" type="button" onclick="alshAddTranche()">+ Ajouter</button></div></div>';
+}
+function bindAlshInputs(){
+    var body = document.getElementById('psSimBody');
+    if (!body) return;
+    body.querySelectorAll('[data-alsh-top]').forEach(function(el){
+        var h = function(){
+            psSim.state[this.dataset.alshTop] = this.value;
+            if (this.dataset.alshRerender === '1') renderAlshActive(); else psRecomputeAlsh();
+        };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-alsh-ci]').forEach(function(el){
+        var h = function(){
+            var idx = parseInt(this.dataset.alshCi, 10);
+            if (!psSim.state.cellules[idx]) return;
+            psSim.state.cellules[idx][this.dataset.alshKey] = this.value;
+            if (this.dataset.alshRerender === '1') renderAlshActive(); else psRecomputeAlsh();
+        };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-alsh-del-tranche]').forEach(function(a){
+        a.addEventListener('click', function(e){ e.preventDefault(); alshRemoveTranche(this.dataset.alshDelTranche); });
+    });
+}
+function alshAddTranche(){
+    var inp = document.getElementById('alshNewTranche');
+    var lib = inp ? inp.value.trim() : '';
+    if (!lib){ alert('Saisissez un libellé de tranche d\'âge.'); return; }
+    fetch('/api/alsh/tranches-age', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({libelle: lib})})
+        .then(r => r.json()).then(function(d){ if (d.error){ alert(d.error); return; } reloadAlshContext(); });
+}
+function alshRemoveTranche(id){
+    fetch('/api/alsh/tranches-age/' + encodeURIComponent(id), {method:'DELETE'})
+        .then(r => r.json()).then(function(d){ if (d.error){ alert(d.error); return; } reloadAlshContext(); });
+}
+function reloadAlshContext(){
+    fetchAlshContext(psSim.ctx.annee).then(function(ctx){
+        psSim.alshCtx = ctx || {tranches:[], periodes:[], mercredis_dates:[]};
+        if (psSim.type_ps === 'alsh_extrasco') psSim.state = mergeExtrascoState(psSim.state, psSim.alshCtx);
+        else psSim.state = mergePeriscoState(psSim.state, psSim.alshCtx);
+        renderAlshActive();
+    });
+}
+
+// ---- EXTRASCO ----
+function buildExtrascoCells(st, ctx, prev){
+    var byKey = {};
+    (prev || []).forEach(function(c){ byKey[c.periode_id + '_' + c.tranche_id] = c; });
+    var cells = [];
+    (ctx.periodes || []).forEach(function(p){
+        (ctx.tranches || []).forEach(function(t){
+            var ex = byKey[p.id + '_' + t.id] || {};
+            cells.push({periode_id: p.id, tranche_id: t.id,
+                prev_reel: ex.prev_reel || 'prev',
+                enfants: ex.enfants !== undefined ? ex.enfants : '',
+                heures_jour: ex.heures_jour !== undefined ? ex.heures_jour : '',
+                heures_reel: ex.heures_reel !== undefined ? ex.heures_reel : ''});
+        });
+    });
+    st.cellules = cells;
+}
+function defaultExtrascoState(ctx){
+    var st = {taux_ps:0.624, taux_compl_inclusif:3.90, taux_regime:100, heures_handicap:'', cellules:[]};
+    buildExtrascoCells(st, ctx, null);
+    return st;
+}
+function mergeExtrascoState(saved, ctx){
+    var st = defaultExtrascoState(ctx);
+    if (saved){
+        ['taux_ps','taux_compl_inclusif','taux_regime','heures_handicap'].forEach(function(k){
+            if (saved[k] !== undefined && saved[k] !== null) st[k] = saved[k];
+        });
+        buildExtrascoCells(st, ctx, saved.cellules || []);
+    }
+    return st;
+}
+function computeExtrascoJS(st, ctx){
+    var tauxPs = psNum(st.taux_ps, 0.624);
+    var tauxCompl = psNum(st.taux_compl_inclusif, 3.90);
+    var tauxRegime = psNum(st.taux_regime, 100) / 100;
+    var joursBy = {};
+    (ctx.periodes || []).forEach(function(p){ joursBy[p.id] = p.jours_ouvres; });
+    var cells = {}, totalHeures = 0, totalPs = 0;
+    (st.cellules || []).forEach(function(c){
+        var jours = Number(joursBy[c.periode_id] || 0);
+        var enfants = psNum(c.enfants), hj = psNum(c.heures_jour);
+        var heures = (c.prev_reel === 'reel') ? psNum(c.heures_reel) : enfants * jours * hj;
+        var ps = heures * tauxPs * tauxRegime;
+        cells[c.periode_id + '_' + c.tranche_id] = {jours: jours, heures: heures, ps: ps};
+        totalHeures += heures; totalPs += ps;
+    });
+    var compl = psNum(st.heures_handicap) * tauxCompl * tauxRegime;
+    return {cells: cells, totalHeures: totalHeures, totalPs: totalPs, compl: compl, total: totalPs + compl};
+}
+function renderExtrascoSimulator(){
+    var st = psSim.state, ctx = psSim.alshCtx || {};
+    var dis = canEditPs ? '' : ' disabled';
+    var html = '<div class="ps-params">' +
+        psTopField('Taux de PS', 'taux_ps', st.taux_ps, '0.001', dis) +
+        psTopField('Taux complément inclusif (handicap)', 'taux_compl_inclusif', st.taux_compl_inclusif, '0.01', dis) +
+        psTopField('Taux de régime général (%)', 'taux_regime', st.taux_regime, '0.01', dis) +
+        '</div>';
+    html += alshTranchesBar(ctx);
+    if (!(ctx.tranches || []).length){
+        html += '<p class="ps-legend">Ajoutez au moins une tranche d\'âge pour saisir la simulation.</p>';
+    } else if (!(ctx.periodes || []).length){
+        html += '<p class="ps-legend">Aucune période de vacances configurée pour ' + escapeHtml(String(psSim.ctx.annee)) +
+            '. Renseignez-les dans « Gestion des vacances » (Administration).</p>';
+    } else {
+        html += '<div class="ps-legend">Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. « Réel » permet de saisir directement les heures réalisées.</div>';
+        html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
+            '<th>Période de vacances</th><th>Tranche d\'âge</th><th>Prév/Réel</th><th>Enfants / jour</th><th>Heures / jour</th>' +
+            '<th class="bp-ps-calc">Jours ouvrés</th><th class="bp-ps-calc">Heures total</th><th class="bp-ps-calc">PS période</th>' +
+            '</tr></thead><tbody>';
+        st.cellules.forEach(function(c, idx){
+            var per = (ctx.periodes || []).find(function(p){ return p.id === c.periode_id; }) || {};
+            var tr = (ctx.tranches || []).find(function(t){ return t.id === c.tranche_id; }) || {};
+            var reel = (c.prev_reel === 'reel');
+            html += '<tr><td class="ps-col-mois">' + escapeHtml(per.nom || '') +
+                '<br><small style="color:var(--gray-500);">' + escapeHtml((per.date_debut || '') + ' → ' + (per.date_fin || '')) + '</small></td>' +
+                '<td class="ps-col-mois">' + escapeHtml(tr.libelle || '') + '</td>' +
+                '<td><select class="ps-input ps-input-sel" data-alsh-ci="' + idx + '" data-alsh-key="prev_reel" data-alsh-rerender="1"' + dis + '>' +
+                    '<option value="prev"' + (reel ? '' : ' selected') + '>Prévisionnel</option>' +
+                    '<option value="reel"' + (reel ? ' selected' : '') + '>Réel</option></select></td>' +
+                '<td>' + alshCellInput(idx, 'enfants', c.enfants, reel ? ' disabled' : dis) + '</td>' +
+                '<td>' + alshCellInput(idx, 'heures_jour', c.heures_jour, reel ? ' disabled' : dis) + '</td>' +
+                '<td class="bp-ps-calc" id="exc-' + idx + '-jours"></td>' +
+                (reel ? '<td class="bp-ps-calc">' + alshCellInput(idx, 'heures_reel', c.heures_reel, dis) + '</td>'
+                      : '<td class="bp-ps-calc" id="exc-' + idx + '-heures"></td>') +
+                '<td class="bp-ps-calc" id="exc-' + idx + '-ps"></td></tr>';
+        });
+        html += '</tbody><tfoot><tr><td colspan="5">Total</td><td class="bp-ps-calc">—</td>' +
+            '<td class="bp-ps-calc" id="ex-total-heures"></td><td class="bp-ps-calc" id="ex-total-ps"></td></tr></tfoot></table></div>';
+        html += '<div class="ps-summary"><div class="ps-card"><h4>Complément inclusif (bonus handicap)</h4>' +
+            '<div class="ps-field"><label>Heures d\'enfants en situation de handicap (année)</label>' +
+            '<input class="ps-input" type="number" step="0.01" value="' + psAttr(st.heures_handicap) + '" data-alsh-top="heures_handicap"' + dis + '></div>' +
+            '<div class="ps-result">PS complément inclusif : <span id="ex-compl">0,00</span> €</div></div></div>';
+    }
+    html += '<div class="ps-total-box"><span>Total à reporter sur le compte ' + escapeHtml(psSim.compte) +
+        ' (PS + complément inclusif)</span><strong><span id="ex-total">0,00</span> €</strong></div>';
+    document.getElementById('psSimBody').innerHTML = html;
+    document.getElementById('psSimFooter').innerHTML = alshFooter();
+    bindAlshInputs();
+}
+function recomputeExtrasco(){
+    var c = computeExtrascoJS(psSim.state, psSim.alshCtx || {});
+    psSim.state.cellules.forEach(function(cell, idx){
+        var r = c.cells[cell.periode_id + '_' + cell.tranche_id] || {jours:0, heures:0, ps:0};
+        psSet('exc-' + idx + '-jours', fmtR(r.jours, 0));
+        psSet('exc-' + idx + '-heures', fmtR(r.heures, 2));
+        psSet('exc-' + idx + '-ps', fmt(r.ps));
+    });
+    psSet('ex-total-heures', fmtR(c.totalHeures, 2));
+    psSet('ex-total-ps', fmt(c.totalPs));
+    psSet('ex-compl', fmt(c.compl));
+    psSet('ex-total', fmt(c.total));
+}
+
+// ---- PERISCO ----
+function buildPeriscoCells(st, ctx, prev){
+    var byKey = {};
+    (prev || []).forEach(function(c){ byKey[c.tranche_id] = c; });
+    var cells = [];
+    (ctx.tranches || []).forEach(function(t){
+        var ex = byKey[t.id] || {};
+        cells.push({tranche_id: t.id,
+            enfants: ex.enfants !== undefined ? ex.enfants : '',
+            heures_jour: ex.heures_jour !== undefined ? ex.heures_jour : '',
+            enfants_handicap: ex.enfants_handicap !== undefined ? ex.enfants_handicap : '',
+            heures_reel: ex.heures_reel !== undefined ? ex.heures_reel : '',
+            heures_handicap_reel: ex.heures_handicap_reel !== undefined ? ex.heures_handicap_reel : ''});
+    });
+    st.cellules = cells;
+}
+function defaultPeriscoState(ctx){
+    var st = {taux_ps:0.59, taux_compl_inclusif:3.90, date_arrete:'', cellules:[]};
+    buildPeriscoCells(st, ctx, null);
+    return st;
+}
+function mergePeriscoState(saved, ctx){
+    var st = defaultPeriscoState(ctx);
+    if (saved){
+        ['taux_ps','taux_compl_inclusif','date_arrete'].forEach(function(k){
+            if (saved[k] !== undefined && saved[k] !== null) st[k] = saved[k];
+        });
+        buildPeriscoCells(st, ctx, saved.cellules || []);
+    }
+    return st;
+}
+function periscoJours(st, ctx){
+    var joursInitial = Math.max((ctx.mercredis_count || 0) - (ctx.mercredis_deduction || 7), 0);
+    var dateArrete = (st.date_arrete || '').trim();
+    var joursRestant = 0;
+    (ctx.mercredis_dates || []).forEach(function(d){ if (dateArrete && d > dateArrete) joursRestant++; });
+    return {joursInitial: joursInitial, joursRestant: joursRestant};
+}
+function computePeriscoJS(st, ctx, typeBudget){
+    var tauxPs = psNum(st.taux_ps, 0.59);
+    var tauxCompl = psNum(st.taux_compl_inclusif, 3.90);
+    var j = periscoJours(st, ctx);
+    var actualise = (typeBudget === 'actualise');
+    var cells = {}, totalPs = 0, totalCompl = 0, totalHeures = 0;
+    (st.cellules || []).forEach(function(c){
+        var enfants = psNum(c.enfants), hj = psNum(c.heures_jour), eh = psNum(c.enfants_handicap);
+        var heures, heuresH, reste = 0;
+        if (actualise){
+            reste = enfants * j.joursRestant * hj;
+            heures = psNum(c.heures_reel) + reste;
+            heuresH = psNum(c.heures_handicap_reel) + eh * j.joursRestant * hj;
+        } else {
+            heures = enfants * j.joursInitial * hj;
+            heuresH = eh * j.joursInitial * hj;
+        }
+        var ps = heures * tauxPs, compl = heuresH * tauxCompl;
+        cells[c.tranche_id] = {heures: heures, heuresH: heuresH, ps: ps, compl: compl, reste: reste};
+        totalPs += ps; totalCompl += compl; totalHeures += heures;
+    });
+    return {cells: cells, jours: j, totalPs: totalPs, totalCompl: totalCompl, totalHeures: totalHeures, total: totalPs + totalCompl};
+}
+function renderPeriscoSimulator(){
+    var st = psSim.state, ctx = psSim.alshCtx || {};
+    var dis = canEditPs ? '' : ' disabled';
+    var actualise = (psSim.ctx.type_budget === 'actualise');
+    var j = periscoJours(st, ctx);
+    var html = '<div class="ps-params">' +
+        psTopField('Taux de PS', 'taux_ps', st.taux_ps, '0.001', dis) +
+        psTopField('Taux complément inclusif (handicap)', 'taux_compl_inclusif', st.taux_compl_inclusif, '0.01', dis) +
+        '</div>';
+    html += '<div class="ps-legend">Mercredis scolaires ' + escapeHtml(String(psSim.ctx.annee)) + ' : <strong>' +
+        (ctx.mercredis_count || 0) + '</strong> − ' + (ctx.mercredis_deduction || 7) +
+        ' (fermetures + reprise) = <strong>' + j.joursInitial + ' jours</strong> sur l\'année.</div>';
+    if (actualise){
+        html += '<div class="ps-params"><div class="ps-field"><label>Date d\'arrêté du réel</label>' +
+            '<input class="ps-input" type="date" value="' + psAttr(st.date_arrete) + '" data-alsh-top="date_arrete" style="flex:0 0 160px;text-align:left;"' + dis + '></div>' +
+            '<div class="ps-field"><label>Mercredis restants après l\'arrêté</label>&nbsp;<strong id="pe-jours-restant">' + j.joursRestant + '</strong></div></div>';
+    }
+    html += alshTranchesBar(ctx);
+    if (!(ctx.tranches || []).length){
+        html += '<p class="ps-legend">Ajoutez au moins une tranche d\'âge pour saisir la simulation.</p>';
+    } else {
+        html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
+            '<th>Tranche d\'âge</th><th>Enfants moyen / jour</th><th>Heures / jour</th><th>Enfants handicap / jour</th>' +
+            (actualise ? '<th>Heures réelles à ce jour</th><th>Heures handicap réelles</th><th class="bp-ps-calc">Heures reste prév.</th>' : '') +
+            '<th class="bp-ps-calc">Heures total</th><th class="bp-ps-calc">PS</th><th class="bp-ps-calc">Compl. inclusif</th>' +
+            '</tr></thead><tbody>';
+        st.cellules.forEach(function(c, idx){
+            var tr = (ctx.tranches || []).find(function(t){ return t.id === c.tranche_id; }) || {};
+            html += '<tr><td class="ps-col-mois">' + escapeHtml(tr.libelle || '') + '</td>' +
+                '<td>' + alshCellInput(idx, 'enfants', c.enfants, dis) + '</td>' +
+                '<td>' + alshCellInput(idx, 'heures_jour', c.heures_jour, dis) + '</td>' +
+                '<td>' + alshCellInput(idx, 'enfants_handicap', c.enfants_handicap, dis) + '</td>' +
+                (actualise ? '<td>' + alshCellInput(idx, 'heures_reel', c.heures_reel, dis) + '</td>' +
+                    '<td>' + alshCellInput(idx, 'heures_handicap_reel', c.heures_handicap_reel, dis) + '</td>' +
+                    '<td class="bp-ps-calc" id="pec-' + idx + '-reste"></td>' : '') +
+                '<td class="bp-ps-calc" id="pec-' + idx + '-heures"></td>' +
+                '<td class="bp-ps-calc" id="pec-' + idx + '-ps"></td>' +
+                '<td class="bp-ps-calc" id="pec-' + idx + '-compl"></td></tr>';
+        });
+        var labelSpan = actualise ? 7 : 4;
+        html += '</tbody><tfoot><tr><td colspan="' + labelSpan + '">Total</td>' +
+            '<td class="bp-ps-calc" id="pe-total-heures"></td><td class="bp-ps-calc" id="pe-total-ps"></td>' +
+            '<td class="bp-ps-calc" id="pe-total-compl"></td></tr></tfoot></table></div>';
+    }
+    html += '<div class="ps-summary"><div class="ps-card"><h4>Récapitulatif</h4>' +
+        '<div class="ps-result">Total PS : <span id="pe-ps">0,00</span> € · Complément inclusif : <span id="pe-compl">0,00</span> €</div></div></div>';
+    html += '<div class="ps-total-box"><span>Total à reporter sur le compte ' + escapeHtml(psSim.compte) +
+        ' (PS + complément inclusif)</span><strong><span id="pe-total">0,00</span> €</strong></div>';
+    document.getElementById('psSimBody').innerHTML = html;
+    document.getElementById('psSimFooter').innerHTML = alshFooter();
+    bindAlshInputs();
+}
+function recomputePerisco(){
+    var c = computePeriscoJS(psSim.state, psSim.alshCtx || {}, psSim.ctx.type_budget);
+    psSim.state.cellules.forEach(function(cell, idx){
+        var r = c.cells[cell.tranche_id] || {heures:0, heuresH:0, ps:0, compl:0, reste:0};
+        psSet('pec-' + idx + '-reste', fmtR(r.reste, 2));
+        psSet('pec-' + idx + '-heures', fmtR(r.heures, 2));
+        psSet('pec-' + idx + '-ps', fmt(r.ps));
+        psSet('pec-' + idx + '-compl', fmt(r.compl));
+    });
+    psSet('pe-total-heures', fmtR(c.totalHeures, 2));
+    psSet('pe-total-ps', fmt(c.totalPs));
+    psSet('pe-total-compl', fmt(c.totalCompl));
+    psSet('pe-ps', fmt(c.totalPs));
+    psSet('pe-compl', fmt(c.totalCompl));
+    psSet('pe-total', fmt(c.total));
+    psSet('pe-jours-restant', String(c.jours.joursRestant));
 }
 
 function defaultEajeState(){
@@ -987,7 +1334,7 @@ function savePsSimulator(){
         annee: ctx.annee,
         type_budget: ctx.type_budget,
         secteur_id: ctx.secteur_id,
-        type_ps: 'eaje',
+        type_ps: psSim.type_ps,
         donnees: psSim.state
     };
     var msg = document.getElementById('psSaveMsg');
