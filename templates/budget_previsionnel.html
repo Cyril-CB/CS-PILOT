@@ -1424,7 +1424,8 @@ function defaultPaieState(ctx){
             pesee: e.pesee != null ? e.pesee : '',
             nouvelle_pesee: '',
             anciennete: e.anciennete != null ? e.anciennete : 0,
-            competence: e.competence != null ? e.competence : ''
+            competence: e.competence != null ? e.competence : '',
+            maintien: e.maintien != null ? e.maintien : 0
         };
     });
     return st;
@@ -1459,26 +1460,29 @@ function computePaieJS(st, ctx, typeBudget){
     var reel = (typeBudget === 'actualise') ? (ctx.montant_reel || 0) : 0;
     var start = lastReal + 1;
     function brut(p,a,c){ return (socle + (p+a+c)*point) / 12; }
+    // Champ surchargé présent (même vide) => saisie (vide = 0) ; absent => fiche.
+    function ovNum(ov, key, dbVal){ return (ov && Object.prototype.hasOwnProperty.call(ov, key)) ? psNum(ov[key], 0) : psNum(dbVal, 0); }
     var monthly = {}; for (var m=1;m<=12;m++) monthly[m] = 0;
     var lignes = {};
     (ctx.employes || []).forEach(function(e){
         var ov = st.employes[e.id] || {};
-        var pAct = psNum(ov.pesee, e.pesee || 0);
+        var pAct = ovNum(ov, 'pesee', e.pesee);
         var pEff = (ov.nouvelle_pesee !== '' && ov.nouvelle_pesee != null) ? psNum(ov.nouvelle_pesee) : pAct;
-        var anc = psNum(ov.anciennete, e.anciennete || 0), comp = psNum(ov.competence, e.competence || 0);
+        var anc = ovNum(ov, 'anciennete', e.anciennete), comp = ovNum(ov, 'competence', e.competence);
+        var maint = ovNum(ov, 'maintien', e.maintien);
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp); mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
     });
     var ajouts = {};
     (st.ajouts || []).forEach(function(a, i){
         var typ = (a.type === 'cdd') ? 'cdd' : 'cdi';
-        var pEff = psNum(a.pesee), anc = psNum(a.anciennete), comp = psNum(a.competence);
+        var pEff = psNum(a.pesee), anc = psNum(a.anciennete), comp = psNum(a.competence), maint = psNum(a.maintien);
         var mb = (typ==='cdd') ? (parseInt(a.mois_debut,10)||1) : (parseInt(a.mois_embauche,10)||1);
         var mf = (typ==='cdd') ? (parseInt(a.mois_fin,10)||12) : 12;
         mb=Math.min(Math.max(mb,1),12); mf=Math.min(Math.max(mf,1),12);
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp); mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         ajouts[i] = {mois: mvals, total: tot};
     });
     var ceeJours = paieCeeParMois(ctx, st), ceeCout = {};
@@ -1514,7 +1518,7 @@ function renderPaieSimulator(){
         html += '<p class="ps-legend">Aucun salarié actif en CDI/CDD rattaché à ce secteur sur l\'année.</p>';
     } else {
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Salarié</th><th>Type</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th>' +
+            '<th>Salarié</th><th>Type</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th><th>Maintien €/mois</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
         (ctx.employes || []).forEach(function(e){
             var ov = st.employes[e.id] || {};
@@ -1524,6 +1528,7 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_pesee"', ov.nouvelle_pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="anciennete"', ov.anciennete, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="maintien"', ov.maintien, '0.01') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-' + m + '"></td>'; }).join('') +
                 '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-tot"></td></tr>';
         });
@@ -1536,13 +1541,14 @@ function renderPaieSimulator(){
         '<button class="btn btn-sm btn-secondary" type="button" onclick="paieAddAjout(\'cdd\')">+ CDD</button></div>';
     if ((st.ajouts || []).length){
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Type</th><th>Pesée</th><th>Ancienneté</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
+            '<th>Type</th><th>Pesée</th><th>Ancienneté</th><th>Maintien €/mois</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th><th></th></tr></thead><tbody>';
         st.ajouts.forEach(function(a, i){
             var isCdd = (a.type === 'cdd');
             html += '<tr><td class="ps-col-mois">' + (isCdd ? 'CDD' : 'CDI') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="pesee"', a.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="anciennete"', a.anciennete, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="maintien"', a.maintien, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="' + (isCdd ? 'mois_debut' : 'mois_embauche') + '"', isCdd ? a.mois_debut : a.mois_embauche, '1') + '</td>' +
                 '<td>' + (isCdd ? paieInput('data-paie-aj="' + i + '" data-paie-key="mois_fin"', a.mois_fin, '1') : '—') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-aj-' + i + '-' + m + '"></td>'; }).join('') +
@@ -1603,8 +1609,8 @@ function bindPaieInputs(){
 }
 function paieAddAjout(type){
     paieSim.state.ajouts.push(type === 'cdd'
-        ? {type:'cdd', pesee:'', anciennete:'', competence:0, mois_debut:1, mois_fin:12}
-        : {type:'cdi', pesee:'', anciennete:'', competence:0, mois_embauche:1});
+        ? {type:'cdd', pesee:'', anciennete:'', competence:0, maintien:0, mois_debut:1, mois_fin:12}
+        : {type:'cdi', pesee:'', anciennete:'', competence:0, maintien:0, mois_embauche:1});
     renderPaieSimulator(); recomputePaie();
 }
 function paieRemoveAjout(i){ paieSim.state.ajouts.splice(i,1); renderPaieSimulator(); recomputePaie(); }

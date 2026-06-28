@@ -307,6 +307,8 @@ def modifier_pesee():
     pesee = int(pesee_val) if pesee_val else None
     competence_val = request.form.get('competence', '').strip()
     competence = int(competence_val) if competence_val else None
+    maintien_val = request.form.get('maintien', '').strip()
+    maintien = float(maintien_val) if maintien_val else 0
 
     if not user_id:
         flash("Salarie invalide.", 'error')
@@ -317,8 +319,8 @@ def modifier_pesee():
         conn.close()
         flash("Acces non autorise.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
-    conn.execute('UPDATE users SET pesee = ?, competence = ? WHERE id = ?',
-                 (pesee, competence, user_id))
+    conn.execute('UPDATE users SET pesee = ?, competence = ?, maintien = ? WHERE id = ?',
+                 (pesee, competence, maintien, user_id))
     conn.commit()
     conn.close()
 
