@@ -1013,3 +1013,41 @@ def test_init_db_reajoute_colonnes_paie_si_absentes(app, db):
         cols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
     assert 'maintien' in cols
     assert 'competence' in cols
+
+
+def test_paie_anciennete_depuis_contrat_directeur_sans_date_entree(app, db):
+    """L'ancienneté vient de la date de début du contrat, pas de users.date_entree.
+    Un directeur sans date_entree mais avec un contrat a une ancienneté correcte."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Admin','administratif')")
+        sid = db.execute("SELECT id FROM secteurs WHERE nom='Admin'").fetchone()['id']
+        db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree) "
+                   "VALUES ('Dir','X','dir_anc','x','directeur',1,NULL,NULL)")
+        did = db.execute("SELECT id FROM users WHERE login='dir_anc'").fetchone()['id']
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDI', ?, NULL)",
+                   (did, f'{annee-4}-01-01'))
+        db.commit()
+        employes = _paie_employes_secteur(db, sid, annee)
+    e = next(x for x in employes if x['id'] == did)
+    assert e['anciennete'] == 4
+
+
+def test_paie_anciennete_cdd_depuis_son_contrat(app, db):
+    """Pour un CDD, l'ancienneté est calculée depuis le début de SON contrat,
+    en ignorant une date_entree plus ancienne."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Op','creche')")
+        sid = db.execute("SELECT id FROM secteurs WHERE nom='Op'").fetchone()['id']
+        db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree) "
+                   "VALUES ('C','D','cdd_anc','x','salarie',1,?,?)", (sid, f'{annee-6}-01-01'))
+        uid = db.execute("SELECT id FROM users WHERE login='cdd_anc'").fetchone()['id']
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDD', ?, ?)",
+                   (uid, f'{annee}-01-01', f'{annee}-08-31'))
+        db.commit()
+        employes = _paie_employes_secteur(db, sid, annee)
+    e = next(x for x in employes if x['id'] == uid)
+    assert e['anciennete'] == 0  # depuis le contrat (cette année), pas 6 (date_entree)

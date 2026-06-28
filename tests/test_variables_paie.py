@@ -424,6 +424,28 @@ class TestClotureCongesSansContrat:
             row = self._get_soldes(db, uid)
             assert abs(row['cp_acquis'] - round(25.0 / 12.0, 6)) < 0.001
 
+    def test_prorata_depuis_date_contrat_pas_date_entree(self, comptable_client, app, db, sample_users):
+        """Le prorata d'embauche en cours de mois utilise la date de début du
+        contrat, et non users.date_entree (qui n'est plus fiable)."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid, cp_acquis=0, cp_a_prendre=0, cp_pris=0, cc_solde=0)
+            # date_entree volontairement ancienne : doit être ignorée
+            db.execute("UPDATE users SET date_entree = '2020-01-01' WHERE id = ?", (uid,))
+            db.commit()
+            self._add_contrat(db, uid, '2026-06-15')  # contrat démarrant en cours de mois
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+        # Juin = 30 jours ; du 15 au 30 = 16 jours -> prorata 16/30 (pas 1)
+        attendu = round(25.0 / 12.0 * (16 / 30), 6)
+        assert abs(row['cp_acquis'] - attendu) < 0.001
+
     def test_deux_salaries_un_avec_un_sans_contrat(self, comptable_client, app, db, sample_users):
         """Salarie avec contrat actif acquiert, salarie sans contrat est remis a zero."""
         uid_avec = sample_users['salarie_id']

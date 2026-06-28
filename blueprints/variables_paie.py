@@ -349,7 +349,7 @@ def cloturer_conges():
 
     # Salaries actifs hors directeur et prestataire
     salaries = conn.execute('''
-        SELECT id, date_entree, cp_acquis, cp_a_prendre, cp_pris, cc_solde
+        SELECT id, cp_acquis, cp_a_prendre, cp_pris, cc_solde
         FROM users
         WHERE actif = 1 AND profil NOT IN ('directeur', 'prestataire')
     ''').fetchall()
@@ -359,17 +359,31 @@ def cloturer_conges():
     # Mois d'acquisition CC : octobre (10) a mai (5)
     mois_cc = mois in (10, 11, 12, 1, 2, 3, 4, 5)
 
-    # Salaries avec un contrat se poursuivant apres le dernier jour du mois.
+    # Salaries avec un contrat se poursuivant apres le dernier jour du mois, et
+    # la date de debut de ce contrat : c'est elle (et non users.date_entree,
+    # saisie a la creation et plus fiable) qui sert de reference pour le prorata
+    # d'embauche en cours de mois. C'est le contrat qui compte.
     # Un contrat dont date_fin est exactement le dernier jour est exclu : les
     # conges acquis sont soldes en paie, les compteurs doivent repasser a zero.
+    #
+    # Cas multi-contrats (RARE) : si un salarie a plusieurs contrats encore
+    # actifs en fin de mois, on retient le PLUS ANCIEN en cours de validite
+    # (MIN(date_debut)) -> choix metier deliberé, favorable au salarie (mois
+    # plein plutot qu'un prorata sur le contrat le plus recent).
+    # Limite connue laissee de cote : en toute rigueur chaque contrat a son
+    # propre solde de conges et ceux-ci devraient se CUMULER (un solde par
+    # contrat). Ce n'est pas gere ici (cas exceptionnel, chantier a part). Si on
+    # revient un jour dessus, c'est le point a reprendre.
     dernier_du_mois_str = date(annee, mois, jours_dans_mois).strftime('%Y-%m-%d')
-    ids_avec_contrat = {
-        row['user_id'] for row in conn.execute(
-            '''SELECT DISTINCT user_id FROM contrats
-               WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)''',
+    contrat_debut = {
+        row['user_id']: row['date_debut'] for row in conn.execute(
+            '''SELECT user_id, MIN(date_debut) AS date_debut FROM contrats
+               WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)
+               GROUP BY user_id''',
             (dernier_du_mois_str, dernier_du_mois_str)
         ).fetchall()
     }
+    ids_avec_contrat = set(contrat_debut.keys())
 
     nb_traites = 0
     nb_resets = 0
@@ -382,7 +396,7 @@ def cloturer_conges():
             cp_a_prendre = sal['cp_a_prendre'] or 0
             cp_pris = sal['cp_pris'] or 0
             cc_solde = sal['cc_solde'] or 0
-            date_entree = sal['date_entree']
+            date_debut_contrat = contrat_debut.get(uid)
 
             # Sans contrat actif le dernier jour du mois : remise a zero des soldes
             if uid not in ids_avec_contrat:
@@ -395,11 +409,12 @@ def cloturer_conges():
                 details.append({'user_id': uid, 'reset_sans_contrat': True})
                 continue
 
-            # Calculer le prorata si embauche en cours de mois
+            # Calculer le prorata si embauche en cours de mois (= date de debut
+            # du contrat en cours, et non plus users.date_entree)
             prorata = 1.0
-            if date_entree:
+            if date_debut_contrat:
                 try:
-                    d_entree = datetime.strptime(date_entree, '%Y-%m-%d').date()
+                    d_entree = datetime.strptime(str(date_debut_contrat)[:10], '%Y-%m-%d').date()
                     premier_du_mois = date(annee, mois, 1)
                     dernier_du_mois = date(annee, mois, jours_dans_mois)
                     # Si l'entree est dans ce mois

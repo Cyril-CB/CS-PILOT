@@ -1797,12 +1797,16 @@ PAIE_DEFAULTS = {
 }
 
 
-def _paie_anciennete_annees(date_entree, annee):
-    """Années révolues d'ancienneté au 1er janvier de l'année de budget (floor)."""
-    if not date_entree:
+def _paie_anciennete_annees(date_ref, annee):
+    """Années révolues d'ancienneté au 1er janvier de l'année de budget (floor).
+
+    La date de référence est la date de début du contrat en cours de validité
+    (c'est le contrat qui compte, pas users.date_entree saisie à la création).
+    """
+    if not date_ref:
         return 0
     try:
-        d = date.fromisoformat(str(date_entree)[:10])
+        d = date.fromisoformat(str(date_ref)[:10])
     except (ValueError, TypeError):
         return 0
     ref = date(annee, 1, 1)
@@ -1854,7 +1858,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
 
     if inclut_direction:
         rows = conn.execute('''
-            SELECT id, nom, prenom, pesee, competence, maintien, date_entree
+            SELECT id, nom, prenom, pesee, competence, maintien
             FROM users
             WHERE actif = 1 AND profil != 'prestataire'
               AND (secteur_id = ? OR profil = 'directeur')
@@ -1863,7 +1867,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
     else:
         # Hors secteur administratif principal : la direction n'apparaît pas.
         rows = conn.execute('''
-            SELECT id, nom, prenom, pesee, competence, maintien, date_entree
+            SELECT id, nom, prenom, pesee, competence, maintien
             FROM users
             WHERE actif = 1 AND profil != 'prestataire' AND profil != 'directeur'
               AND secteur_id = ?
@@ -1893,7 +1897,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
             'pesee': u['pesee'], 'competence': u['competence'],
             'maintien': u['maintien'] if u['maintien'] is not None else 0,
             'type_contrat': contrat['type_contrat'],
-            'anciennete': _paie_anciennete_annees(u['date_entree'], annee),
+            'anciennete': _paie_anciennete_annees(contrat['date_debut'], annee),
             'mois_debut': mb, 'mois_fin': mf,
         })
     employes.sort(key=lambda e: (0 if e['type_contrat'] == 'CDI' else 1, e['nom'], e['prenom']))
