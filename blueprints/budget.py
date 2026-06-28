@@ -734,6 +734,39 @@ def _can_access_budget_previsionnel(profil):
     return False
 
 
+def _secteur_allowed_codes(conn, secteur_id):
+    """Codes (analytiques + comptes du plan) rattachés à un secteur."""
+    allowed = set()
+    if not secteur_id:
+        return allowed
+    for r in conn.execute(
+        'SELECT code_analytique FROM budget_prev_config_codes WHERE secteur_id = ?', (secteur_id,)
+    ).fetchall():
+        c = (r['code_analytique'] or '').strip()
+        if c:
+            allowed.add(c)
+    for r in conn.execute(
+        'SELECT compte_num FROM comptabilite_comptes WHERE secteur_id = ?', (secteur_id,)
+    ).fetchall():
+        c = (r['compte_num'] or '').strip()
+        if c:
+            allowed.add(c)
+    return allowed
+
+
+def _code_allowed(code_analytique, compte_num, allowed_codes):
+    """Une écriture FEC est rattachée au secteur si son code analytique
+    correspond exactement, ou si son compte commence par un code autorisé."""
+    if not allowed_codes:
+        return False
+    code_ana = (code_analytique or '').strip()
+    compte = (compte_num or '').strip()
+    for code in allowed_codes:
+        if code_ana == code or compte.startswith(code):
+            return True
+    return False
+
+
 def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, inflation=0, global_mode=False):
     years = [annee - 2, annee - 1, annee]
     rows = conn.execute('''
@@ -745,28 +778,12 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
 
     allowed_codes = set()
     if secteur_id and not global_mode:
-        cfg = conn.execute(
-            'SELECT code_analytique FROM budget_prev_config_codes WHERE secteur_id = ?',
-            (secteur_id,)
-        ).fetchall()
-        allowed_codes.update((r['code_analytique'] or '').strip() for r in cfg if (r['code_analytique'] or '').strip())
-        from_plan = conn.execute(
-            'SELECT compte_num FROM comptabilite_comptes WHERE secteur_id = ?',
-            (secteur_id,)
-        ).fetchall()
-        allowed_codes.update((r['compte_num'] or '').strip() for r in from_plan if (r['compte_num'] or '').strip())
+        allowed_codes = _secteur_allowed_codes(conn, secteur_id)
 
     def row_allowed(r):
         if global_mode or not secteur_id:
             return True
-        if not allowed_codes:
-            return False
-        code_ana = (r['code_analytique'] or '').strip()
-        compte_num = (r['compte_num'] or '').strip()
-        for code in allowed_codes:
-            if code_ana == code or compte_num.startswith(code):
-                return True
-        return False
+        return _code_allowed(r['code_analytique'], r['compte_num'], allowed_codes)
 
     pcg_rows = conn.execute('SELECT compte_num, libelle FROM plan_comptable_general').fetchall()
     pcg = {r['compte_num']: r['libelle'] for r in pcg_rows}
@@ -1827,12 +1844,18 @@ def _paie_employes_secteur(conn, secteur_id, annee):
     ''', (secteur_id,)).fetchall()
     employes = []
     for u in rows:
+        # Ne retenir que les contrats CDI/CDD qui chevauchent l'année de budget :
+        # commencés au plus tard le 31/12 et finissant au plus tôt le 01/01.
+        # Sinon un contrat saisi pour l'année suivante serait sélectionné en
+        # premier (date_debut la plus récente) puis écarté, faisant disparaître
+        # le salarié alors qu'il a un contrat valide sur l'année.
         contrat = conn.execute('''
             SELECT type_contrat, date_debut, date_fin FROM contrats
             WHERE user_id = ? AND type_contrat IN ('CDI', 'CDD')
+              AND date_debut <= ?
               AND (date_fin IS NULL OR date_fin >= ?)
             ORDER BY date_debut DESC LIMIT 1
-        ''', (u['id'], f'{annee}-01-01')).fetchone()
+        ''', (u['id'], f'{annee}-12-31', f'{annee}-01-01')).fetchone()
         if not contrat:
             continue
         mb, mf = _paie_mois_actifs(contrat['date_debut'], contrat['date_fin'], annee)
@@ -1923,21 +1946,30 @@ def _paie_cee_jours_par_mois(conn, annee, fermetures):
     return result
 
 
-def _paie_reel_641(conn, compte_num, annee):
-    """(last_real_month, montant_reel) du compte brut sur l'année (données FEC)."""
+def _paie_reel_641(conn, secteur_id, compte_num, annee):
+    """(last_real_month, montant_reel) du compte brut sur l'année, restreint au
+    périmètre du secteur (même filtrage que le budget : codes analytiques +
+    comptes rattachés). Évite de compter le réel d'un autre secteur partageant
+    le même compte 641."""
     if not compte_num:
         return 0, 0.0
+    allowed = _secteur_allowed_codes(conn, secteur_id)
     rows = conn.execute('''
-        SELECT mois, COALESCE(SUM(montant), 0) AS m FROM bilan_fec_donnees
-        WHERE compte_num = ? AND annee = ? GROUP BY mois
+        SELECT mois, code_analytique, montant FROM bilan_fec_donnees
+        WHERE compte_num = ? AND annee = ?
     ''', (compte_num, annee)).fetchall()
-    last = 0
-    total = 0.0
+    by_month = {}
     for r in rows:
-        if r['mois'] and 1 <= r['mois'] <= 12:
-            last = max(last, r['mois'])
-            total += float(r['m'] or 0)
-    return last, round(total, 2)
+        if not _code_allowed(r['code_analytique'], compte_num, allowed):
+            continue
+        m = r['mois']
+        if m and 1 <= m <= 12:
+            by_month[m] = by_month.get(m, 0.0) + float(r['montant'] or 0)
+    if not by_month:
+        return 0, 0.0
+    last = max(by_month)
+    total = round(sum(v for m, v in by_month.items() if m <= last), 2)
+    return last, total
 
 
 def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_reel):
@@ -2084,7 +2116,7 @@ def api_paie_context():
         employes = _paie_employes_secteur(conn, secteur_id, annee)
         mercredis, vacances = _paie_cee_dates(conn, annee)
         if type_budget == 'actualise':
-            last_real_month, montant_reel = _paie_reel_641(conn, compte_num, annee)
+            last_real_month, montant_reel = _paie_reel_641(conn, secteur_id, compte_num, annee)
         else:
             last_real_month, montant_reel = 0, 0.0
         return jsonify({
@@ -2155,7 +2187,7 @@ def api_paie_simulation_save():
         employes = _paie_employes_secteur(conn, secteur_id, annee)
         cee_jours = _paie_cee_jours_par_mois(conn, annee, donnees.get('fermetures'))
         if type_budget == 'actualise':
-            last_real_month, montant_reel = _paie_reel_641(conn, compte_num, annee)
+            last_real_month, montant_reel = _paie_reel_641(conn, secteur_id, compte_num, annee)
         else:
             last_real_month, montant_reel = 0, 0.0
         computed = _compute_paie(donnees, employes, cee_jours, last_real_month, montant_reel)
