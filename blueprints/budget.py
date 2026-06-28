@@ -2021,16 +2021,23 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
     def brut_mensuel(pesee, anciennete, competence):
         return (socle + (pesee + anciennete + competence) * point) / 12.0
 
+    def override_num(ov, key, db_value):
+        # Champ présent (même vide) => saisie (vide = 0, cohérent avec la
+        # persistance sur la fiche) ; champ absent => valeur de la fiche.
+        if isinstance(ov, dict) and key in ov:
+            return _ps_num(ov.get(key), 0)
+        return _ps_num(db_value, 0)
+
     monthly_totals = {m: 0.0 for m in range(1, 13)}
     lignes = []
     for e in employes_base:
         ov = overrides.get(str(e['id'])) or overrides.get(e['id']) or {}
-        pesee_act = _ps_num(ov.get('pesee'), e['pesee'] or 0)
+        pesee_act = override_num(ov, 'pesee', e['pesee'])
         nouv = ov.get('nouvelle_pesee')
         pesee_eff = _ps_num(nouv) if nouv not in (None, '') else pesee_act
-        anciennete = _ps_num(ov.get('anciennete'), e['anciennete'] or 0)
-        competence = _ps_num(ov.get('competence'), e['competence'] or 0)
-        maintien = _ps_num(ov.get('maintien'), e.get('maintien') or 0)
+        anciennete = override_num(ov, 'anciennete', e['anciennete'])
+        competence = override_num(ov, 'competence', e['competence'])
+        maintien = override_num(ov, 'maintien', e.get('maintien'))
         mois_vals, total_e = {}, 0.0
         for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
             val = brut_mensuel(pesee_eff, anciennete, competence) + maintien

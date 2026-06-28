@@ -975,3 +975,24 @@ def test_paie_maintien_ajoute_au_brut(app, db, admin_client):
     with app.app_context():
         u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
     assert abs(u['maintien'] - 100) < 0.01
+
+
+def test_paie_maintien_vide_coherent(app, db, admin_client):
+    """Maintien vidé dans le simulateur : report ET fiche utilisent 0 (et non
+    l'ancienne valeur), de façon cohérente (revue P2)."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("UPDATE users SET maintien = 200 WHERE id = ?", (uid,))
+        db.commit()
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
+                                       'competence': 0, 'maintien': ''}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 23000.0) < 0.01  # maintien vidé -> 0
+    with app.app_context():
+        u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
+    assert abs((u['maintien'] or 0) - 0) < 0.01

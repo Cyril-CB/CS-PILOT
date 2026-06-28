@@ -1460,14 +1460,16 @@ function computePaieJS(st, ctx, typeBudget){
     var reel = (typeBudget === 'actualise') ? (ctx.montant_reel || 0) : 0;
     var start = lastReal + 1;
     function brut(p,a,c){ return (socle + (p+a+c)*point) / 12; }
+    // Champ surchargé présent (même vide) => saisie (vide = 0) ; absent => fiche.
+    function ovNum(ov, key, dbVal){ return (ov && Object.prototype.hasOwnProperty.call(ov, key)) ? psNum(ov[key], 0) : psNum(dbVal, 0); }
     var monthly = {}; for (var m=1;m<=12;m++) monthly[m] = 0;
     var lignes = {};
     (ctx.employes || []).forEach(function(e){
         var ov = st.employes[e.id] || {};
-        var pAct = psNum(ov.pesee, e.pesee || 0);
+        var pAct = ovNum(ov, 'pesee', e.pesee);
         var pEff = (ov.nouvelle_pesee !== '' && ov.nouvelle_pesee != null) ? psNum(ov.nouvelle_pesee) : pAct;
-        var anc = psNum(ov.anciennete, e.anciennete || 0), comp = psNum(ov.competence, e.competence || 0);
-        var maint = psNum(ov.maintien, e.maintien || 0);
+        var anc = ovNum(ov, 'anciennete', e.anciennete), comp = ovNum(ov, 'competence', e.competence);
+        var maint = ovNum(ov, 'maintien', e.maintien);
         var mvals = {}, tot = 0;
         for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
