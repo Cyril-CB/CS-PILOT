@@ -1394,9 +1394,17 @@ function openPaieSimulator(compteNum){
     var surl = '/api/budget-previsionnel/paie-simulation?annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id +
         '&type_budget=' + encodeURIComponent(ctx.type_budget);
     Promise.all([
-        fetch(curl).then(r => r.json()).catch(function(){ return {employes:[], mercredis_dates:[], vacances_dates:[]}; }),
+        fetch(curl).then(function(r){ return r.ok ? r.json() : {__error: true}; }).catch(function(){ return {__error: true}; }),
         fetch(surl).then(r => r.json()).then(function(d){ return (d && d.found) ? d.donnees : null; }).catch(function(){ return null; })
     ]).then(function(res){
+        if (res[0] && res[0].__error){
+            document.getElementById('paieSimBody').innerHTML =
+                '<p class="ps-legend" style="color:#b00;">Impossible de charger les salariés. Vérifiez que les mises à jour de la base sont appliquées (Administration → Mises à jour BDD), puis réessayez.</p>';
+            document.getElementById('paieSimFooter').innerHTML =
+                '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Fermer</button>';
+            document.getElementById('paieSimulatorModal').classList.add('open');
+            return;
+        }
         paieSim.context = res[0] || {employes:[], mercredis_dates:[], vacances_dates:[]};
         paieSim.state = mergePaieState(res[1], paieSim.context);
         renderPaieSimulator();

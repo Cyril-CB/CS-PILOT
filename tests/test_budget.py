@@ -996,3 +996,20 @@ def test_paie_maintien_vide_coherent(app, db, admin_client):
     with app.app_context():
         u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
     assert abs((u['maintien'] or 0) - 0) < 0.01
+
+
+def test_init_db_reajoute_colonnes_paie_si_absentes(app, db):
+    """init_db ré-ajoute users.competence et users.maintien si elles manquent
+    (auto-réparation au démarrage, sans migration manuelle). Sinon la requête
+    des salariés du simulateur de paie échoue et aucun salarié n'apparaît."""
+    import database
+    with app.app_context():
+        db.execute("ALTER TABLE users DROP COLUMN maintien")
+        db.execute("ALTER TABLE users DROP COLUMN competence")
+        db.commit()
+        cols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+        assert 'maintien' not in cols and 'competence' not in cols
+        database.init_db()
+        cols = [r[1] for r in db.execute("PRAGMA table_info(users)").fetchall()]
+    assert 'maintien' in cols
+    assert 'competence' in cols

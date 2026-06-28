@@ -1616,6 +1616,18 @@ def init_db():
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE users ADD COLUMN pesee INTEGER")
 
+    # Migration : ajouter competence si n'existe pas (simulateur de paie)
+    try:
+        cursor.execute("SELECT competence FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN competence INTEGER")
+
+    # Migration : ajouter maintien si n'existe pas (maintien de salaire)
+    try:
+        cursor.execute("SELECT maintien FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN maintien REAL DEFAULT 0")
+
     # Migration : ajouter email si n'existe pas
     try:
         cursor.execute("SELECT email FROM users LIMIT 1")
