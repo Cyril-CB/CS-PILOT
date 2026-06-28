@@ -1835,13 +1835,40 @@ def _paie_mois_actifs(date_debut, date_fin, annee):
 
 
 def _paie_employes_secteur(conn, secteur_id, annee):
-    """Salariés actifs du secteur avec un contrat CDI/CDD chevauchant l'année."""
-    rows = conn.execute('''
-        SELECT id, nom, prenom, pesee, competence, date_entree
-        FROM users
-        WHERE actif = 1 AND profil != 'prestataire' AND secteur_id = ?
-        ORDER BY nom, prenom
-    ''', (secteur_id,)).fetchall()
+    """Salariés actifs du secteur avec un contrat CDI/CDD chevauchant l'année.
+
+    La direction (profil 'directeur'), généralement sans secteur opérationnel,
+    est rattachée au secteur administratif (et n'apparaît que là). Pour éviter
+    tout double comptage si plusieurs secteurs sont de type 'administratif',
+    la direction n'est incluse que dans le secteur administratif principal
+    (le plus petit id).
+    """
+    sect = conn.execute('SELECT type_secteur FROM secteurs WHERE id = ?', (secteur_id,)).fetchone()
+    is_admin = bool(sect) and (sect['type_secteur'] == 'administratif')
+    inclut_direction = False
+    if is_admin:
+        primary = conn.execute(
+            "SELECT MIN(id) AS mid FROM secteurs WHERE type_secteur = 'administratif'"
+        ).fetchone()
+        inclut_direction = bool(primary) and (primary['mid'] == secteur_id)
+
+    if inclut_direction:
+        rows = conn.execute('''
+            SELECT id, nom, prenom, pesee, competence, maintien, date_entree
+            FROM users
+            WHERE actif = 1 AND profil != 'prestataire'
+              AND (secteur_id = ? OR profil = 'directeur')
+            ORDER BY nom, prenom
+        ''', (secteur_id,)).fetchall()
+    else:
+        # Hors secteur administratif principal : la direction n'apparaît pas.
+        rows = conn.execute('''
+            SELECT id, nom, prenom, pesee, competence, maintien, date_entree
+            FROM users
+            WHERE actif = 1 AND profil != 'prestataire' AND profil != 'directeur'
+              AND secteur_id = ?
+            ORDER BY nom, prenom
+        ''', (secteur_id,)).fetchall()
     employes = []
     for u in rows:
         # Ne retenir que les contrats CDI/CDD qui chevauchent l'année de budget :
@@ -1864,6 +1891,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
         employes.append({
             'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
             'pesee': u['pesee'], 'competence': u['competence'],
+            'maintien': u['maintien'] if u['maintien'] is not None else 0,
             'type_contrat': contrat['type_contrat'],
             'anciennete': _paie_anciennete_annees(u['date_entree'], annee),
             'mois_debut': mb, 'mois_fin': mf,
@@ -2002,16 +2030,17 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         pesee_eff = _ps_num(nouv) if nouv not in (None, '') else pesee_act
         anciennete = _ps_num(ov.get('anciennete'), e['anciennete'] or 0)
         competence = _ps_num(ov.get('competence'), e['competence'] or 0)
+        maintien = _ps_num(ov.get('maintien'), e.get('maintien') or 0)
         mois_vals, total_e = {}, 0.0
         for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence)
+            val = brut_mensuel(pesee_eff, anciennete, competence) + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_e += val
         lignes.append({
             'id': e['id'], 'nom': e['nom'], 'prenom': e['prenom'],
             'type_contrat': e['type_contrat'], 'pesee_eff': pesee_eff,
-            'anciennete': anciennete, 'competence': competence,
+            'anciennete': anciennete, 'competence': competence, 'maintien': maintien,
             'mois': mois_vals, 'total': round(total_e, 2),
         })
 
@@ -2023,6 +2052,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         pesee_eff = _ps_num(a.get('pesee'))
         anciennete = _ps_num(a.get('anciennete'))
         competence = _ps_num(a.get('competence'))
+        maintien = _ps_num(a.get('maintien'))
         if typ == 'cdd':
             mb = int(_ps_num(a.get('mois_debut'), 1)) or 1
             mf = int(_ps_num(a.get('mois_fin'), 12)) or 12
@@ -2033,13 +2063,13 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         mf = min(max(mf, 1), 12)
         mois_vals, total_a = {}, 0.0
         for m in range(max(start_month, mb), mf + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence)
+            val = brut_mensuel(pesee_eff, anciennete, competence) + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_a += val
         ajouts_out.append({
             'type': typ, 'pesee': pesee_eff, 'anciennete': anciennete,
-            'competence': competence, 'mois_debut': mb, 'mois_fin': mf,
+            'competence': competence, 'maintien': maintien, 'mois_debut': mb, 'mois_fin': mf,
             'mois': mois_vals, 'total': round(total_a, 2),
         })
 
@@ -2208,10 +2238,12 @@ def api_paie_simulation_save():
                 continue
             pesee = ov.get('pesee')
             comp = ov.get('competence')
+            maint = ov.get('maintien')
             conn.execute(
-                'UPDATE users SET pesee = ?, competence = ? WHERE id = ?',
-                (int(pesee) if str(pesee).strip() not in ('', 'None') else None,
-                 int(comp) if str(comp).strip() not in ('', 'None') else None,
+                'UPDATE users SET pesee = ?, competence = ?, maintien = ? WHERE id = ?',
+                (int(float(pesee)) if str(pesee).strip() not in ('', 'None') else None,
+                 int(float(comp)) if str(comp).strip() not in ('', 'None') else None,
+                 float(maint) if str(maint).strip() not in ('', 'None') else 0,
                  uid)
             )
 

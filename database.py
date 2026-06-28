@@ -218,6 +218,7 @@ def init_db():
             date_entree TEXT,
             pesee INTEGER,
             competence INTEGER,
+            maintien REAL DEFAULT 0,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
             force_password_change INTEGER DEFAULT 0,

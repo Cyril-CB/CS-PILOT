@@ -935,3 +935,43 @@ def test_paie_employes_ignore_contrat_annee_suivante(app, db):
     assert e is not None
     assert e['type_contrat'] == 'CDD'
     assert e['mois_debut'] == 1 and e['mois_fin'] == 12
+
+
+def test_paie_direction_rattachee_au_secteur_administratif(app, db):
+    """La direction (profil directeur) apparaît dans le secteur administratif
+    principal, et pas dans un secteur opérationnel."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Admin','administratif')")
+        admin_sid = db.execute("SELECT id FROM secteurs WHERE nom='Admin'").fetchone()['id']
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Creche','creche')")
+        op_sid = db.execute("SELECT id FROM secteurs WHERE nom='Creche'").fetchone()['id']
+        db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree) "
+                   "VALUES ('Dir','Ecteur','dir_paie','x','directeur',1,NULL,?)", (f'{annee-5}-01-01',))
+        did = db.execute("SELECT id FROM users WHERE login='dir_paie'").fetchone()['id']
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDI', ?, NULL)",
+                   (did, f'{annee-5}-01-01'))
+        db.commit()
+        admin_emps = _paie_employes_secteur(db, admin_sid, annee)
+        op_emps = _paie_employes_secteur(db, op_sid, annee)
+    assert any(e['id'] == did for e in admin_emps)
+    assert not any(e['id'] == did for e in op_emps)
+
+
+def test_paie_maintien_ajoute_au_brut(app, db, admin_client):
+    """Le maintien de salaire s'ajoute au brut mensuel et est persisté sur la fiche."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
+                                       'competence': 0, 'maintien': 100}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 24200.0) < 0.01  # 23000 + 12 × 100
+    with app.app_context():
+        u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
+    assert abs(u['maintien'] - 100) < 0.01
