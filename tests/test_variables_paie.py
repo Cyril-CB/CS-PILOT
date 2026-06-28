@@ -6,7 +6,10 @@ Tests de la page Variables de paie :
   (fallback init_db + migration 0038)
 - Cycle enregistrer -> reafficher : les cases mutuelle restent fideles
   a la saisie
+- Cloture conges : remise a zero des soldes pour les salaries sans contrat
+  actif le dernier jour du mois
 """
+import json
 import os
 import re
 
@@ -318,3 +321,143 @@ class TestDevalidationPrepaPaie:
 
         with app.app_context():
             assert self._traite(db, salarie_id, mois=5, annee=2026) == 1
+
+
+class TestClotureCongesSansContrat:
+    """La cloture mensuelle remet a zero les soldes des salaries sans contrat
+    actif le dernier jour du mois (CP et CC)."""
+
+    def _set_soldes(self, db, user_id, cp_acquis=5.0, cp_a_prendre=10.0,
+                    cp_pris=2.0, cc_solde=3.0):
+        db.execute(
+            'UPDATE users SET cp_acquis=?, cp_a_prendre=?, cp_pris=?, cc_solde=? WHERE id=?',
+            (cp_acquis, cp_a_prendre, cp_pris, cc_solde, user_id)
+        )
+        db.commit()
+
+    def _get_soldes(self, db, user_id):
+        return db.execute(
+            'SELECT cp_acquis, cp_a_prendre, cp_pris, cc_solde FROM users WHERE id=?',
+            (user_id,)
+        ).fetchone()
+
+    def _add_contrat(self, db, user_id, date_debut, date_fin=None):
+        db.execute(
+            '''INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+               VALUES (?, 'CDI', ?, ?)''',
+            (user_id, date_debut, date_fin)
+        )
+        db.commit()
+
+    def test_sans_contrat_soldes_remis_a_zero(self, comptable_client, app, db, sample_users):
+        """Un salarie sans aucun contrat voit ses soldes CP et CC remis a zero."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid)
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            assert row['cp_acquis'] == 0
+            assert row['cp_a_prendre'] == 0
+            assert row['cp_pris'] == 0
+            assert row['cc_solde'] == 0
+
+    def test_contrat_termine_avant_fin_mois_reset(self, comptable_client, app, db, sample_users):
+        """Contrat termine avant le dernier jour du mois -> reset a zero."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid)
+            # Contrat termine le 15 juin, dernier jour du mois = 30 juin
+            self._add_contrat(db, uid, '2024-01-01', '2026-06-15')
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            assert row['cp_acquis'] == 0
+            assert row['cp_a_prendre'] == 0
+            assert row['cp_pris'] == 0
+            assert row['cc_solde'] == 0
+
+    def test_contrat_termine_le_dernier_jour_acquiert(self, comptable_client, app, db, sample_users):
+        """Contrat dont la fin est exactement le dernier jour du mois : le salarie
+        est encore considere comme actif ce jour-la et acquiert ses conges."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid, cp_acquis=0, cp_a_prendre=0, cp_pris=0, cc_solde=0)
+            # Contrat se termine le 30 juin (dernier jour du mois)
+            self._add_contrat(db, uid, '2024-01-01', '2026-06-30')
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            # Juin n'est pas un mois CC, mais CP doit etre acquis
+            assert row['cp_acquis'] > 0
+
+    def test_contrat_actif_acquiert_normalement(self, comptable_client, app, db, sample_users):
+        """Un salarie avec contrat actif le dernier jour du mois acquiert ses conges."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid, cp_acquis=0, cp_a_prendre=0, cp_pris=0, cc_solde=0)
+            self._add_contrat(db, uid, '2024-01-01')  # CDI sans fin
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            assert abs(row['cp_acquis'] - round(25.0 / 12.0, 6)) < 0.001
+
+    def test_deux_salaries_un_avec_un_sans_contrat(self, comptable_client, app, db, sample_users):
+        """Salarie avec contrat actif acquiert, salarie sans contrat est remis a zero."""
+        uid_avec = sample_users['salarie_id']
+        uid_sans = sample_users['responsable_id']
+        with app.app_context():
+            self._set_soldes(db, uid_avec, cp_acquis=0, cp_a_prendre=0, cp_pris=0, cc_solde=0)
+            self._set_soldes(db, uid_sans, cp_acquis=5.0, cp_a_prendre=10.0,
+                             cp_pris=2.0, cc_solde=3.0)
+            self._add_contrat(db, uid_avec, '2024-01-01')  # contrat actif
+            # uid_sans n'a pas de contrat
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row_avec = self._get_soldes(db, uid_avec)
+            assert row_avec['cp_acquis'] > 0
+
+            row_sans = self._get_soldes(db, uid_sans)
+            assert row_sans['cp_acquis'] == 0
+            assert row_sans['cp_a_prendre'] == 0
+            assert row_sans['cp_pris'] == 0
+            assert row_sans['cc_solde'] == 0
+
+    def test_message_flash_mentionne_resets(self, comptable_client, app, db, sample_users):
+        """Le message flash indique le nombre de soldes remis a zero."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid)
+            # Pas de contrat : le salarie sera remis a zero
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'remis a zero' in html or 'fin de contrat' in html
