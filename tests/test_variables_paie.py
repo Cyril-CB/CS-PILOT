@@ -387,12 +387,12 @@ class TestClotureCongesSansContrat:
             assert row['cp_pris'] == 0
             assert row['cc_solde'] == 0
 
-    def test_contrat_termine_le_dernier_jour_acquiert(self, comptable_client, app, db, sample_users):
-        """Contrat dont la fin est exactement le dernier jour du mois : le salarie
-        est encore considere comme actif ce jour-la et acquiert ses conges."""
+    def test_contrat_termine_le_dernier_jour_reset(self, comptable_client, app, db, sample_users):
+        """Contrat dont la fin est exactement le dernier jour du mois : les conges
+        sont soldes en paie, les compteurs doivent repasser a zero."""
         uid = sample_users['salarie_id']
         with app.app_context():
-            self._set_soldes(db, uid, cp_acquis=0, cp_a_prendre=0, cp_pris=0, cc_solde=0)
+            self._set_soldes(db, uid)
             # Contrat se termine le 30 juin (dernier jour du mois)
             self._add_contrat(db, uid, '2024-01-01', '2026-06-30')
 
@@ -403,8 +403,10 @@ class TestClotureCongesSansContrat:
 
         with app.app_context():
             row = self._get_soldes(db, uid)
-            # Juin n'est pas un mois CC, mais CP doit etre acquis
-            assert row['cp_acquis'] > 0
+            assert row['cp_acquis'] == 0
+            assert row['cp_a_prendre'] == 0
+            assert row['cp_pris'] == 0
+            assert row['cc_solde'] == 0
 
     def test_contrat_actif_acquiert_normalement(self, comptable_client, app, db, sample_users):
         """Un salarie avec contrat actif le dernier jour du mois acquiert ses conges."""
@@ -447,6 +449,53 @@ class TestClotureCongesSansContrat:
             assert row_sans['cp_a_prendre'] == 0
             assert row_sans['cp_pris'] == 0
             assert row_sans['cc_solde'] == 0
+
+    def test_salarie_inactif_sans_contrat_reset(self, comptable_client, app, db, sample_users):
+        """Un salarie desactive (actif=0) avant la cloture voit aussi ses soldes
+        remis a zero s'il n'a pas de contrat actif apres le dernier jour du mois."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid, cp_acquis=5.0, cp_a_prendre=10.0,
+                             cp_pris=2.0, cc_solde=3.0)
+            # Desactiver le salarie avant la cloture
+            db.execute('UPDATE users SET actif = 0 WHERE id = ?', (uid,))
+            db.commit()
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            assert row['cp_acquis'] == 0
+            assert row['cp_a_prendre'] == 0
+            assert row['cp_pris'] == 0
+            assert row['cc_solde'] == 0
+
+    def test_salarie_inactif_avec_contrat_futur_non_reset(self, comptable_client, app, db, sample_users):
+        """Un salarie inactif dont le contrat se prolonge au-dela du mois
+        n'est pas remis a zero (cas theorique d'un contrat suspendu)."""
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            self._set_soldes(db, uid, cp_acquis=5.0, cp_a_prendre=10.0,
+                             cp_pris=0, cc_solde=3.0)
+            # Contrat toujours actif au-dela du dernier jour du mois
+            self._add_contrat(db, uid, '2024-01-01', '2026-07-31')
+            db.execute('UPDATE users SET actif = 0 WHERE id = ?', (uid,))
+            db.commit()
+
+        resp = comptable_client.post('/variables_paie/cloturer_conges', data={
+            'mois': '6', 'annee': '2026',
+        }, follow_redirects=True)
+        assert resp.status_code == 200
+
+        with app.app_context():
+            row = self._get_soldes(db, uid)
+            # Les soldes ne doivent pas avoir ete remis a zero
+            assert row['cp_acquis'] == 5.0
+            assert row['cp_a_prendre'] == 10.0
+            assert row['cc_solde'] == 3.0
 
     def test_message_flash_mentionne_resets(self, comptable_client, app, db, sample_users):
         """Le message flash indique le nombre de soldes remis a zero."""

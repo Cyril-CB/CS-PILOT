@@ -359,12 +359,14 @@ def cloturer_conges():
     # Mois d'acquisition CC : octobre (10) a mai (5)
     mois_cc = mois in (10, 11, 12, 1, 2, 3, 4, 5)
 
-    # Salaries avec un contrat actif le dernier jour du mois
+    # Salaries avec un contrat se poursuivant apres le dernier jour du mois.
+    # Un contrat dont date_fin est exactement le dernier jour est exclu : les
+    # conges acquis sont soldes en paie, les compteurs doivent repasser a zero.
     dernier_du_mois_str = date(annee, mois, jours_dans_mois).strftime('%Y-%m-%d')
     ids_avec_contrat = {
         row['user_id'] for row in conn.execute(
             '''SELECT DISTINCT user_id FROM contrats
-               WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin >= ?)''',
+               WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)''',
             (dernier_du_mois_str, dernier_du_mois_str)
         ).fetchall()
     }
@@ -448,6 +450,21 @@ def cloturer_conges():
             if prorata < 1:
                 detail_line['prorata'] = round(prorata, 4)
             details.append(detail_line)
+
+        # Reset supplementaire : salaries inactifs (desactives avant la cloture)
+        # sans contrat actif se poursuivant apres le dernier jour du mois.
+        cur = conn.execute('''
+            UPDATE users
+            SET cp_acquis = 0, cp_a_prendre = 0, cp_pris = 0, cc_solde = 0
+            WHERE actif = 0
+            AND profil NOT IN ('directeur', 'prestataire')
+            AND id NOT IN (
+                SELECT DISTINCT user_id FROM contrats
+                WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)
+            )
+            AND (cp_acquis != 0 OR cp_a_prendre != 0 OR cp_pris != 0 OR cc_solde != 0)
+        ''', (dernier_du_mois_str, dernier_du_mois_str))
+        nb_resets += cur.rowcount
 
         # Enregistrer la cloture
         conn.execute('''
