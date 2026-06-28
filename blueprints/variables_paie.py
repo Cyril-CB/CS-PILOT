@@ -321,6 +321,8 @@ def cloturer_conges():
     - Nettoyage pris : cp_a_prendre -= cp_pris, cp_pris = 0 (solde inchange)
     - CC : +1 j/mois d'octobre a mai dans cc_solde (prorata si embauche en cours de mois)
     - Hors profil directeur (forfait jour gere separement)
+    - Sans contrat actif le dernier jour du mois : remise a zero de tous les soldes
+      (cp_acquis, cp_a_prendre, cp_pris, cc_solde)
     """
     if not _peut_gerer_variables_paie():
         flash("Acces non autorise.", 'error')
@@ -357,7 +359,20 @@ def cloturer_conges():
     # Mois d'acquisition CC : octobre (10) a mai (5)
     mois_cc = mois in (10, 11, 12, 1, 2, 3, 4, 5)
 
+    # Salaries avec un contrat se poursuivant apres le dernier jour du mois.
+    # Un contrat dont date_fin est exactement le dernier jour est exclu : les
+    # conges acquis sont soldes en paie, les compteurs doivent repasser a zero.
+    dernier_du_mois_str = date(annee, mois, jours_dans_mois).strftime('%Y-%m-%d')
+    ids_avec_contrat = {
+        row['user_id'] for row in conn.execute(
+            '''SELECT DISTINCT user_id FROM contrats
+               WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)''',
+            (dernier_du_mois_str, dernier_du_mois_str)
+        ).fetchall()
+    }
+
     nb_traites = 0
+    nb_resets = 0
     details = []
 
     try:
@@ -368,6 +383,17 @@ def cloturer_conges():
             cp_pris = sal['cp_pris'] or 0
             cc_solde = sal['cc_solde'] or 0
             date_entree = sal['date_entree']
+
+            # Sans contrat actif le dernier jour du mois : remise a zero des soldes
+            if uid not in ids_avec_contrat:
+                conn.execute('''
+                    UPDATE users
+                    SET cp_acquis = 0, cp_a_prendre = 0, cp_pris = 0, cc_solde = 0
+                    WHERE id = ?
+                ''', (uid,))
+                nb_resets += 1
+                details.append({'user_id': uid, 'reset_sans_contrat': True})
+                continue
 
             # Calculer le prorata si embauche en cours de mois
             prorata = 1.0
@@ -425,6 +451,21 @@ def cloturer_conges():
                 detail_line['prorata'] = round(prorata, 4)
             details.append(detail_line)
 
+        # Reset supplementaire : salaries inactifs (desactives avant la cloture)
+        # sans contrat actif se poursuivant apres le dernier jour du mois.
+        cur = conn.execute('''
+            UPDATE users
+            SET cp_acquis = 0, cp_a_prendre = 0, cp_pris = 0, cc_solde = 0
+            WHERE actif = 0
+            AND profil NOT IN ('directeur', 'prestataire')
+            AND id NOT IN (
+                SELECT DISTINCT user_id FROM contrats
+                WHERE date_debut <= ? AND (date_fin IS NULL OR date_fin > ?)
+            )
+            AND (cp_acquis != 0 OR cp_a_prendre != 0 OR cp_pris != 0 OR cc_solde != 0)
+        ''', (dernier_du_mois_str, dernier_du_mois_str))
+        nb_resets += cur.rowcount
+
         # Enregistrer la cloture
         conn.execute('''
             INSERT INTO conges_cloture_mensuelle (mois, annee, cloture_par, nb_salaries_traites, detail)
@@ -445,6 +486,8 @@ def cloturer_conges():
             msg += " CC : +1 j/pers."
         if mois == 5:
             msg += " Bascule acquis → a prendre effectuee."
+        if nb_resets:
+            msg += f" {nb_resets} solde(s) remis a zero (fin de contrat)."
         flash(msg, 'success')
 
     except Exception:
