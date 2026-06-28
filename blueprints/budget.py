@@ -819,7 +819,8 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         n1 = round(vals['N-1'], 2)
         n_full = round(vals['N'], 2)
         nature = 'charges' if compte.startswith('6') else 'produits'
-        is_salary = compte.startswith('63') or compte.startswith('64')
+        # Comptes de personnel répartis au prorata du brut (641), hors 649.
+        is_salary = (compte.startswith('63') or compte.startswith('64')) and not compte.startswith('649')
         n_partiel = round(sum(
             m for month, m in monthly.get(compte, {}).get(annee, {}).items()
             if month <= last_month
@@ -1764,5 +1765,443 @@ def api_ps_simulation_save():
 
         conn.commit()
         return jsonify({'success': True, 'total': total, 'reported': True, 'computed': computed})
+    finally:
+        conn.close()
+
+
+# ============================================================
+# SIMULATEUR DE PAIE (MASSE SALARIALE)
+# ============================================================
+
+PAIE_DEFAULTS = {
+    'salaire_socle': 23000,
+    'valeur_point': 55,
+    'forfait_cee': 70,
+}
+
+
+def _paie_anciennete_annees(date_entree, annee):
+    """Années révolues d'ancienneté au 1er janvier de l'année de budget (floor)."""
+    if not date_entree:
+        return 0
+    try:
+        d = date.fromisoformat(str(date_entree)[:10])
+    except (ValueError, TypeError):
+        return 0
+    ref = date(annee, 1, 1)
+    if d > ref:
+        return 0
+    return max(ref.year - d.year - ((ref.month, ref.day) < (d.month, d.day)), 0)
+
+
+def _paie_mois_actifs(date_debut, date_fin, annee):
+    """(mois_debut, mois_fin) d'activité du contrat dans l'année, ou (None, None)."""
+    try:
+        dd = date.fromisoformat(str(date_debut)[:10]) if date_debut else date(annee, 1, 1)
+    except (ValueError, TypeError):
+        dd = date(annee, 1, 1)
+    df = None
+    if date_fin:
+        try:
+            df = date.fromisoformat(str(date_fin)[:10])
+        except (ValueError, TypeError):
+            df = None
+    if dd.year > annee:
+        return None, None
+    if df and df.year < annee:
+        return None, None
+    mois_debut = dd.month if dd.year == annee else 1
+    mois_fin = df.month if (df and df.year == annee) else 12
+    if mois_debut > mois_fin:
+        return None, None
+    return mois_debut, mois_fin
+
+
+def _paie_employes_secteur(conn, secteur_id, annee):
+    """Salariés actifs du secteur avec un contrat CDI/CDD chevauchant l'année."""
+    rows = conn.execute('''
+        SELECT id, nom, prenom, pesee, competence, date_entree
+        FROM users
+        WHERE actif = 1 AND profil != 'prestataire' AND secteur_id = ?
+        ORDER BY nom, prenom
+    ''', (secteur_id,)).fetchall()
+    employes = []
+    for u in rows:
+        contrat = conn.execute('''
+            SELECT type_contrat, date_debut, date_fin FROM contrats
+            WHERE user_id = ? AND type_contrat IN ('CDI', 'CDD')
+              AND (date_fin IS NULL OR date_fin >= ?)
+            ORDER BY date_debut DESC LIMIT 1
+        ''', (u['id'], f'{annee}-01-01')).fetchone()
+        if not contrat:
+            continue
+        mb, mf = _paie_mois_actifs(contrat['date_debut'], contrat['date_fin'], annee)
+        if mb is None:
+            continue
+        employes.append({
+            'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
+            'pesee': u['pesee'], 'competence': u['competence'],
+            'type_contrat': contrat['type_contrat'],
+            'anciennete': _paie_anciennete_annees(u['date_entree'], annee),
+            'mois_debut': mb, 'mois_fin': mf,
+        })
+    employes.sort(key=lambda e: (0 if e['type_contrat'] == 'CDI' else 1, e['nom'], e['prenom']))
+    return employes
+
+
+def _paie_cee_dates(conn, annee):
+    """(mercredis_scolaires, vacances_ouvres) en dates ISO, hors fériés.
+
+    - mercredis_scolaires : mercredis en période scolaire (hors vacances/fériés)
+    - vacances_ouvres     : jours ouvrés (lun-ven) en vacances scolaires (hors fériés)
+    """
+    feries = {r['date'] for r in conn.execute(
+        'SELECT date FROM jours_feries WHERE annee = ?', (annee,)).fetchall()}
+    jours_vac = set()
+    for pv in conn.execute('''
+        SELECT date_debut, date_fin FROM periodes_vacances
+        WHERE date_debut <= ? AND date_fin >= ?
+    ''', (f'{annee}-12-31', f'{annee}-01-01')).fetchall():
+        try:
+            d0 = max(date.fromisoformat(pv['date_debut']), date(annee, 1, 1))
+            d1 = min(date.fromisoformat(pv['date_fin']), date(annee, 12, 31))
+        except (ValueError, TypeError):
+            continue
+        d = d0
+        while d <= d1:
+            jours_vac.add(d)
+            d += timedelta(days=1)
+    mercredis, vacances = [], []
+    d = date(annee, 1, 1)
+    end = date(annee, 12, 31)
+    while d <= end:
+        if d.weekday() < 5 and d.isoformat() not in feries:
+            if d in jours_vac:
+                vacances.append(d.isoformat())
+            elif d.weekday() == 2:
+                mercredis.append(d.isoformat())
+        d += timedelta(days=1)
+    return mercredis, vacances
+
+
+def _paie_fermetures_set(fermetures, annee):
+    """Ensemble des dates de fermeture de la structure (dans l'année)."""
+    fermees = set()
+    for f in (fermetures or []):
+        if not isinstance(f, dict):
+            continue
+        deb = (f.get('debut') or '').strip()
+        fin = (f.get('fin') or '').strip()
+        if not deb or not fin:
+            continue
+        try:
+            d0 = date.fromisoformat(deb)
+            d1 = date.fromisoformat(fin)
+        except (ValueError, TypeError):
+            continue
+        if d1 < d0:
+            continue
+        d = d0
+        while d <= d1:
+            if d.year == annee:
+                fermees.add(d.isoformat())
+            d += timedelta(days=1)
+    return fermees
+
+
+def _paie_cee_jours_par_mois(conn, annee, fermetures):
+    """{mois: {'mercredis': n, 'vacances': n}} hors périodes de fermeture."""
+    mercredis, vacances = _paie_cee_dates(conn, annee)
+    fermees = _paie_fermetures_set(fermetures, annee)
+    result = {m: {'mercredis': 0, 'vacances': 0} for m in range(1, 13)}
+    for iso in mercredis:
+        if iso not in fermees:
+            result[int(iso[5:7])]['mercredis'] += 1
+    for iso in vacances:
+        if iso not in fermees:
+            result[int(iso[5:7])]['vacances'] += 1
+    return result
+
+
+def _paie_reel_641(conn, compte_num, annee):
+    """(last_real_month, montant_reel) du compte brut sur l'année (données FEC)."""
+    if not compte_num:
+        return 0, 0.0
+    rows = conn.execute('''
+        SELECT mois, COALESCE(SUM(montant), 0) AS m FROM bilan_fec_donnees
+        WHERE compte_num = ? AND annee = ? GROUP BY mois
+    ''', (compte_num, annee)).fetchall()
+    last = 0
+    total = 0.0
+    for r in rows:
+        if r['mois'] and 1 <= r['mois'] <= 12:
+            last = max(last, r['mois'])
+            total += float(r['m'] or 0)
+    return last, round(total, 2)
+
+
+def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_reel):
+    """Calcule le brut par salarié et par mois, le coût CEE et le total annuel.
+
+    Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12.
+    En budget actualisé, seuls les mois > last_real_month sont simulés ; le total
+    intègre le réel (FEC) déjà constaté.
+    """
+    d = donnees or {}
+    socle = _ps_num(d.get('salaire_socle'), PAIE_DEFAULTS['salaire_socle'])
+    point = _ps_num(d.get('valeur_point'), PAIE_DEFAULTS['valeur_point'])
+    forfait_cee = _ps_num(d.get('forfait_cee'), PAIE_DEFAULTS['forfait_cee'])
+    cee_mercredi = _ps_num(d.get('cee_mercredi'))
+    cee_vacances = _ps_num(d.get('cee_vacances'))
+    overrides = d.get('employes') if isinstance(d.get('employes'), dict) else {}
+    ajouts = d.get('ajouts') if isinstance(d.get('ajouts'), list) else []
+
+    start_month = (last_real_month or 0) + 1
+
+    def brut_mensuel(pesee, anciennete, competence):
+        return (socle + (pesee + anciennete + competence) * point) / 12.0
+
+    monthly_totals = {m: 0.0 for m in range(1, 13)}
+    lignes = []
+    for e in employes_base:
+        ov = overrides.get(str(e['id'])) or overrides.get(e['id']) or {}
+        pesee_act = _ps_num(ov.get('pesee'), e['pesee'] or 0)
+        nouv = ov.get('nouvelle_pesee')
+        pesee_eff = _ps_num(nouv) if nouv not in (None, '') else pesee_act
+        anciennete = _ps_num(ov.get('anciennete'), e['anciennete'] or 0)
+        competence = _ps_num(ov.get('competence'), e['competence'] or 0)
+        mois_vals, total_e = {}, 0.0
+        for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
+            val = brut_mensuel(pesee_eff, anciennete, competence)
+            mois_vals[m] = round(val, 2)
+            monthly_totals[m] += val
+            total_e += val
+        lignes.append({
+            'id': e['id'], 'nom': e['nom'], 'prenom': e['prenom'],
+            'type_contrat': e['type_contrat'], 'pesee_eff': pesee_eff,
+            'anciennete': anciennete, 'competence': competence,
+            'mois': mois_vals, 'total': round(total_e, 2),
+        })
+
+    ajouts_out = []
+    for a in ajouts:
+        if not isinstance(a, dict):
+            continue
+        typ = 'cdd' if a.get('type') == 'cdd' else 'cdi'
+        pesee_eff = _ps_num(a.get('pesee'))
+        anciennete = _ps_num(a.get('anciennete'))
+        competence = _ps_num(a.get('competence'))
+        if typ == 'cdd':
+            mb = int(_ps_num(a.get('mois_debut'), 1)) or 1
+            mf = int(_ps_num(a.get('mois_fin'), 12)) or 12
+        else:
+            mb = int(_ps_num(a.get('mois_embauche'), 1)) or 1
+            mf = 12
+        mb = min(max(mb, 1), 12)
+        mf = min(max(mf, 1), 12)
+        mois_vals, total_a = {}, 0.0
+        for m in range(max(start_month, mb), mf + 1):
+            val = brut_mensuel(pesee_eff, anciennete, competence)
+            mois_vals[m] = round(val, 2)
+            monthly_totals[m] += val
+            total_a += val
+        ajouts_out.append({
+            'type': typ, 'pesee': pesee_eff, 'anciennete': anciennete,
+            'competence': competence, 'mois_debut': mb, 'mois_fin': mf,
+            'mois': mois_vals, 'total': round(total_a, 2),
+        })
+
+    cee_mois = {}
+    for m in range(start_month, 13):
+        cj = cee_jours.get(m) or {'mercredis': 0, 'vacances': 0}
+        cout = (cj['mercredis'] * cee_mercredi + cj['vacances'] * cee_vacances) * forfait_cee
+        cee_mois[m] = round(cout, 2)
+        monthly_totals[m] += cout
+
+    total_simule = sum(monthly_totals[m] for m in range(start_month, 13))
+    return {
+        'lignes': lignes,
+        'ajouts': ajouts_out,
+        'cee_mois': cee_mois,
+        'monthly_totals': {m: round(v, 2) for m, v in monthly_totals.items()},
+        'last_real_month': last_real_month or 0,
+        'montant_reel': round(montant_reel or 0, 2),
+        'total_simule': round(total_simule, 2),
+        'total': round((montant_reel or 0) + total_simule, 2),
+    }
+
+
+def _paie_report_brut(conn, secteur_id, annee, type_budget, brut_compte, total_brut, user_id):
+    """Reporte le brut sur le 641 et répartit 63x/64x (hors 649) au prorata.
+
+    Ratio = compte N-1 / brut N-1 (budget initial) ou réel YTD / brut YTD
+    (budget actualisé). Écrit la valeur définitive dans budget_prev_saisies.
+    """
+    data = _compute_budget_previsionnel(
+        conn=conn, type_budget=type_budget, annee=annee, secteur_id=secteur_id
+    )
+    rows = {r['compte_num']: r for r in data['rows']}
+    actualise = (type_budget == 'actualise')
+    brut_row = rows.get(brut_compte)
+    brut_prev = (brut_row['N'] if actualise else brut_row['N-1']) if brut_row else 0
+
+    reports = {brut_compte: round(total_brut, 2)}
+    for compte, r in rows.items():
+        if compte == brut_compte or not r.get('is_salary'):
+            continue
+        prev = r['N'] if actualise else r['N-1']
+        ratio = (prev / brut_prev) if brut_prev else 0
+        reports[compte] = round(total_brut * ratio, 2)
+
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    for compte, val in reports.items():
+        conn.execute('''
+            INSERT INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(type_budget, annee, secteur_id, compte_num) DO UPDATE SET
+                valeur_def = excluded.valeur_def,
+                updated_by = excluded.updated_by,
+                updated_at = excluded.updated_at
+        ''', (type_budget, int(annee), int(secteur_id), compte, val, user_id, now))
+    return reports
+
+
+@budget_bp.route('/api/budget-previsionnel/paie-context')
+@login_required
+def api_paie_context():
+    """Contexte du simulateur de paie : salariés du secteur + calendrier CEE."""
+    if session.get('profil') not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
+    compte_num = (request.args.get('compte_num') or '').strip()
+    type_budget = request.args.get('type_budget', 'initial')
+    if not annee or not secteur_id:
+        return jsonify({'error': 'Année et secteur requis'}), 400
+    conn = get_db()
+    try:
+        employes = _paie_employes_secteur(conn, secteur_id, annee)
+        mercredis, vacances = _paie_cee_dates(conn, annee)
+        if type_budget == 'actualise':
+            last_real_month, montant_reel = _paie_reel_641(conn, compte_num, annee)
+        else:
+            last_real_month, montant_reel = 0, 0.0
+        return jsonify({
+            'employes': employes,
+            'mercredis_dates': mercredis,
+            'vacances_dates': vacances,
+            'last_real_month': last_real_month,
+            'montant_reel': montant_reel,
+            'defaults': PAIE_DEFAULTS,
+        })
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/paie-simulation')
+@login_required
+def api_paie_simulation_get():
+    """Récupère la simulation de paie enregistrée (année, secteur, type budget)."""
+    if session.get('profil') not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
+    type_budget = request.args.get('type_budget', 'initial')
+    if not annee or not secteur_id:
+        return jsonify({'error': 'Année et secteur requis'}), 400
+    conn = get_db()
+    try:
+        row = conn.execute('''
+            SELECT donnees, total, updated_at FROM budget_paie_simulations
+            WHERE annee = ? AND secteur_id = ? AND type_budget = ?
+        ''', (annee, secteur_id, type_budget)).fetchone()
+        if not row:
+            return jsonify({'found': False, 'donnees': None})
+        try:
+            donnees = json.loads(row['donnees']) if row['donnees'] else None
+        except (ValueError, TypeError):
+            donnees = None
+        return jsonify({'found': True, 'donnees': donnees, 'total': row['total'],
+                        'updated_at': row['updated_at']})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/paie-simulation', methods=['POST'])
+@login_required
+def api_paie_simulation_save():
+    """Enregistre la simulation de paie et reporte le brut sur le 641 (+ 63x/64x)."""
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.get_json() or {}
+    annee = data.get('annee')
+    secteur_id = data.get('secteur_id')
+    type_budget = data.get('type_budget')
+    compte_num = (data.get('compte_num') or '').strip()
+    donnees = data.get('donnees') or {}
+    if not isinstance(donnees, dict):
+        donnees = {}
+    if not annee or not secteur_id:
+        return jsonify({'error': 'Année et secteur requis'}), 400
+    if type_budget not in ('initial', 'actualise'):
+        return jsonify({'error': 'Type de budget invalide'}), 400
+
+    conn = get_db()
+    try:
+        employes = _paie_employes_secteur(conn, secteur_id, annee)
+        cee_jours = _paie_cee_jours_par_mois(conn, annee, donnees.get('fermetures'))
+        if type_budget == 'actualise':
+            last_real_month, montant_reel = _paie_reel_641(conn, compte_num, annee)
+        else:
+            last_real_month, montant_reel = 0, 0.0
+        computed = _compute_paie(donnees, employes, cee_jours, last_real_month, montant_reel)
+        total = computed['total']
+
+        # Persister pesée et compétence sur les fiches salariés (mêmes variables
+        # que infos_salaries) à partir des saisies du simulateur.
+        overrides = donnees.get('employes') if isinstance(donnees.get('employes'), dict) else {}
+        emp_ids = {e['id'] for e in employes}
+        for key, ov in overrides.items():
+            if not isinstance(ov, dict):
+                continue
+            try:
+                uid = int(key)
+            except (TypeError, ValueError):
+                continue
+            if uid not in emp_ids:
+                continue
+            pesee = ov.get('pesee')
+            comp = ov.get('competence')
+            conn.execute(
+                'UPDATE users SET pesee = ?, competence = ? WHERE id = ?',
+                (int(pesee) if str(pesee).strip() not in ('', 'None') else None,
+                 int(comp) if str(comp).strip() not in ('', 'None') else None,
+                 uid)
+            )
+
+        conn.execute('''
+            INSERT INTO budget_paie_simulations
+            (annee, secteur_id, type_budget, compte_num, donnees, total, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(annee, secteur_id, type_budget) DO UPDATE SET
+                compte_num = excluded.compte_num,
+                donnees = excluded.donnees,
+                total = excluded.total,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (int(annee), int(secteur_id), type_budget, compte_num,
+              json.dumps(donnees), total, user_id))
+
+        reports = {}
+        if compte_num:
+            reports = _paie_report_brut(conn, secteur_id, annee, type_budget,
+                                        compte_num, total, user_id)
+        conn.commit()
+        return jsonify({'success': True, 'total': total, 'computed': computed,
+                        'reports': reports})
     finally:
         conn.close()

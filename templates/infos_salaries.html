@@ -80,6 +80,9 @@
             <label for="pesee" style="font-weight: 600; margin: 0;">Pesee ALISFA :</label>
             <input type="number" id="pesee" name="pesee" value="{{ salarie.pesee if salarie.pesee is not none else '' }}"
                    placeholder="Points" style="width: 120px; padding: 6px 10px;" min="0">
+            <label for="competence" style="font-weight: 600; margin: 0;">Points de compétence :</label>
+            <input type="number" id="competence" name="competence" value="{{ salarie.competence if salarie.competence is not none else '' }}"
+                   placeholder="Points" style="width: 120px; padding: 6px 10px;" min="0">
             <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
             {% if salarie.pesee is not none %}
             <span style="font-size: 0.85rem; color: var(--gray-500);">{{ salarie.pesee }} pts + SSC</span>

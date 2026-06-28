@@ -217,6 +217,7 @@ def init_db():
             cc_solde REAL DEFAULT 0,
             date_entree TEXT,
             pesee INTEGER,
+            competence INTEGER,
             email TEXT,
             email_notifications_enabled INTEGER DEFAULT 0,
             force_password_change INTEGER DEFAULT 0,
@@ -1473,6 +1474,27 @@ def init_db():
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
             FOREIGN KEY (updated_by) REFERENCES users(id),
             UNIQUE(compte_num, annee, secteur_id, type_budget)
+        )
+    ''')
+
+    # Saisies du simulateur de paie (masse salariale), attachées à l'année, au
+    # secteur et au type de budget. Les données détaillées (paramètres, saisie
+    # par salarié, CEE, ajouts) sont stockées en JSON ; total = brut annuel à
+    # reporter sur le premier compte 641.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_paie_simulations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annee INTEGER NOT NULL,
+            secteur_id INTEGER NOT NULL,
+            type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
+            compte_num TEXT,
+            donnees TEXT,
+            total REAL DEFAULT 0,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id),
+            UNIQUE(annee, secteur_id, type_budget)
         )
     ''')
 

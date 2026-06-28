@@ -328,6 +328,18 @@
     </div>
 </div>
 
+<!-- Simulateur de paie (masse salariale) -->
+<div id="paieSimulatorModal" class="ps-modal-overlay" onclick="if(event.target===this)closePaieSimulator()">
+    <div class="ps-modal" role="dialog" aria-modal="true">
+        <div class="ps-modal-header">
+            <h3 id="paieSimTitle">Simulateur de paie</h3>
+            <button class="modal-close" type="button" onclick="closePaieSimulator()" aria-label="Fermer">&times;</button>
+        </div>
+        <div class="ps-modal-body" id="paieSimBody"></div>
+        <div class="ps-modal-footer" id="paieSimFooter"></div>
+    </div>
+</div>
+
 <script>
 var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
 var canEditPs = {{ 'true' if profil in ['directeur', 'comptable'] else 'false' }};
@@ -455,8 +467,11 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
         const psBtn = (!globalMode && psComptes[r.compte_num])
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-ps-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de PS">🧮 PS</button>'
             : '';
+        const paieBtn = (!globalMode && canEditPs && salaryMeta && salaryMeta.salary_brut_account === r.compte_num)
+            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-paie-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de paie">🧮 Paie</button>'
+            : '';
         html += '<tr' + rowStyle + '>' +
-          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + '</td>' +
+          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + paieBtn + '</td>' +
           '<td class="bp-col-num">' + fmt(r['N-2']) + '</td><td class="bp-col-num">' + fmt(r['N-1']) + '</td><td class="bp-col-num">' + fmt(r['N']) + '</td>' +
           '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td><td>' + commentInput + '</td></tr>';
     }
@@ -575,6 +590,9 @@ function bindPsButtons(targetId){
     if (!root) return;
     root.querySelectorAll('button[data-ps-compte]').forEach(function(btn){
         btn.addEventListener('click', function(){ openPsSimulator(this.dataset.psCompte || ''); });
+    });
+    root.querySelectorAll('button[data-paie-compte]').forEach(function(btn){
+        btn.addEventListener('click', function(){ openPaieSimulator(this.dataset.paieCompte || ''); });
     });
 }
 
@@ -1361,10 +1379,277 @@ function savePsSimulator(){
     }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
 }
 
+// ===================== Simulateur de paie (masse salariale) =====================
+var paieSim = null;  // { ctx, compte, state, context }
+var MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+
+function openPaieSimulator(compteNum){
+    var ctx = getCurrentBudgetContext();
+    paieSim = {ctx: ctx, compte: compteNum, state: null, context: null};
+    document.getElementById('paieSimTitle').textContent =
+        'Simulateur de paie — ' + (ctx.type_budget === 'actualise' ? 'budget actualisé' : 'budget initial') +
+        ' ' + ctx.annee + ' — compte ' + compteNum;
+    var curl = '/api/budget-previsionnel/paie-context?annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id +
+        '&compte_num=' + encodeURIComponent(compteNum) + '&type_budget=' + encodeURIComponent(ctx.type_budget);
+    var surl = '/api/budget-previsionnel/paie-simulation?annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id +
+        '&type_budget=' + encodeURIComponent(ctx.type_budget);
+    Promise.all([
+        fetch(curl).then(r => r.json()).catch(function(){ return {employes:[], mercredis_dates:[], vacances_dates:[]}; }),
+        fetch(surl).then(r => r.json()).then(function(d){ return (d && d.found) ? d.donnees : null; }).catch(function(){ return null; })
+    ]).then(function(res){
+        paieSim.context = res[0] || {employes:[], mercredis_dates:[], vacances_dates:[]};
+        paieSim.state = mergePaieState(res[1], paieSim.context);
+        renderPaieSimulator();
+        recomputePaie();
+        document.getElementById('paieSimulatorModal').classList.add('open');
+    });
+}
+function closePaieSimulator(){ document.getElementById('paieSimulatorModal').classList.remove('open'); paieSim = null; }
+document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && document.getElementById('paieSimulatorModal').classList.contains('open')) closePaieSimulator();
+});
+
+function defaultPaieState(ctx){
+    var def = ctx.defaults || {};
+    var st = {
+        salaire_socle: def.salaire_socle != null ? def.salaire_socle : 23000,
+        valeur_point: def.valeur_point != null ? def.valeur_point : 55,
+        forfait_cee: def.forfait_cee != null ? def.forfait_cee : 70,
+        cee_mercredi: '', cee_vacances: '',
+        fermetures: [{debut:'', fin:''}, {debut:'', fin:''}],
+        employes: {}, ajouts: []
+    };
+    (ctx.employes || []).forEach(function(e){
+        st.employes[e.id] = {
+            pesee: e.pesee != null ? e.pesee : '',
+            nouvelle_pesee: '',
+            anciennete: e.anciennete != null ? e.anciennete : 0,
+            competence: e.competence != null ? e.competence : ''
+        };
+    });
+    return st;
+}
+function mergePaieState(saved, ctx){
+    var st = defaultPaieState(ctx);
+    if (!saved) return st;
+    ['salaire_socle','valeur_point','forfait_cee','cee_mercredi','cee_vacances'].forEach(function(k){
+        if (saved[k] !== undefined && saved[k] !== null) st[k] = saved[k];
+    });
+    if (Array.isArray(saved.fermetures)){
+        for (var i=0;i<2;i++){ if (saved.fermetures[i]) st.fermetures[i] = {debut: saved.fermetures[i].debut||'', fin: saved.fermetures[i].fin||''}; }
+    }
+    if (saved.employes && typeof saved.employes === 'object'){
+        Object.keys(st.employes).forEach(function(id){ if (saved.employes[id]) Object.assign(st.employes[id], saved.employes[id]); });
+    }
+    if (Array.isArray(saved.ajouts)) st.ajouts = saved.ajouts.map(function(a){ return Object.assign({}, a); });
+    return st;
+}
+function paieCeeParMois(ctx, st){
+    var ferm = (st.fermetures || []).filter(function(f){ return f && f.debut && f.fin; });
+    function closed(iso){ return ferm.some(function(f){ return iso >= f.debut && iso <= f.fin; }); }
+    var res = {}; for (var m=1;m<=12;m++) res[m] = {mercredis:0, vacances:0};
+    (ctx.mercredis_dates || []).forEach(function(iso){ if (!closed(iso)) res[parseInt(iso.slice(5,7),10)].mercredis++; });
+    (ctx.vacances_dates || []).forEach(function(iso){ if (!closed(iso)) res[parseInt(iso.slice(5,7),10)].vacances++; });
+    return res;
+}
+function computePaieJS(st, ctx, typeBudget){
+    var socle = psNum(st.salaire_socle, 23000), point = psNum(st.valeur_point, 55), forfait = psNum(st.forfait_cee, 70);
+    var ceeMer = psNum(st.cee_mercredi), ceeVac = psNum(st.cee_vacances);
+    var lastReal = (typeBudget === 'actualise') ? (ctx.last_real_month || 0) : 0;
+    var reel = (typeBudget === 'actualise') ? (ctx.montant_reel || 0) : 0;
+    var start = lastReal + 1;
+    function brut(p,a,c){ return (socle + (p+a+c)*point) / 12; }
+    var monthly = {}; for (var m=1;m<=12;m++) monthly[m] = 0;
+    var lignes = {};
+    (ctx.employes || []).forEach(function(e){
+        var ov = st.employes[e.id] || {};
+        var pAct = psNum(ov.pesee, e.pesee || 0);
+        var pEff = (ov.nouvelle_pesee !== '' && ov.nouvelle_pesee != null) ? psNum(ov.nouvelle_pesee) : pAct;
+        var anc = psNum(ov.anciennete, e.anciennete || 0), comp = psNum(ov.competence, e.competence || 0);
+        var mvals = {}, tot = 0;
+        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp); mvals[m]=v; monthly[m]+=v; tot+=v; }
+        lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
+    });
+    var ajouts = {};
+    (st.ajouts || []).forEach(function(a, i){
+        var typ = (a.type === 'cdd') ? 'cdd' : 'cdi';
+        var pEff = psNum(a.pesee), anc = psNum(a.anciennete), comp = psNum(a.competence);
+        var mb = (typ==='cdd') ? (parseInt(a.mois_debut,10)||1) : (parseInt(a.mois_embauche,10)||1);
+        var mf = (typ==='cdd') ? (parseInt(a.mois_fin,10)||12) : 12;
+        mb=Math.min(Math.max(mb,1),12); mf=Math.min(Math.max(mf,1),12);
+        var mvals = {}, tot = 0;
+        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp); mvals[m]=v; monthly[m]+=v; tot+=v; }
+        ajouts[i] = {mois: mvals, total: tot};
+    });
+    var ceeJours = paieCeeParMois(ctx, st), ceeCout = {};
+    for (var m=start; m<=12; m++){ var cj=ceeJours[m]||{mercredis:0,vacances:0}; var c=(cj.mercredis*ceeMer + cj.vacances*ceeVac)*forfait; ceeCout[m]=c; monthly[m]+=c; }
+    var totalSim = 0; for (var mm=start; mm<=12; mm++) totalSim += monthly[mm];
+    return {lignes:lignes, ajouts:ajouts, ceeJours:ceeJours, ceeCout:ceeCout, monthly:monthly, start:start, lastReal:lastReal, reel:reel, totalSim:totalSim, total: reel + totalSim};
+}
+function paieMonths(){
+    var lastReal = (paieSim.ctx.type_budget === 'actualise') ? (paieSim.context.last_real_month || 0) : 0;
+    var arr = []; for (var m=lastReal+1; m<=12; m++) arr.push(m); return arr;
+}
+function paieInput(attrs, val, step){
+    return '<input class="ps-input" type="number" step="' + (step||'0.01') + '" value="' + psAttr(val) + '" ' + attrs + '>';
+}
+function renderPaieSimulator(){
+    var st = paieSim.state, ctx = paieSim.context, months = paieMonths();
+    var actualise = (paieSim.ctx.type_budget === 'actualise');
+    var monthTh = months.map(function(m){ return '<th class="bp-ps-calc">' + MOIS_COURT[m-1] + '</th>'; }).join('');
+    var html = '<div class="ps-params">' +
+        '<div class="ps-field"><label>Salaire socle (annuel)</label>' + paieInput('data-paie-top="salaire_socle"', st.salaire_socle, '1') + '</div>' +
+        '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
+        '</div>';
+    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées.';
+    if (actualise){
+        html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
+            '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
+    }
+    html += '</div>';
+
+    // Salariés en cours de contrat
+    html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Salariés en cours de contrat (secteur)</h4>';
+    if (!(ctx.employes || []).length){
+        html += '<p class="ps-legend">Aucun salarié actif en CDI/CDD rattaché à ce secteur sur l\'année.</p>';
+    } else {
+        html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
+            '<th>Salarié</th><th>Type</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th>' +
+            monthTh + '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
+        (ctx.employes || []).forEach(function(e){
+            var ov = st.employes[e.id] || {};
+            html += '<tr><td class="ps-col-mois">' + escapeHtml((e.nom||'') + ' ' + (e.prenom||'')) + '</td>' +
+                '<td>' + escapeHtml(e.type_contrat || '') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="pesee"', ov.pesee, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_pesee"', ov.nouvelle_pesee, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="anciennete"', ov.anciennete, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '1') + '</td>' +
+                months.map(function(m){ return '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-' + m + '"></td>'; }).join('') +
+                '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-tot"></td></tr>';
+        });
+        html += '</tbody></table></div>';
+    }
+
+    // Autres salariés (ajouts)
+    html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Autres salariés (ajouts)</h4>';
+    html += '<div style="margin-bottom:6px;display:flex;gap:8px;"><button class="btn btn-sm btn-secondary" type="button" onclick="paieAddAjout(\'cdi\')">+ CDI</button>' +
+        '<button class="btn btn-sm btn-secondary" type="button" onclick="paieAddAjout(\'cdd\')">+ CDD</button></div>';
+    if ((st.ajouts || []).length){
+        html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
+            '<th>Type</th><th>Pesée</th><th>Ancienneté</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
+            monthTh + '<th class="bp-ps-calc">Total</th><th></th></tr></thead><tbody>';
+        st.ajouts.forEach(function(a, i){
+            var isCdd = (a.type === 'cdd');
+            html += '<tr><td class="ps-col-mois">' + (isCdd ? 'CDD' : 'CDI') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="pesee"', a.pesee, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="anciennete"', a.anciennete, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="' + (isCdd ? 'mois_debut' : 'mois_embauche') + '"', isCdd ? a.mois_debut : a.mois_embauche, '1') + '</td>' +
+                '<td>' + (isCdd ? paieInput('data-paie-aj="' + i + '" data-paie-key="mois_fin"', a.mois_fin, '1') : '—') + '</td>' +
+                months.map(function(m){ return '<td class="bp-ps-calc" id="paie-aj-' + i + '-' + m + '"></td>'; }).join('') +
+                '<td class="bp-ps-calc" id="paie-aj-' + i + '-tot"></td>' +
+                '<td><button class="btn btn-sm btn-danger" type="button" onclick="paieRemoveAjout(' + i + ')">×</button></td></tr>';
+        });
+        html += '</tbody></table></div>';
+    }
+
+    // CEE
+    html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Contrats d\'engagement éducatif (CEE)</h4>';
+    html += '<div class="ps-params">' +
+        '<div class="ps-field"><label>Forfait jour brut moyen (€)</label>' + paieInput('data-paie-top="forfait_cee"', st.forfait_cee, '0.01') + '</div>' +
+        '<div class="ps-field"><label>CEE moyen / mercredi périscolaire</label>' + paieInput('data-paie-top="cee_mercredi"', st.cee_mercredi, '0.1') + '</div>' +
+        '<div class="ps-field"><label>CEE moyen / jour de vacances</label>' + paieInput('data-paie-top="cee_vacances"', st.cee_vacances, '0.1') + '</div>' +
+        '</div>';
+    html += '<div class="ps-params"><div class="ps-field"><label>Fermeture 1 — du</label><input class="ps-input" type="date" value="' + psAttr(st.fermetures[0].debut) + '" data-paie-ferm="0" data-paie-key="debut" style="flex:0 0 150px;text-align:left;"></div>' +
+        '<div class="ps-field"><label>au</label><input class="ps-input" type="date" value="' + psAttr(st.fermetures[0].fin) + '" data-paie-ferm="0" data-paie-key="fin" style="flex:0 0 150px;text-align:left;"></div>' +
+        '<div class="ps-field"><label>Fermeture 2 — du</label><input class="ps-input" type="date" value="' + psAttr(st.fermetures[1].debut) + '" data-paie-ferm="1" data-paie-key="debut" style="flex:0 0 150px;text-align:left;"></div>' +
+        '<div class="ps-field"><label>au</label><input class="ps-input" type="date" value="' + psAttr(st.fermetures[1].fin) + '" data-paie-ferm="1" data-paie-key="fin" style="flex:0 0 150px;text-align:left;"></div></div>';
+
+    // Totaux
+    html += '<div class="ps-table-scroll" style="margin-top:14px;"><table class="ps-table"><thead><tr><th>Totaux</th>' + monthTh + '<th class="bp-ps-calc">Année</th></tr></thead><tbody>' +
+        '<tr><td class="ps-col-mois">Coût CEE</td>' + months.map(function(m){ return '<td class="bp-ps-calc" id="paie-cee-' + m + '"></td>'; }).join('') + '<td class="bp-ps-calc" id="paie-cee-tot"></td></tr>' +
+        '<tr><td class="ps-col-mois"><strong>Brut total / mois</strong></td>' + months.map(function(m){ return '<td class="bp-ps-calc" id="paie-mtot-' + m + '"></td>'; }).join('') + '<td class="bp-ps-calc" id="paie-totalsim"></td></tr>' +
+        '</tbody></table></div>';
+
+    var totalLabel = actualise ? 'Total à reporter (réel + simulé)' : 'Total brut annuel à reporter';
+    html += '<div class="ps-total-box"><span>' + totalLabel + ' sur le compte ' + escapeHtml(paieSim.compte) +
+        '</span><strong><span id="paie-total">0,00</span> €</strong></div>';
+
+    document.getElementById('paieSimBody').innerHTML = html;
+    document.getElementById('paieSimFooter').innerHTML =
+        '<span id="paieSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>' +
+        '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Annuler</button>' +
+        '<button class="btn btn-primary" type="button" onclick="savePaieSimulator()">💾 Reporter sur le 641 (et 63x/64x)</button>';
+    bindPaieInputs();
+}
+function bindPaieInputs(){
+    var body = document.getElementById('paieSimBody');
+    if (!body) return;
+    body.querySelectorAll('[data-paie-top]').forEach(function(el){
+        var h = function(){ paieSim.state[this.dataset.paieTop] = this.value; recomputePaie(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-paie-emp]').forEach(function(el){
+        var h = function(){ var id=this.dataset.paieEmp; (paieSim.state.employes[id] = paieSim.state.employes[id] || {})[this.dataset.paieKey] = this.value; recomputePaie(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-paie-aj]').forEach(function(el){
+        var h = function(){ var i=parseInt(this.dataset.paieAj,10); paieSim.state.ajouts[i][this.dataset.paieKey] = this.value; recomputePaie(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+    body.querySelectorAll('[data-paie-ferm]').forEach(function(el){
+        var h = function(){ var i=parseInt(this.dataset.paieFerm,10); paieSim.state.fermetures[i][this.dataset.paieKey] = this.value; recomputePaie(); };
+        el.addEventListener('input', h); el.addEventListener('change', h);
+    });
+}
+function paieAddAjout(type){
+    paieSim.state.ajouts.push(type === 'cdd'
+        ? {type:'cdd', pesee:'', anciennete:'', competence:0, mois_debut:1, mois_fin:12}
+        : {type:'cdi', pesee:'', anciennete:'', competence:0, mois_embauche:1});
+    renderPaieSimulator(); recomputePaie();
+}
+function paieRemoveAjout(i){ paieSim.state.ajouts.splice(i,1); renderPaieSimulator(); recomputePaie(); }
+function recomputePaie(){
+    if (!paieSim) return;
+    var c = computePaieJS(paieSim.state, paieSim.context, paieSim.ctx.type_budget);
+    var months = paieMonths();
+    (paieSim.context.employes || []).forEach(function(e){
+        var l = c.lignes[e.id] || {mois:{}, total:0};
+        months.forEach(function(m){ psSet('paie-emp-' + e.id + '-' + m, l.mois[m] ? fmt(l.mois[m]) : ''); });
+        psSet('paie-emp-' + e.id + '-tot', fmt(l.total));
+    });
+    (paieSim.state.ajouts || []).forEach(function(a, i){
+        var l = c.ajouts[i] || {mois:{}, total:0};
+        months.forEach(function(m){ psSet('paie-aj-' + i + '-' + m, l.mois[m] ? fmt(l.mois[m]) : ''); });
+        psSet('paie-aj-' + i + '-tot', fmt(l.total));
+    });
+    var ceeTot = 0;
+    months.forEach(function(m){ var v = c.ceeCout[m] || 0; psSet('paie-cee-' + m, fmt(v)); ceeTot += v; });
+    psSet('paie-cee-tot', fmt(ceeTot));
+    months.forEach(function(m){ psSet('paie-mtot-' + m, fmt(c.monthly[m] || 0)); });
+    psSet('paie-totalsim', fmt(c.totalSim));
+    psSet('paie-total', fmt(c.total));
+}
+function savePaieSimulator(){
+    if (!paieSim) return;
+    var ctx = paieSim.ctx;
+    var msg = document.getElementById('paieSaveMsg');
+    if (msg) msg.textContent = 'Enregistrement…';
+    fetch('/api/budget-previsionnel/paie-simulation', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({annee: ctx.annee, secteur_id: ctx.secteur_id, type_budget: ctx.type_budget,
+            compte_num: paieSim.compte, donnees: paieSim.state})
+    }).then(r => r.json()).then(function(data){
+        if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
+        var nb = data.reports ? Object.keys(data.reports).length : 1;
+        if (msg) msg.textContent = '✓ Reporté : ' + fmt(data.total) + ' € sur ' + nb + ' compte(s)';
+        chargerBudget();
+    }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
+}
+
 // Déplace les modales au niveau du <body> : le conteneur .container crée un
 // contexte d'empilement (animation) qui les confinerait sinon sous la barre
 // latérale de gauche (menu). Rattachées au body, elles s'affichent par-dessus.
-['psSimulatorModal', 'psConfigModal'].forEach(function(id){
+['psSimulatorModal', 'psConfigModal', 'paieSimulatorModal'].forEach(function(id){
     var el = document.getElementById(id);
     if (el && el.parentNode !== document.body) document.body.appendChild(el);
 });
