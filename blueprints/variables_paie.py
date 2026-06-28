@@ -365,6 +365,15 @@ def cloturer_conges():
     # d'embauche en cours de mois. C'est le contrat qui compte.
     # Un contrat dont date_fin est exactement le dernier jour est exclu : les
     # conges acquis sont soldes en paie, les compteurs doivent repasser a zero.
+    #
+    # Cas multi-contrats (RARE) : si un salarie a plusieurs contrats encore
+    # actifs en fin de mois, on retient le PLUS ANCIEN en cours de validite
+    # (MIN(date_debut)) -> choix metier deliberé, favorable au salarie (mois
+    # plein plutot qu'un prorata sur le contrat le plus recent).
+    # Limite connue laissee de cote : en toute rigueur chaque contrat a son
+    # propre solde de conges et ceux-ci devraient se CUMULER (un solde par
+    # contrat). Ce n'est pas gere ici (cas exceptionnel, chantier a part). Si on
+    # revient un jour dessus, c'est le point a reprendre.
     dernier_du_mois_str = date(annee, mois, jours_dans_mois).strftime('%Y-%m-%d')
     contrat_debut = {
         row['user_id']: row['date_debut'] for row in conn.execute(
