@@ -785,3 +785,153 @@ def test_suppression_tranche_bloquee_si_utilisee_par_simulation_ps(app, db, admi
     with app.app_context():
         still = db.execute("SELECT COUNT(*) FROM alsh_tranches_age WHERE id = ?", (tid,)).fetchone()[0]
     assert still == 1
+
+
+# ============================================================
+# Simulateur de paie (masse salariale)
+# ============================================================
+
+def _setup_paie_secteur(db, annee):
+    """Secteur + 1 CDI actif + comptes 641/645 + FEC N-1 pour le prorata."""
+    db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Paie test','administratif')")
+    sid = db.execute("SELECT id FROM secteurs WHERE nom='Paie test'").fetchone()['id']
+    db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree,pesee) "
+               "VALUES ('Doe','Jane','jdoe_paie','x','salarie',1,?,?,0)", (sid, f'{annee-3}-01-01'))
+    uid = db.execute("SELECT id FROM users WHERE login='jdoe_paie'").fetchone()['id']
+    db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDI', ?, NULL)",
+               (uid, f'{annee-3}-01-01'))
+    db.execute("INSERT INTO comptabilite_comptes (compte_num,libelle,secteur_id) VALUES ('641000','Brut',?)", (sid,))
+    db.execute("INSERT INTO comptabilite_comptes (compte_num,libelle,secteur_id) VALUES ('645000','Cotis',?)", (sid,))
+    db.execute("INSERT INTO bilan_fec_imports (fichier_nom,annee,nb_ecritures) VALUES ('f',?,2)", (annee - 1,))
+    imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()['id']
+    db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('641000',?,1,100000,?)", (annee - 1, imp))
+    db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('645000',?,1,40000,?)", (annee - 1, imp))
+    db.commit()
+    return sid, uid
+
+
+def test_paie_context_liste_employes(app, db, admin_client):
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}&compte_num=641000&type_budget=initial'
+    ).get_json()
+    emp = next(e for e in data['employes'] if e['id'] == uid)
+    assert emp['type_contrat'] == 'CDI'
+    assert emp['anciennete'] == 3
+    assert emp['mois_debut'] == 1 and emp['mois_fin'] == 12
+
+
+def test_paie_simulation_calcule_et_reporte(app, db, admin_client):
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0, 'competence': 0}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    data = r.get_json()
+    assert abs(data['total'] - 23000.0) < 0.01  # brut annuel = 12 × 23000/12
+    with app.app_context():
+        d641 = db.execute("SELECT valeur_def FROM budget_prev_saisies WHERE compte_num='641000' "
+                          "AND annee=? AND secteur_id=? AND type_budget='initial'", (annee, sid)).fetchone()
+        d645 = db.execute("SELECT valeur_def FROM budget_prev_saisies WHERE compte_num='645000' "
+                          "AND annee=? AND secteur_id=? AND type_budget='initial'", (annee, sid)).fetchone()
+    assert d641 and abs(d641['valeur_def'] - 23000.0) < 0.01
+    # prorata 645 = 23000 × 40000/100000 = 9200
+    assert d645 and abs(d645['valeur_def'] - 9200.0) < 0.01
+
+
+def test_paie_simulation_persiste_pesee_competence(app, db, admin_client):
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'employes': {str(uid): {'pesee': 120, 'competence': 5, 'anciennete': 3, 'nouvelle_pesee': ''}},
+               'ajouts': [], 'fermetures': []}
+    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    with app.app_context():
+        u = db.execute("SELECT pesee, competence FROM users WHERE id=?", (uid,)).fetchone()
+    assert u['pesee'] == 120 and u['competence'] == 5
+
+
+def test_paie_simulation_refuse_responsable(resp_client, sample_users):
+    sid = sample_users['secteur_id']
+    r = resp_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': 2026, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': {}})
+    assert r.status_code == 403
+
+
+def test_budget_649_exclu_du_prorata_salaire(app, db, admin_client):
+    """Un compte 649 n'est plus traité comme salaire (exclu du prorata du brut)."""
+    from blueprints.budget import _compute_budget_previsionnel
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('S649','administratif')")
+        sid = db.execute("SELECT id FROM secteurs WHERE nom='S649'").fetchone()['id']
+        db.execute("INSERT INTO comptabilite_comptes (compte_num,libelle,secteur_id) VALUES ('641000','Brut',?)", (sid,))
+        db.execute("INSERT INTO comptabilite_comptes (compte_num,libelle,secteur_id) VALUES ('649000','Divers',?)", (sid,))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom,annee,nb_ecritures) VALUES ('f',?,2)", (annee - 1,))
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()['id']
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('641000',?,1,100000,?)", (annee - 1, imp))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('649000',?,1,10000,?)", (annee - 1, imp))
+        db.commit()
+        data = _compute_budget_previsionnel(db, 'initial', annee, sid)
+    rows = {r['compte_num']: r for r in data['rows']}
+    assert rows['641000']['is_salary'] is True
+    assert rows['649000']['is_salary'] is False
+    assert '649000' not in data['salary_ratios']
+
+
+def test_paie_reel_641_restreint_au_secteur(app, db):
+    """Le réel du 641 (budget actualisé) est restreint au périmètre du secteur
+    quand plusieurs secteurs partagent le même compte (P1)."""
+    from blueprints.budget import _paie_reel_641
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('SA','administratif')")
+        sa = db.execute("SELECT id FROM secteurs WHERE nom='SA'").fetchone()['id']
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('SB','administratif')")
+        sb = db.execute("SELECT id FROM secteurs WHERE nom='SB'").fetchone()['id']
+        db.execute("INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES ('ANA-A', ?)", (sa,))
+        db.execute("INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES ('ANA-B', ?)", (sb,))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom,annee,nb_ecritures) VALUES ('f',?,1)", (annee,))
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()['id']
+        for m in (1, 2, 3):
+            db.execute("INSERT INTO bilan_fec_donnees (compte_num,code_analytique,annee,mois,montant,import_id) "
+                       "VALUES ('641000','ANA-A',?,?,1000,?)", (annee, m, imp))
+        for m in (1, 2, 3, 4, 5, 6):
+            db.execute("INSERT INTO bilan_fec_donnees (compte_num,code_analytique,annee,mois,montant,import_id) "
+                       "VALUES ('641000','ANA-B',?,?,2000,?)", (annee, m, imp))
+        db.commit()
+        la, ta = _paie_reel_641(db, sa, '641000', annee)
+        lb, tb = _paie_reel_641(db, sb, '641000', annee)
+    assert (la, ta) == (3, 3000.0)
+    assert (lb, tb) == (6, 12000.0)
+
+
+def test_paie_employes_ignore_contrat_annee_suivante(app, db):
+    """Un salarié avec un contrat valide sur l'année ET un contrat futur déjà
+    saisi reste pris dans la simulation (P2)."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('SC','administratif')")
+        sid = db.execute("SELECT id FROM secteurs WHERE nom='SC'").fetchone()['id']
+        db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree) "
+                   "VALUES ('X','Y','xy_paie','x','salarie',1,?,?)", (sid, f'{annee-1}-01-01'))
+        uid = db.execute("SELECT id FROM users WHERE login='xy_paie'").fetchone()['id']
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDD', ?, ?)",
+                   (uid, f'{annee}-01-01', f'{annee}-12-31'))
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDI', ?, NULL)",
+                   (uid, f'{annee+1}-01-01'))
+        db.commit()
+        employes = _paie_employes_secteur(db, sid, annee)
+    e = next((x for x in employes if x['id'] == uid), None)
+    assert e is not None
+    assert e['type_contrat'] == 'CDD'
+    assert e['mois_debut'] == 1 and e['mois_fin'] == 12
