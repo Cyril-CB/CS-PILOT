@@ -22,6 +22,18 @@
         font-weight: 600;
         color: var(--gray-900);
     }
+    .recurrence-users {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 8px 16px;
+    }
+    .recurrence-user {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 400;
+    }
+    .recurrence-user input { width: auto; margin: 0; }
 </style>
 
 <div class="delegations-page">
@@ -64,6 +76,41 @@
             </form>
         </div>
         {% endfor %}
+
+        <div class="delegation-card">
+            <h2>Réservation de salle récurrente</h2>
+            <p class="delegation-meta">
+                Par défaut, seuls les responsables (et la direction) peuvent créer des réservations
+                de salle récurrentes. Cochez les salariés autorisés à créer des récurrences.
+            </p>
+
+            <form method="POST" action="{{ url_for('admin_bp.delegations') }}">
+                <input type="hidden" name="form_type" value="salle_recurrence">
+
+                <div class="form-group">
+                    <div class="recurrence-users">
+                        {% for user in salaries %}
+                        <label class="recurrence-user">
+                            <input type="checkbox" name="salle_recurrence_users" value="{{ user.id }}"
+                                   {% if user.id in salle_recurrence_user_ids %}checked{% endif %}
+                                   {% if not peut_modifier %}disabled{% endif %}>
+                            {{ user.prenom }} {{ user.nom }}{% if user.profil == 'responsable' %} — Responsable{% endif %}
+                        </label>
+                        {% endfor %}
+                        {% if not salaries %}
+                        <p class="delegation-meta">Aucun salarié disponible.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
+                    {% if peut_modifier %}
+                    <button type="submit" class="btn btn-primary">Enregistrer les autorisations</button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}

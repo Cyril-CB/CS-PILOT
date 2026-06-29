@@ -889,6 +889,19 @@ def init_db():
         )
     ''')
 
+    # Délégation : salariés autorisés à créer des réservations de salle
+    # récurrentes (par défaut réservé aux responsables / direction).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations_salles_recurrence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            granted_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (granted_by) REFERENCES users(id)
+        )
+    ''')
+
     # ===== Module CSE (migration 0040) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cse_membres (
@@ -1341,6 +1354,26 @@ def init_db():
             taux_global REAL DEFAULT 0,
             taux_selectionne TEXT DEFAULT 'global',
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Bilan action : budget previsionnel et realise d'une action analytique
+    # (un enregistrement par action / annee / onglet ; etat complet en JSON)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bilan_action_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id INTEGER NOT NULL,
+            annee INTEGER NOT NULL,
+            onglet TEXT NOT NULL DEFAULT 'previsionnel'
+                CHECK(onglet IN ('previsionnel', 'realise')),
+            donnees TEXT,
+            total_charges REAL DEFAULT 0,
+            total_produits REAL DEFAULT 0,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(action_id, annee, onglet),
+            FOREIGN KEY (action_id) REFERENCES comptabilite_actions(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id)
         )
     ''')
 

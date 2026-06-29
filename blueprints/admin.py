@@ -8,7 +8,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from werkzeug.security import generate_password_hash
 from datetime import datetime
 from database import get_db
-from blueprints.delegations import MISSIONS, MISSIONS_MAP, save_delegation
+from blueprints.delegations import (
+    MISSIONS, MISSIONS_MAP, save_delegation,
+    get_salle_recurrence_user_ids, save_salle_recurrence_delegations,
+)
 from utils import login_required, validate_password_strength
 from access_log import (journaliser_action, ACTION_CREATION_USER,
                         ACTION_MODIF_USER, ACTION_STATUT_USER)
@@ -61,6 +64,23 @@ def delegations():
         if request.method == 'POST':
             if session.get('profil') != 'directeur':
                 flash('Seule la direction peut modifier les délégations.', 'error')
+                return redirect(url_for('admin_bp.delegations'))
+
+            # Délégation des réservations de salle récurrentes (multi-salariés).
+            if request.form.get('form_type') == 'salle_recurrence':
+                selected = [int(x) for x in request.form.getlist('salle_recurrence_users') if x.isdigit()]
+                valides = []
+                if selected:
+                    placeholders = ','.join('?' * len(selected))
+                    rows = conn.execute(
+                        f'''SELECT id FROM users
+                            WHERE id IN ({placeholders}) AND actif = 1
+                              AND profil IN ('salarie', 'responsable')''',
+                        selected
+                    ).fetchall()
+                    valides = [r['id'] for r in rows]
+                save_salle_recurrence_delegations(valides, session['user_id'])
+                flash('Les autorisations de réservation récurrente ont été enregistrées.', 'success')
                 return redirect(url_for('admin_bp.delegations'))
 
             mission_key = request.form.get('mission_key')
@@ -128,6 +148,7 @@ def delegations():
         'delegations.html',
         missions=missions,
         salaries=salaries,
+        salle_recurrence_user_ids=get_salle_recurrence_user_ids(),
         peut_modifier=session.get('profil') == 'directeur',
     )
 

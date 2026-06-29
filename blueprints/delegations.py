@@ -67,3 +67,50 @@ def save_delegation(mission_key, delegated_user_id, delegated_by_user_id):
         conn.commit()
     finally:
         conn.close()
+
+
+# ── Délégation : réservations de salle récurrentes ─────────────────────────────
+# Par défaut, seuls les responsables (et la direction) peuvent créer des
+# récurrences. La direction peut déléguer ce droit à un ou plusieurs salariés.
+
+def get_salle_recurrence_user_ids():
+    """Retourne la liste des IDs des salariés autorisés à créer des récurrences."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            'SELECT user_id FROM delegations_salles_recurrence'
+        ).fetchall()
+        return [row['user_id'] for row in rows]
+    finally:
+        conn.close()
+
+
+def user_peut_recurrence_salle(user_id):
+    """Indique si un salarié dispose de la délégation des récurrences de salle."""
+    if not user_id:
+        return False
+    conn = get_db()
+    try:
+        row = conn.execute(
+            'SELECT 1 FROM delegations_salles_recurrence WHERE user_id = ?',
+            (user_id,)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def save_salle_recurrence_delegations(user_ids, granted_by):
+    """Remplace l'ensemble des salariés autorisés à créer des récurrences."""
+    conn = get_db()
+    try:
+        conn.execute('DELETE FROM delegations_salles_recurrence')
+        for uid in user_ids:
+            conn.execute(
+                'INSERT OR IGNORE INTO delegations_salles_recurrence (user_id, granted_by) '
+                'VALUES (?, ?)',
+                (uid, granted_by)
+            )
+        conn.commit()
+    finally:
+        conn.close()

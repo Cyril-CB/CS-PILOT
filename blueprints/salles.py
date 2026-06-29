@@ -21,8 +21,15 @@ def _est_admin():
 
 
 def _peut_creer_recurrence():
-    """Verifie si l'utilisateur peut creer des recurrences."""
-    return _est_admin() or session.get('profil') == 'responsable'
+    """Verifie si l'utilisateur peut creer des recurrences.
+
+    Par defaut : direction/comptable et responsables. La direction peut aussi
+    deleguer ce droit a des salaries via la page Delegation.
+    """
+    if _est_admin() or session.get('profil') == 'responsable':
+        return True
+    from blueprints.delegations import user_peut_recurrence_salle
+    return user_peut_recurrence_salle(session.get('user_id'))
 
 
 def _get_dates_exclues(conn, date_debut_str, date_fin_str, exclure_vacances, exclure_feries):
