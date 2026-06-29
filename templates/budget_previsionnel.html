@@ -1423,6 +1423,7 @@ function defaultPaieState(ctx){
         salaire_socle: def.salaire_socle != null ? def.salaire_socle : 23000,
         valeur_point: def.valeur_point != null ? def.valeur_point : 55,
         forfait_cee: def.forfait_cee != null ? def.forfait_cee : 70,
+        temps_plein: def.temps_plein != null ? def.temps_plein : 35,
         cee_mercredi: '', cee_vacances: '',
         fermetures: [{debut:'', fin:''}, {debut:'', fin:''}],
         employes: {}, ajouts: []
@@ -1433,7 +1434,8 @@ function defaultPaieState(ctx){
             nouvelle_pesee: '',
             anciennete: e.anciennete != null ? e.anciennete : 0,
             competence: e.competence != null ? e.competence : '',
-            maintien: e.maintien != null ? e.maintien : 0
+            maintien: e.maintien != null ? e.maintien : 0,
+            temps_hebdo: e.temps_hebdo != null ? e.temps_hebdo : ''
         };
     });
     return st;
@@ -1441,7 +1443,7 @@ function defaultPaieState(ctx){
 function mergePaieState(saved, ctx){
     var st = defaultPaieState(ctx);
     if (!saved) return st;
-    ['salaire_socle','valeur_point','forfait_cee','cee_mercredi','cee_vacances'].forEach(function(k){
+    ['salaire_socle','valeur_point','forfait_cee','temps_plein','cee_mercredi','cee_vacances'].forEach(function(k){
         if (saved[k] !== undefined && saved[k] !== null) st[k] = saved[k];
     });
     if (Array.isArray(saved.fermetures)){
@@ -1463,11 +1465,14 @@ function paieCeeParMois(ctx, st){
 }
 function computePaieJS(st, ctx, typeBudget){
     var socle = psNum(st.salaire_socle, 23000), point = psNum(st.valeur_point, 55), forfait = psNum(st.forfait_cee, 70);
+    var tplein = psNum(st.temps_plein, 35);
     var ceeMer = psNum(st.cee_mercredi), ceeVac = psNum(st.cee_vacances);
     var lastReal = (typeBudget === 'actualise') ? (ctx.last_real_month || 0) : 0;
     var reel = (typeBudget === 'actualise') ? (ctx.montant_reel || 0) : 0;
     var start = lastReal + 1;
     function brut(p,a,c){ return (socle + (p+a+c)*point) / 12; }
+    // Temps inconnu/0 => temps plein (ratio 1).
+    function ratioTemps(th){ return (th && th > 0 && tplein) ? th/tplein : 1; }
     // Champ surchargé présent (même vide) => saisie (vide = 0) ; absent => fiche.
     function ovNum(ov, key, dbVal){ return (ov && Object.prototype.hasOwnProperty.call(ov, key)) ? psNum(ov[key], 0) : psNum(dbVal, 0); }
     var monthly = {}; for (var m=1;m<=12;m++) monthly[m] = 0;
@@ -1478,19 +1483,21 @@ function computePaieJS(st, ctx, typeBudget){
         var pEff = (ov.nouvelle_pesee !== '' && ov.nouvelle_pesee != null) ? psNum(ov.nouvelle_pesee) : pAct;
         var anc = ovNum(ov, 'anciennete', e.anciennete), comp = ovNum(ov, 'competence', e.competence);
         var maint = ovNum(ov, 'maintien', e.maintien);
+        var ratio = ratioTemps(ovNum(ov, 'temps_hebdo', e.temps_hebdo));
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp)*ratio+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
     });
     var ajouts = {};
     (st.ajouts || []).forEach(function(a, i){
         var typ = (a.type === 'cdd') ? 'cdd' : 'cdi';
         var pEff = psNum(a.pesee), anc = psNum(a.anciennete), comp = psNum(a.competence), maint = psNum(a.maintien);
+        var ratioA = ratioTemps(psNum(a.temps_hebdo, tplein));
         var mb = (typ==='cdd') ? (parseInt(a.mois_debut,10)||1) : (parseInt(a.mois_embauche,10)||1);
         var mf = (typ==='cdd') ? (parseInt(a.mois_fin,10)||12) : 12;
         mb=Math.min(Math.max(mb,1),12); mf=Math.min(Math.max(mf,1),12);
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp)*ratioA+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         ajouts[i] = {mois: mvals, total: tot};
     });
     var ceeJours = paieCeeParMois(ctx, st), ceeCout = {};
@@ -1512,8 +1519,9 @@ function renderPaieSimulator(){
     var html = '<div class="ps-params">' +
         '<div class="ps-field"><label>Salaire socle (annuel)</label>' + paieInput('data-paie-top="salaire_socle"', st.salaire_socle, '1') + '</div>' +
         '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
+        '<div class="ps-field"><label>Temps plein (h/sem.)</label>' + paieInput('data-paie-top="temps_plein"', st.temps_plein, '0.5') + '</div>' +
         '</div>';
-    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées.';
+    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12, au prorata du temps de travail (temps hebdo / temps plein). Colonnes <span class="bp-ps-calc">surlignées</span> = calculées.';
     if (actualise){
         html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
@@ -1526,12 +1534,13 @@ function renderPaieSimulator(){
         html += '<p class="ps-legend">Aucun salarié actif en CDI/CDD rattaché à ce secteur sur l\'année.</p>';
     } else {
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Salarié</th><th>Type</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th><th>Maintien €/mois</th>' +
+            '<th>Salarié</th><th>Type</th><th>Temps hebdo</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th><th>Maintien €/mois</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
         (ctx.employes || []).forEach(function(e){
             var ov = st.employes[e.id] || {};
             html += '<tr><td class="ps-col-mois">' + escapeHtml((e.nom||'') + ' ' + (e.prenom||'')) + '</td>' +
                 '<td>' + escapeHtml(e.type_contrat || '') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="temps_hebdo"', ov.temps_hebdo, '0.5') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="pesee"', ov.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_pesee"', ov.nouvelle_pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="anciennete"', ov.anciennete, '1') + '</td>' +
@@ -1549,11 +1558,12 @@ function renderPaieSimulator(){
         '<button class="btn btn-sm btn-secondary" type="button" onclick="paieAddAjout(\'cdd\')">+ CDD</button></div>';
     if ((st.ajouts || []).length){
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Type</th><th>Pesée</th><th>Ancienneté</th><th>Maintien €/mois</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
+            '<th>Type</th><th>Temps hebdo</th><th>Pesée</th><th>Ancienneté</th><th>Maintien €/mois</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th><th></th></tr></thead><tbody>';
         st.ajouts.forEach(function(a, i){
             var isCdd = (a.type === 'cdd');
             html += '<tr><td class="ps-col-mois">' + (isCdd ? 'CDD' : 'CDI') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="temps_hebdo"', a.temps_hebdo, '0.5') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="pesee"', a.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="anciennete"', a.anciennete, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="maintien"', a.maintien, '0.01') + '</td>' +
@@ -1617,8 +1627,8 @@ function bindPaieInputs(){
 }
 function paieAddAjout(type){
     paieSim.state.ajouts.push(type === 'cdd'
-        ? {type:'cdd', pesee:'', anciennete:'', competence:0, maintien:0, mois_debut:1, mois_fin:12}
-        : {type:'cdi', pesee:'', anciennete:'', competence:0, maintien:0, mois_embauche:1});
+        ? {type:'cdd', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, mois_debut:1, mois_fin:12}
+        : {type:'cdi', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, mois_embauche:1});
     renderPaieSimulator(); recomputePaie();
 }
 function paieRemoveAjout(i){ paieSim.state.ajouts.splice(i,1); renderPaieSimulator(); recomputePaie(); }

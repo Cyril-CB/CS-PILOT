@@ -1794,6 +1794,7 @@ PAIE_DEFAULTS = {
     'salaire_socle': 23000,
     'valeur_point': 55,
     'forfait_cee': 70,
+    'temps_plein': 35,  # heures hebdomadaires de référence (temps plein)
 }
 
 
@@ -1881,7 +1882,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
         # premier (date_debut la plus récente) puis écarté, faisant disparaître
         # le salarié alors qu'il a un contrat valide sur l'année.
         contrat = conn.execute('''
-            SELECT type_contrat, date_debut, date_fin FROM contrats
+            SELECT type_contrat, date_debut, date_fin, temps_hebdo FROM contrats
             WHERE user_id = ? AND type_contrat IN ('CDI', 'CDD')
               AND date_debut <= ?
               AND (date_fin IS NULL OR date_fin >= ?)
@@ -1896,6 +1897,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
             'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
             'pesee': u['pesee'], 'competence': u['competence'],
             'maintien': u['maintien'] if u['maintien'] is not None else 0,
+            'temps_hebdo': contrat['temps_hebdo'],
             'type_contrat': contrat['type_contrat'],
             'anciennete': _paie_anciennete_annees(contrat['date_debut'], annee),
             'mois_debut': mb, 'mois_fin': mf,
@@ -2007,7 +2009,9 @@ def _paie_reel_641(conn, secteur_id, compte_num, annee):
 def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_reel):
     """Calcule le brut par salarié et par mois, le coût CEE et le total annuel.
 
-    Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12.
+    Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12,
+    proratisé selon le temps de travail (temps_hebdo / temps plein de référence)
+    pour les salariés à temps partiel, puis + maintien (montant fixe non proratisé).
     En budget actualisé, seuls les mois > last_real_month sont simulés ; le total
     intègre le réel (FEC) déjà constaté.
     """
@@ -2015,6 +2019,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
     socle = _ps_num(d.get('salaire_socle'), PAIE_DEFAULTS['salaire_socle'])
     point = _ps_num(d.get('valeur_point'), PAIE_DEFAULTS['valeur_point'])
     forfait_cee = _ps_num(d.get('forfait_cee'), PAIE_DEFAULTS['forfait_cee'])
+    temps_plein = _ps_num(d.get('temps_plein'), PAIE_DEFAULTS['temps_plein'])
     cee_mercredi = _ps_num(d.get('cee_mercredi'))
     cee_vacances = _ps_num(d.get('cee_vacances'))
     overrides = d.get('employes') if isinstance(d.get('employes'), dict) else {}
@@ -2024,6 +2029,10 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
 
     def brut_mensuel(pesee, anciennete, competence):
         return (socle + (pesee + anciennete + competence) * point) / 12.0
+
+    def ratio_temps(temps_hebdo):
+        # Temps inconnu ou non renseigné => temps plein (ratio 1).
+        return (temps_hebdo / temps_plein) if (temps_hebdo and temps_hebdo > 0 and temps_plein) else 1.0
 
     def override_num(ov, key, db_value):
         # Champ présent (même vide) => saisie (vide = 0, cohérent avec la
@@ -2042,9 +2051,10 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         anciennete = override_num(ov, 'anciennete', e['anciennete'])
         competence = override_num(ov, 'competence', e['competence'])
         maintien = override_num(ov, 'maintien', e.get('maintien'))
+        ratio = ratio_temps(override_num(ov, 'temps_hebdo', e.get('temps_hebdo')))
         mois_vals, total_e = {}, 0.0
         for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence) + maintien
+            val = brut_mensuel(pesee_eff, anciennete, competence) * ratio + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_e += val
@@ -2064,6 +2074,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         anciennete = _ps_num(a.get('anciennete'))
         competence = _ps_num(a.get('competence'))
         maintien = _ps_num(a.get('maintien'))
+        ratio = ratio_temps(_ps_num(a.get('temps_hebdo'), temps_plein))
         if typ == 'cdd':
             mb = int(_ps_num(a.get('mois_debut'), 1)) or 1
             mf = int(_ps_num(a.get('mois_fin'), 12)) or 12
@@ -2074,7 +2085,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         mf = min(max(mf, 1), 12)
         mois_vals, total_a = {}, 0.0
         for m in range(max(start_month, mb), mf + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence) + maintien
+            val = brut_mensuel(pesee_eff, anciennete, competence) * ratio + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_a += val
