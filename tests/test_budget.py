@@ -1051,3 +1051,48 @@ def test_paie_anciennete_cdd_depuis_son_contrat(app, db):
         employes = _paie_employes_secteur(db, sid, annee)
     e = next(x for x in employes if x['id'] == uid)
     assert e['anciennete'] == 0  # depuis le contrat (cette année), pas 6 (date_entree)
+
+
+def test_paie_employes_recupere_temps_hebdo_du_contrat(app, db):
+    """Le temps de travail hebdomadaire est repris du contrat."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("UPDATE contrats SET temps_hebdo = 28 WHERE user_id = ?", (uid,))
+        db.commit()
+        employes = _paie_employes_secteur(db, sid, annee)
+    e = next(x for x in employes if x['id'] == uid)
+    assert e['temps_hebdo'] == 28
+
+
+def test_paie_simulation_proratise_temps_partiel(app, db, admin_client):
+    """Le brut d'un salarié à temps partiel est proratisé (temps hebdo / temps plein)."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("UPDATE contrats SET temps_hebdo = 28 WHERE user_id = ?", (uid,))
+        db.commit()
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55, 'temps_plein': 35,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
+                                       'competence': 0, 'maintien': 0, 'temps_hebdo': 28}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 18400.0) < 0.01  # 23000 × 28/35
+
+
+def test_paie_temps_hebdo_absent_temps_plein(app, db, admin_client):
+    """Sans temps hebdo renseigné, le salarié est considéré à temps plein."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)  # contrat sans temps_hebdo (NULL)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55, 'temps_plein': 35,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
+                                       'competence': 0, 'maintien': 0, 'temps_hebdo': ''}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 23000.0) < 0.01
