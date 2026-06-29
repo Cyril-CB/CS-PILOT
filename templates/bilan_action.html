@@ -1,0 +1,596 @@
+{% extends "base.html" %}
+{% block title %}Bilan action - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+    <h2>🎯 Bilan action</h2>
+    <div id="actionButtons" style="display:none;gap:8px;flex-wrap:wrap;">
+        <span id="saveStatus" class="muted" style="align-self:center;"></span>
+        <button class="btn btn-primary" onclick="sauvegarder(true)">💾 Enregistrer</button>
+        <button class="btn btn-secondary" onclick="exporterPdf()">📄 Export PDF</button>
+    </div>
+</div>
+
+<div class="info-box">
+    ℹ️ La création d'une action se fait sur la page
+    <a href="{{ url_for('comptabilite_analytique_bp.plan_comptable_analytique') }}">Plan comptable analytique</a>.
+    Les enregistrements se font par action et par année.
+</div>
+
+{# ── Sélecteurs action / année ── #}
+<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:16px 0;">
+    <div class="form-group" style="margin:0;">
+        <label>Action</label>
+        <select id="selAction" class="form-select" onchange="onSelection()" style="min-width:220px;">
+            <option value="">— Sélectionner une action —</option>
+            {% for a in actions %}
+            <option value="{{ a.id }}">{{ a.nom }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-group" style="margin:0;">
+        <label>Année</label>
+        <select id="selAnnee" class="form-select" onchange="onSelection()">
+            {% for a in annees %}
+            <option value="{{ a }}" {% if a == annee_courante %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+{% if not actions %}
+<div class="muted" style="padding:16px 0;">
+    Aucune action n'est définie. Créez-en une sur la page
+    <a href="{{ url_for('comptabilite_analytique_bp.plan_comptable_analytique') }}">Plan comptable analytique</a>.
+</div>
+{% endif %}
+
+<div id="infoSelect" class="muted" style="padding:20px 0;text-align:center;">
+    Sélectionnez une action et une année pour construire le budget.
+</div>
+
+<div id="mainContainer" style="display:none;">
+    <div class="tabs">
+        <button class="tab-btn active" data-onglet="previsionnel" onclick="switchOnglet('previsionnel')">📘 Prévisionnel</button>
+        <button class="tab-btn" data-onglet="realise" onclick="switchOnglet('realise')">📊 Réalisé</button>
+    </div>
+    <div id="pane-previsionnel" class="pane"></div>
+    <div id="pane-realise" class="pane" style="display:none;"></div>
+</div>
+
+<datalist id="dl60"></datalist>
+<datalist id="dl61"></datalist>
+<datalist id="dl62"></datalist>
+<datalist id="dl7"></datalist>
+<datalist id="dlAll"></datalist>
+
+<div id="toast" style="display:none;position:fixed;bottom:20px;right:20px;background:#27AE60;color:#fff;padding:10px 16px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:9999;"></div>
+
+<style>
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--border,#e3e6ea);margin:8px 0 16px;}
+.tab-btn{padding:10px 18px;border:none;background:transparent;cursor:pointer;font-size:1em;border-bottom:3px solid transparent;color:var(--text,#333);}
+.tab-btn.active{border-bottom-color:var(--primary,#2c7be5);font-weight:bold;color:var(--primary,#2c7be5);}
+.card{background:var(--card-bg,#fff);border:1px solid var(--border,#e3e6ea);border-radius:10px;padding:16px;margin-bottom:16px;}
+.card h4{margin:0 0 12px;}
+.part-title{font-size:1.1em;font-weight:bold;margin:22px 0 8px;color:var(--primary,#2c7be5);border-left:4px solid var(--primary,#2c7be5);padding-left:8px;}
+.muted{color:var(--text-muted,#888);font-size:.9em;}
+.tright{text-align:right;}
+.btn-sm{padding:5px 10px;font-size:.9em;}
+.btn-del{background:transparent;border:none;color:var(--danger,#dc3545);cursor:pointer;font-size:1em;line-height:1;}
+.bilan-table input.form-control{padding:4px 6px;height:auto;}
+.sal-table th{font-size:.78em;white-space:nowrap;}
+.sal-table td{padding:4px 6px;}
+.sal-table input{width:80px;}
+.info-box{background:#eaf3ff;border:1px solid #b6d4fe;border-radius:8px;padding:10px 14px;margin:12px 0;}
+.summary-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border,#eee);}
+.summary-row.total{font-weight:bold;font-size:1.05em;border-bottom:2px solid var(--border,#ccc);}
+.pos{color:var(--success,#27AE60);font-weight:bold;}
+.neg{color:var(--danger,#dc3545);font-weight:bold;}
+</style>
+
+<script>
+var URL_IMPORT_BI = "{{ url_for('import_bi_bp.import_bi') }}";
+
+var CTX = null;
+var STATE = {previsionnel: null, realise: null};
+var PREV_FOR_REAL = null;     // snapshot du prévisionnel pour le comparatif réalisé
+var REAL_COMPTA = null;       // données comptables réalisées (import BI)
+var currentOnglet = 'previsionnel';
+
+// ── Utilitaires ──────────────────────────────────────────────────────────────
+function num(v, def){
+    var d = (def === undefined) ? 0 : (parseFloat(def) || 0);
+    if(v === undefined || v === null || v === '') return d;
+    if(typeof v === 'string') v = v.replace(',', '.');
+    var n = parseFloat(v);
+    return isNaN(n) ? d : n;
+}
+function fmt(n){ return (n || 0).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function esc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function attr(s){ return esc(s); }
+function setTxt(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; }
+function setHtml(id, v){ var el = document.getElementById(id); if(el) el.innerHTML = v; }
+function gv(id){ var el = document.getElementById(id); return el ? el.value : ''; }
+function toast(msg){ var t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; setTimeout(function(){ t.style.display = 'none'; }, 2000); }
+
+function emptyPrev(){ return {charges_60:[], charges_61:[], charges_62:[], produits:[], salaries:[], salaire_params:{}, logistique:{selection:'global'}, benevoles:[]}; }
+function emptyReal(){ return {comptes_commentaires:{}, comptes_manuels:[], salaries:[], salaire_params:{}, logistique:{selection:'global'}, benevoles:[]}; }
+
+function ensureParams(o){
+    o.salaire_params = o.salaire_params || {};
+    var p = o.salaire_params;
+    if(p.socle == null || p.socle === '') p.socle = CTX.defaults.socle;
+    if(p.point == null || p.point === '') p.point = CTX.defaults.point;
+    if(p.temps_plein == null || p.temps_plein === '') p.temps_plein = CTX.defaults.temps_plein;
+}
+function mergePrev(d){ var b = emptyPrev(); if(d) Object.assign(b, d); ensureParams(b); b.logistique = b.logistique || {selection:'global'}; if(!b.logistique.selection) b.logistique.selection = 'global'; return b; }
+function mergeReal(d){ var b = emptyReal(); if(d) Object.assign(b, d); ensureParams(b); b.logistique = b.logistique || {selection:'global'}; if(!b.logistique.selection) b.logistique.selection = 'global'; b.comptes_commentaires = b.comptes_commentaires || {}; return b; }
+function prefillRealise(prev){
+    var b = emptyReal();
+    b.salaries = JSON.parse(JSON.stringify(prev.salaries || []));
+    b.salaire_params = Object.assign({}, prev.salaire_params || {});
+    b.logistique = {selection: (prev.logistique || {}).selection || 'global'};
+    b.benevoles = JSON.parse(JSON.stringify(prev.benevoles || []));
+    ensureParams(b);
+    return b;
+}
+
+// ── Calcul de paie (miroir du serveur) ───────────────────────────────────────
+function calcSalarie(s, params){
+    var socle = num(params.socle, CTX.defaults.socle);
+    var point = num(params.point, CTX.defaults.point);
+    var tp = num(params.temps_plein, CTX.defaults.temps_plein) || 35;
+    var th = num(s.temps_hebdo, tp); if(th <= 0) th = tp;
+    var pesee = num(s.pesee), anc = num(s.anciennete), comp = num(s.competence), maint = num(s.maintien);
+    var heures = num(s.heures_action);
+    var tc = num(s.taux_charge, CTX.defaults.taux_charge);
+    var tt = num(s.taux_taxe, CTX.defaults.taux_taxe);
+    var ratio = tp ? th / tp : 1;
+    var brutm = (socle + (pesee + anc + comp) * point) / 12 * ratio + maint;
+    var ha = th * 52;
+    var txh = ha ? brutm * 12 / ha : 0;
+    var coutb = txh * heures;
+    var chs = coutb * tc / 100;
+    var salc = coutb + chs;
+    var taxe = coutb * tt / 100;
+    return {brutm:brutm, coutb:coutb, chs:chs, salc:salc, taxe:taxe};
+}
+function sumCat(o){ var s = 0; for(var k in (o || {})) s += (o[k].total || 0); return s; }
+
+// ── Sélection action/année ───────────────────────────────────────────────────
+function onSelection(){
+    var action = gv('selAction'), annee = gv('selAnnee');
+    if(!action || !annee){
+        document.getElementById('mainContainer').style.display = 'none';
+        document.getElementById('actionButtons').style.display = 'none';
+        document.getElementById('infoSelect').style.display = 'block';
+        return;
+    }
+    loadAll(action, annee);
+}
+
+function loadAll(action_id, annee){
+    fetch('/api/bilan-action/contexte?annee=' + annee)
+    .then(function(r){ return r.json(); })
+    .then(function(ctx){
+        if(ctx.error){ alert(ctx.error); return; }
+        CTX = ctx;
+        CTX.comptesMap = {};
+        (ctx.comptes_pcg || []).forEach(function(c){ CTX.comptesMap[c.compte_num] = c.libelle; });
+        CTX.taux = {
+            taux_site1: num(ctx.taux.taux_site1),
+            taux_site2: num(ctx.taux.taux_site2),
+            taux_global: num(ctx.taux.taux_global)
+        };
+        populateDatalists();
+        return Promise.all([
+            fetch('/api/bilan-action/donnees?action_id=' + action_id + '&annee=' + annee + '&onglet=previsionnel').then(function(r){ return r.json(); }),
+            fetch('/api/bilan-action/donnees?action_id=' + action_id + '&annee=' + annee + '&onglet=realise').then(function(r){ return r.json(); })
+        ]);
+    })
+    .then(function(res){
+        if(!res) return;
+        var dp = res[0], dr = res[1];
+        STATE.previsionnel = mergePrev(dp.donnees);
+        PREV_FOR_REAL = dr.previsionnel || dp.donnees || JSON.parse(JSON.stringify(STATE.previsionnel));
+        if(dr.found){ STATE.realise = mergeReal(dr.donnees); }
+        else { STATE.realise = prefillRealise(STATE.previsionnel); }
+        REAL_COMPTA = null;
+        document.getElementById('mainContainer').style.display = 'block';
+        document.getElementById('actionButtons').style.display = 'flex';
+        document.getElementById('infoSelect').style.display = 'none';
+        renderPane('previsionnel');
+        renderPane('realise');
+        showCurrent();
+    })
+    .catch(function(){ alert('Erreur réseau.'); });
+}
+
+function populateDatalists(){
+    function f(id, pred){
+        var el = document.getElementById(id); if(!el) return;
+        el.innerHTML = (CTX.comptes_pcg || []).filter(function(c){ return pred(c.compte_num); })
+            .map(function(c){ return '<option value="' + attr(c.compte_num) + '">' + attr(c.compte_num + ' — ' + c.libelle) + '</option>'; }).join('');
+    }
+    f('dl60', function(n){ return n.indexOf('60') === 0; });
+    f('dl61', function(n){ return n.indexOf('61') === 0; });
+    f('dl62', function(n){ return n.indexOf('62') === 0; });
+    f('dl7', function(n){ return n.indexOf('7') === 0; });
+    f('dlAll', function(){ return true; });
+}
+
+function switchOnglet(o){
+    currentOnglet = o;
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.toggle('active', b.dataset.onglet === o); });
+    showCurrent();
+}
+function showCurrent(){
+    document.getElementById('pane-previsionnel').style.display = (currentOnglet === 'previsionnel') ? 'block' : 'none';
+    document.getElementById('pane-realise').style.display = (currentOnglet === 'realise') ? 'block' : 'none';
+}
+
+// ── Rendu d'un onglet ────────────────────────────────────────────────────────
+function renderPane(onglet){
+    if(onglet === 'previsionnel') renderPrev(); else renderRealise();
+    refreshComputed(onglet);
+}
+function partTitle(t){ return '<div class="part-title">' + t + '</div>'; }
+
+function renderPrev(){
+    var h = '';
+    h += partTitle('Partie 1 — Comptes comptables');
+    h += sectionComptes('previsionnel', 'charges_60', '60xxxx — Achats', 'dl60');
+    h += sectionComptes('previsionnel', 'charges_61', '61xxxx — Services extérieurs', 'dl61');
+    h += sectionComptes('previsionnel', 'charges_62', '62xxxx — Autres services extérieurs', 'dl62');
+    h += sectionComptes('previsionnel', 'produits', 'Produits (70xxxx, 74xxxx, autres 71xxxx…)', 'dl7');
+    h += partTitle('Partie 2 — Salaires');
+    h += salaryBlock('previsionnel');
+    h += partTitle('Partie 3 — Logistique & bénévoles');
+    h += logistiqueBlock('previsionnel');
+    h += benevolesBlock('previsionnel');
+    h += summaryBlock('previsionnel');
+    document.getElementById('pane-previsionnel').innerHTML = h;
+}
+
+function renderRealise(){
+    var h = '';
+    h += partTitle('Partie 1 — Réalisé comptable');
+    h += '<div class="card"><button class="btn btn-primary btn-sm" onclick="lancerBilan()">▶️ Lancer / actualiser le bilan</button>'
+       + '<div id="realiseComptaZone" style="margin-top:12px;">' + renderComptaCompare() + '</div></div>';
+    h += partTitle('Partie 2 — Salaires (reportés du prévisionnel, modifiables)');
+    h += salaryBlock('realise');
+    h += partTitle('Partie 3 — Logistique & bénévoles');
+    h += logistiqueBlock('realise');
+    h += benevolesBlock('realise');
+    h += summaryBlock('realise');
+    document.getElementById('pane-realise').innerHTML = h;
+}
+
+// ── Partie 1 : comptes (prévisionnel) ────────────────────────────────────────
+function sectionComptes(onglet, key, titre, dl){
+    var arr = STATE[onglet][key] || [];
+    var rows = arr.map(function(l, i){
+        return '<tr>'
+            + '<td><input list="' + dl + '" class="form-control" value="' + attr(l.compte_num) + '" oninput="updateRow(\'' + onglet + '\',\'' + key + '\',' + i + ',\'compte_num\',this.value);autoLib(\'' + onglet + '\',\'' + key + '\',' + i + ',this.value)"></td>'
+            + '<td><input id="lib_' + onglet + '_' + key + '_' + i + '" class="form-control" value="' + attr(l.libelle) + '" oninput="updateRow(\'' + onglet + '\',\'' + key + '\',' + i + ',\'libelle\',this.value)"></td>'
+            + '<td><input type="number" step="0.01" class="form-control tright" value="' + (l.montant == null ? '' : l.montant) + '" oninput="updateRow(\'' + onglet + '\',\'' + key + '\',' + i + ',\'montant\',this.value)"></td>'
+            + '<td><input class="form-control" value="' + attr(l.commentaire) + '" oninput="updateRow(\'' + onglet + '\',\'' + key + '\',' + i + ',\'commentaire\',this.value)"></td>'
+            + '<td><button class="btn-del" onclick="delRow(\'' + onglet + '\',\'' + key + '\',' + i + ')">✕</button></td>'
+            + '</tr>';
+    }).join('');
+    return '<div class="card bilan-table"><h4>' + titre + '</h4>'
+        + '<table class="data-table"><thead><tr><th style="width:18%">Compte</th><th>Libellé</th><th style="width:15%">Montant</th><th>Commentaire</th><th></th></tr></thead>'
+        + '<tbody>' + (rows || '<tr><td colspan="5" class="muted">Aucune ligne.</td></tr>') + '</tbody>'
+        + '<tfoot><tr><td colspan="2" class="tright"><b>Sous-total</b></td><td class="tright"><b><span id="sub_' + onglet + '_' + key + '">0,00</span> €</b></td><td colspan="2"></td></tr></tfoot></table>'
+        + '<button class="btn btn-secondary btn-sm" onclick="addRow(\'' + onglet + '\',\'' + key + '\')">+ Ajouter un compte</button></div>';
+}
+
+function autoLib(onglet, key, i, n){
+    var lib = CTX.comptesMap[n];
+    if(lib){
+        STATE[onglet][key][i].libelle = lib;
+        var el = document.getElementById('lib_' + onglet + '_' + key + '_' + i);
+        if(el) el.value = lib;
+    }
+}
+
+// ── Partie 2 : salaires ──────────────────────────────────────────────────────
+function salaryBlock(onglet){
+    var d = STATE[onglet];
+    var p = d.salaire_params || {};
+    var opts = '<option value="">— Choisir un salarié —</option>';
+    (CTX.employes || []).forEach(function(e){ opts += '<option value="' + e.user_id + '">' + esc(e.nom + ' ' + e.prenom) + ' (' + e.type_contrat + ')</option>'; });
+    var rows = (d.salaries || []).map(function(s, i){ return salaryRow(onglet, s, i); }).join('');
+    return '<div class="card"><h4>Masse salariale</h4>'
+        + '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;">'
+        + '<div class="form-group" style="margin:0;"><label>Salaire socle (annuel)</label><input type="number" step="1" class="form-control" style="width:120px;" value="' + (p.socle == null ? '' : p.socle) + '" oninput="updateParam(\'' + onglet + '\',\'socle\',this.value)"></div>'
+        + '<div class="form-group" style="margin:0;"><label>Valeur du point</label><input type="number" step="0.01" class="form-control" style="width:110px;" value="' + (p.point == null ? '' : p.point) + '" oninput="updateParam(\'' + onglet + '\',\'point\',this.value)"></div>'
+        + '<div class="form-group" style="margin:0;"><label>Temps plein (h/sem.)</label><input type="number" step="0.5" class="form-control" style="width:110px;" value="' + (p.temps_plein == null ? '' : p.temps_plein) + '" oninput="updateParam(\'' + onglet + '\',\'temps_plein\',this.value)"></div>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">'
+        + '<div class="form-group" style="margin:0;"><label>Ajouter un salarié</label><select id="selSal_' + onglet + '" class="form-select">' + opts + '</select></div>'
+        + '<button class="btn btn-secondary btn-sm" onclick="addSalarie(\'' + onglet + '\')">+ Salarié de la liste</button>'
+        + '<button class="btn btn-secondary btn-sm" onclick="addSalarieManuel(\'' + onglet + '\')">+ Salarié manuel</button>'
+        + '</div>'
+        + '<div style="overflow-x:auto;"><table class="data-table sal-table"><thead><tr>'
+        + '<th>Salarié</th><th>Temps hebdo</th><th>Pesée</th><th>Anc.</th><th>Comp.</th><th>Maintien</th>'
+        + '<th>Brut mensuel</th><th>Heures action</th><th>Coût brut<br>(641100)</th><th>Taux chargé %</th>'
+        + '<th>Charges soc.<br>(645100)</th><th>Taxe %</th><th>Taxe<br>(631100)</th><th>Salaire chargé</th><th></th>'
+        + '</tr></thead><tbody>' + (rows || '<tr><td colspan="15" class="muted">Aucun salarié.</td></tr>') + '</tbody>'
+        + '<tfoot><tr><td colspan="8" class="tright"><b>Totaux</b></td>'
+        + '<td class="tright"><b><span id="tot_' + onglet + '_brut">0,00</span></b></td><td></td>'
+        + '<td class="tright"><b><span id="tot_' + onglet + '_chs">0,00</span></b></td><td></td>'
+        + '<td class="tright"><b><span id="tot_' + onglet + '_taxe">0,00</span></b></td>'
+        + '<td class="tright"><b><span id="tot_' + onglet + '_salc">0,00</span></b></td><td></td></tr></tfoot></table></div></div>';
+}
+
+function salaryRow(onglet, s, i){
+    var nameCell = s.user_id
+        ? esc((s.nom || '') + (s.prenom ? (' ' + s.prenom) : ''))
+        : '<input class="form-control" value="' + attr(s.nom) + '" style="min-width:110px;" oninput="updateRow(\'' + onglet + '\',\'salaries\',' + i + ',\'nom\',this.value)">';
+    function inp(field, step){ var v = s[field]; return '<input type="number" step="' + (step || '0.01') + '" class="form-control tright" value="' + (v == null ? '' : v) + '" oninput="updateRow(\'' + onglet + '\',\'salaries\',' + i + ',\'' + field + '\',this.value)">'; }
+    return '<tr><td>' + nameCell + '</td>'
+        + '<td>' + inp('temps_hebdo', '0.5') + '</td>'
+        + '<td>' + inp('pesee', '1') + '</td>'
+        + '<td>' + inp('anciennete', '1') + '</td>'
+        + '<td>' + inp('competence', '1') + '</td>'
+        + '<td>' + inp('maintien', '0.01') + '</td>'
+        + '<td class="tright"><span id="c_' + onglet + '_brutm_' + i + '">0,00</span></td>'
+        + '<td>' + inp('heures_action', '1') + '</td>'
+        + '<td class="tright"><span id="c_' + onglet + '_coutb_' + i + '">0,00</span></td>'
+        + '<td>' + inp('taux_charge', '0.1') + '</td>'
+        + '<td class="tright"><span id="c_' + onglet + '_chs_' + i + '">0,00</span></td>'
+        + '<td>' + inp('taux_taxe', '0.01') + '</td>'
+        + '<td class="tright"><span id="c_' + onglet + '_taxe_' + i + '">0,00</span></td>'
+        + '<td class="tright"><span id="c_' + onglet + '_salc_' + i + '">0,00</span></td>'
+        + '<td><button class="btn-del" onclick="delRow(\'' + onglet + '\',\'salaries\',' + i + ')">✕</button></td></tr>';
+}
+
+function addSalarie(onglet){
+    var sel = document.getElementById('selSal_' + onglet);
+    var uid = sel ? sel.value : '';
+    if(!uid) return;
+    var emp = (CTX.employes || []).find(function(e){ return String(e.user_id) === String(uid); });
+    if(!emp) return;
+    if((STATE[onglet].salaries || []).some(function(s){ return String(s.user_id) === String(uid); })){ alert('Ce salarié est déjà ajouté.'); return; }
+    STATE[onglet].salaries.push({
+        user_id: emp.user_id, nom: emp.nom, prenom: emp.prenom,
+        temps_hebdo: emp.temps_hebdo, pesee: emp.pesee, anciennete: emp.anciennete,
+        competence: emp.competence, maintien: emp.maintien, heures_action: '',
+        taux_charge: CTX.defaults.taux_charge, taux_taxe: CTX.defaults.taux_taxe
+    });
+    renderPane(onglet);
+}
+function addSalarieManuel(onglet){
+    var n = (STATE[onglet].salaries || []).filter(function(s){ return !s.user_id; }).length + 1;
+    STATE[onglet].salaries.push({
+        user_id: null, nom: 'Salarié ' + n, prenom: '',
+        temps_hebdo: CTX.defaults.temps_plein, pesee: '', anciennete: '', competence: '', maintien: '',
+        heures_action: '', taux_charge: CTX.defaults.taux_charge, taux_taxe: CTX.defaults.taux_taxe
+    });
+    renderPane(onglet);
+}
+function updateParam(onglet, field, val){ STATE[onglet].salaire_params[field] = val; refreshComputed(onglet); }
+
+// ── Partie 3 : logistique ────────────────────────────────────────────────────
+function logistiqueBlock(onglet){
+    var sel = (STATE[onglet].logistique || {}).selection || 'global';
+    function radio(val, label){ return '<label><input type="radio" name="taux_' + onglet + '" value="' + val + '" ' + (sel === val ? 'checked' : '') + ' onchange="setTauxSel(\'' + onglet + '\',\'' + val + '\')"> ' + label + '</label>'; }
+    function input(site){ return '<input type="number" step="0.01" id="tx_' + site + '_' + onglet + '" class="form-control" style="width:110px;margin-top:4px;" value="' + (CTX.taux['taux_' + site] || '') + '" oninput="onTauxInput(\'' + site + '\',this.value)">'; }
+    return '<div class="card"><h4>🏗️ Taux de logistique <span class="muted">(valeurs partagées avec Bilan secteurs, par année)</span></h4>'
+        + '<div style="display:flex;gap:24px;flex-wrap:wrap;">'
+        + '<div class="form-group" style="margin:0;">' + radio('site1', 'Site 1') + '<br>' + input('site1') + '</div>'
+        + '<div class="form-group" style="margin:0;">' + radio('site2', 'Site 2') + '<br>' + input('site2') + '</div>'
+        + '<div class="form-group" style="margin:0;">' + radio('global', 'Global') + '<br>' + input('global') + '</div>'
+        + '</div><div id="logiCalc_' + onglet + '" class="muted" style="margin-top:12px;"></div></div>';
+}
+var _tauxTimer = null;
+function onTauxInput(site, val){
+    CTX.taux['taux_' + site] = num(val);
+    ['previsionnel', 'realise'].forEach(function(o){ var el = document.getElementById('tx_' + site + '_' + o); if(el && el.value !== val) el.value = val; });
+    refreshComputed('previsionnel'); refreshComputed('realise');
+    clearTimeout(_tauxTimer); _tauxTimer = setTimeout(saveTaux, 600);
+}
+function saveTaux(){
+    var annee = parseInt(gv('selAnnee'), 10);
+    if(!annee) return;
+    fetch('/api/bilan-action/taux-logistique', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({annee:annee, taux_site1:CTX.taux.taux_site1, taux_site2:CTX.taux.taux_site2, taux_global:CTX.taux.taux_global})
+    });
+}
+function setTauxSel(onglet, val){ STATE[onglet].logistique.selection = val; refreshComputed(onglet); }
+
+// ── Partie 3 : bénévoles ─────────────────────────────────────────────────────
+function benevolesBlock(onglet){
+    var arr = STATE[onglet].benevoles || [];
+    var opts = '<option value="">— Choisir un bénévole —</option>';
+    (CTX.benevoles || []).forEach(function(b){ opts += '<option value="' + b.id + '">' + esc(b.nom) + '</option>'; });
+    var rows = arr.map(function(b, i){
+        var nameCell = b.benevole_id
+            ? esc(b.nom)
+            : '<input class="form-control" value="' + attr(b.nom) + '" oninput="updateRow(\'' + onglet + '\',\'benevoles\',' + i + ',\'nom\',this.value)">';
+        return '<tr><td>' + nameCell + '</td>'
+            + '<td><input type="number" step="0.5" class="form-control tright" value="' + (b.heures == null ? '' : b.heures) + '" oninput="updateRow(\'' + onglet + '\',\'benevoles\',' + i + ',\'heures\',this.value)"></td>'
+            + '<td><input class="form-control" value="' + attr(b.commentaire) + '" oninput="updateRow(\'' + onglet + '\',\'benevoles\',' + i + ',\'commentaire\',this.value)"></td>'
+            + '<td><button class="btn-del" onclick="delRow(\'' + onglet + '\',\'benevoles\',' + i + ')">✕</button></td></tr>';
+    }).join('');
+    return '<div class="card"><h4>🤝 Bénévoles</h4>'
+        + '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px;">'
+        + '<div class="form-group" style="margin:0;"><label>Ajouter un bénévole</label><select id="selBen_' + onglet + '" class="form-select">' + opts + '</select></div>'
+        + '<button class="btn btn-secondary btn-sm" onclick="addBenevole(\'' + onglet + '\')">+ De la liste</button>'
+        + '<button class="btn btn-secondary btn-sm" onclick="addBenevoleManuel(\'' + onglet + '\')">+ Manuel</button>'
+        + '</div><table class="data-table"><thead><tr><th>Bénévole</th><th style="width:15%">Heures</th><th>Commentaire</th><th></th></tr></thead>'
+        + '<tbody>' + (rows || '<tr><td colspan="4" class="muted">Aucun bénévole.</td></tr>') + '</tbody>'
+        + '<tfoot><tr><td class="tright"><b>Total heures</b></td><td class="tright"><b><span id="benh_' + onglet + '">0</span></b></td><td colspan="2"></td></tr></tfoot></table></div>';
+}
+function addBenevole(onglet){
+    var sel = document.getElementById('selBen_' + onglet);
+    var id = sel ? sel.value : '';
+    if(!id) return;
+    var b = (CTX.benevoles || []).find(function(x){ return String(x.id) === String(id); });
+    if(!b) return;
+    STATE[onglet].benevoles.push({benevole_id: b.id, nom: b.nom, heures: '', commentaire: ''});
+    renderPane(onglet);
+}
+function addBenevoleManuel(onglet){
+    STATE[onglet].benevoles.push({benevole_id: null, nom: '', heures: '', commentaire: ''});
+    renderPane(onglet);
+}
+
+// ── Synthèse ─────────────────────────────────────────────────────────────────
+function summaryBlock(onglet){ return '<div class="card"><h4>📈 Synthèse</h4><div id="summary_' + onglet + '"></div></div>'; }
+
+function refreshComputed(onglet){
+    var d = STATE[onglet];
+    if(onglet === 'previsionnel'){
+        ['charges_60', 'charges_61', 'charges_62', 'produits'].forEach(function(k){
+            var s = 0; (d[k] || []).forEach(function(l){ s += num(l.montant); });
+            setTxt('sub_' + onglet + '_' + k, fmt(s));
+        });
+    }
+    var params = d.salaire_params || {};
+    var tb = 0, tcs = 0, tt = 0, tsalc = 0;
+    (d.salaries || []).forEach(function(s, i){
+        var c = calcSalarie(s, params);
+        tb += c.coutb; tcs += c.chs; tt += c.taxe; tsalc += c.salc;
+        setTxt('c_' + onglet + '_brutm_' + i, fmt(c.brutm));
+        setTxt('c_' + onglet + '_coutb_' + i, fmt(c.coutb));
+        setTxt('c_' + onglet + '_chs_' + i, fmt(c.chs));
+        setTxt('c_' + onglet + '_taxe_' + i, fmt(c.taxe));
+        setTxt('c_' + onglet + '_salc_' + i, fmt(c.salc));
+    });
+    setTxt('tot_' + onglet + '_brut', fmt(tb));
+    setTxt('tot_' + onglet + '_chs', fmt(tcs));
+    setTxt('tot_' + onglet + '_taxe', fmt(tt));
+    setTxt('tot_' + onglet + '_salc', fmt(tsalc));
+    var masse = tb + tcs + tt;
+
+    var bh = 0; (d.benevoles || []).forEach(function(b){ bh += num(b.heures); });
+    setTxt('benh_' + onglet, bh.toLocaleString('fr-FR'));
+
+    var chComptes = 0, prod = 0;
+    if(onglet === 'realise'){
+        if(REAL_COMPTA && REAL_COMPTA.import_existe){ chComptes += sumCat(REAL_COMPTA.charges); prod += sumCat(REAL_COMPTA.produits); }
+        (d.comptes_manuels || []).forEach(function(m){ var v = num(m.montant); if(String(m.compte_num || '')[0] === '7') prod += v; else chComptes += v; });
+    } else {
+        ['charges_60', 'charges_61', 'charges_62'].forEach(function(k){ (d[k] || []).forEach(function(l){ chComptes += num(l.montant); }); });
+        (d.produits || []).forEach(function(l){ prod += num(l.montant); });
+    }
+
+    var sel = (d.logistique || {}).selection || 'global';
+    var tauxVal = num(CTX.taux['taux_' + sel]);
+    var totalCharges = chComptes + masse;
+    var logi = totalCharges * tauxVal / 100;
+    setHtml('logiCalc_' + onglet, 'Base = charges comptables ' + fmt(chComptes) + ' € + masse salariale chargée ' + fmt(masse) + ' € = <b>' + fmt(totalCharges) + ' €</b><br>Charges de logistique = ' + fmt(totalCharges) + ' € × ' + fmt(tauxVal) + ' % (' + sel + ') = <b>' + fmt(logi) + ' €</b>');
+
+    var resSans = prod - totalCharges, resAvec = prod - totalCharges - logi;
+    function r(label, val, cls){ return '<div class="summary-row ' + (cls || '') + '"><span>' + label + '</span><span>' + val + ' €</span></div>'; }
+    function rcol(label, val){ var c = val >= 0 ? 'pos' : 'neg'; return '<div class="summary-row total"><span>' + label + '</span><span class="' + c + '">' + fmt(val) + ' €</span></div>'; }
+    var html = r('Charges comptables (60/61/62)', fmt(chComptes))
+        + r('Masse salariale chargée (641100 + 645100 + 631100)', fmt(masse))
+        + r('<b>Total charges</b>', fmt(totalCharges), 'total')
+        + r('Total produits', fmt(prod))
+        + r('Logistique (' + fmt(tauxVal) + ' % — ' + sel + ')', fmt(logi))
+        + rcol('Résultat sans logistique', resSans)
+        + rcol('Résultat avec logistique', resAvec);
+    setHtml('summary_' + onglet, html);
+}
+
+// ── Réalisé : comparatif comptable ───────────────────────────────────────────
+function prevComptesMap(){
+    var map = {};
+    var p = PREV_FOR_REAL;
+    if(!p) return map;
+    ['charges_60', 'charges_61', 'charges_62', 'produits'].forEach(function(k){
+        (p[k] || []).forEach(function(l){
+            var n = l.compte_num; if(!n) return;
+            if(!map[n]) map[n] = {libelle: l.libelle || '', montant: 0};
+            map[n].montant += num(l.montant);
+        });
+    });
+    return map;
+}
+function renderComptaCompare(){
+    if(!REAL_COMPTA){ return '<p class="muted">Cliquez sur « Lancer le bilan » pour charger le réalisé comptable.</p>'; }
+    if(!REAL_COMPTA.import_existe){ return '<p class="muted">⚠️ Aucun import BI pour cette année. <a href="' + URL_IMPORT_BI + '">Effectuer l\'import BI</a>, puis relancez le bilan.</p>'; }
+    var prevMap = prevComptesMap();
+    var realMap = {};
+    ['charges', 'produits'].forEach(function(g){
+        var o = REAL_COMPTA[g] || {};
+        for(var cat in o){ for(var n in o[cat].comptes){ realMap[n] = {libelle: o[cat].comptes[n].libelle, montant: o[cat].comptes[n].total}; } }
+    });
+    var nums = Object.keys(prevMap).concat(Object.keys(realMap)).filter(function(v, idx, self){ return self.indexOf(v) === idx; }).sort();
+    var rows = nums.map(function(n){
+        var p = prevMap[n] ? prevMap[n].montant : 0;
+        var rr = realMap[n] ? realMap[n].montant : 0;
+        var lib = (realMap[n] && realMap[n].libelle) || (prevMap[n] && prevMap[n].libelle) || n;
+        var ecart = rr - p;
+        var com = (STATE.realise.comptes_commentaires || {})[n] || '';
+        return '<tr><td>' + esc(n) + '</td><td>' + esc(lib) + '</td><td class="tright">' + fmt(p) + '</td><td class="tright">' + fmt(rr) + '</td>'
+            + '<td class="tright ' + (ecart >= 0 ? 'pos' : 'neg') + '">' + fmt(ecart) + '</td>'
+            + '<td><input class="form-control" value="' + attr(com) + '" oninput="setComment(\'' + attr(n) + '\',this.value)"></td></tr>';
+    }).join('');
+    var man = (STATE.realise.comptes_manuels || []).map(function(m, i){
+        return '<tr><td><input list="dlAll" class="form-control" value="' + attr(m.compte_num) + '" oninput="updateRow(\'realise\',\'comptes_manuels\',' + i + ',\'compte_num\',this.value)"></td>'
+            + '<td><input class="form-control" value="' + attr(m.libelle) + '" oninput="updateRow(\'realise\',\'comptes_manuels\',' + i + ',\'libelle\',this.value)"></td>'
+            + '<td colspan="2"><input type="number" step="0.01" class="form-control tright" value="' + (m.montant == null ? '' : m.montant) + '" oninput="updateRow(\'realise\',\'comptes_manuels\',' + i + ',\'montant\',this.value)"></td><td></td>'
+            + '<td style="display:flex;gap:4px;"><input class="form-control" value="' + attr(m.commentaire) + '" oninput="updateRow(\'realise\',\'comptes_manuels\',' + i + ',\'commentaire\',this.value)"><button class="btn-del" onclick="delCompteManuel(' + i + ')">✕</button></td></tr>';
+    }).join('');
+    return '<table class="data-table bilan-table"><thead><tr><th>Compte</th><th>Libellé</th><th class="tright">Prévu</th><th class="tright">Réalisé</th><th class="tright">Écart</th><th>Commentaire</th></tr></thead>'
+        + '<tbody>' + (rows || '<tr><td colspan="6" class="muted">Aucun compte rattaché à l\'action.</td></tr>') + '</tbody>'
+        + (man ? '<tbody><tr><td colspan="6"><b>Comptes ajoutés manuellement</b></td></tr>' + man + '</tbody>' : '')
+        + '</table><button class="btn btn-secondary btn-sm" onclick="addCompteManuel()" style="margin-top:8px;">+ Ajouter un compte</button>';
+}
+function setComment(n, val){ STATE.realise.comptes_commentaires[n] = val; }
+function addCompteManuel(){ STATE.realise.comptes_manuels.push({compte_num:'', libelle:'', montant:'', commentaire:''}); document.getElementById('realiseComptaZone').innerHTML = renderComptaCompare(); refreshComputed('realise'); }
+function delCompteManuel(i){ STATE.realise.comptes_manuels.splice(i, 1); document.getElementById('realiseComptaZone').innerHTML = renderComptaCompare(); refreshComputed('realise'); }
+
+function lancerBilan(){
+    var action_id = gv('selAction'), annee = gv('selAnnee');
+    if(!action_id || !annee) return;
+    fetch('/api/bilan-action/realise-compta?action_id=' + action_id + '&annee=' + annee)
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+        if(d.error){ alert(d.error); return; }
+        REAL_COMPTA = d;
+        document.getElementById('realiseComptaZone').innerHTML = renderComptaCompare();
+        refreshComputed('realise');
+    })
+    .catch(function(){ alert('Erreur réseau.'); });
+}
+
+// ── Mutations génériques ─────────────────────────────────────────────────────
+function updateRow(onglet, key, i, field, val){
+    if(!STATE[onglet][key] || !STATE[onglet][key][i]) return;
+    STATE[onglet][key][i][field] = val;
+    refreshComputed(onglet);
+}
+function addRow(onglet, key){ STATE[onglet][key].push({compte_num:'', libelle:'', montant:'', commentaire:''}); renderPane(onglet); }
+function delRow(onglet, key, i){ STATE[onglet][key].splice(i, 1); renderPane(onglet); }
+
+// ── Sauvegarde / export ──────────────────────────────────────────────────────
+function sauvegarder(showMsg){
+    var action_id = parseInt(gv('selAction'), 10), annee = parseInt(gv('selAnnee'), 10);
+    if(!action_id || !annee) return Promise.resolve();
+    setTxt('saveStatus', 'Enregistrement…');
+    return fetch('/api/bilan-action/save', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action_id:action_id, annee:annee, onglet:currentOnglet, donnees:STATE[currentOnglet]})
+    }).then(function(r){ return r.json(); }).then(function(d){
+        setTxt('saveStatus', '');
+        if(d.error){ alert(d.error); return d; }
+        if(currentOnglet === 'previsionnel'){ PREV_FOR_REAL = JSON.parse(JSON.stringify(STATE.previsionnel)); }
+        if(showMsg) toast('✓ Enregistré');
+        return d;
+    }).catch(function(){ setTxt('saveStatus', ''); alert('Erreur réseau lors de l\'enregistrement.'); });
+}
+function exporterPdf(){
+    var action_id = gv('selAction'), annee = gv('selAnnee');
+    if(!action_id || !annee) return;
+    sauvegarder(false).then(function(){
+        window.open('/api/bilan-action/export-pdf?action_id=' + action_id + '&annee=' + annee + '&onglet=' + currentOnglet, '_blank');
+    });
+}
+</script>
+{% endblock %}

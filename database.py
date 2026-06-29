@@ -1344,6 +1344,26 @@ def init_db():
         )
     ''')
 
+    # Bilan action : budget previsionnel et realise d'une action analytique
+    # (un enregistrement par action / annee / onglet ; etat complet en JSON)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bilan_action_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_id INTEGER NOT NULL,
+            annee INTEGER NOT NULL,
+            onglet TEXT NOT NULL DEFAULT 'previsionnel'
+                CHECK(onglet IN ('previsionnel', 'realise')),
+            donnees TEXT,
+            total_charges REAL DEFAULT 0,
+            total_produits REAL DEFAULT 0,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(action_id, annee, onglet),
+            FOREIGN KEY (action_id) REFERENCES comptabilite_actions(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id)
+        )
+    ''')
+
     # ===== Table types de secteur (migration 0027) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS types_secteur (
