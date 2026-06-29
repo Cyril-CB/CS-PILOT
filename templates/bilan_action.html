@@ -159,6 +159,7 @@ function sumCat(o){ var s = 0; for(var k in (o || {})) s += (o[k].total || 0); r
 
 // ── Sélection action/année ───────────────────────────────────────────────────
 function onSelection(){
+    flushTaux();  // persiste un taux édité pour l'année courante avant de changer de sélection
     var action = gv('selAction'), annee = gv('selAnnee');
     if(!action || !annee){
         document.getElementById('mainContainer').style.display = 'none';
@@ -385,19 +386,27 @@ function logistiqueBlock(onglet){
         + '</div><div id="logiCalc_' + onglet + '" class="muted" style="margin-top:12px;"></div></div>';
 }
 var _tauxTimer = null;
+var _tauxPending = null;   // snapshot {annee, taux_site1, taux_site2, taux_global} à enregistrer
 function onTauxInput(site, val){
     CTX.taux['taux_' + site] = num(val);
     ['previsionnel', 'realise'].forEach(function(o){ var el = document.getElementById('tx_' + site + '_' + o); if(el && el.value !== val) el.value = val; });
     refreshComputed('previsionnel'); refreshComputed('realise');
-    clearTimeout(_tauxTimer); _tauxTimer = setTimeout(saveTaux, 600);
+    // Capture l'année ET les taux au moment de l'édition : un changement d'année
+    // ou un enregistrement déclenché ensuite ne doit pas écrire le taux sur la
+    // mauvaise année (le callback débouncé s'exécute plus tard).
+    _tauxPending = {annee: parseInt(gv('selAnnee'), 10), taux_site1: CTX.taux.taux_site1, taux_site2: CTX.taux.taux_site2, taux_global: CTX.taux.taux_global};
+    clearTimeout(_tauxTimer); _tauxTimer = setTimeout(flushTaux, 600);
 }
-function saveTaux(){
-    var annee = parseInt(gv('selAnnee'), 10);
-    if(!annee) return;
-    fetch('/api/bilan-action/taux-logistique', {
+// Enregistre immédiatement le taux en attente (snapshot) ; renvoie une promesse
+// pour pouvoir attendre l'écriture avant une sauvegarde / un export PDF.
+function flushTaux(){
+    clearTimeout(_tauxTimer); _tauxTimer = null;
+    if(!_tauxPending || !_tauxPending.annee){ _tauxPending = null; return Promise.resolve(); }
+    var p = _tauxPending; _tauxPending = null;
+    return fetch('/api/bilan-action/taux-logistique', {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({annee:annee, taux_site1:CTX.taux.taux_site1, taux_site2:CTX.taux.taux_site2, taux_global:CTX.taux.taux_global})
-    });
+        body: JSON.stringify({annee:p.annee, taux_site1:p.taux_site1, taux_site2:p.taux_site2, taux_global:p.taux_global})
+    }).then(function(r){ return r.json(); }).catch(function(){});
 }
 function setTauxSel(onglet, val){ STATE[onglet].logistique.selection = val; refreshComputed(onglet); }
 
@@ -574,9 +583,12 @@ function sauvegarder(showMsg){
     var action_id = parseInt(gv('selAction'), 10), annee = parseInt(gv('selAnnee'), 10);
     if(!action_id || !annee) return Promise.resolve();
     setTxt('saveStatus', 'Enregistrement…');
-    return fetch('/api/bilan-action/save', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action_id:action_id, annee:annee, onglet:currentOnglet, donnees:STATE[currentOnglet]})
+    // Le résumé serveur lit les taux en base : on écrit d'abord un éventuel taux en attente.
+    return flushTaux().then(function(){
+        return fetch('/api/bilan-action/save', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({action_id:action_id, annee:annee, onglet:currentOnglet, donnees:STATE[currentOnglet]})
+        });
     }).then(function(r){ return r.json(); }).then(function(d){
         setTxt('saveStatus', '');
         if(d.error){ alert(d.error); return d; }
