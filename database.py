@@ -889,6 +889,19 @@ def init_db():
         )
     ''')
 
+    # Délégation : salariés autorisés à créer des réservations de salle
+    # récurrentes (par défaut réservé aux responsables / direction).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations_salles_recurrence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            granted_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (granted_by) REFERENCES users(id)
+        )
+    ''')
+
     # ===== Module CSE (migration 0040) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cse_membres (
