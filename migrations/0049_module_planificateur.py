@@ -4,8 +4,10 @@ Migration 0049 : Module Planificateur de taches (Time Blocking).
 Ajoute les tables du gestionnaire de taches inspire de FlowSavvy :
 - planif_recurrences : definitions des taches recurrentes ;
 - planif_taches      : taches et evenements fixes (rendez-vous, reunions) ;
-- planif_blocs       : blocs de temps calcules par le moteur d'optimisation ;
-- planif_horaires    : horaires de travail par salarie et par jour.
+- planif_blocs       : blocs de temps calcules par le moteur d'optimisation.
+
+Les horaires de travail ne sont pas redemandes : ils sont repris du planning
+theorique du salarie (table planning_theorique, menu « Mon planning »).
 
 Le planning est strictement prive : chaque utilisateur ne voit que ses
 propres taches et blocs (aucun acces transversal, meme pour la direction).
@@ -13,9 +15,9 @@ propres taches et blocs (aucun acces transversal, meme pour la direction).
 
 NOM = "Module Planificateur de taches"
 DESCRIPTION = (
-    "Ajoute les tables planif_recurrences, planif_taches, planif_blocs et "
-    "planif_horaires pour le gestionnaire de taches avec planification "
-    "automatique (Time Blocking)."
+    "Ajoute les tables planif_recurrences, planif_taches et planif_blocs pour "
+    "le gestionnaire de taches avec planification automatique (Time Blocking). "
+    "Les horaires de travail sont repris du planning theorique."
 )
 
 
@@ -96,21 +98,6 @@ def upgrade(conn):
         'CREATE INDEX IF NOT EXISTS idx_planif_blocs_user_date ON planif_blocs(user_id, date)'
     )
 
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS planif_horaires (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            jour_semaine INTEGER NOT NULL,
-            actif INTEGER DEFAULT 1,
-            matin_debut TEXT,
-            matin_fin TEXT,
-            aprem_debut TEXT,
-            aprem_fin TEXT,
-            UNIQUE(user_id, jour_semaine),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    ''')
-
     conn.commit()
 
 
@@ -120,5 +107,4 @@ def downgrade(conn):
     cursor.execute('DROP TABLE IF EXISTS planif_blocs')
     cursor.execute('DROP TABLE IF EXISTS planif_taches')
     cursor.execute('DROP TABLE IF EXISTS planif_recurrences')
-    cursor.execute('DROP TABLE IF EXISTS planif_horaires')
     conn.commit()

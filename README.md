@@ -98,7 +98,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Taches recurrentes (quotidien / hebdomadaire / mensuel) placees la ou il reste de la place
 - Suivi depuis le calendrier : marquer effectuee, reporter, planifier la fin d'une tache, modifier, supprimer
 - Code couleur selon la proximite de l'echeance ; vues jour / semaine / mois avec navigation simple
-- Horaires de travail configurables par jour de la semaine
+- Horaires de travail repris automatiquement du planning theorique du salarie (menu « Mon planning ») : aucune ressaisie (horaires par defaut si aucun planning n'est defini)
 
 ### Notifications par email
 - Envoi de notifications via Gmail (SMTP)

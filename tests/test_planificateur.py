@@ -18,9 +18,21 @@ import planificateur_engine as moteur
 # Moteur d'optimisation (logique pure)
 # ──────────────────────────────────────────────────────────────────────────
 
-def _horaires_standard():
-    """Lun-ven : 09:00-12:30 / 13:30-17:30."""
-    return {j: [(540, 750), (810, 1050)] for j in range(5)}
+def _horaires_standard(intervalles=((540, 750), (810, 1050)), jours=(0, 1, 2, 3, 4)):
+    """Horaires lun-ven 09:00-12:30 / 13:30-17:30, indexes par date.
+
+    Le moteur attend desormais des horaires par date (le planning peut varier
+    selon la periode / l'alternance). On couvre un large horizon : le moteur ne
+    lit que les dates de [date_debut, date_fin], les dates en trop sont ignorees.
+    """
+    h = {}
+    d = date.today() - timedelta(days=1)
+    fin = date.today() + timedelta(days=120)
+    while d <= fin:
+        if d.weekday() in jours:
+            h[d.isoformat()] = [tuple(iv) for iv in intervalles]
+        d += timedelta(days=1)
+    return h
 
 
 def _lundi_prochain():
@@ -279,29 +291,69 @@ def test_supprimer_tache(comptable_client, db):
     assert db.execute("SELECT COUNT(*) AS n FROM planif_blocs WHERE tache_id = ?", (tache['id'],)).fetchone()['n'] == 0
 
 
-def test_horaires_sauvegarde_et_seed(comptable_client, db, sample_users):
-    # Le premier acces seed les horaires par defaut (lun-ven).
-    comptable_client.get('/planificateur')
-    rows = db.execute(
-        "SELECT COUNT(*) AS n FROM planif_horaires WHERE user_id = ?",
-        (sample_users['comptable_id'],)
-    ).fetchone()
-    assert rows['n'] == 7
+def _inserer_planning(db, user_id, matin=('08:00', '12:00'), aprem=(None, None)):
+    """Cree un planning theorique simple (lun-ven) pour un utilisateur."""
+    data = {'user_id': user_id, 'type_periode': 'periode_scolaire',
+            'date_debut_validite': '2000-01-01', 'type_alternance': 'fixe'}
+    for jour in ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'):
+        data[f'{jour}_matin_debut'] = matin[0]
+        data[f'{jour}_matin_fin'] = matin[1]
+        data[f'{jour}_aprem_debut'] = aprem[0]
+        data[f'{jour}_aprem_fin'] = aprem[1]
+    cols = ', '.join(data.keys())
+    ph = ', '.join(['?'] * len(data))
+    db.execute(f"INSERT INTO planning_theorique ({cols}) VALUES ({ph})", list(data.values()))
+    db.commit()
 
-    # Modification : desactiver le lundi.
-    jours = []
-    for j in range(7):
-        jours.append({'actif': 0 if j == 0 else (1 if j < 5 else 0),
-                      'matin_debut': '08:00', 'matin_fin': '12:00',
-                      'aprem_debut': '14:00', 'aprem_fin': '18:00'})
-    resp = comptable_client.post('/planificateur/api/horaires', json={'jours': jours})
-    assert resp.status_code == 200
-    lundi_cfg = db.execute(
-        "SELECT actif, matin_debut FROM planif_horaires WHERE user_id = ? AND jour_semaine = 0",
-        (sample_users['comptable_id'],)
-    ).fetchone()
-    assert lundi_cfg['actif'] == 0
-    assert lundi_cfg['matin_debut'] == '08:00'
+
+def test_horaires_issus_du_planning(comptable_client, db, sample_users):
+    """Le planificateur respecte le planning theorique (Mon planning), sans ressaisie."""
+    # Planning : uniquement le matin 08:00-12:00 (pas d'apres-midi).
+    _inserer_planning(db, sample_users['comptable_id'], matin=('08:00', '12:00'))
+
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Tache matin', 'duree_min': 180,
+        'secable': 1, 'duree_min_bloc': 30,
+    })
+    fin = (date.today() + timedelta(days=20)).isoformat()
+    blocs = comptable_client.get(
+        f'/planificateur/api/blocs?debut={date.today().isoformat()}&fin={fin}'
+    ).get_json()['blocs']
+    assert blocs, "des blocs devraient etre planifies"
+    for b in blocs:
+        deb, f = moteur._to_min(b['heure_debut']), moteur._to_min(b['heure_fin'])
+        assert 480 <= deb and f <= 720, f"hors planning (matin 08:00-12:00) : {b}"
+
+
+def test_api_blocs_retourne_horaires_du_planning(comptable_client, db, sample_users):
+    """L'API expose les horaires de travail (pour les plages du calendrier)."""
+    _inserer_planning(db, sample_users['comptable_id'],
+                      matin=('09:00', '12:00'), aprem=('14:00', '17:00'))
+    # Trouver un lundi a venir (jour ouvre garanti).
+    d = date.today()
+    while d.weekday() != 0:
+        d += timedelta(days=1)
+    data = comptable_client.get(
+        f'/planificateur/api/blocs?debut={d.isoformat()}&fin={d.isoformat()}'
+    ).get_json()
+    assert 'horaires' in data
+    assert data['horaires'].get(d.isoformat()) == [[540, 720], [840, 1020]]
+
+
+def test_horaires_defaut_sans_planning(comptable_client, sample_users):
+    """Sans planning, des horaires par defaut (9h-12h30 / 13h30-17h30) s'appliquent."""
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Tache defaut', 'duree_min': 60,
+        'secable': 0, 'duree_min_bloc': 60,
+    })
+    fin = (date.today() + timedelta(days=20)).isoformat()
+    blocs = comptable_client.get(
+        f'/planificateur/api/blocs?debut={date.today().isoformat()}&fin={fin}'
+    ).get_json()['blocs']
+    assert blocs
+    for b in blocs:
+        deb, f = moteur._to_min(b['heure_debut']), moteur._to_min(b['heure_fin'])
+        assert 540 <= deb and f <= 1050, f"hors horaires par defaut : {b}"
 
 
 def test_recurrence_cree_occurrences(comptable_client, db, sample_users):

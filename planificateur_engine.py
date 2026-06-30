@@ -249,8 +249,10 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             date_min (date|str|None, optionnel : pas avant ce jour).
         occupes_par_date: dict 'YYYY-MM-DD' -> liste de (deb_min, fin_min)
             deja occupes (evenements fixes, blocs realises / verrouilles).
-        horaires: dict jour_semaine (0=lundi..6=dimanche) -> liste de
-            (deb_min, fin_min) representant les horaires de travail.
+        horaires: dict 'YYYY-MM-DD' -> liste de (deb_min, fin_min) representant
+            les horaires de travail de ce jour. Les horaires peuvent varier d'un
+            jour a l'autre (periode scolaire / vacances, semaines alternees),
+            c'est pourquoi ils sont indexes par date et non par jour de semaine.
         date_debut, date_fin: objets date delimitant l'horizon (inclus).
         jours_feries: ensemble de chaines 'YYYY-MM-DD' a ne pas planifier.
 
@@ -269,7 +271,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     while d <= date_fin:
         date_str = d.isoformat()
         if date_str not in jours_feries:
-            work = horaires.get(d.weekday(), [])
+            work = horaires.get(date_str, [])
             if work:
                 libres = _soustraire(work, occupes_par_date.get(date_str, []))
                 if libres:

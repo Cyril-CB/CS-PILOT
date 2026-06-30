@@ -1606,22 +1606,6 @@ def init_db():
     ''')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_planif_blocs_user_date ON planif_blocs(user_id, date)')
 
-    # Horaires de travail par salarie et par jour de la semaine.
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS planif_horaires (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            jour_semaine INTEGER NOT NULL,
-            actif INTEGER DEFAULT 1,
-            matin_debut TEXT,
-            matin_fin TEXT,
-            aprem_debut TEXT,
-            aprem_fin TEXT,
-            UNIQUE(user_id, jour_semaine),
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )
-    ''')
-
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (

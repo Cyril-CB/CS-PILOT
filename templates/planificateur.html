@@ -7,7 +7,7 @@
 {
   "vue": {{ vue|tojson }},
   "date": {{ date_ref|tojson }},
-  "horaires": {{ horaires|tojson }},
+  "a_un_planning": {{ a_un_planning|tojson }},
   "recurrences": {{ recurrences|tojson }},
   "taches_non_placees": {{ taches_non_placees|tojson }}
 }
@@ -23,7 +23,6 @@
     <div class="planif-actions">
       <button class="btn btn-primary" id="btnAjouter">➕ Ajouter</button>
       <button class="btn btn-secondary" id="btnReplan">↻ Replanifier</button>
-      <button class="btn btn-secondary" id="btnHoraires">⏰ Horaires</button>
       <button class="btn btn-secondary" id="btnRecur">🔁 Récurrences</button>
     </div>
   </div>
@@ -52,6 +51,12 @@
     <span class="lg"><i class="sw u-sans_echeance"></i> Sans échéance</span>
     <span class="lg"><i class="sw evenement"></i> Rendez-vous / réunion</span>
   </div>
+
+  <p class="planif-hint">
+    ⏰ Les tâches sont planifiées dans vos horaires de travail issus de
+    <a href="{{ url_for('planning_bp.planning_theorique') }}">Mon planning</a>.
+    {% if not a_un_planning %}<strong>Aucun planning défini : des horaires par défaut (lun.–ven. 9h–12h30 / 13h30–17h30) sont utilisés.</strong>{% endif %}
+  </p>
 
   <div id="planifCal" class="planif-cal"></div>
 </div>
@@ -146,28 +151,6 @@
         <div class="actions" style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:.5rem;">
           <button type="button" class="btn btn-secondary" onclick="planifFermerModales()">Annuler</button>
           <button type="submit" class="btn btn-primary" id="btnSubmitTache">Enregistrer</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-{# ── Modale Horaires de travail ── #}
-<div class="modal-overlay planif-modal" id="modalHoraires" style="display:none;" onclick="if(event.target===this)planifFermerModales()">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>⏰ Horaires de travail</h3>
-      <button class="modal-close" type="button" onclick="planifFermerModales()" aria-label="Fermer">&times;</button>
-    </div>
-    <div style="padding:0 1.5rem 1.5rem;">
-      <p style="color:var(--gray-500);margin:.25rem 0 1rem;font-size:.9rem;">
-        Le moteur ne planifie vos tâches qu'à l'intérieur de ces horaires. La pause déjeuner correspond au trou entre le matin et l'après-midi.
-      </p>
-      <form id="formHoraires">
-        <div class="planif-horaires-grid" id="horairesGrid"></div>
-        <div class="actions" style="display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem;">
-          <button type="button" class="btn btn-secondary" onclick="planifFermerModales()">Annuler</button>
-          <button type="submit" class="btn btn-primary">Enregistrer & replanifier</button>
         </div>
       </form>
     </div>
@@ -333,11 +316,8 @@
 .planif-tabs{display:flex;gap:.5rem;margin:.5rem 0 1rem;}
 .planif-tabs button{flex:1;border:1px solid var(--gray-300);background:var(--card-bg,#fff);color:var(--gray-700);padding:.5rem;border-radius:var(--radius-sm);cursor:pointer;font-weight:600;}
 .planif-tabs button.active{background:var(--primary);color:#fff;border-color:var(--primary);}
-.planif-horaires-grid{display:flex;flex-direction:column;gap:.4rem;}
-.planif-hday{display:grid;grid-template-columns:1.4fr repeat(4,1fr);gap:.4rem;align-items:center;}
-.planif-hday label.jr{font-weight:600;display:flex;align-items:center;gap:.4rem;}
-.planif-hday input[type=time]{width:100%;}
-.planif-hday.off input[type=time]{opacity:.4;}
+.planif-hint{font-size:.82rem;color:var(--gray-500);margin:0 0 .75rem;}
+.planif-hint a{color:var(--primary);font-weight:600;}
 .planif-recur-liste{display:flex;flex-direction:column;gap:.4rem;max-height:180px;overflow-y:auto;}
 .planif-recur-item{display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.5rem .6rem;border:1px solid var(--gray-200,#eee);border-radius:var(--radius-sm);font-size:.85rem;}
 .planif-detail-line{margin:.3rem 0;color:var(--gray-700);}
@@ -378,6 +358,7 @@
 
   const state = { vue: DATA.vue || 'semaine', date: DATA.date || isoToday() };
   let blocsCache = [];
+  let horairesCache = {};
 
   // ── Helpers dates ──
   function isoToday(){ const d=new Date(); return iso(d); }
@@ -422,20 +403,19 @@
   }
 
   // ── Plage horaire affichée ──
+  // horairesCache : { 'YYYY-MM-DD': [[deb_min, fin_min], ...] } (issu du planning)
   function plageMinutes(){
     let mn=8*60, mx=18*60;
-    (DATA.horaires||[]).forEach(h=>{
-      if(!h.actif) return;
-      [h.matin_debut, h.aprem_debut].forEach(v=>{ const m=hhmm2min(v); if(m!=null) mn=Math.min(mn,m); });
-      [h.matin_fin, h.aprem_fin].forEach(v=>{ const m=hhmm2min(v); if(m!=null) mx=Math.max(mx,m); });
+    Object.values(horairesCache).forEach(intervalles=>{
+      intervalles.forEach(iv=>{ mn=Math.min(mn,iv[0]); mx=Math.max(mx,iv[1]); });
     });
     blocsCache.forEach(b=>{ const d=hhmm2min(b.heure_debut), f=hhmm2min(b.heure_fin); if(d!=null)mn=Math.min(mn,d); if(f!=null)mx=Math.max(mx,f); });
-    mn = Math.max(0, Math.floor(mn/60)*60 - 0);
+    mn = Math.max(0, Math.floor(mn/60)*60);
     mx = Math.min(1440, Math.ceil(mx/60)*60);
     if(mx-mn < 240){ mx = Math.min(1440, mn+240); }
     return [mn, mx];
   }
-  function horaireJour(js){ return (DATA.horaires||[]).find(h=>h.jour_semaine===js); }
+  function horaireJour(dateStr){ return horairesCache[dateStr] || null; }
 
   // ── Chargement + rendu ──
   function rangeFetch(){
@@ -451,7 +431,8 @@
     try{
       const j = await apiGet('{{ url_for("planificateur_bp.api_blocs") }}?debut='+deb+'&fin='+fin);
       blocsCache = (j && j.blocs) ? j.blocs : [];
-    }catch(e){ blocsCache=[]; }
+      horairesCache = (j && j.horaires) ? j.horaires : {};
+    }catch(e){ blocsCache=[]; horairesCache={}; }
     rendre();
   }
   function rendre(){
@@ -486,14 +467,11 @@
       cols+='<div class="planif-col" data-jour="'+jr+'">';
       cols+='<div class="planif-colhead'+(est_today?' today':'')+'">'+JOURS_COURT[js]+'<span class="num">'+parse(jr).getDate()+'</span></div>';
       cols+='<div class="planif-colbody" style="position:relative;height:'+hauteur+'px;">';
-      // bandes horaires de travail
-      const h=horaireJour(js);
-      if(h && h.actif){
-        [[h.matin_debut,h.matin_fin],[h.aprem_debut,h.aprem_fin]].forEach(iv=>{
-          const d=hhmm2min(iv[0]), f=hhmm2min(iv[1]);
-          if(d!=null && f!=null && f>d){ cols+='<div class="planif-workband" style="top:'+((d-mn)*PX_MIN)+'px;height:'+((f-d)*PX_MIN)+'px;"></div>'; }
-        });
-      }
+      // bandes horaires de travail (issues du planning, par date)
+      (horaireJour(jr)||[]).forEach(iv=>{
+        const d=iv[0], f=iv[1];
+        if(f>d){ cols+='<div class="planif-workband" style="top:'+((d-mn)*PX_MIN)+'px;height:'+((f-d)*PX_MIN)+'px;"></div>'; }
+      });
       for(let hh=Math.ceil(mn/60)*60; hh<=mx; hh+=60){ cols+='<div class="planif-hourline" style="top:'+((hh-mn)*PX_MIN)+'px;"></div>'; }
       if(est_today){ const now=new Date().getHours()*60+new Date().getMinutes(); if(now>=mn&&now<=mx){ cols+='<div class="planif-now" style="top:'+((now-mn)*PX_MIN)+'px;"></div>'; } }
       // blocs
@@ -683,41 +661,6 @@
     }catch(err){ toast(err.message,'err'); }
   }
 
-  // ── Horaires ──
-  function construireHoraires(){
-    const grid=document.getElementById('horairesGrid');
-    let html='';
-    for(let j=0;j<7;j++){
-      const h=horaireJour(j)||{actif:j<5,matin_debut:'09:00',matin_fin:'12:30',aprem_debut:'13:30',aprem_fin:'17:30'};
-      html+='<div class="planif-hday'+(h.actif?'':' off')+'" data-j="'+j+'">'
-        +'<label class="jr"><input type="checkbox" class="h_actif" '+(h.actif?'checked':'')+'> '+JOURS[j]+'</label>'
-        +'<input type="time" class="h_md" value="'+(h.matin_debut||'')+'">'
-        +'<input type="time" class="h_mf" value="'+(h.matin_fin||'')+'">'
-        +'<input type="time" class="h_ad" value="'+(h.aprem_debut||'')+'">'
-        +'<input type="time" class="h_af" value="'+(h.aprem_fin||'')+'">'
-        +'</div>';
-    }
-    grid.innerHTML=html;
-    grid.querySelectorAll('.h_actif').forEach(cb=>cb.addEventListener('change',()=>cb.closest('.planif-hday').classList.toggle('off',!cb.checked)));
-  }
-  async function soumettreHoraires(e){
-    e.preventDefault();
-    const jours=[];
-    document.querySelectorAll('#horairesGrid .planif-hday').forEach(row=>{
-      jours.push({ actif:row.querySelector('.h_actif').checked?1:0,
-        matin_debut:row.querySelector('.h_md').value, matin_fin:row.querySelector('.h_mf').value,
-        aprem_debut:row.querySelector('.h_ad').value, aprem_fin:row.querySelector('.h_af').value });
-    });
-    try{
-      const res=await apiPost('{{ url_for("planificateur_bp.api_horaires") }}',{jours});
-      DATA.horaires = jours.map((c,j)=>({jour_semaine:j, actif:c.actif, matin_debut:c.matin_debut, matin_fin:c.matin_fin, aprem_debut:c.aprem_debut, aprem_fin:c.aprem_fin}));
-      planifFermerModales();
-      toast('✓ Horaires enregistrés','ok');
-      montrerNonPlanifie(res.non_planifie);
-      await charger();
-    }catch(err){ toast(err.message,'err'); }
-  }
-
   // ── Récurrences ──
   function construireRecur(){
     const liste=document.getElementById('recurListe');
@@ -787,11 +730,9 @@
     try{ const res=await apiPost('{{ url_for("planificateur_bp.api_replanifier") }}',{}); toast('✓ Planning recalculé','ok'); montrerNonPlanifie(res.non_planifie); await charger(); }
     catch(e){ toast(e.message,'err'); }
   });
-  document.getElementById('btnHoraires').addEventListener('click', ()=>{ construireHoraires(); ouvrir('modalHoraires'); });
   document.getElementById('btnRecur').addEventListener('click', ()=>{ construireRecur(); ouvrir('modalRecur'); });
   document.getElementById('ajTabs').addEventListener('click', e=>{ if(e.target.dataset.type) setType(e.target.dataset.type); });
   document.getElementById('formTache').addEventListener('submit', soumettreTache);
-  document.getElementById('formHoraires').addEventListener('submit', soumettreHoraires);
   document.getElementById('formRecur').addEventListener('submit', soumettreRecur);
   document.getElementById('r_frequence').addEventListener('change', majChampsFreq);
   document.getElementById('t_secable').addEventListener('change', e=>{ document.getElementById('grpMinBloc').style.display=e.target.checked?'':'none'; });

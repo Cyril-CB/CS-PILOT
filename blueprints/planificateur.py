@@ -37,12 +37,10 @@ PRIORITES_VALIDES = ('basse', 'normale', 'haute')
 PREFERENCES_VALIDES = ('aucune', 'matin', 'apres_midi')
 FREQUENCES_VALIDES = ('quotidien', 'hebdomadaire', 'mensuel')
 
-# Horaires de travail par defaut (lundi-vendredi).
-HORAIRE_DEFAUT = {
-    'matin_debut': '09:00', 'matin_fin': '12:30',
-    'aprem_debut': '13:30', 'aprem_fin': '17:30',
-}
-JOURS_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+# Horaires de travail par defaut (lundi-vendredi), utilises uniquement si le
+# salarie n'a aucun planning theorique defini (menu « Mon planning »).
+HORAIRE_DEFAUT_INTERVALLES = [(540, 750), (810, 1050)]  # 09:00-12:30 / 13:30-17:30
+JOURS_NOMS_PLANNING = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
 
 
 # ── Controle d'acces ───────────────────────────────────────────────────────
@@ -72,51 +70,50 @@ def _uid():
     return session.get('user_id')
 
 
-# ── Helpers horaires ───────────────────────────────────────────────────────
+# ── Helpers horaires (repris du planning theorique) ────────────────────────
 
-def _seed_horaires_defaut(conn, user_id):
-    """Cree les horaires par defaut (lun-ven 9h-12h30 / 13h30-17h30)."""
-    for j in range(7):
-        actif = 1 if j < 5 else 0
-        conn.execute(
-            '''INSERT OR IGNORE INTO planif_horaires
-               (user_id, jour_semaine, actif, matin_debut, matin_fin, aprem_debut, aprem_fin)
-               VALUES (?, ?, ?, ?, ?, ?, ?)''',
-            (user_id, j, actif, HORAIRE_DEFAUT['matin_debut'], HORAIRE_DEFAUT['matin_fin'],
-             HORAIRE_DEFAUT['aprem_debut'], HORAIRE_DEFAUT['aprem_fin'])
-        )
-    conn.commit()
+def _horaires_par_date(conn, user_id, debut, fin):
+    """Construit {date_str: [(deb_min, fin_min), ...]} pour l'horizon.
 
+    Les horaires de travail proviennent du planning theorique du salarie
+    (table planning_theorique, alimentee par le menu « Mon planning ») : ils
+    n'ont donc pas a etre ressaisis. Le planning peut varier selon la periode
+    (scolaire / vacances) et l'alternance, d'ou une resolution par date via les
+    helpers existants.
 
-def _charger_horaires_rows(conn, user_id):
-    """Retourne les 7 lignes d'horaires de l'utilisateur (cree les defauts au besoin)."""
-    rows = conn.execute(
-        'SELECT * FROM planif_horaires WHERE user_id = ? ORDER BY jour_semaine',
-        (user_id,)
-    ).fetchall()
-    if len(rows) < 7:
-        _seed_horaires_defaut(conn, user_id)
-        rows = conn.execute(
-            'SELECT * FROM planif_horaires WHERE user_id = ? ORDER BY jour_semaine',
-            (user_id,)
-        ).fetchall()
-    return rows
+    Si le salarie n'a aucun planning, un horaire par defaut est applique
+    (lundi-vendredi 09:00-12:30 / 13:30-17:30) afin que le planificateur reste
+    utilisable immediatement.
+    """
+    from utils import get_planning_valide_a_date, get_type_periode
 
+    a_un_planning = conn.execute(
+        'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
+    ).fetchone()
 
-def _horaires_moteur(conn, user_id):
-    """Construit le dict {jour_semaine: [(deb_min, fin_min), ...]} pour le moteur."""
     horaires = {}
-    for r in _charger_horaires_rows(conn, user_id):
-        if not r['actif']:
-            continue
-        intervalles = []
-        for deb, fin in ((r['matin_debut'], r['matin_fin']),
-                         (r['aprem_debut'], r['aprem_fin'])):
-            dm, fm = moteur._to_min(deb), moteur._to_min(fin)
-            if dm is not None and fm is not None and fm > dm:
-                intervalles.append((dm, fm))
-        if intervalles:
-            horaires[r['jour_semaine']] = intervalles
+    d = debut
+    while d <= fin:
+        # Le planning theorique ne couvre que le lundi au vendredi.
+        if d.weekday() < 5:
+            date_str = d.isoformat()
+            if not a_un_planning:
+                horaires[date_str] = list(HORAIRE_DEFAUT_INTERVALLES)
+            else:
+                planning = get_planning_valide_a_date(
+                    user_id, get_type_periode(date_str), date_str
+                )
+                if planning:
+                    jn = JOURS_NOMS_PLANNING[d.weekday()]
+                    intervalles = []
+                    for col_d, col_f in ((f'{jn}_matin_debut', f'{jn}_matin_fin'),
+                                         (f'{jn}_aprem_debut', f'{jn}_aprem_fin')):
+                        dm, fm = moteur._to_min(planning[col_d]), moteur._to_min(planning[col_f])
+                        if dm is not None and fm is not None and fm > dm:
+                            intervalles.append((dm, fm))
+                    if intervalles:
+                        horaires[date_str] = intervalles
+        d += timedelta(days=1)
     return horaires
 
 
@@ -184,28 +181,23 @@ def _ensure_occurrence(conn, rec, anchor, fenetre_debut, fenetre_fin, today):
     )
 
 
-def _generer_occurrences(conn, user_id, today, fin):
-    """Materialise les occurrences des recurrences actives sur l'horizon."""
+def _generer_occurrences(conn, user_id, today, fin, horaires):
+    """Materialise les occurrences des recurrences actives sur l'horizon.
+
+    `horaires` ({date_str: [...]}) sert a ne pas creer d'occurrence quotidienne
+    un jour non travaille (qui ne pourrait jamais etre placee).
+    """
     recurrences = conn.execute(
         'SELECT * FROM planif_recurrences WHERE user_id = ? AND active = 1',
         (user_id,)
     ).fetchall()
-
-    # Jours ouvres de l'utilisateur (pour ne pas creer d'occurrence quotidienne
-    # un jour non travaille, qui ne pourrait jamais etre placee).
-    actifs = {r['jour_semaine'] for r in conn.execute(
-        'SELECT jour_semaine FROM planif_horaires WHERE user_id = ? AND actif = 1',
-        (user_id,)
-    ).fetchall()}
-    if not actifs:
-        actifs = {0, 1, 2, 3, 4}
 
     for rec in recurrences:
         freq = rec['frequence']
         if freq == 'quotidien':
             d = today
             while d <= fin:
-                if d.weekday() in actifs:
+                if d.isoformat() in horaires:
                     _ensure_occurrence(conn, rec, d.isoformat(), d, d, today)
                 d += timedelta(days=1)
 
@@ -247,9 +239,9 @@ def _replanifier(conn, user_id):
     today = date.today()
     fin = today + timedelta(days=HORIZON_JOURS)
 
-    # S'assurer que les horaires existent (jours ouvres) avant de generer les
-    # occurrences recurrentes, qui s'appuient dessus.
-    _charger_horaires_rows(conn, user_id)
+    # Horaires de travail repris du planning theorique du salarie.
+    horaires = _horaires_par_date(conn, user_id, today, fin)
+    feries = _jours_feries_set(conn, today, fin)
 
     # Nettoyer les occurrences recurrentes passees jamais realisees (une reunion
     # quotidienne manquee hier n'est pas reportee a aujourd'hui).
@@ -263,10 +255,7 @@ def _replanifier(conn, user_id):
         conn.execute('DELETE FROM planif_blocs WHERE tache_id = ?', (occ['id'],))
         conn.execute('DELETE FROM planif_taches WHERE id = ?', (occ['id'],))
 
-    _generer_occurrences(conn, user_id, today, fin)
-
-    horaires = _horaires_moteur(conn, user_id)
-    feries = _jours_feries_set(conn, today, fin)
+    _generer_occurrences(conn, user_id, today, fin, horaires)
 
     # Creneaux deja occupes a conserver : evenements fixes (verrouilles) et
     # blocs deja realises, a partir d'aujourd'hui.
@@ -435,7 +424,9 @@ def planificateur():
             vue = 'semaine'
         date_ref = _valide_date(request.args.get('date')) or date.today().isoformat()
 
-        horaires_rows = _charger_horaires_rows(conn, user_id)
+        a_un_planning = conn.execute(
+            'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
+        ).fetchone() is not None
         recurrences = conn.execute(
             'SELECT * FROM planif_recurrences WHERE user_id = ? AND active = 1 ORDER BY id DESC',
             (user_id,)
@@ -461,10 +452,9 @@ def planificateur():
         return render_template(
             'planificateur.html',
             vue=vue, date_ref=date_ref,
-            horaires=[dict(r) for r in horaires_rows],
             recurrences=[dict(r) for r in recurrences],
             taches_non_placees=[dict(r) for r in taches_non_placees],
-            jours_labels=JOURS_LABELS,
+            a_un_planning=a_un_planning,
         )
     finally:
         conn.close()
@@ -473,13 +463,19 @@ def planificateur():
 @planificateur_bp.route('/planificateur/api/blocs')
 @planif_required
 def api_blocs():
-    """Retourne les blocs (JSON) sur un intervalle de dates."""
+    """Retourne les blocs et les horaires de travail (JSON) sur un intervalle."""
     conn = get_db()
     try:
+        user_id = _uid()
         debut = _valide_date(request.args.get('debut')) or date.today().isoformat()
         fin = _valide_date(request.args.get('fin')) or debut
-        blocs = _serialiser_blocs(conn, _uid(), debut, fin)
-        return jsonify({'ok': True, 'blocs': blocs})
+        blocs = _serialiser_blocs(conn, user_id, debut, fin)
+        # Horaires de travail (par date) pour afficher les plages travaillees.
+        horaires_min = _horaires_par_date(
+            conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
+        )
+        horaires = {k: [[d, f] for (d, f) in v] for k, v in horaires_min.items()}
+        return jsonify({'ok': True, 'blocs': blocs, 'horaires': horaires})
     finally:
         conn.close()
 
@@ -797,42 +793,6 @@ def api_replanifier():
     conn = get_db()
     try:
         non_planifie = _replanifier(conn, _uid())
-        return jsonify({'ok': True, 'non_planifie': non_planifie})
-    finally:
-        conn.close()
-
-
-@planificateur_bp.route('/planificateur/api/horaires', methods=['POST'])
-@planif_required
-def api_horaires():
-    """Enregistre les horaires de travail (7 jours) puis replanifie."""
-    data = _lire_payload()
-    jours = data.get('jours') if request.is_json else None
-    conn = get_db()
-    try:
-        user_id = _uid()
-        _charger_horaires_rows(conn, user_id)  # s'assure que les 7 lignes existent
-        for j in range(7):
-            if jours is not None:
-                cfg = jours[j] if j < len(jours) else {}
-                actif = 1 if cfg.get('actif') in (1, '1', True, 'true', 'on') else 0
-                md = _valide_heure(cfg.get('matin_debut'))
-                mf = _valide_heure(cfg.get('matin_fin'))
-                ad = _valide_heure(cfg.get('aprem_debut'))
-                af = _valide_heure(cfg.get('aprem_fin'))
-            else:
-                actif = 1 if request.form.get(f'actif_{j}') else 0
-                md = _valide_heure(request.form.get(f'matin_debut_{j}'))
-                mf = _valide_heure(request.form.get(f'matin_fin_{j}'))
-                ad = _valide_heure(request.form.get(f'aprem_debut_{j}'))
-                af = _valide_heure(request.form.get(f'aprem_fin_{j}'))
-            conn.execute(
-                '''UPDATE planif_horaires SET actif = ?, matin_debut = ?, matin_fin = ?,
-                   aprem_debut = ?, aprem_fin = ? WHERE user_id = ? AND jour_semaine = ?''',
-                (actif, md, mf, ad, af, user_id, j)
-            )
-        conn.commit()
-        non_planifie = _replanifier(conn, user_id)
         return jsonify({'ok': True, 'non_planifie': non_planifie})
     finally:
         conn.close()
