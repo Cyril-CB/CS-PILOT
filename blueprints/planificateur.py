@@ -707,10 +707,14 @@ def api_terminer_partiel(tache_id):
 
         minutes_faites = _parse_int(data.get('minutes_faites'), 0, mini=0, maxi=int(tache['duree_min']))
         restant = int(tache['duree_min']) - minutes_faites
-        # La tache courante est consideree terminee pour la partie deja faite.
+        # La tache courante est cloturee. On conserve ses blocs deja realises
+        # (historique) et on LIBERE ses creneaux futurs non realises : le reste
+        # est replanifie via une nouvelle tache « suite ». Marquer ces creneaux
+        # futurs comme « faits » surevaluerait le travail accompli et
+        # consommerait deux fois la capacite (bloc fige + tache suite).
         conn.execute("UPDATE planif_taches SET statut = 'fait', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
                      (tache_id,))
-        conn.execute("UPDATE planif_blocs SET statut = 'fait' WHERE tache_id = ?", (tache_id,))
+        conn.execute("DELETE FROM planif_blocs WHERE tache_id = ? AND statut != 'fait'", (tache_id,))
 
         if restant > 0:
             conn.execute(
@@ -748,13 +752,20 @@ def api_statut_bloc(bloc_id):
             return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
         conn.execute('UPDATE planif_blocs SET statut = ? WHERE id = ?', (statut, bloc_id))
 
-        # Si tous les blocs de la tache sont faits, marquer la tache faite.
+        # La tache n'est consideree faite que si le temps realise couvre la duree
+        # estimee. Une tache sous-planifiee (capacite insuffisante : moins de
+        # blocs que sa duree) ne doit pas etre cloturee en laissant tomber son
+        # reliquat lorsque ses quelques blocs visibles sont coches.
         if statut == 'fait':
-            reste = conn.execute(
-                "SELECT COUNT(*) AS n FROM planif_blocs WHERE tache_id = ? AND statut != 'fait'",
+            tache = conn.execute(
+                "SELECT duree_min FROM planif_taches WHERE id = ?", (bloc['tache_id'],)
+            ).fetchone()
+            fait_min = conn.execute(
+                "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs "
+                "WHERE tache_id = ? AND statut = 'fait'",
                 (bloc['tache_id'],)
-            ).fetchone()['n']
-            if reste == 0:
+            ).fetchone()['s']
+            if tache and int(fait_min) >= int(tache['duree_min']):
                 conn.execute("UPDATE planif_taches SET statut = 'fait' WHERE id = ?",
                              (bloc['tache_id'],))
         else:
@@ -777,6 +788,15 @@ def api_supprimer_bloc(bloc_id):
                             (bloc_id, user_id)).fetchone()
         if not bloc:
             return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
+        # Un creneau verrouille correspond a un evenement fixe : le supprimer
+        # seul laisserait l'evenement en base sans occuper son horaire (des
+        # taches pourraient s'y planifier). On passe par la suppression / la
+        # modification de l'evenement lui-meme.
+        if bloc['verrouille']:
+            return jsonify({
+                'ok': False,
+                'erreur': "Ce créneau correspond à un événement fixe : supprimez ou modifiez l'événement."
+            }), 400
         conn.execute('DELETE FROM planif_blocs WHERE id = ?', (bloc_id,))
         conn.commit()
         return jsonify({'ok': True})

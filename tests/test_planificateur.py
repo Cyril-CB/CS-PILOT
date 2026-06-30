@@ -399,6 +399,80 @@ def test_confidentialite_blocs_par_utilisateur(comptable_client, db, sample_user
     assert all(b['titre'] != 'Secret direction' for b in blocs)
 
 
+def test_bloc_fait_tache_sous_planifiee_reste_ouverte(comptable_client, db, sample_users):
+    """Cocher tous les blocs visibles d'une tache sous-planifiee ne la cloture pas.
+
+    Une tache de 120 min dont un seul bloc de 30 min a pu etre place (capacite
+    insuffisante) doit rester 'a_faire' apres que ce bloc soit marque fait :
+    son reliquat (90 min) ne doit pas etre perdu.
+    """
+    uid = sample_users['comptable_id']
+    jour = (date.today() + timedelta(days=1)).isoformat()
+    cur = db.execute(
+        "INSERT INTO planif_taches (user_id, type, titre, duree_min, statut) "
+        "VALUES (?, 'tache', 'Sous-planifiee', 120, 'a_faire')", (uid,)
+    )
+    tache_id = cur.lastrowid
+    bloc = db.execute(
+        "INSERT INTO planif_blocs (tache_id, user_id, date, heure_debut, heure_fin, duree_min) "
+        "VALUES (?, ?, ?, '09:00', '09:30', 30)", (tache_id, uid, jour)
+    )
+    db.commit()
+
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc.lastrowid}/statut', json={'statut': 'fait'})
+    assert resp.status_code == 200
+    statut = db.execute("SELECT statut FROM planif_taches WHERE id = ?", (tache_id,)).fetchone()['statut']
+    assert statut == 'a_faire', "la tache ne doit pas etre cloturee tant que sa duree n'est pas couverte"
+
+
+def test_terminer_partiel_libere_les_blocs_futurs(comptable_client, db, sample_users):
+    """« Planifier la fin » libere les creneaux futurs (pas de double comptage)."""
+    uid = sample_users['comptable_id']
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Mission', 'duree_min': 240,
+        'secable': 1, 'duree_min_bloc': 60,
+    })
+    tache = db.execute("SELECT id FROM planif_taches WHERE titre = 'Mission'").fetchone()
+
+    resp = comptable_client.post(
+        f'/planificateur/api/tache/{tache["id"]}/terminer_partiel', json={'minutes_faites': 60}
+    )
+    assert resp.status_code == 200
+
+    # La tache d'origine est cloturee et n'a plus de bloc non realise.
+    assert db.execute("SELECT statut FROM planif_taches WHERE id = ?", (tache['id'],)).fetchone()['statut'] == 'fait'
+    assert db.execute(
+        "SELECT COUNT(*) AS n FROM planif_blocs WHERE tache_id = ? AND statut != 'fait'", (tache['id'],)
+    ).fetchone()['n'] == 0
+
+    # Une tache « suite » de 180 min est creee et planifiee.
+    suite = db.execute("SELECT id, duree_min FROM planif_taches WHERE titre LIKE '%suite%'").fetchone()
+    assert suite is not None and suite['duree_min'] == 180
+
+    # Pas de double comptage : le total planifie correspond au reste (180 min).
+    total = db.execute(
+        "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs WHERE user_id = ?", (uid,)
+    ).fetchone()['s']
+    assert total == 180
+
+
+def test_supprimer_bloc_evenement_refuse(comptable_client, db):
+    """On ne peut pas supprimer le seul creneau d'un evenement fixe."""
+    jour = (date.today() + timedelta(days=2)).isoformat()
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'evenement', 'titre': 'RDV important', 'date_fixe': jour,
+        'heure_debut': '10:00', 'heure_fin': '11:00',
+    })
+    bloc = db.execute(
+        "SELECT b.id FROM planif_blocs b JOIN planif_taches t ON b.tache_id = t.id "
+        "WHERE t.titre = 'RDV important'"
+    ).fetchone()
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/supprimer', json={})
+    assert resp.status_code == 400
+    # Le creneau existe toujours (l'evenement continue de bloquer son horaire).
+    assert db.execute("SELECT COUNT(*) AS n FROM planif_blocs WHERE id = ?", (bloc['id'],)).fetchone()['n'] == 1
+
+
 def test_menu_lien_visible_comptable(comptable_client):
     resp = comptable_client.get('/dashboard_comptable')
     html = resp.get_data(as_text=True)

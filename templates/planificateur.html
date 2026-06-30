@@ -558,8 +558,14 @@
       act+='<button class="btn btn-secondary" data-act="fin">✂️ Planifier la fin</button>';
     }
     act+='<button class="btn btn-secondary" data-act="modifier">✏️ Modifier</button>';
-    act+='<button class="btn btn-secondary" data-act="bloc_suppr">🗑 Supprimer ce créneau</button>';
-    act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer la tâche</button>';
+    // Pour un evenement fixe, le creneau ne peut pas etre supprime seul (il
+    // bloque l'horaire) : on supprime l'evenement entier.
+    if(b.type!=='evenement'){
+      act+='<button class="btn btn-secondary" data-act="bloc_suppr">🗑 Supprimer ce créneau</button>';
+      act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer la tâche</button>';
+    }else{
+      act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer l\'événement</button>';
+    }
     act+='</div>';
     document.getElementById('detailCorps').innerHTML = corps+act;
     document.querySelectorAll('#detailCorps [data-act]').forEach(btn=>{
