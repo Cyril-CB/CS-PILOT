@@ -274,17 +274,24 @@
 
 .planif-cal{border:1px solid var(--gray-300);border-radius:var(--radius-md);overflow:hidden;background:var(--card-bg,#fff);}
 
-/* Vue semaine / jour : grille temporelle */
-.planif-grid{display:flex;max-height:70vh;overflow-y:auto;}
-.planif-gutter{flex:0 0 52px;border-right:1px solid var(--gray-200,#eee);position:relative;}
-.planif-gutter .hh{position:absolute;right:4px;font-size:.7rem;color:var(--gray-500);transform:translateY(-50%);}
-.planif-cols{display:flex;flex:1;}
-.planif-col{flex:1;position:relative;border-right:1px solid var(--gray-200,#eee);}
-.planif-col:last-child{border-right:none;}
-.planif-colhead{position:sticky;top:0;z-index:3;background:var(--card-bg,#fff);border-bottom:1px solid var(--gray-300);text-align:center;padding:.35rem 0;font-size:.8rem;font-weight:600;color:var(--gray-700);}
-.planif-colhead.today{color:var(--primary);}
-.planif-colhead .num{display:block;font-size:1.1rem;font-weight:700;color:var(--gray-900);}
-.planif-colhead.today .num{color:var(--primary);}
+/* Vue semaine / jour : grille temporelle.
+   En-tete (jours) et corps (heures + blocs) sont deux lignes distinctes : la
+   colonne d'heures et les colonnes de blocs partagent ainsi la meme origine
+   verticale, ce qui garantit l'alignement quelle que soit la hauteur de
+   l'en-tete (sinon les blocs apparaissent decales vers le bas). */
+.planif-grid2{max-height:70vh;overflow-y:auto;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+.planif-hrow{display:flex;position:sticky;top:0;z-index:3;background:var(--card-bg,#fff);}
+.planif-hcorner{flex:0 0 52px;border-right:1px solid var(--gray-200,#eee);border-bottom:1px solid var(--gray-300);}
+.planif-hday{flex:1;text-align:center;padding:.35rem 0;font-size:.8rem;font-weight:600;color:var(--gray-700);border-right:1px solid var(--gray-200,#eee);border-bottom:1px solid var(--gray-300);}
+.planif-hday:last-child{border-right:none;}
+.planif-hday.today{color:var(--primary);}
+.planif-hday .num{display:block;font-size:1.1rem;font-weight:700;color:var(--gray-900);}
+.planif-hday.today .num{color:var(--primary);}
+.planif-brow{display:flex;}
+.planif-bgutter{flex:0 0 52px;position:relative;border-right:1px solid var(--gray-200,#eee);}
+.planif-bgutter .hh{position:absolute;right:4px;font-size:.7rem;color:var(--gray-500);transform:translateY(-50%);}
+.planif-bcol{flex:1;position:relative;border-right:1px solid var(--gray-200,#eee);}
+.planif-bcol:last-child{border-right:none;}
 .planif-hourline{position:absolute;left:0;right:0;border-top:1px solid var(--gray-200,#eee);}
 .planif-workband{position:absolute;left:0;right:0;background:rgba(47,93,80,0.06);}
 .planif-now{position:absolute;left:0;right:0;border-top:2px solid #e11d48;z-index:2;}
@@ -454,39 +461,47 @@
 
   function rendreGrille(jours){
     const [mn,mx]=plageMinutes();
+    const PAD=10; // marge verticale uniforme (evite de couper le 1er libelle)
     const hauteur=(mx-mn)*PX_MIN;
-    let gutter='<div class="planif-gutter" style="height:'+(hauteur+28)+'px;">';
-    gutter+='<div style="height:28px;"></div>';
-    for(let h=Math.ceil(mn/60)*60; h<=mx; h+=60){ gutter+='<div class="hh" style="top:'+(28+(h-mn)*PX_MIN)+'px;">'+min2hhmm(h)+'</div>'; }
-    gutter+='</div>';
-
-    let cols='<div class="planif-cols">';
+    const hBody=hauteur+PAD*2;
+    const top=(t)=>(PAD+(t-mn)*PX_MIN); // origine commune gutter + colonnes
     const today=isoToday();
+
+    // En-tete : coin + jours (ligne distincte du corps).
+    let header='<div class="planif-hrow"><div class="planif-hcorner"></div>';
     jours.forEach(jr=>{
       const js=weekday(jr); const est_today=jr===today;
-      cols+='<div class="planif-col" data-jour="'+jr+'">';
-      cols+='<div class="planif-colhead'+(est_today?' today':'')+'">'+JOURS_COURT[js]+'<span class="num">'+parse(jr).getDate()+'</span></div>';
-      cols+='<div class="planif-colbody" style="position:relative;height:'+hauteur+'px;">';
-      // bandes horaires de travail (issues du planning, par date)
+      header+='<div class="planif-hday'+(est_today?' today':'')+'">'+JOURS_COURT[js]+'<span class="num">'+parse(jr).getDate()+'</span></div>';
+    });
+    header+='</div>';
+
+    // Corps : colonne des heures.
+    let gutter='<div class="planif-bgutter" style="height:'+hBody+'px;">';
+    for(let h=Math.ceil(mn/60)*60; h<=mx; h+=60){ gutter+='<div class="hh" style="top:'+top(h)+'px;">'+min2hhmm(h)+'</div>'; }
+    gutter+='</div>';
+
+    // Corps : une colonne par jour.
+    let cols='';
+    jours.forEach(jr=>{
+      const est_today=jr===today;
+      cols+='<div class="planif-bcol" data-jour="'+jr+'" style="height:'+hBody+'px;">';
       (horaireJour(jr)||[]).forEach(iv=>{
         const d=iv[0], f=iv[1];
-        if(f>d){ cols+='<div class="planif-workband" style="top:'+((d-mn)*PX_MIN)+'px;height:'+((f-d)*PX_MIN)+'px;"></div>'; }
+        if(f>d){ cols+='<div class="planif-workband" style="top:'+top(d)+'px;height:'+((f-d)*PX_MIN)+'px;"></div>'; }
       });
-      for(let hh=Math.ceil(mn/60)*60; hh<=mx; hh+=60){ cols+='<div class="planif-hourline" style="top:'+((hh-mn)*PX_MIN)+'px;"></div>'; }
-      if(est_today){ const now=new Date().getHours()*60+new Date().getMinutes(); if(now>=mn&&now<=mx){ cols+='<div class="planif-now" style="top:'+((now-mn)*PX_MIN)+'px;"></div>'; } }
-      // blocs
+      for(let hh=Math.ceil(mn/60)*60; hh<=mx; hh+=60){ cols+='<div class="planif-hourline" style="top:'+top(hh)+'px;"></div>'; }
+      if(est_today){ const now=new Date().getHours()*60+new Date().getMinutes(); if(now>=mn&&now<=mx){ cols+='<div class="planif-now" style="top:'+top(now)+'px;"></div>'; } }
       blocsCache.filter(b=>b.date===jr).forEach(b=>{
         const d=hhmm2min(b.heure_debut), f=hhmm2min(b.heure_fin);
-        const top=(d-mn)*PX_MIN, hgt=Math.max(16,(f-d)*PX_MIN);
-        const cls=classeBloc(b);
-        cols+='<div class="planif-bloc '+cls+'" data-id="'+b.id+'" style="top:'+top+'px;height:'+hgt+'px;">'
+        const hgt=Math.max(16,(f-d)*PX_MIN);
+        cols+='<div class="planif-bloc '+classeBloc(b)+'" data-id="'+b.id+'" style="top:'+top(d)+'px;height:'+hgt+'px;">'
           +'<div class="bt">'+iconeBloc(b)+esc(b.titre)+'</div>'
           +(hgt>30?'<div class="bh">'+b.heure_debut+'–'+b.heure_fin+'</div>':'')+'</div>';
       });
-      cols+='</div></div>';
+      cols+='</div>';
     });
-    cols+='</div>';
-    return '<div class="planif-grid">'+gutter+cols+'</div>';
+
+    return '<div class="planif-grid2">'+header+'<div class="planif-brow">'+gutter+cols+'</div></div>';
   }
 
   function rendreMois(){
