@@ -254,6 +254,7 @@ from blueprints.indicateurs_financiers import indicateurs_financiers_bp
 from blueprints.import_bi import import_bi_bp
 from blueprints.commandes_salaries import commandes_salaries_bp
 from blueprints.cse import cse_bp
+from blueprints.planificateur import planificateur_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -306,6 +307,7 @@ app.register_blueprint(indicateurs_financiers_bp)
 app.register_blueprint(import_bi_bp)
 app.register_blueprint(commandes_salaries_bp)
 app.register_blueprint(cse_bp)
+app.register_blueprint(planificateur_bp)
 
 
 # ==================== Context Processors ====================

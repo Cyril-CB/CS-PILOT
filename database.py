@@ -1532,6 +1532,80 @@ def init_db():
         )
     ''')
 
+    # ===== Tables module Planificateur de taches / Time Blocking (migration 0049) =====
+
+    # Definitions des taches recurrentes (generent des occurrences de taches).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS planif_recurrences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            titre TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            duree_min INTEGER DEFAULT 30,
+            priorite TEXT DEFAULT 'normale',
+            preference TEXT DEFAULT 'aucune',
+            secable INTEGER DEFAULT 0,
+            duree_min_bloc INTEGER DEFAULT 30,
+            frequence TEXT NOT NULL DEFAULT 'hebdomadaire',
+            jour_semaine INTEGER,
+            jour_mois INTEGER,
+            date_debut TEXT NOT NULL,
+            date_fin TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+
+    # Taches et evenements fixes (rendez-vous, reunions) a planifier.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS planif_taches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL DEFAULT 'tache',
+            titre TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            couleur TEXT DEFAULT '',
+            duree_min INTEGER DEFAULT 60,
+            deadline TEXT,
+            date_min TEXT,
+            priorite TEXT DEFAULT 'normale',
+            preference TEXT DEFAULT 'aucune',
+            secable INTEGER DEFAULT 1,
+            duree_min_bloc INTEGER DEFAULT 30,
+            date_fixe TEXT,
+            heure_debut TEXT,
+            heure_fin TEXT,
+            statut TEXT DEFAULT 'a_faire',
+            recurrence_id INTEGER,
+            occurrence_jour TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (recurrence_id) REFERENCES planif_recurrences(id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_planif_taches_user ON planif_taches(user_id, statut)')
+
+    # Blocs de temps calcules par le moteur (le planning concret).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS planif_blocs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tache_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            heure_debut TEXT NOT NULL,
+            heure_fin TEXT NOT NULL,
+            duree_min INTEGER NOT NULL,
+            statut TEXT DEFAULT 'planifie',
+            verrouille INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (tache_id) REFERENCES planif_taches(id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_planif_blocs_user_date ON planif_blocs(user_id, date)')
+
     # ===== Table de suivi des migrations de schema =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS schema_migrations (
