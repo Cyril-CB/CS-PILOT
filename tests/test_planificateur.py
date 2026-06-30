@@ -182,6 +182,18 @@ def test_engine_preference_matin():
     assert moteur._to_min(b['heure_debut']) < 720, "devrait etre place le matin"
 
 
+def test_engine_ne_planifie_pas_dans_le_passe():
+    """A 23h, plus rien ne se planifie le jour courant : tout part au lendemain."""
+    lundi = _lundi_prochain()
+    taches = [{'id': 1, 'titre': 'T', 'duree_min': 60, 'deadline': None,
+               'priorite': 'normale', 'preference': 'aucune', 'secable': 1, 'duree_min_bloc': 30}]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi,
+                           lundi + timedelta(days=6), minute_courante=23 * 60)
+    assert res['blocs'], "la tache doit etre planifiee (les jours suivants)"
+    assert all(b['date'] != lundi.isoformat() for b in res['blocs']), \
+        "rien ne doit etre place le jour deja ecoule"
+
+
 def test_niveau_urgence():
     ref = date(2026, 6, 30)
     assert moteur.niveau_urgence(None, ref) == 'sans_echeance'
@@ -258,7 +270,7 @@ def test_evenement_fixe_repousse_les_taches(comptable_client):
     jour = (date.today() + timedelta(days=1)).isoformat()
     comptable_client.post('/planificateur/api/tache', json={
         'type': 'evenement', 'titre': 'RDV', 'date_fixe': jour,
-        'heure_debut': '09:00', 'heure_fin': '17:00',  # journee entiere occupee
+        'heure_debut': '08:00', 'heure_fin': '19:00',  # couvre toute la journee de travail
     })
     comptable_client.post('/planificateur/api/tache', json={
         'type': 'tache', 'titre': 'Tache jour', 'duree_min': 60,
@@ -471,6 +483,55 @@ def test_supprimer_bloc_evenement_refuse(comptable_client, db):
     assert resp.status_code == 400
     # Le creneau existe toujours (l'evenement continue de bloquer son horaire).
     assert db.execute("SELECT COUNT(*) AS n FROM planif_blocs WHERE id = ?", (bloc['id'],)).fetchone()['n'] == 1
+
+
+def test_journee_terminee_reporte_au_lendemain(app, db, sample_users):
+    """Quand la journee est finie (23h), une nouvelle tache part au lendemain
+    et l'occurrence recurrente manquee n'est pas signalee comme anomalie."""
+    from datetime import datetime
+    from blueprints.planificateur import _replanifier
+
+    uid = sample_users['comptable_id']
+    # Choisir un lundi a venir, a 23h00.
+    d = date.today() + timedelta(days=1)
+    while d.weekday() != 0:
+        d += timedelta(days=1)
+    maintenant = datetime(d.year, d.month, d.day, 23, 0)
+    lendemain = (d + timedelta(days=1)).isoformat()
+
+    db.execute(
+        "INSERT INTO planif_taches (user_id, type, titre, duree_min, priorite, "
+        "preference, secable, duree_min_bloc, statut) "
+        "VALUES (?, 'tache', 'Tache jour', 60, 'normale', 'aucune', 1, 30, 'a_faire')",
+        (uid,)
+    )
+    db.execute(
+        "INSERT INTO planif_recurrences (user_id, titre, duree_min, priorite, "
+        "preference, secable, duree_min_bloc, frequence, date_debut, active) "
+        "VALUES (?, 'lecture mails', 10, 'haute', 'aucune', 0, 10, 'quotidien', ?, 1)",
+        (uid, d.isoformat())
+    )
+    db.commit()
+
+    with app.app_context():
+        non_planifie = _replanifier(db, uid, maintenant=maintenant)
+
+    # Rien n'est planifie le jour deja termine.
+    nb_jour = db.execute(
+        "SELECT COUNT(*) AS n FROM planif_blocs WHERE user_id = ? AND date = ?",
+        (uid, d.isoformat())
+    ).fetchone()['n']
+    assert nb_jour == 0, "aucun bloc ne doit etre place sur la journee terminee"
+
+    # La tache normale est bien planifiee (au lendemain ou apres).
+    bloc_tache = db.execute(
+        "SELECT b.date FROM planif_blocs b JOIN planif_taches t ON b.tache_id = t.id "
+        "WHERE t.titre = 'Tache jour'"
+    ).fetchone()
+    assert bloc_tache is not None and bloc_tache['date'] >= lendemain
+
+    # L'occurrence recurrente manquee n'est pas remontee comme non planifiee.
+    assert all(x.get('titre') != 'lecture mails' for x in non_planifie)
 
 
 def test_menu_lien_visible_comptable(comptable_client):

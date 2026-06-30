@@ -236,7 +236,7 @@ def _taille_chunk(duree, min_bloc, nb_jours_dispo, secable):
 
 
 def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
-              jours_feries=None):
+              jours_feries=None, minute_courante=0):
     """Calcule le placement des taches sur l'horizon donne.
 
     Args:
@@ -255,6 +255,10 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             c'est pourquoi ils sont indexes par date et non par jour de semaine.
         date_debut, date_fin: objets date delimitant l'horizon (inclus).
         jours_feries: ensemble de chaines 'YYYY-MM-DD' a ne pas planifier.
+        minute_courante: minute (depuis minuit) deja ecoulee le premier jour
+            (date_debut). On ne planifie pas dans le passe : la partie de la
+            journee anterieure a cette minute est consideree occupee. A 0
+            (defaut), toute la journee est disponible.
 
     Returns:
         dict {
@@ -273,7 +277,11 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
         if date_str not in jours_feries:
             work = horaires.get(date_str, [])
             if work:
-                libres = _soustraire(work, occupes_par_date.get(date_str, []))
+                occ = list(occupes_par_date.get(date_str, []))
+                # Le premier jour, on ne planifie pas avant l'heure courante.
+                if d == date_debut and minute_courante > 0:
+                    occ.append((0, minute_courante))
+                libres = _soustraire(work, occ)
                 if libres:
                     jours[date_str] = _PlanJour(d, libres)
         d += timedelta(days=1)

@@ -233,10 +233,18 @@ def _generer_occurrences(conn, user_id, today, fin, horaires):
 
 # ── Replanification ────────────────────────────────────────────────────────
 
-def _replanifier(conn, user_id):
+def _replanifier(conn, user_id, maintenant=None):
     """Recalcule le planning des taches sur l'horizon. Retourne la liste des
-    taches non planifiees (chacune enrichie de son titre)."""
-    today = date.today()
+    taches non planifiees (chacune enrichie de son titre).
+
+    `maintenant` (datetime) permet de figer l'instant courant pour les tests ;
+    par defaut, datetime.now(). On ne planifie jamais dans le passe : si la
+    journee en cours est terminee, les taches partent au lendemain.
+    """
+    if maintenant is None:
+        maintenant = datetime.now()
+    today = maintenant.date()
+    minute_courante = maintenant.hour * 60 + maintenant.minute
     fin = today + timedelta(days=HORIZON_JOURS)
 
     # Horaires de travail repris du planning theorique du salarie.
@@ -286,6 +294,7 @@ def _replanifier(conn, user_id):
 
     taches = []
     titres = {}
+    recurrence_ids = set()
     for t in taches_rows:
         done = conn.execute(
             "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs "
@@ -300,6 +309,8 @@ def _replanifier(conn, user_id):
         if dmin < today.isoformat():
             dmin = today.isoformat()
         titres[t['id']] = t['titre']
+        if t['recurrence_id'] is not None:
+            recurrence_ids.add(t['id'])
         taches.append({
             'id': t['id'], 'titre': t['titre'], 'duree_min': restant,
             'deadline': t['deadline'], 'priorite': t['priorite'],
@@ -309,7 +320,8 @@ def _replanifier(conn, user_id):
             'date_min': dmin,
         })
 
-    resultat = moteur.planifier(taches, occupes, horaires, today, fin, feries)
+    resultat = moteur.planifier(taches, occupes, horaires, today, fin, feries,
+                                minute_courante=minute_courante)
 
     for b in resultat['blocs']:
         conn.execute(
@@ -320,8 +332,13 @@ def _replanifier(conn, user_id):
         )
     conn.commit()
 
+    # Les occurrences recurrentes sont placees « au mieux, la ou il reste de la
+    # place » : leur absence (ex. journee deja terminee) n'est pas une anomalie
+    # a signaler a l'utilisateur.
     non_planifie = []
     for np in resultat['non_planifie']:
+        if np['tache_id'] in recurrence_ids:
+            continue
         non_planifie.append({**np, 'titre': titres.get(np['tache_id'], '')})
     return non_planifie
 
