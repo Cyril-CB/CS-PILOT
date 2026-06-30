@@ -27,8 +27,10 @@ logger = logging.getLogger(__name__)
 
 planificateur_bp = Blueprint('planificateur_bp', __name__)
 
-# Profils autorises a acceder au planificateur (phase 1 : comptable uniquement).
-PROFILS_AUTORISES = ('comptable',)
+# Profils autorises a acceder au planificateur : tous les salaries internes.
+# Chacun ne voit que son propre planning (le prestataire de paie externe est
+# hors perimetre).
+PROFILS_AUTORISES = ('directeur', 'comptable', 'responsable', 'salarie')
 
 # Horizon de planification (jours a partir d'aujourd'hui).
 HORIZON_JOURS = 60
@@ -40,6 +42,9 @@ FREQUENCES_VALIDES = ('quotidien', 'hebdomadaire', 'mensuel')
 # Horaires de travail par defaut (lundi-vendredi), utilises uniquement si le
 # salarie n'a aucun planning theorique defini (menu « Mon planning »).
 HORAIRE_DEFAUT_INTERVALLES = [(540, 750), (810, 1050)]  # 09:00-12:30 / 13:30-17:30
+# La direction est au forfait jours (pas d'horaires precis) : on retient une
+# amplitude de bureau classique 09:00-12:30 / 14:00-18:00.
+HORAIRE_DEFAUT_DIRECTION = [(540, 750), (840, 1080)]  # 09:00-12:30 / 14:00-18:00
 JOURS_NOMS_PLANNING = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
 
 
@@ -72,6 +77,18 @@ def _uid():
 
 # ── Helpers horaires (repris du planning theorique) ────────────────────────
 
+def _horaire_defaut_profil(conn, user_id):
+    """Horaires par defaut (intervalles en minutes) selon le profil.
+
+    La direction est au forfait jours : amplitude 09:00-12:30 / 14:00-18:00.
+    Les autres profils : 09:00-12:30 / 13:30-17:30.
+    """
+    row = conn.execute('SELECT profil FROM users WHERE id = ?', (user_id,)).fetchone()
+    if row and row['profil'] == 'directeur':
+        return HORAIRE_DEFAUT_DIRECTION
+    return HORAIRE_DEFAUT_INTERVALLES
+
+
 def _horaires_par_date(conn, user_id, debut, fin):
     """Construit {date_str: [(deb_min, fin_min), ...]} pour l'horizon.
 
@@ -82,14 +99,16 @@ def _horaires_par_date(conn, user_id, debut, fin):
     helpers existants.
 
     Si le salarie n'a aucun planning, un horaire par defaut est applique
-    (lundi-vendredi 09:00-12:30 / 13:30-17:30) afin que le planificateur reste
-    utilisable immediatement.
+    (lundi-vendredi) afin que le planificateur reste utilisable immediatement :
+    09:00-12:30 / 13:30-17:30 en general, et 09:00-12:30 / 14:00-18:00 pour la
+    direction (au forfait jours, sans horaires precis).
     """
     from utils import get_planning_valide_a_date, get_type_periode
 
     a_un_planning = conn.execute(
         'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
     ).fetchone()
+    defaut = _horaire_defaut_profil(conn, user_id)
 
     horaires = {}
     d = debut
@@ -98,7 +117,7 @@ def _horaires_par_date(conn, user_id, debut, fin):
         if d.weekday() < 5:
             date_str = d.isoformat()
             if not a_un_planning:
-                horaires[date_str] = list(HORAIRE_DEFAUT_INTERVALLES)
+                horaires[date_str] = list(defaut)
             else:
                 planning = get_planning_valide_a_date(
                     user_id, get_type_periode(date_str), date_str
@@ -296,15 +315,29 @@ def _replanifier(conn, user_id, maintenant=None):
     titres = {}
     recurrence_ids = set()
     for t in taches_rows:
-        done = conn.execute(
+        duree = int(t['duree_min'])
+        # Temps reellement REALISE (blocs « fait ») : sert a savoir si la tache
+        # est terminee.
+        fait_min = conn.execute(
             "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs "
             "WHERE tache_id = ? AND statut = 'fait'",
             (t['id'],)
         ).fetchone()['s']
-        restant = int(t['duree_min']) - int(done or 0)
-        if restant <= 0:
+        if int(fait_min) >= duree:
             conn.execute("UPDATE planif_taches SET statut = 'fait' WHERE id = ?", (t['id'],))
             continue
+        # Temps deja ENGAGE et non replanifiable : blocs realises (fait) ET blocs
+        # verrouilles manuellement (glisser-deposer). Verrouiller n'est pas
+        # « faire » : on ne replanifie que le reste, autour de ces creneaux, mais
+        # la tache reste a faire.
+        engage_min = conn.execute(
+            "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs "
+            "WHERE tache_id = ? AND (statut = 'fait' OR verrouille = 1)",
+            (t['id'],)
+        ).fetchone()['s']
+        restant = duree - int(engage_min or 0)
+        if restant <= 0:
+            continue  # entierement planifie (creneaux verrouilles) : rien a ajouter
         dmin = t['date_min'] or today.isoformat()
         if dmin < today.isoformat():
             dmin = today.isoformat()
@@ -444,6 +477,11 @@ def planificateur():
         a_un_planning = conn.execute(
             'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
         ).fetchone() is not None
+        # Description des horaires par defaut (affichee si aucun planning).
+        defaut = _horaire_defaut_profil(conn, user_id)
+        horaire_defaut_txt = ' / '.join(
+            f'{moteur._to_hhmm(a)}–{moteur._to_hhmm(b)}' for a, b in defaut
+        )
         recurrences = conn.execute(
             'SELECT * FROM planif_recurrences WHERE user_id = ? AND active = 1 ORDER BY id DESC',
             (user_id,)
@@ -472,6 +510,7 @@ def planificateur():
             recurrences=[dict(r) for r in recurrences],
             taches_non_placees=[dict(r) for r in taches_non_placees],
             a_un_planning=a_un_planning,
+            horaire_defaut_txt=horaire_defaut_txt,
         )
     finally:
         conn.close()
@@ -801,15 +840,19 @@ def api_supprimer_bloc(bloc_id):
     conn = get_db()
     try:
         user_id = _uid()
-        bloc = conn.execute('SELECT * FROM planif_blocs WHERE id = ? AND user_id = ?',
-                            (bloc_id, user_id)).fetchone()
+        bloc = conn.execute(
+            'SELECT b.*, t.type AS tache_type FROM planif_blocs b '
+            'JOIN planif_taches t ON b.tache_id = t.id '
+            'WHERE b.id = ? AND b.user_id = ?',
+            (bloc_id, user_id)
+        ).fetchone()
         if not bloc:
             return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
-        # Un creneau verrouille correspond a un evenement fixe : le supprimer
-        # seul laisserait l'evenement en base sans occuper son horaire (des
-        # taches pourraient s'y planifier). On passe par la suppression / la
-        # modification de l'evenement lui-meme.
-        if bloc['verrouille']:
+        # Le creneau d'un evenement fixe ne se supprime pas seul (sinon
+        # l'evenement reste en base sans occuper son horaire) : passer par la
+        # suppression de l'evenement. En revanche un bloc de tache verrouille
+        # (place manuellement) reste supprimable et libere son creneau.
+        if bloc['tache_type'] == 'evenement':
             return jsonify({
                 'ok': False,
                 'erreur': "Ce créneau correspond à un événement fixe : supprimez ou modifiez l'événement."
@@ -817,6 +860,85 @@ def api_supprimer_bloc(bloc_id):
         conn.execute('DELETE FROM planif_blocs WHERE id = ?', (bloc_id,))
         conn.commit()
         return jsonify({'ok': True})
+    finally:
+        conn.close()
+
+
+@planificateur_bp.route('/planificateur/api/bloc/<int:bloc_id>/deplacer', methods=['POST'])
+@planif_required
+def api_deplacer_bloc(bloc_id):
+    """Deplace un bloc (glisser-deposer) puis le verrouille.
+
+    Le bloc conserve sa duree ; on change sa date et son heure de debut. Le
+    creneau devient fixe (verrouille = 1) : la replanification ne le deplace
+    plus et organise le reste autour. Pour un evenement, on met aussi a jour la
+    date/heure de l'evenement lui-meme.
+    """
+    data = _lire_payload()
+    conn = get_db()
+    try:
+        user_id = _uid()
+        bloc = conn.execute(
+            'SELECT b.*, t.type AS tache_type FROM planif_blocs b '
+            'JOIN planif_taches t ON b.tache_id = t.id '
+            'WHERE b.id = ? AND b.user_id = ?',
+            (bloc_id, user_id)
+        ).fetchone()
+        if not bloc:
+            return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
+
+        nouvelle_date = _valide_date(data.get('date')) or bloc['date']
+        deb = _valide_heure(data.get('heure_debut'))
+        if not deb:
+            return jsonify({'ok': False, 'erreur': 'Heure de debut invalide.'}), 400
+        duree = int(bloc['duree_min'])
+        deb_min = moteur._to_min(deb)
+        fin_min = deb_min + duree
+        if fin_min > 24 * 60:  # ne pas deborder sur le lendemain
+            fin_min = 24 * 60
+            deb_min = max(0, fin_min - duree)
+
+        conn.execute(
+            'UPDATE planif_blocs SET date = ?, heure_debut = ?, heure_fin = ?, verrouille = 1 WHERE id = ?',
+            (nouvelle_date, moteur._to_hhmm(deb_min), moteur._to_hhmm(fin_min), bloc_id)
+        )
+        if bloc['tache_type'] == 'evenement':
+            conn.execute(
+                'UPDATE planif_taches SET date_fixe = ?, heure_debut = ?, heure_fin = ?, '
+                'updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                (nouvelle_date, moteur._to_hhmm(deb_min), moteur._to_hhmm(fin_min), bloc['tache_id'])
+            )
+        conn.commit()
+        non_planifie = _replanifier(conn, user_id)
+        return jsonify({'ok': True, 'non_planifie': non_planifie})
+    finally:
+        conn.close()
+
+
+@planificateur_bp.route('/planificateur/api/bloc/<int:bloc_id>/verrou', methods=['POST'])
+@planif_required
+def api_verrou_bloc(bloc_id):
+    """Verrouille / deverrouille un bloc de tache (le rend fixe ou re-planifiable)."""
+    data = _lire_payload()
+    verrou = 1 if str(data.get('verrouille')) in ('1', 'true', 'on', 'True') else 0
+    conn = get_db()
+    try:
+        user_id = _uid()
+        bloc = conn.execute(
+            'SELECT b.*, t.type AS tache_type FROM planif_blocs b '
+            'JOIN planif_taches t ON b.tache_id = t.id '
+            'WHERE b.id = ? AND b.user_id = ?',
+            (bloc_id, user_id)
+        ).fetchone()
+        if not bloc:
+            return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
+        # Un evenement fixe reste verrouille par nature.
+        if bloc['tache_type'] == 'evenement':
+            return jsonify({'ok': False, 'erreur': "Un événement fixe est toujours verrouillé."}), 400
+        conn.execute('UPDATE planif_blocs SET verrouille = ? WHERE id = ?', (verrou, bloc_id))
+        conn.commit()
+        non_planifie = _replanifier(conn, user_id)
+        return jsonify({'ok': True, 'non_planifie': non_planifie})
     finally:
         conn.close()
 

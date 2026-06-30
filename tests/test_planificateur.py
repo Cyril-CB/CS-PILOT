@@ -214,19 +214,53 @@ def test_acces_comptable_ok(comptable_client):
     assert 'Planificateur' in resp.get_data(as_text=True)
 
 
-def test_acces_salarie_refuse(auth_client):
-    resp = auth_client.get('/planificateur', follow_redirects=False)
-    assert resp.status_code == 302  # redirige vers le dashboard
+def test_acces_salarie_ok(auth_client):
+    resp = auth_client.get('/planificateur')
+    assert resp.status_code == 200
 
 
-def test_acces_directeur_refuse(admin_client):
-    resp = admin_client.get('/planificateur', follow_redirects=False)
-    assert resp.status_code == 302
+def test_acces_directeur_ok(admin_client):
+    resp = admin_client.get('/planificateur')
+    assert resp.status_code == 200
 
 
-def test_api_refuse_non_comptable(auth_client):
-    resp = auth_client.post('/planificateur/api/tache', json={'titre': 'X', 'duree_min': 30})
-    assert resp.status_code == 403
+def test_acces_responsable_ok(resp_client):
+    resp = resp_client.get('/planificateur')
+    assert resp.status_code == 200
+
+
+def test_acces_prestataire_refuse(client, db):
+    """Le prestataire de paie (externe) n'a pas acces au planificateur."""
+    from werkzeug.security import generate_password_hash
+    db.execute(
+        "INSERT INTO users (nom, prenom, login, password, profil) "
+        "VALUES ('Presta', 'Paie', 'presta_test', ?, 'prestataire')",
+        (generate_password_hash('presta123'),)
+    )
+    db.commit()
+    client.post('/login', data={'login': 'presta_test', 'password': 'presta123'},
+                follow_redirects=True)
+    assert client.get('/planificateur', follow_redirects=False).status_code == 302
+    assert client.post('/planificateur/api/tache',
+                       json={'titre': 'X', 'duree_min': 30}).status_code == 403
+
+
+def test_confidentialite_directeur_ne_voit_pas_les_autres(admin_client, db, sample_users):
+    """Meme la direction ne voit que son propre planning."""
+    jour = (date.today() + timedelta(days=1)).isoformat()
+    cur = db.execute(
+        "INSERT INTO planif_taches (user_id, type, titre, duree_min, statut) "
+        "VALUES (?, 'tache', 'Prive comptable', 60, 'a_faire')",
+        (sample_users['comptable_id'],)
+    )
+    db.execute(
+        "INSERT INTO planif_blocs (tache_id, user_id, date, heure_debut, heure_fin, duree_min) "
+        "VALUES (?, ?, ?, '09:00', '10:00', 60)",
+        (cur.lastrowid, sample_users['comptable_id'], jour)
+    )
+    db.commit()
+    blocs = admin_client.get(f'/planificateur/api/blocs?debut={jour}&fin={jour}').get_json()['blocs']
+    assert all(b['titre'] != 'Prive comptable' for b in blocs)
 
 
 def test_creer_tache_genere_des_blocs(comptable_client):
@@ -534,7 +568,103 @@ def test_journee_terminee_reporte_au_lendemain(app, db, sample_users):
     assert all(x.get('titre') != 'lecture mails' for x in non_planifie)
 
 
+def test_horaires_defaut_direction(admin_client):
+    """Sans planning, la direction (forfait jours) a 09:00-12:30 / 14:00-18:00."""
+    admin_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Tache dir', 'duree_min': 120,
+        'preference': 'apres_midi', 'secable': 1, 'duree_min_bloc': 60,
+    })
+    fin = (date.today() + timedelta(days=20)).isoformat()
+    horaires = admin_client.get(
+        f'/planificateur/api/blocs?debut={date.today().isoformat()}&fin={fin}'
+    ).get_json()['horaires']
+    aprem = [iv for jour in horaires.values() for iv in jour if iv[0] >= 720]
+    assert aprem, "il doit y avoir un creneau d'apres-midi"
+    assert all(iv[0] == 840 and iv[1] == 1080 for iv in aprem), \
+        "l'apres-midi de la direction doit etre 14:00-18:00"
+
+
+def test_deplacer_bloc_le_verrouille(comptable_client, db):
+    """Glisser un bloc le deplace et le verrouille ; la replanif ne le bouge plus."""
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'A deplacer', 'duree_min': 60, 'secable': 0, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id FROM planif_blocs LIMIT 1").fetchone()
+    cible = (date.today() + timedelta(days=3)).isoformat()
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/deplacer',
+                                 json={'date': cible, 'heure_debut': '15:00'})
+    assert resp.status_code == 200
+    maj = db.execute("SELECT date, heure_debut, heure_fin, verrouille FROM planif_blocs WHERE id = ?",
+                     (bloc['id'],)).fetchone()
+    assert maj['date'] == cible and maj['heure_debut'] == '15:00' and maj['heure_fin'] == '16:00'
+    assert maj['verrouille'] == 1
+
+    comptable_client.post('/planificateur/api/replanifier', json={})
+    apres = db.execute("SELECT date, heure_debut, verrouille FROM planif_blocs WHERE id = ?",
+                       (bloc['id'],)).fetchone()
+    assert apres is not None
+    assert apres['date'] == cible and apres['heure_debut'] == '15:00' and apres['verrouille'] == 1
+
+
+def test_verrou_bloc_pas_de_double_comptage(comptable_client, db, sample_users):
+    """Verrouiller un morceau d'une tache n'augmente pas le total planifie."""
+    uid = sample_users['comptable_id']
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Mission', 'duree_min': 240, 'secable': 1, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id FROM planif_blocs WHERE user_id = ? LIMIT 1", (uid,)).fetchone()
+    comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/verrou', json={'verrouille': 1})
+    comptable_client.post('/planificateur/api/replanifier', json={})
+    total = db.execute("SELECT COALESCE(SUM(duree_min),0) AS s FROM planif_blocs WHERE user_id = ?",
+                       (uid,)).fetchone()['s']
+    assert total == 240, "le total planifie doit rester egal a la duree de la tache"
+
+
+def test_deverrouiller_bloc(comptable_client, db):
+    """Déverrouiller rend le bloc à l'optimiseur (la tâche reste planifiée, non verrouillée)."""
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'T', 'duree_min': 60, 'secable': 0, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id, tache_id FROM planif_blocs LIMIT 1").fetchone()
+    tache_id = bloc['tache_id']
+    comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/verrou', json={'verrouille': 1})
+    assert db.execute("SELECT verrouille FROM planif_blocs WHERE id = ?",
+                      (bloc['id'],)).fetchone()['verrouille'] == 1
+    # Verrouiller n'est pas « faire » : la tache reste a faire.
+    assert db.execute("SELECT statut FROM planif_taches WHERE id = ?",
+                      (tache_id,)).fetchone()['statut'] == 'a_faire'
+
+    # Deverrouiller : le bloc est rendu a l'optimiseur (re-planifie librement).
+    comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/verrou', json={'verrouille': 0})
+    restants = db.execute(
+        "SELECT COUNT(*) AS n FROM planif_blocs WHERE tache_id = ? AND verrouille = 1",
+        (tache_id,)
+    ).fetchone()['n']
+    total = db.execute("SELECT COUNT(*) AS n FROM planif_blocs WHERE tache_id = ?",
+                       (tache_id,)).fetchone()['n']
+    assert restants == 0, "plus aucun bloc verrouille apres deverrouillage"
+    assert total >= 1, "la tache reste planifiee"
+
+
+def test_supprimer_bloc_tache_verrouille_autorise(comptable_client, db):
+    """Un bloc de tache verrouille reste supprimable (contrairement a un evenement)."""
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'T', 'duree_min': 60, 'secable': 0, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id FROM planif_blocs LIMIT 1").fetchone()
+    comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/verrou', json={'verrouille': 1})
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/supprimer', json={})
+    assert resp.status_code == 200
+    assert db.execute("SELECT COUNT(*) AS n FROM planif_blocs WHERE id = ?",
+                      (bloc['id'],)).fetchone()['n'] == 0
+
+
 def test_menu_lien_visible_comptable(comptable_client):
     resp = comptable_client.get('/dashboard_comptable')
     html = resp.get_data(as_text=True)
+    assert '/planificateur' in html
+
+
+def test_menu_lien_visible_salarie(auth_client):
+    html = auth_client.get('/dashboard').get_data(as_text=True)
     assert '/planificateur' in html

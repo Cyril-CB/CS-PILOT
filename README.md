@@ -90,15 +90,16 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Calendrier visuel des reservations
 
 ### Planificateur de taches (Time Blocking)
-- Gestionnaire de taches personnel inspire de FlowSavvy (epure), accessible depuis le menu **Mon espace** (reserve au comptable en phase de test)
-- Planning strictement prive : chaque utilisateur ne voit que ses propres taches (meme la direction n'y a pas acces)
+- Gestionnaire de taches personnel inspire de FlowSavvy (epure), accessible depuis le menu **Mon espace** par tous les salaries internes (salarie, responsable, comptable, direction)
+- Planning strictement prive : chaque utilisateur ne voit que ses propres taches (meme la direction n'a acces qu'a son propre planning, et personne ne voit celui d'un autre)
 - Ajout de taches (duree estimee, echeance optionnelle, priorite, preference matin / apres-midi, possibilite de decoupage) et d'evenements fixes (rendez-vous, reunions)
-- Organisation automatique du planning par optimisation sous contraintes (moteur integre) : equilibrage de la charge par jour, micro-pauses sur les journees chargees, respect des horaires de travail, blocage prioritaire des evenements fixes, repartition des longues missions sur plusieurs jours
+- Organisation automatique du planning par optimisation sous contraintes (moteur integre) : equilibrage de la charge par jour, micro-pauses sur les journees chargees, respect des horaires de travail, blocage prioritaire des evenements fixes, repartition des longues missions sur plusieurs jours, sans planifier dans le passe (les taches du jour deja ecoule partent au lendemain)
 - Bouton **Replanifier** et replanification automatique a chaque ajout
+- Glisser-deposer un bloc sur le calendrier pour le repositionner : il est alors verrouille (la replanification ne le deplace plus) ; deverrouillage possible pour le rendre a l'optimiseur
 - Taches recurrentes (quotidien / hebdomadaire / mensuel) placees la ou il reste de la place
 - Suivi depuis le calendrier : marquer effectuee, reporter, planifier la fin d'une tache, modifier, supprimer
 - Code couleur selon la proximite de l'echeance ; vues jour / semaine / mois avec navigation simple
-- Horaires de travail repris automatiquement du planning theorique du salarie (menu « Mon planning ») : aucune ressaisie (horaires par defaut si aucun planning n'est defini)
+- Horaires de travail repris automatiquement du planning theorique du salarie (menu « Mon planning ») : aucune ressaisie. A defaut de planning, horaires par defaut lundi-vendredi 09:00-12:30 / 13:30-17:30 (et 09:00-12:30 / 14:00-18:00 pour la direction au forfait jours)
 
 ### Notifications par email
 - Envoi de notifications via Gmail (SMTP)
