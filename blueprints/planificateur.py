@@ -330,10 +330,15 @@ def _replanifier(conn, user_id, maintenant=None):
         # verrouilles manuellement (glisser-deposer). Verrouiller n'est pas
         # « faire » : on ne replanifie que le reste, autour de ces creneaux, mais
         # la tache reste a faire.
+        # Un bloc verrouille n'est compte que s'il est encore a venir (date >=
+        # aujourd'hui) : un creneau verrouille dont le jour est passe sans avoir
+        # ete realise n'occupe plus la capacite future, donc son temps doit etre
+        # replanifie (sinon il serait silencieusement perdu). Les blocs « fait »,
+        # eux, comptent quelle que soit leur date (travail reellement accompli).
         engage_min = conn.execute(
             "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs "
-            "WHERE tache_id = ? AND (statut = 'fait' OR verrouille = 1)",
-            (t['id'],)
+            "WHERE tache_id = ? AND (statut = 'fait' OR (verrouille = 1 AND date >= ?))",
+            (t['id'], today.isoformat())
         ).fetchone()['s']
         restant = duree - int(engage_min or 0)
         if restant <= 0:
@@ -888,6 +893,8 @@ def api_deplacer_bloc(bloc_id):
             return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
 
         nouvelle_date = _valide_date(data.get('date')) or bloc['date']
+        if nouvelle_date < date.today().isoformat():
+            return jsonify({'ok': False, 'erreur': "Impossible de déplacer un créneau dans le passé."}), 400
         deb = _valide_heure(data.get('heure_debut'))
         if not deb:
             return jsonify({'ok': False, 'erreur': 'Heure de debut invalide.'}), 400

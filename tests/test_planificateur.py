@@ -659,6 +659,59 @@ def test_supprimer_bloc_tache_verrouille_autorise(comptable_client, db):
                       (bloc['id'],)).fetchone()['n'] == 0
 
 
+def test_bloc_verrouille_passe_non_compte(app, db, sample_users):
+    """Un creneau verrouille dont le jour est passe (non realise) ne reduit pas
+    le travail restant : il doit etre entierement replanifie, pas perdu."""
+    from datetime import datetime
+    from blueprints.planificateur import _replanifier
+
+    uid = sample_users['comptable_id']
+    # Aujourd'hui = un mardi a venir, 09:00 (journee en cours).
+    d = date.today() + timedelta(days=1)
+    while d.weekday() != 1:
+        d += timedelta(days=1)
+    maintenant = datetime(d.year, d.month, d.day, 9, 0)
+    hier = (d - timedelta(days=1)).isoformat()
+
+    cur = db.execute(
+        "INSERT INTO planif_taches (user_id, type, titre, duree_min, secable, duree_min_bloc, statut) "
+        "VALUES (?, 'tache', 'Mission', 120, 1, 60, 'a_faire')", (uid,)
+    )
+    tid = cur.lastrowid
+    # Bloc verrouille de 60 min place HIER (rate, jamais marque fait).
+    db.execute(
+        "INSERT INTO planif_blocs (tache_id, user_id, date, heure_debut, heure_fin, duree_min, statut, verrouille) "
+        "VALUES (?, ?, ?, '15:00', '16:00', 60, 'planifie', 1)", (tid, uid, hier)
+    )
+    db.commit()
+
+    with app.app_context():
+        _replanifier(db, uid, maintenant=maintenant)
+
+    # Les 120 minutes doivent etre entierement planifiees dans le futur (le bloc
+    # verrouille passe ne compte pas comme travail engage).
+    futur = db.execute(
+        "SELECT COALESCE(SUM(duree_min), 0) AS s FROM planif_blocs WHERE tache_id = ? AND date >= ?",
+        (tid, d.isoformat())
+    ).fetchone()['s']
+    assert futur == 120, f"attendu 120 min planifiees dans le futur, obtenu {futur}"
+    # La tache n'est pas marquee faite (rien n'a ete realise).
+    assert db.execute("SELECT statut FROM planif_taches WHERE id = ?",
+                      (tid,)).fetchone()['statut'] == 'a_faire'
+
+
+def test_deplacer_bloc_dans_le_passe_refuse(comptable_client, db):
+    """Le glisser-deposer refuse de deposer un creneau dans le passe."""
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'T', 'duree_min': 60, 'secable': 0, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id FROM planif_blocs LIMIT 1").fetchone()
+    hier = (date.today() - timedelta(days=1)).isoformat()
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/deplacer',
+                                 json={'date': hier, 'heure_debut': '10:00'})
+    assert resp.status_code == 400
+
+
 def test_menu_lien_visible_comptable(comptable_client):
     resp = comptable_client.get('/dashboard_comptable')
     html = resp.get_data(as_text=True)
