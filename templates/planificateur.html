@@ -363,7 +363,8 @@
   const JOURS = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
   const JOURS_COURT = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   const MOIS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  const PX_MIN = 0.8; // pixels par minute
+  const PX_MIN = 1.5;   // pixels par minute (hauteur des tranches horaires)
+  const H_MIN_BLOC = 22; // hauteur mini d'un bloc, en px (lisibilite du libelle)
 
   const state = { vue: DATA.vue || 'semaine', date: DATA.date || isoToday() };
   let blocsCache = [];
@@ -493,11 +494,20 @@
       });
       for(let hh=Math.ceil(mn/60)*60; hh<=mx; hh+=60){ cols+='<div class="planif-hourline" style="top:'+top(hh)+'px;"></div>'; }
       if(est_today){ const now=new Date().getHours()*60+new Date().getMinutes(); if(now>=mn&&now<=mx){ cols+='<div class="planif-now" style="top:'+top(now)+'px;"></div>'; } }
-      blocsCache.filter(b=>b.date===jr).forEach(b=>{
+      // Blocs tries par heure de debut : on cale chaque bloc sous le precedent
+      // (jamais au-dessus), ce qui evite tout chevauchement visuel lorsqu'une
+      // tache tres courte est suivie immediatement d'une autre.
+      let basPrec = -Infinity;
+      blocsCache.filter(b=>b.date===jr)
+        .sort((a,b)=>hhmm2min(a.heure_debut)-hhmm2min(b.heure_debut))
+        .forEach(b=>{
         const d=hhmm2min(b.heure_debut), f=hhmm2min(b.heure_fin);
-        const hgt=Math.max(16,(f-d)*PX_MIN);
+        const hgt=Math.max(H_MIN_BLOC,(f-d)*PX_MIN);
+        let topPx=top(d);
+        if(topPx<basPrec+1){ topPx=basPrec+1; } // pousser sous le bloc precedent
+        basPrec=topPx+hgt;
         const verrou = b.verrouille && b.type!=='evenement';
-        cols+='<div class="planif-bloc '+classeBloc(b)+(verrou?' locked':'')+'" data-id="'+b.id+'" style="top:'+top(d)+'px;height:'+hgt+'px;">'
+        cols+='<div class="planif-bloc '+classeBloc(b)+(verrou?' locked':'')+'" data-id="'+b.id+'" style="top:'+topPx+'px;height:'+hgt+'px;">'
           +'<div class="bt">'+iconeBloc(b)+esc(b.titre)+(verrou?' 🔒':'')+'</div>'
           +(hgt>30?'<div class="bh">'+b.heure_debut+'–'+b.heure_fin+'</div>':'')+'</div>';
       });

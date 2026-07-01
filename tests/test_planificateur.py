@@ -221,6 +221,44 @@ def test_engine_capacite_insuffisante():
     assert res['non_planifie'], "le reste non placé doit etre signale"
 
 
+def test_engine_reporte_le_debordement_au_lendemain():
+    """Quand plusieurs taches ont une echeance le meme jour deja sature, le
+    debordement est REPORTE sur les jours suivants au lieu d'etre empile sur la
+    journee ou laisse non planifie."""
+    lundi = _lundi_prochain()
+    # 8 taches d'1h non secables, toutes dues lundi : elles ne tiennent pas
+    # toutes le lundi (micro-pauses + cap), le reste doit partir mar/mer.
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60, 'deadline': lundi.isoformat(),
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 9)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=6))
+
+    assert not res['non_planifie'], "le debordement doit etre reporte, pas laisse non planifie"
+    # Les 8 taches sont placees, et pas toutes le meme jour.
+    assert len({b['tache_id'] for b in res['blocs']}) == 8
+    jours = sorted({b['date'] for b in res['blocs']})
+    assert jours[0] == lundi.isoformat(), "le lundi (echeance) doit etre rempli en priorite"
+    assert len(jours) >= 2, "les taches en trop doivent etre reportees sur les jours suivants"
+
+
+def test_engine_blocs_dune_journee_ne_se_chevauchent_pas():
+    """Deux blocs places le meme jour n'occupent jamais la meme minute (une tache
+    courte suivie d'une autre ne doit pas se superposer)."""
+    lundi = _lundi_prochain()
+    # Beaucoup de taches courtes (10 min) le meme jour.
+    taches = [{'id': i, 'titre': f'R{i}', 'duree_min': 10, 'deadline': None,
+               'priorite': 'normale', 'preference': 'matin', 'secable': False,
+               'duree_min_bloc': 10} for i in range(1, 13)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi)
+    for jour in {b['date'] for b in res['blocs']}:
+        blocs = sorted((b for b in res['blocs'] if b['date'] == jour),
+                       key=lambda b: moteur._to_min(b['heure_debut']))
+        for i in range(1, len(blocs)):
+            fin_prec = moteur._to_min(blocs[i - 1]['heure_fin'])
+            deb = moteur._to_min(blocs[i]['heure_debut'])
+            assert deb >= fin_prec, f"blocs superposes : {blocs[i-1]} / {blocs[i]}"
+
+
 def test_engine_preference_matin():
     """Une tache avec preference matin est placee le matin si possible."""
     lundi = _lundi_prochain()

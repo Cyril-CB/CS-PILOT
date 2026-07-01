@@ -259,6 +259,13 @@ def _taille_chunk(duree, min_bloc, nb_jours_dispo, secable):
     return cible
 
 
+def _cle_repartition(p):
+    """Cle de tri d'une journee pour l'equilibrage : d'abord celle qui compte le
+    MOINS de taches substantielles, puis la moins chargee, puis la plus tot.
+    Repartir sur les jours peu remplis evite d'empiler les taches au meme endroit."""
+    return (p.nb_substantielles(), p.charge, p.jour)
+
+
 def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
               jours_feries=None, minute_courante=0):
     """Calcule le placement des taches sur l'horizon donne.
@@ -318,17 +325,25 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     blocs_resultat = []
     non_planifie = []
 
-    def _jours_fenetre(tache):
-        """Journees candidates pour une tache, dans sa fenetre [date_min, deadline]."""
+    def _jours_fenetre(tache, ignorer_echeance=False):
+        """Journees candidates pour une tache.
+
+        Par defaut, restreintes a la fenetre [date_min, deadline]. Avec
+        `ignorer_echeance=True`, l'echeance est ignoree : ce jeu elargi sert de
+        repli pour REPORTER le debordement sur les jours suivants quand la
+        fenetre d'echeance est saturee.
+        """
         dmin = tache.get('date_min')
         if isinstance(dmin, str):
             dmin = date.fromisoformat(dmin) if dmin else None
-        deadline = tache.get('deadline')
-        if isinstance(deadline, str):
-            try:
-                deadline = date.fromisoformat(deadline)
-            except ValueError:
-                deadline = None
+        deadline = None
+        if not ignorer_echeance:
+            deadline = tache.get('deadline')
+            if isinstance(deadline, str):
+                try:
+                    deadline = date.fromisoformat(deadline)
+                except ValueError:
+                    deadline = None
         candidats = []
         for date_str, pj in jours.items():
             if dmin and pj.jour < dmin:
@@ -338,60 +353,17 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             candidats.append(pj)
         return candidats
 
-    def _placer_tache(tache):
-        duree = int(tache.get('duree_min', 0))
-        if duree <= 0:
-            return
-        secable = bool(tache.get('secable', True))
-        min_bloc = max(5, int(tache.get('duree_min_bloc') or 30))
-        preference = tache.get('preference', 'aucune')
-        candidats = _jours_fenetre(tache)
-
-        if not candidats:
-            non_planifie.append({
-                'tache_id': tache['id'], 'minutes_restantes': duree,
-                'raison': 'aucun creneau disponible avant l\'echeance',
-            })
-            return
-
-        # Cle de repartition : d'abord le jour comptant le MOINS de taches
-        # substantielles (repartition), puis le moins charge (minutes), puis le
-        # plus tot. La preference pour les jours peu remplis fait naturellement
-        # « monter » le seuil de 3 a 4, 5... quand tous les jours possibles sont
-        # deja pleins, tout en respectant la fenetre imposee par l'echeance.
-        def _cle_repartition(p):
-            return (p.nb_substantielles(), p.charge, p.jour)
-
-        if not secable:
-            # Bloc unique : essayer chaque jour, du mieux reparti au moins bon.
-            for pj in sorted(candidats, key=_cle_repartition):
-                pos = pj.placer_bloc_entier(duree, preference)
-                if pos:
-                    pj.enregistrer(tache['id'], duree)
-                    blocs_resultat.append({
-                        'tache_id': tache['id'], 'date': pj.jour.isoformat(),
-                        'heure_debut': _to_hhmm(pos[0]), 'heure_fin': _to_hhmm(pos[1]),
-                        'duree_min': duree,
-                    })
-                    return
-            non_planifie.append({
-                'tache_id': tache['id'], 'minutes_restantes': duree,
-                'raison': 'aucun creneau contigu assez long (tache non secable)',
-            })
-            return
-
-        # Tache secable : repartir en privilegiant les jours les moins remplis.
-        restant = duree
-        chunk = _taille_chunk(duree, min_bloc, len(candidats), secable)
+    def _repartir_secable(tache, jours_dispo, restant, chunk, preference):
+        """Repartit `restant` minutes d'une tache secable sur `jours_dispo`, en
+        privilegiant les jours les moins remplis. Retourne les minutes non placees."""
         epuises = set()
         while restant > 0:
-            dispo = [p for p in candidats
+            dispo = [p for p in jours_dispo
                      if id(p) not in epuises and p.capacite_restante() > 0]
             if not dispo:
                 break
             pj = min(dispo, key=_cle_repartition)
             voulu = min(restant, chunk)
-            # Sur le dernier reliquat, ne pas exiger le chunk plein.
             blocs, places = pj.placer_secable(voulu, preference)
             if places <= 0:
                 epuises.add(id(pj))
@@ -406,6 +378,63 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             restant -= places
             if pj.capacite_restante() <= 0:
                 epuises.add(id(pj))
+        return restant
+
+    def _placer_tache(tache):
+        duree = int(tache.get('duree_min', 0))
+        if duree <= 0:
+            return
+        secable = bool(tache.get('secable', True))
+        min_bloc = max(5, int(tache.get('duree_min_bloc') or 30))
+        preference = tache.get('preference', 'aucune')
+
+        # Deux niveaux de jours candidats : d'abord la fenetre d'echeance, puis
+        # (repli) les jours au-dela. Quand la fenetre est saturee, on REPORTE le
+        # reste sur les jours suivants plutot que d'empiler les taches ou de les
+        # laisser non planifiees. Les occurrences recurrentes ne sont jamais
+        # reportees au-dela de leur jour (une reunion ratee ne se rattrape pas).
+        fenetre = _jours_fenetre(tache)
+        if tache.get('est_recurrente'):
+            report = []
+        else:
+            ids_fenetre = {id(p) for p in fenetre}
+            report = [p for p in _jours_fenetre(tache, ignorer_echeance=True)
+                      if id(p) not in ids_fenetre]
+
+        if not fenetre and not report:
+            non_planifie.append({
+                'tache_id': tache['id'], 'minutes_restantes': duree,
+                'raison': 'aucun creneau disponible avant l\'echeance',
+            })
+            return
+
+        if not secable:
+            # Bloc unique : dans la fenetre (du mieux reparti au moins bon), puis
+            # en report sur les jours suivants si aucun creneau contigu ne tient.
+            for groupe in (fenetre, report):
+                for pj in sorted(groupe, key=_cle_repartition):
+                    pos = pj.placer_bloc_entier(duree, preference)
+                    if pos:
+                        pj.enregistrer(tache['id'], duree)
+                        blocs_resultat.append({
+                            'tache_id': tache['id'], 'date': pj.jour.isoformat(),
+                            'heure_debut': _to_hhmm(pos[0]), 'heure_fin': _to_hhmm(pos[1]),
+                            'duree_min': duree,
+                        })
+                        return
+            non_planifie.append({
+                'tache_id': tache['id'], 'minutes_restantes': duree,
+                'raison': 'aucun creneau contigu assez long (tache non secable)',
+            })
+            return
+
+        # Tache secable : repartir dans la fenetre, puis reporter le reliquat.
+        restant = duree
+        chunk = _taille_chunk(duree, min_bloc, len(fenetre) or len(report), secable)
+        for groupe in (fenetre, report):
+            if restant <= 0:
+                break
+            restant = _repartir_secable(tache, groupe, restant, chunk, preference)
 
         if restant > 0:
             non_planifie.append({
