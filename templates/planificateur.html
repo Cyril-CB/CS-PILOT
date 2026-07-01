@@ -581,9 +581,12 @@
     if(!el) return;
     const b = blocsCache.find(x=>x.id==el.dataset.id);
     if(!b) return;
-    const r = el.getBoundingClientRect();
-    drag = { el, b, startX:e.clientX, startY:e.clientY, grabY:e.clientY-r.top,
-             moved:false, range:plageMinutes(), date:b.date, min:hhmm2min(b.heure_debut) };
+    const min0 = hhmm2min(b.heure_debut);
+    // On memorise l'heure de debut REELLE : le deplacement se calcule par rapport
+    // a elle (delta vertical), et non par rapport a la position affichee du bloc,
+    // qui peut avoir ete decalee vers le bas pour eviter un chevauchement visuel.
+    drag = { el, b, startX:e.clientX, startY:e.clientY, min0:min0,
+             moved:false, range:plageMinutes(), date:b.date, min:min0 };
     try{ el.setPointerCapture(e.pointerId); }catch(_){}
   }
   function onDragMove(e){
@@ -595,9 +598,11 @@
     e.preventDefault();
     const col = bcolUnderX(e.clientX) || drag.el.parentNode;
     if(col && drag.el.parentNode!==col) col.appendChild(drag.el);
-    const r = col.getBoundingClientRect();
     const [mn]=drag.range;
-    let minute = mn + (e.clientY - r.top - drag.grabY - PAD_GRID)/PX_MIN;
+    // Nouvelle heure = heure reelle de depart + deplacement vertical de la souris.
+    // Ainsi un deplacement purement horizontal (ou infime) conserve l'heure exacte
+    // du bloc, meme s'il avait ete decale a l'affichage pour eviter un chevauchement.
+    let minute = drag.min0 + (e.clientY - drag.startY)/PX_MIN;
     minute = Math.round(minute/SNAP)*SNAP;
     minute = Math.max(0, Math.min(1440-drag.b.duree_min, minute));
     drag.date = col.dataset.jour; drag.min = minute;
