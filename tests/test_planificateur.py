@@ -276,6 +276,28 @@ def test_engine_repartit_matin_et_apres_midi():
     assert any(h >= 720 for h in heures), "une tache doit occuper l'apres-midi"
 
 
+def test_engine_utilise_apres_midi_meme_etale_sur_plusieurs_jours():
+    """Des taches etalees a raison d'une par jour (echeances a quelques jours) ne
+    doivent pas atterrir toutes le matin : l'equilibrage matin/apres-midi est
+    global a l'horizon, pas seulement interne a une journee."""
+    lundi = _lundi_prochain()
+    # 4 taches d'1h, echeances a 1..4 jours -> le moteur les etale (1 par jour).
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60,
+               'deadline': (lundi + timedelta(days=i)).isoformat(),
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 5)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=6))
+
+    par_jour = {}
+    for b in res['blocs']:
+        par_jour.setdefault(b['date'], []).append(b)
+    assert len(par_jour) == 4, "les taches doivent s'etaler sur plusieurs jours"
+    heures = [moteur._to_min(b['heure_debut']) for b in res['blocs']]
+    assert any(h < 720 for h in heures), "au moins une tache le matin"
+    assert any(h >= 720 for h in heures), \
+        "au moins une tache l'apres-midi (elles ne doivent pas etre toutes le matin)"
+
+
 def test_engine_preference_matin():
     """Une tache avec preference matin est placee le matin si possible."""
     lundi = _lundi_prochain()

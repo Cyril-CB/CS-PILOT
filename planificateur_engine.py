@@ -151,11 +151,7 @@ class _PlanJour:
             # Apres-midi d'abord (segments commencant a 12h ou plus tard).
             segs.sort(key=lambda s: (s['curseur'] < 720, s['curseur']))
         else:
-            # Sans preference : remplir d'abord le segment le MOINS utilise, afin
-            # d'equilibrer matin et apres-midi au lieu de tout entasser le matin
-            # (a egalite, le plus tot d'abord). Les taches occupent ainsi
-            # naturellement les deux demi-journees.
-            segs.sort(key=lambda s: (s['curseur'] - s['deb'], s['curseur']))
+            segs.sort(key=lambda s: s['curseur'])
         return segs
 
     def placer_bloc_entier(self, duree, preference):
@@ -329,6 +325,23 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     blocs_resultat = []
     non_planifie = []
 
+    # Equilibrage global matin / apres-midi. Sans preference explicite, chaque
+    # tache est orientee vers la demi-journee la moins chargee de TOUT l'horizon
+    # (et pas seulement de la journee visee) : ainsi des taches etalees a raison
+    # d'une par jour ne se retrouvent pas toutes le matin, l'apres-midi restant
+    # vide. Le compteur suit la position REELLE des blocs poses (matin < 12 h).
+    charge_demi = {'matin': 0, 'apres_midi': 0}
+
+    def _demi(minute_debut):
+        return 'matin' if minute_debut < 720 else 'apres_midi'
+
+    def _pref_effective(preference):
+        """Preference explicite conservee ; « aucune » -> demi-journee la moins
+        chargee globalement (le matin a egalite, pour demarrer la journee tot)."""
+        if preference in ('matin', 'apres_midi'):
+            return preference
+        return 'apres_midi' if charge_demi['apres_midi'] < charge_demi['matin'] else 'matin'
+
     def _jours_fenetre(tache, ignorer_echeance=False):
         """Journees candidates pour une tache.
 
@@ -374,6 +387,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
                 continue
             pj.enregistrer(tache['id'], places)
             for deb, fin in blocs:
+                charge_demi[_demi(deb)] += fin - deb
                 blocs_resultat.append({
                     'tache_id': tache['id'], 'date': pj.jour.isoformat(),
                     'heure_debut': _to_hhmm(deb), 'heure_fin': _to_hhmm(fin),
@@ -390,7 +404,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             return
         secable = bool(tache.get('secable', True))
         min_bloc = max(5, int(tache.get('duree_min_bloc') or 30))
-        preference = tache.get('preference', 'aucune')
+        preference = _pref_effective(tache.get('preference', 'aucune'))
 
         # Deux niveaux de jours candidats : d'abord la fenetre d'echeance, puis
         # (repli) les jours au-dela. Quand la fenetre est saturee, on REPORTE le
@@ -419,6 +433,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
                 for pj in sorted(groupe, key=_cle_repartition):
                     pos = pj.placer_bloc_entier(duree, preference)
                     if pos:
+                        charge_demi[_demi(pos[0])] += duree
                         pj.enregistrer(tache['id'], duree)
                         blocs_resultat.append({
                             'tache_id': tache['id'], 'date': pj.jour.isoformat(),
