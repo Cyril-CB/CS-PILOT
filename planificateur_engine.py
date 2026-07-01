@@ -235,7 +235,15 @@ def niveau_urgence(deadline, jour_ref, statut='a_faire'):
 
 
 def _cle_tri_tache(tache, horizon_fin):
-    """Cle de tri d'une tache : echeance, puis priorite, puis duree."""
+    """Cle de tri d'une tache : echeance, puis (a echeance egale) les gros blocs
+    contigus d'abord, puis priorite, puis duree.
+
+    Une grosse tache NON secable exige un long creneau contigu : c'est la plus
+    difficile a caser. Si on la traitait apres de petites taches flexibles du
+    meme jour, celles-ci fragmenteraient les demi-journees et la rendraient
+    improuvable (elle devrait alors etre reportee). On la place donc en premier,
+    quitte a bousculer un peu l'ordre de priorite entre taches de meme echeance.
+    """
     deadline = tache.get('deadline') or horizon_fin
     if isinstance(deadline, str):
         try:
@@ -244,8 +252,11 @@ def _cle_tri_tache(tache, horizon_fin):
             deadline = horizon_fin
     # Les taches sans echeance passent apres celles qui en ont une.
     sans_echeance = 0 if tache.get('deadline') else 1
+    duree = int(tache.get('duree_min', 0))
+    secable = bool(tache.get('secable', True))
+    gros_bloc_contigu = 0 if (not secable and duree > CIBLE_PAR_JOUR) else 1
     priorite = PRIORITE_POIDS.get(tache.get('priorite', 'normale'), 1)
-    return (sans_echeance, deadline, priorite, -int(tache.get('duree_min', 0)))
+    return (sans_echeance, deadline, gros_bloc_contigu, priorite, -duree)
 
 
 def _taille_chunk(duree, min_bloc, nb_jours_dispo, secable):
