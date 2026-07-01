@@ -259,6 +259,68 @@ def test_engine_blocs_dune_journee_ne_se_chevauchent_pas():
             assert deb >= fin_prec, f"blocs superposes : {blocs[i-1]} / {blocs[i]}"
 
 
+def test_engine_repartit_matin_et_apres_midi():
+    """Sans preference, plusieurs taches d'une meme journee n'entassent pas tout
+    le matin : l'apres-midi est aussi occupe (il n'est plus reserve a la seule
+    preference 'apres_midi')."""
+    lundi = _lundi_prochain()
+    # Deux taches d'1h qui tiendraient toutes deux le matin : elles doivent
+    # malgre tout se repartir entre matin et apres-midi.
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60, 'deadline': lundi.isoformat(),
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 3)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi)
+    heures = sorted(moteur._to_min(b['heure_debut']) for b in res['blocs'])
+    assert len(heures) == 2
+    assert any(h < 720 for h in heures), "une tache doit etre le matin"
+    assert any(h >= 720 for h in heures), "une tache doit occuper l'apres-midi"
+
+
+def test_engine_utilise_apres_midi_meme_etale_sur_plusieurs_jours():
+    """Des taches etalees a raison d'une par jour (echeances a quelques jours) ne
+    doivent pas atterrir toutes le matin : l'equilibrage matin/apres-midi est
+    global a l'horizon, pas seulement interne a une journee."""
+    lundi = _lundi_prochain()
+    # 4 taches d'1h, echeances a 1..4 jours -> le moteur les etale (1 par jour).
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60,
+               'deadline': (lundi + timedelta(days=i)).isoformat(),
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 5)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=6))
+
+    par_jour = {}
+    for b in res['blocs']:
+        par_jour.setdefault(b['date'], []).append(b)
+    assert len(par_jour) == 4, "les taches doivent s'etaler sur plusieurs jours"
+    heures = [moteur._to_min(b['heure_debut']) for b in res['blocs']]
+    assert any(h < 720 for h in heures), "au moins une tache le matin"
+    assert any(h >= 720 for h in heures), \
+        "au moins une tache l'apres-midi (elles ne doivent pas etre toutes le matin)"
+
+
+def test_engine_gros_bloc_non_secable_garde_sa_place():
+    """Une grosse tache non secable (3h) reste planifiable meme quand de petites
+    taches sans preference partagent sa journee : elle est placee en premier pour
+    que l'equilibrage matin/apres-midi ne fragmente pas ses creneaux au point de
+    la rendre improuvable (regression du correctif d'equilibrage)."""
+    lundi = _lundi_prochain()
+    dl = lundi.isoformat()
+    taches = [
+        {'id': 1, 'titre': '1h A', 'duree_min': 60, 'deadline': dl, 'priorite': 'haute',
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 60},
+        {'id': 2, 'titre': '1h B', 'duree_min': 60, 'deadline': dl, 'priorite': 'haute',
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 60},
+        {'id': 3, 'titre': 'Mission 3h', 'duree_min': 180, 'deadline': dl, 'priorite': 'normale',
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 180},
+    ]
+    # Horizon = le jour meme : aucune des trois ne doit rester non planifiee.
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi)
+    assert not res['non_planifie'], "les 3 taches doivent tenir dans la journee (pas de report force)"
+    bloc3 = [b for b in res['blocs'] if b['tache_id'] == 3]
+    assert len(bloc3) == 1 and bloc3[0]['duree_min'] == 180, \
+        "la mission de 3h doit occuper un unique creneau contigu"
+
+
 def test_engine_preference_matin():
     """Une tache avec preference matin est placee le matin si possible."""
     lundi = _lundi_prochain()
