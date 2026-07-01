@@ -10,6 +10,7 @@ def test_page_commandes_salaries_accessible_aux_salaries(auth_client):
     html = response.get_data(as_text=True)
     assert 'Commandes salariés' in html
     assert 'Description de la demande' in html
+    assert 'Quantité' in html
 
 
 def test_creation_demande_fournitures(auth_client, app, db, sample_users):
@@ -18,6 +19,7 @@ def test_creation_demande_fournitures(auth_client, app, db, sample_users):
         data={
             'description': 'Cahier grand format',
             'reference': 'REF-42',
+            'quantite': '3',
             'prix': '12,50',
             'urgence': 'urgent',
         },
@@ -36,9 +38,52 @@ def test_creation_demande_fournitures(auth_client, app, db, sample_users):
     assert row is not None
     assert row['date_demande'] == date.today().isoformat()
     assert row['reference'] == 'REF-42'
+    assert row['quantite'] == 3
     assert row['urgence'] == 'urgent'
     assert row['groupe'] == 'en_cours'
     assert row['prix'] == 12.5
+
+
+def test_quantite_par_defaut_vaut_un(auth_client, db, sample_users):
+    """Quantité omise : la demande est enregistrée avec 1 unité."""
+    auth_client.post(
+        '/commandes-salaries',
+        data={'description': 'Ramette papier', 'urgence': 'normal'},
+        follow_redirects=True,
+    )
+    row = db.execute(
+        'SELECT quantite FROM commandes_salaries WHERE description = ?',
+        ('Ramette papier',)
+    ).fetchone()
+    assert row is not None
+    assert row['quantite'] == 1
+
+
+def test_quantite_invalide_rejetee(auth_client, db, sample_users):
+    """Quantité non entière/positive : la demande est refusée."""
+    for valeur in ('0', '-2', 'abc', '1.5'):
+        auth_client.post(
+            '/commandes-salaries',
+            data={'description': f'Article {valeur}', 'quantite': valeur, 'urgence': 'normal'},
+            follow_redirects=True,
+        )
+        row = db.execute(
+            'SELECT id FROM commandes_salaries WHERE description = ?',
+            (f'Article {valeur}',)
+        ).fetchone()
+        assert row is None, f"la quantité invalide '{valeur}' n'aurait pas dû être enregistrée"
+
+
+def test_quantite_affichee_dans_le_tableau(auth_client, db, sample_users):
+    """La quantité saisie apparaît dans le tableau des demandes."""
+    auth_client.post(
+        '/commandes-salaries',
+        data={'description': 'Boîte de trombones', 'quantite': '7', 'urgence': 'normal'},
+        follow_redirects=True,
+    )
+    html = auth_client.get('/commandes-salaries').get_data(as_text=True)
+    assert 'Boîte de trombones' in html
+    assert '>7<' in html or '> 7 <' in html
 
 
 def test_direction_peut_mettre_a_jour_le_statut(admin_client, db, sample_users):
