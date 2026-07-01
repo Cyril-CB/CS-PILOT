@@ -312,3 +312,39 @@ class TestNomsMois:
             assert NOMS_MOIS[0] == ''
             assert NOMS_MOIS[1] == 'Janvier'
             assert NOMS_MOIS[12] == 'Décembre'
+
+
+class TestTimezoneApplicative:
+    """Tests des helpers d'heure locale (maintenant / aujourd_hui)."""
+
+    def test_maintenant_respecte_la_timezone(self, monkeypatch):
+        """maintenant() renvoie l'heure de la timezone applicative (Europe/Paris)."""
+        from datetime import datetime, timezone
+        from zoneinfo import ZoneInfo
+        import utils
+
+        monkeypatch.setenv('APP_TIMEZONE', 'Europe/Paris')
+        m = utils.maintenant()  # naif, heure de Paris
+        attendu = datetime.now(ZoneInfo('Europe/Paris')).replace(tzinfo=None)
+        assert abs((m - attendu).total_seconds()) < 5
+
+        # Paris = UTC+1 (hiver) ou +2 (ete) : le decalage doit etre l'un des deux.
+        utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        delta_h = round((m - utc).total_seconds() / 3600)
+        assert delta_h in (1, 2)
+
+    def test_journal_acces_horodate_en_heure_locale(self, app, db, monkeypatch):
+        """Le journal de connexion enregistre l'heure locale, pas l'UTC."""
+        from datetime import datetime, timezone
+        import access_log
+
+        monkeypatch.setenv('APP_TIMEZONE', 'Europe/Paris')
+        with app.app_context():
+            access_log.enregistrer_acces(access_log.EVT_CONNEXION_REUSSIE, login_saisi='x')
+        row = db.execute(
+            "SELECT date_heure FROM journal_acces ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        logged = datetime.strptime(row['date_heure'], '%Y-%m-%d %H:%M:%S')
+        utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        delta_h = round((logged - utc).total_seconds() / 3600)
+        assert delta_h in (1, 2), f"journal doit etre en heure locale FR (delta={delta_h}h)"

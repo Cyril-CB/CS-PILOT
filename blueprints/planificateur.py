@@ -13,14 +13,14 @@ Acces (phase 1) : reserve au profil comptable, pour la phase de test.
 """
 import calendar
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from functools import wraps
 
 from flask import (Blueprint, render_template, request, redirect, url_for,
                    session, flash, jsonify)
 
 from database import get_db
-from utils import login_required
+from utils import login_required, aujourd_hui, maintenant as _maintenant
 import planificateur_engine as moteur
 
 logger = logging.getLogger(__name__)
@@ -257,11 +257,12 @@ def _replanifier(conn, user_id, maintenant=None):
     taches non planifiees (chacune enrichie de son titre).
 
     `maintenant` (datetime) permet de figer l'instant courant pour les tests ;
-    par defaut, datetime.now(). On ne planifie jamais dans le passe : si la
-    journee en cours est terminee, les taches partent au lendemain.
+    par defaut, l'heure locale applicative (utils.maintenant, Europe/Paris). On
+    ne planifie jamais dans le passe : si la journee en cours est terminee, les
+    taches partent au lendemain.
     """
     if maintenant is None:
-        maintenant = datetime.now()
+        maintenant = _maintenant()
     today = maintenant.date()
     minute_courante = maintenant.hour * 60 + maintenant.minute
     fin = today + timedelta(days=HORIZON_JOURS)
@@ -417,7 +418,7 @@ def _serialiser_blocs(conn, user_id, debut, fin):
            ORDER BY b.date, b.heure_debut''',
         (user_id, debut, fin)
     ).fetchall()
-    today = date.today()
+    today = aujourd_hui()
     blocs = []
     for r in rows:
         urgence = moteur.niveau_urgence(r['deadline'], today, r['bloc_statut'])
@@ -477,7 +478,7 @@ def planificateur():
         vue = request.args.get('vue', 'semaine')
         if vue not in ('jour', 'semaine', 'mois'):
             vue = 'semaine'
-        date_ref = _valide_date(request.args.get('date')) or date.today().isoformat()
+        date_ref = _valide_date(request.args.get('date')) or aujourd_hui().isoformat()
 
         a_un_planning = conn.execute(
             'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
@@ -493,7 +494,7 @@ def planificateur():
         ).fetchall()
 
         # Taches sans bloc futur planifie = non placees (indicateur persistant).
-        today = date.today().isoformat()
+        today = aujourd_hui().isoformat()
         # Les occurrences recurrentes sont exclues : elles sont placees « au
         # mieux, la ou il reste de la place » et leur absence n'est pas une
         # anomalie a signaler.
@@ -528,7 +529,7 @@ def api_blocs():
     conn = get_db()
     try:
         user_id = _uid()
-        debut = _valide_date(request.args.get('debut')) or date.today().isoformat()
+        debut = _valide_date(request.args.get('debut')) or aujourd_hui().isoformat()
         fin = _valide_date(request.args.get('fin')) or debut
         blocs = _serialiser_blocs(conn, user_id, debut, fin)
         # Horaires de travail (par date) pour afficher les plages travaillees.
@@ -709,7 +710,7 @@ def api_statut_tache(tache_id):
             # Marquer ses blocs futurs comme realises (ils restent en place).
             conn.execute(
                 "UPDATE planif_blocs SET statut = 'fait' WHERE tache_id = ? AND date >= ?",
-                (tache_id, date.today().isoformat())
+                (tache_id, aujourd_hui().isoformat())
             )
         elif statut in ('a_faire', 'annule'):
             if tache['type'] == 'evenement':
@@ -736,7 +737,7 @@ def api_reporter_tache(tache_id):
 
         nouveau_min = _valide_date(data.get('date_min'))
         if not nouveau_min:
-            nouveau_min = (date.today() + timedelta(days=1)).isoformat()
+            nouveau_min = (aujourd_hui() + timedelta(days=1)).isoformat()
         conn.execute(
             'UPDATE planif_taches SET date_min = ?, statut = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             (nouveau_min, 'a_faire', tache_id)
@@ -893,7 +894,7 @@ def api_deplacer_bloc(bloc_id):
             return jsonify({'ok': False, 'erreur': 'Bloc introuvable.'}), 404
 
         nouvelle_date = _valide_date(data.get('date')) or bloc['date']
-        if nouvelle_date < date.today().isoformat():
+        if nouvelle_date < aujourd_hui().isoformat():
             return jsonify({'ok': False, 'erreur': "Impossible de déplacer un créneau dans le passé."}), 400
         deb = _valide_heure(data.get('heure_debut'))
         if not deb:
@@ -985,7 +986,7 @@ def api_creer_recurrence():
         jour_semaine = _parse_int(jour_semaine, None, mini=0, maxi=6) if jour_semaine not in (None, '', 'null') else None
         jour_mois = data.get('jour_mois')
         jour_mois = _parse_int(jour_mois, None, mini=1, maxi=28) if jour_mois not in (None, '', 'null') else None
-        date_debut = _valide_date(data.get('date_debut')) or date.today().isoformat()
+        date_debut = _valide_date(data.get('date_debut')) or aujourd_hui().isoformat()
         date_fin = _valide_date(data.get('date_fin'))
 
         conn.execute(
