@@ -2,6 +2,7 @@
 Fonctions utilitaires partagées entre tous les blueprints.
 """
 import logging
+import os
 import re
 from flask import session, flash, redirect, url_for
 from functools import wraps
@@ -9,6 +10,48 @@ from datetime import datetime, timedelta
 from database import get_db
 
 logger = logging.getLogger(__name__)
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # Python < 3.9
+    ZoneInfo = None
+
+
+# ── Heure locale (timezone applicative) ──
+# Le processus peut tourner en UTC (conteneur, executable Windows...), ce qui
+# decalerait l'heure affichee et les calculs (planning, journaux). On force la
+# timezone metier — Europe/Paris par defaut, surchargeable via APP_TIMEZONE.
+
+def _timezone_app():
+    """ZoneInfo de la timezone applicative, ou None si indisponible."""
+    if ZoneInfo is None:
+        return None
+    nom = os.environ.get('APP_TIMEZONE', 'Europe/Paris')
+    try:
+        return ZoneInfo(nom)
+    except Exception:
+        logger.warning(
+            "Timezone '%s' introuvable (paquet tzdata manquant ?) : "
+            "repli sur l'heure locale du systeme.", nom
+        )
+        return None
+
+
+def maintenant():
+    """Datetime courant (naif) exprime dans la timezone applicative.
+
+    Retourne un datetime sans tzinfo (heure « murale » locale), conforme au
+    reste de l'application qui manipule des dates/heures naives.
+    """
+    tz = _timezone_app()
+    if tz is None:
+        return datetime.now()
+    return datetime.now(tz).replace(tzinfo=None)
+
+
+def aujourd_hui():
+    """Date courante dans la timezone applicative."""
+    return maintenant().date()
 
 
 # ── Chiffrement / déchiffrement (clés API, etc.) ──

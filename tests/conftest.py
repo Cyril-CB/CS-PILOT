@@ -24,6 +24,12 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 # Définir une SECRET_KEY pour les tests AVANT l'import de l'app
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 
+# Les tests comparent avec datetime.now()/date.today() (fuseau du système, UTC
+# dans l'environnement CI). On aligne la timezone applicative sur UTC pour que
+# l'heure de l'app et celle des tests coïncident (la valeur métier par défaut
+# reste Europe/Paris en production).
+os.environ.setdefault('APP_TIMEZONE', 'UTC')
+
 
 @pytest.fixture(scope='function')
 def app(tmp_path):

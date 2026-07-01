@@ -18,6 +18,7 @@ Les deux journaux sont consultables par la direction via Administration > Securi
 import logging
 
 from database import get_db
+from utils import maintenant
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +115,9 @@ def enregistrer_acces(evenement, login_saisi=None, user_id=None, adresse_ip=None
     try:
         conn = get_db()
         conn.execute(
-            'INSERT INTO journal_acces (login_saisi, user_id, evenement, adresse_ip) '
-            'VALUES (?, ?, ?, ?)',
-            (login_saisi, user_id, evenement, adresse_ip)
+            'INSERT INTO journal_acces (date_heure, login_saisi, user_id, evenement, adresse_ip) '
+            'VALUES (?, ?, ?, ?, ?)',
+            (maintenant().strftime('%Y-%m-%d %H:%M:%S'), login_saisi, user_id, evenement, adresse_ip)
         )
         conn.commit()
     except Exception:
@@ -155,7 +156,8 @@ def journaliser_action(conn, action, user_id=None, cible_type=None,
             user_id = None
     conn.execute(
         'INSERT INTO journal_actions '
-        '(user_id, action, cible_type, cible_id, details, adresse_ip) '
-        'VALUES (?, ?, ?, ?, ?, ?)',
-        (user_id, action, cible_type, cible_id, details, _adresse_ip())
+        '(date_heure, user_id, action, cible_type, cible_id, details, adresse_ip) '
+        'VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (maintenant().strftime('%Y-%m-%d %H:%M:%S'), user_id, action,
+         cible_type, cible_id, details, _adresse_ip())
     )
