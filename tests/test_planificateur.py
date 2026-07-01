@@ -259,6 +259,23 @@ def test_engine_blocs_dune_journee_ne_se_chevauchent_pas():
             assert deb >= fin_prec, f"blocs superposes : {blocs[i-1]} / {blocs[i]}"
 
 
+def test_engine_repartit_matin_et_apres_midi():
+    """Sans preference, plusieurs taches d'une meme journee n'entassent pas tout
+    le matin : l'apres-midi est aussi occupe (il n'est plus reserve a la seule
+    preference 'apres_midi')."""
+    lundi = _lundi_prochain()
+    # Deux taches d'1h qui tiendraient toutes deux le matin : elles doivent
+    # malgre tout se repartir entre matin et apres-midi.
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60, 'deadline': lundi.isoformat(),
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 3)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi)
+    heures = sorted(moteur._to_min(b['heure_debut']) for b in res['blocs'])
+    assert len(heures) == 2
+    assert any(h < 720 for h in heures), "une tache doit etre le matin"
+    assert any(h >= 720 for h in heures), "une tache doit occuper l'apres-midi"
+
+
 def test_engine_preference_matin():
     """Une tache avec preference matin est placee le matin si possible."""
     lundi = _lundi_prochain()

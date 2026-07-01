@@ -151,7 +151,11 @@ class _PlanJour:
             # Apres-midi d'abord (segments commencant a 12h ou plus tard).
             segs.sort(key=lambda s: (s['curseur'] < 720, s['curseur']))
         else:
-            segs.sort(key=lambda s: s['curseur'])
+            # Sans preference : remplir d'abord le segment le MOINS utilise, afin
+            # d'equilibrer matin et apres-midi au lieu de tout entasser le matin
+            # (a egalite, le plus tot d'abord). Les taches occupent ainsi
+            # naturellement les deux demi-journees.
+            segs.sort(key=lambda s: (s['curseur'] - s['deb'], s['curseur']))
         return segs
 
     def placer_bloc_entier(self, duree, preference):
