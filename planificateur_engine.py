@@ -47,6 +47,13 @@ CIBLE_PAR_JOUR = 120  # 2 h
 # eviter qu'une grosse mission ne sature un jour au detriment des autres.
 PLAFOND_TACHE_PAR_JOUR = 240  # 4 h
 
+# Une tache est jugee « substantielle » sur une journee si elle y occupe au
+# moins cette duree. Le moteur repartit en priorite les taches substantielles :
+# il remplit d'abord les jours qui en comptent le moins (souple, il monte a 4,
+# 5... si tous les jours possibles sont deja pleins), afin de bien etaler la
+# charge plutot que de tout regrouper des qu'un creneau se libere.
+SEUIL_TACHE_SUBSTANTIELLE = 60  # 1 h
+
 
 def _to_min(hhmm):
     """'HH:MM' -> minutes depuis minuit (None si invalide)."""
@@ -113,10 +120,28 @@ class _PlanJour:
         ]
         self.capacite = sum(f - d for d, f in segments_libres if f > d)
         self.charge = 0  # minutes de taches deja placees
+        self.taches_min = {}  # tache_id -> minutes placees ce jour
         if self.capacite >= SEUIL_JOURNEE_CHARGEE:
             self.intervalle_pause, self.duree_pause = PAUSE_JOURNEE_CHARGEE
         else:
             self.intervalle_pause, self.duree_pause = PAUSE_JOURNEE_NORMALE
+
+    def nb_substantielles(self, exclure=None):
+        """Nombre de taches « substantielles » (>= 1 h) placees ce jour-la.
+
+        `exclure` (tache_id) permet d'ignorer la tache en cours de placement,
+        pour ne pas se penaliser en ajoutant un nouveau morceau a une tache
+        deja presente.
+        """
+        return sum(
+            1 for tid, m in self.taches_min.items()
+            if tid != exclure and m >= SEUIL_TACHE_SUBSTANTIELLE
+        )
+
+    def enregistrer(self, tache_id, minutes):
+        """Comptabilise `minutes` placees pour une tache ce jour-la."""
+        if minutes > 0:
+            self.taches_min[tache_id] = self.taches_min.get(tache_id, 0) + minutes
 
     def _segments_ordonnes(self, preference):
         """Ordonne les segments selon la preference matin / apres-midi."""
@@ -330,11 +355,20 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             })
             return
 
+        # Cle de repartition : d'abord le jour comptant le MOINS de taches
+        # substantielles (repartition), puis le moins charge (minutes), puis le
+        # plus tot. La preference pour les jours peu remplis fait naturellement
+        # « monter » le seuil de 3 a 4, 5... quand tous les jours possibles sont
+        # deja pleins, tout en respectant la fenetre imposee par l'echeance.
+        def _cle_repartition(p):
+            return (p.nb_substantielles(tache['id']), p.charge, p.jour)
+
         if not secable:
-            # Bloc unique : essayer chaque jour, du moins charge au plus charge.
-            for pj in sorted(candidats, key=lambda p: (p.charge, p.jour)):
+            # Bloc unique : essayer chaque jour, du mieux reparti au moins bon.
+            for pj in sorted(candidats, key=_cle_repartition):
                 pos = pj.placer_bloc_entier(duree, preference)
                 if pos:
+                    pj.enregistrer(tache['id'], duree)
                     blocs_resultat.append({
                         'tache_id': tache['id'], 'date': pj.jour.isoformat(),
                         'heure_debut': _to_hhmm(pos[0]), 'heure_fin': _to_hhmm(pos[1]),
@@ -347,7 +381,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
             })
             return
 
-        # Tache secable : repartir en respectant l'equilibrage de charge.
+        # Tache secable : repartir en privilegiant les jours les moins remplis.
         restant = duree
         chunk = _taille_chunk(duree, min_bloc, len(candidats), secable)
         epuises = set()
@@ -356,13 +390,14 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
                      if id(p) not in epuises and p.capacite_restante() > 0]
             if not dispo:
                 break
-            pj = min(dispo, key=lambda p: (p.charge, p.jour))
+            pj = min(dispo, key=_cle_repartition)
             voulu = min(restant, chunk)
             # Sur le dernier reliquat, ne pas exiger le chunk plein.
             blocs, places = pj.placer_secable(voulu, preference)
             if places <= 0:
                 epuises.add(id(pj))
                 continue
+            pj.enregistrer(tache['id'], places)
             for deb, fin in blocs:
                 blocs_resultat.append({
                     'tache_id': tache['id'], 'date': pj.jour.isoformat(),
