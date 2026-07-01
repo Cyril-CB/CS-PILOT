@@ -72,6 +72,19 @@ def _format_prix(value):
     return f"{formatted} €"
 
 
+def _parse_quantite(raw_value):
+    """Quantité demandée : entier >= 1. Vide -> 1. Invalide -> ValueError."""
+    value = (raw_value or '').strip()
+    if not value:
+        return 1
+    if not re.fullmatch(r'\d+', value):
+        raise ValueError
+    quantite = int(value)
+    if quantite < 1 or quantite > 9999:
+        raise ValueError
+    return quantite
+
+
 @commandes_salaries_bp.route('/commandes-salaries', methods=['GET', 'POST'])
 @login_required
 def commandes_salaries():
@@ -88,6 +101,11 @@ def commandes_salaries():
         except ValueError:
             flash("Le prix saisi est invalide.", "error")
             return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
+        try:
+            quantite = _parse_quantite(request.form.get('quantite'))
+        except ValueError:
+            flash("La quantité saisie est invalide (entier positif attendu).", "error")
+            return redirect(url_for('commandes_salaries_bp.commandes_salaries'))
 
         if not description:
             flash("La description de la demande est obligatoire.", "error")
@@ -101,14 +119,15 @@ def commandes_salaries():
             conn.execute(
                 '''
                 INSERT INTO commandes_salaries (
-                    user_id, date_demande, description, reference, prix, urgence, groupe
-                ) VALUES (?, ?, ?, ?, ?, ?, 'en_cours')
+                    user_id, date_demande, description, reference, quantite, prix, urgence, groupe
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'en_cours')
                 ''',
                 (
                     session['user_id'],
                     date.today().isoformat(),
                     description,
                     reference or None,
+                    quantite,
                     prix,
                     urgence,
                 )
@@ -170,7 +189,7 @@ def commandes_salaries():
         urgences_config=URGENCES,
         aujourd_hui=date.today().isoformat(),
         peut_suivre=peut_suivre,
-        nombre_colonnes_table=8 if peut_suivre else 6,
+        nombre_colonnes_table=9 if peut_suivre else 7,
     )
 
 

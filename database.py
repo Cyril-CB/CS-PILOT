@@ -864,6 +864,7 @@ def init_db():
             date_demande TEXT NOT NULL,
             description TEXT NOT NULL,
             reference TEXT,
+            quantite INTEGER NOT NULL DEFAULT 1,
             prix REAL,
             urgence TEXT NOT NULL DEFAULT 'normal',
             groupe TEXT NOT NULL DEFAULT 'en_cours',
