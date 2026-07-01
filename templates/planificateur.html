@@ -55,7 +55,7 @@
   <p class="planif-hint">
     ⏰ Les tâches sont planifiées dans vos horaires de travail issus de
     <a href="{{ url_for('planning_bp.planning_theorique') }}">Mon planning</a>.
-    {% if not a_un_planning %}<strong>Aucun planning défini : des horaires par défaut (lun.–ven. 9h–12h30 / 13h30–17h30) sont utilisés.</strong>{% endif %}
+    {% if not a_un_planning %}<strong>Aucun planning défini : des horaires par défaut (lun.–ven. {{ horaire_defaut_txt }}) sont utilisés.</strong>{% endif %}
   </p>
 
   <div id="planifCal" class="planif-cal"></div>
@@ -296,8 +296,10 @@
 .planif-workband{position:absolute;left:0;right:0;background:rgba(47,93,80,0.06);}
 .planif-now{position:absolute;left:0;right:0;border-top:2px solid #e11d48;z-index:2;}
 
-.planif-bloc{position:absolute;left:3px;right:3px;border-left:4px solid;border-radius:5px;padding:2px 5px;font-size:.74rem;overflow:hidden;cursor:pointer;box-shadow:var(--shadow-sm);z-index:1;color:#1f2937;}
+.planif-bloc{position:absolute;left:3px;right:3px;border-left:4px solid;border-radius:5px;padding:2px 5px;font-size:.74rem;overflow:hidden;cursor:grab;box-shadow:var(--shadow-sm);z-index:1;color:#1f2937;touch-action:none;user-select:none;}
 .planif-bloc:hover{box-shadow:var(--shadow-md);filter:brightness(0.97);}
+.planif-bloc.locked{border-left-style:double;border-left-width:5px;}
+.planif-bloc.dragging{opacity:.85;cursor:grabbing;z-index:10;box-shadow:var(--shadow-lg);}
 .planif-bloc .bt{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .planif-bloc .bh{opacity:.8;font-size:.68rem;}
 .planif-bloc.fait{opacity:.5;}
@@ -494,8 +496,9 @@
       blocsCache.filter(b=>b.date===jr).forEach(b=>{
         const d=hhmm2min(b.heure_debut), f=hhmm2min(b.heure_fin);
         const hgt=Math.max(16,(f-d)*PX_MIN);
-        cols+='<div class="planif-bloc '+classeBloc(b)+'" data-id="'+b.id+'" style="top:'+top(d)+'px;height:'+hgt+'px;">'
-          +'<div class="bt">'+iconeBloc(b)+esc(b.titre)+'</div>'
+        const verrou = b.verrouille && b.type!=='evenement';
+        cols+='<div class="planif-bloc '+classeBloc(b)+(verrou?' locked':'')+'" data-id="'+b.id+'" style="top:'+top(d)+'px;height:'+hgt+'px;">'
+          +'<div class="bt">'+iconeBloc(b)+esc(b.titre)+(verrou?' 🔒':'')+'</div>'
           +(hgt>30?'<div class="bh">'+b.heure_debut+'–'+b.heure_fin+'</div>':'')+'</div>';
       });
       cols+='</div>';
@@ -541,12 +544,68 @@
   }
 
   function brancherBlocs(){
-    document.querySelectorAll('.planif-bloc, .planif-chip').forEach(el=>{
+    // Vue mois : clic sur une pastille -> detail. (Les blocs de la grille
+    // jour/semaine sont geres par le glisser-deposer, voir plus bas.)
+    document.querySelectorAll('.planif-chip').forEach(el=>{
       el.addEventListener('click', ()=>{ const b=blocsCache.find(x=>x.id==el.dataset.id); if(b) ouvrirDetail(b); });
     });
     document.querySelectorAll('[data-goto]').forEach(el=>{
       el.addEventListener('click', (e)=>{ e.stopPropagation(); state.date=el.dataset.goto; state.vue='jour'; charger(); });
     });
+  }
+
+  // ── Glisser-deposer (vues jour / semaine) ──
+  let drag = null;
+  const SNAP = 5;          // minutes
+  const PAD_GRID = 10;     // doit correspondre au PAD de rendreGrille
+  function bcolUnderX(x){
+    for(const c of document.querySelectorAll('#planifCal .planif-bcol')){
+      const r=c.getBoundingClientRect();
+      if(x>=r.left && x<=r.right) return c;
+    }
+    return null;
+  }
+  function onDragStart(e){
+    if(state.vue==='mois') return;
+    const el = e.target.closest('.planif-bloc');
+    if(!el) return;
+    const b = blocsCache.find(x=>x.id==el.dataset.id);
+    if(!b) return;
+    const r = el.getBoundingClientRect();
+    drag = { el, b, startX:e.clientX, startY:e.clientY, grabY:e.clientY-r.top,
+             moved:false, range:plageMinutes(), date:b.date, min:hhmm2min(b.heure_debut) };
+    try{ el.setPointerCapture(e.pointerId); }catch(_){}
+  }
+  function onDragMove(e){
+    if(!drag) return;
+    if(!drag.moved){
+      if(Math.abs(e.clientX-drag.startX)<6 && Math.abs(e.clientY-drag.startY)<6) return;
+      drag.moved=true; drag.el.classList.add('dragging');
+    }
+    e.preventDefault();
+    const col = bcolUnderX(e.clientX) || drag.el.parentNode;
+    if(col && drag.el.parentNode!==col) col.appendChild(drag.el);
+    const r = col.getBoundingClientRect();
+    const [mn]=drag.range;
+    let minute = mn + (e.clientY - r.top - drag.grabY - PAD_GRID)/PX_MIN;
+    minute = Math.round(minute/SNAP)*SNAP;
+    minute = Math.max(0, Math.min(1440-drag.b.duree_min, minute));
+    drag.date = col.dataset.jour; drag.min = minute;
+    drag.el.style.top = (PAD_GRID + (minute-mn)*PX_MIN) + 'px';
+  }
+  async function onDragEnd(e){
+    if(!drag) return;
+    const d = drag; drag = null;
+    if(!d.moved){ ouvrirDetail(d.b); return; }   // simple clic -> detail
+    d.el.classList.remove('dragging');
+    if(d.date===d.b.date && d.min===hhmm2min(d.b.heure_debut)){ await charger(); return; }
+    try{
+      const res = await apiPost('/planificateur/api/bloc/'+d.b.id+'/deplacer',
+                                {date:d.date, heure_debut:min2hhmm(d.min)});
+      toast('✓ Créneau déplacé et verrouillé 🔒','ok');
+      montrerNonPlanifie(res.non_planifie);
+    }catch(err){ toast(err.message,'err'); }
+    await charger();
   }
 
   // ── Détail d'un bloc ──
@@ -563,12 +622,16 @@
     }
     if(b.description) corps+='<div class="planif-detail-line">📝 '+esc(b.description)+'</div>';
     if(b.statut==='fait') corps+='<div class="planif-detail-line">✅ Marqué comme effectué</div>';
+    if(b.verrouille && b.type!=='evenement') corps+='<div class="planif-detail-line">🔒 Créneau verrouillé (non déplacé par la replanification)</div>';
+    corps+='<div class="planif-detail-line" style="color:var(--gray-500);font-size:.8rem;">💡 Astuce : glissez un bloc sur le calendrier pour le déplacer ; il sera automatiquement verrouillé.</div>';
 
     let act='<div class="planif-detail-actions">';
     if(b.statut!=='fait') act+='<button class="btn btn-primary" data-act="bloc_fait">✓ Marquer ce créneau fait</button>';
     else act+='<button class="btn btn-secondary" data-act="bloc_repris">↩ Rétablir</button>';
     if(b.type!=='evenement'){
       act+='<button class="btn btn-secondary" data-act="tache_fait">✓✓ Tâche entière faite</button>';
+      if(b.verrouille) act+='<button class="btn btn-secondary" data-act="deverrouiller">🔓 Déverrouiller</button>';
+      else act+='<button class="btn btn-secondary" data-act="verrouiller">🔒 Verrouiller ici</button>';
       act+='<button class="btn btn-secondary" data-act="reporter">📆 Reporter</button>';
       act+='<button class="btn btn-secondary" data-act="fin">✂️ Planifier la fin</button>';
     }
@@ -599,6 +662,8 @@
       else if(act==='tache_suppr'){ if(!confirm('Supprimer définitivement cette tâche et tous ses créneaux ?')) return; res=await apiPost('/planificateur/api/tache/'+b.tache_id+'/supprimer',{}); }
       else if(act==='reporter'){ const d=prompt('Reporter à partir de quelle date ? (AAAA-MM-JJ)', addDays(isoToday(),1)); if(!d) return; res=await apiPost('/planificateur/api/tache/'+b.tache_id+'/reporter',{date_min:d}); }
       else if(act==='fin'){ const m=prompt('Combien de minutes déjà réalisées ? Le reste sera replanifié.', String(b.duree_min)); if(m===null) return; res=await apiPost('/planificateur/api/tache/'+b.tache_id+'/terminer_partiel',{minutes_faites:parseInt(m,10)||0}); }
+      else if(act==='verrouiller') res=await apiPost('/planificateur/api/bloc/'+b.id+'/verrou',{verrouille:1});
+      else if(act==='deverrouiller') res=await apiPost('/planificateur/api/bloc/'+b.id+'/verrou',{verrouille:0});
       else if(act==='modifier'){ planifFermerModales(); return ouvrirEdition(b); }
       planifFermerModales();
       if(res){ toast('✓ Mis à jour', 'ok'); montrerNonPlanifie(res.non_planifie); }
@@ -740,6 +805,11 @@
   }
 
   // ── Init ──
+  const planifCal = document.getElementById('planifCal');
+  planifCal.addEventListener('pointerdown', onDragStart);
+  planifCal.addEventListener('pointermove', onDragMove);
+  planifCal.addEventListener('pointerup', onDragEnd);
+  planifCal.addEventListener('pointercancel', ()=>{ if(drag){ drag.el.classList.remove('dragging'); drag=null; charger(); } });
   document.getElementById('planifViews').addEventListener('click', e=>{
     if(e.target.dataset.vue){ state.vue=e.target.dataset.vue; charger(); }
   });
