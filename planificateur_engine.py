@@ -126,17 +126,16 @@ class _PlanJour:
         else:
             self.intervalle_pause, self.duree_pause = PAUSE_JOURNEE_NORMALE
 
-    def nb_substantielles(self, exclure=None):
+    def nb_substantielles(self):
         """Nombre de taches « substantielles » (>= 1 h) placees ce jour-la.
 
-        `exclure` (tache_id) permet d'ignorer la tache en cours de placement,
-        pour ne pas se penaliser en ajoutant un nouveau morceau a une tache
-        deja presente.
+        La tache en cours de placement est comptee des qu'elle atteint le seuil :
+        un jour ou elle a deja pose un morceau parait donc « plus rempli », ce
+        qui pousse ses morceaux suivants a s'etaler sur d'autres jours plutot
+        que de tout empiler la (et preserve l'equilibrage des longues missions).
         """
-        return sum(
-            1 for tid, m in self.taches_min.items()
-            if tid != exclure and m >= SEUIL_TACHE_SUBSTANTIELLE
-        )
+        return sum(1 for m in self.taches_min.values()
+                   if m >= SEUIL_TACHE_SUBSTANTIELLE)
 
     def enregistrer(self, tache_id, minutes):
         """Comptabilise `minutes` placees pour une tache ce jour-la."""
@@ -361,7 +360,7 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
         # « monter » le seuil de 3 a 4, 5... quand tous les jours possibles sont
         # deja pleins, tout en respectant la fenetre imposee par l'echeance.
         def _cle_repartition(p):
-            return (p.nb_substantielles(tache['id']), p.charge, p.jour)
+            return (p.nb_substantielles(), p.charge, p.jour)
 
         if not secable:
             # Bloc unique : essayer chaque jour, du mieux reparti au moins bon.
