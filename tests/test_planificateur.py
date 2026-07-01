@@ -144,6 +144,55 @@ def test_engine_recurrente_placee_en_dernier():
         assert rec[0]['heure_debut'] >= debut_normale
 
 
+def test_engine_repartition_cap_taches_substantielles():
+    """Cap souple de 3 taches >= 1h par jour, qui monte a 4 quand tout est plein."""
+    from collections import Counter
+    lundi = _lundi_prochain()
+    # 10 taches d'1h a caser sur 3 jours ouvres (echeance serree).
+    deadline = (lundi + timedelta(days=2)).isoformat()
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60, 'deadline': deadline,
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 11)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=2))
+    par_jour = Counter(b['date'] for b in res['blocs'])
+    # 3 jours utilises, remplis a 3 puis un seul monte a 4 (10 = 4 + 3 + 3).
+    assert len(par_jour) == 3
+    assert sorted(par_jour.values()) == [3, 3, 4]
+
+
+def test_engine_repartition_etale_sans_echeance():
+    """Sans echeance, les taches substantielles s'etalent (pas de regroupement)."""
+    from collections import Counter
+    lundi = _lundi_prochain()
+    taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60, 'deadline': None,
+               'priorite': 'normale', 'preference': 'aucune', 'secable': False,
+               'duree_min_bloc': 60} for i in range(1, 6)]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=13))
+    par_jour = Counter(b['date'] for b in res['blocs'])
+    # 5 taches -> 5 jours distincts (1 par jour), aucun regroupement.
+    assert len(par_jour) == 5
+    assert max(par_jour.values()) == 1
+
+
+def test_engine_longue_mission_ne_se_concentre_pas():
+    """Une longue mission secable s'etale meme quand d'autres jours sont deja pris
+    (la tache en cours doit se compter elle-meme dans la repartition)."""
+    lundi = _lundi_prochain()
+    deadline = (lundi + timedelta(days=2)).isoformat()  # Lun-Mar-Mer
+    taches = [
+        {'id': 1, 'titre': 'A', 'duree_min': 60, 'deadline': deadline, 'priorite': 'haute',
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 60},
+        {'id': 2, 'titre': 'B', 'duree_min': 60, 'deadline': deadline, 'priorite': 'haute',
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 60},
+        {'id': 3, 'titre': 'Mission', 'duree_min': 360, 'deadline': deadline, 'priorite': 'normale',
+         'preference': 'aucune', 'secable': True, 'duree_min_bloc': 60},
+    ]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=2))
+    jours_mission = {b['date'] for b in res['blocs'] if b['tache_id'] == 3}
+    assert len(jours_mission) == 3, \
+        "la mission de 6h doit s'etaler sur les 3 jours, pas se concentrer sur un seul"
+
+
 def test_engine_micro_pauses_journee_chargee():
     """Sur une journee pleine, des respirations separent les blocs successifs."""
     lundi = _lundi_prochain()
