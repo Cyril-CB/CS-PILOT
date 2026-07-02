@@ -143,6 +143,30 @@ def test_suppression_absence_directeur_repasse_en_travaille(app, admin_client, d
     assert stats['travaille'] == _jours_ouvres_attendus(annee)
 
 
+def test_longue_absence_directeur_couvre_toutes_les_annees(app, admin_client, sample_users):
+    """Une longue absence d'un directeur couvrant plusieurs années (ex. congé
+    parental) est reportée sur CHAQUE année, y compris une année intermédiaire
+    entièrement couverte (initialisation de toute la plage d'années)."""
+    uid = sample_users['directeur_id']
+    # Du 02/11/2026 au 28/02/2028 : couvre 2026 (partiel), 2027 (entier), 2028 (partiel).
+    admin_client.post('/absences', data={
+        'user_id': uid, 'motif': 'Congé parental',
+        'date_debut': '2026-11-02', 'date_fin': '2028-02-28',
+    }, follow_redirects=True)
+
+    with app.app_context():
+        s2026 = utils.calculer_stats_forfait_jour(uid, 2026)
+        s2027 = utils.calculer_stats_forfait_jour(uid, 2027)
+        s2028 = utils.calculer_stats_forfait_jour(uid, 2028)
+
+    # 2027 entièrement couvert : aucun jour travaillé, tous les jours ouvrés en absence.
+    assert s2027['travaille'] == 0
+    assert s2027['autre'] == _jours_ouvres_attendus(2027)
+    # 2026 et 2028 partiellement couverts : il reste des jours travaillés hors absence.
+    assert s2026['travaille'] > 0 and s2026['autre'] > 0
+    assert s2028['travaille'] > 0 and s2028['autre'] > 0
+
+
 def test_arret_maladie_salarie_reste_sur_heures_reelles(app, admin_client, sample_users):
     """Le comportement salarié est inchangé : l'absence va sur heures_reelles et
     RIEN n'est écrit sur le calendrier forfait jours."""

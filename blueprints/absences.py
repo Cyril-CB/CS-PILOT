@@ -156,10 +156,11 @@ def _reporter_absence_sur_forfait_jour(conn, absence_id, user_id, date_debut_str
     # Lazy import : evite tout cycle d'import au chargement de l'application.
     from blueprints.forfait import initialiser_annee_forfait_jour
 
-    # S'assurer que chaque annee couverte est pre-remplie en « travaille », sinon
-    # le decompte serait fausse (une annee vierge ne compte aucun jour travaille).
-    # Sans commit : l'ecriture reste dans la transaction de l'appelant.
-    for annee in {int(date_debut_str[:4]), int(date_fin_str[:4])}:
+    # S'assurer que CHAQUE annee couverte par l'absence est pre-remplie en
+    # « travaille » (annees intermediaires comprises pour une longue absence, ex.
+    # conge parental sur 2-3 ans), sinon une annee laissee vierge ne compterait
+    # aucun jour travaille. Sans commit : on reste dans la transaction appelante.
+    for annee in range(int(date_debut_str[:4]), int(date_fin_str[:4]) + 1):
         initialiser_annee_forfait_jour(conn, user_id, annee, commit=False)
 
     type_journee = MOTIF_VERS_TYPE_FORFAIT.get(motif, 'autre')
