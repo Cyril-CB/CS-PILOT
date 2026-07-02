@@ -142,9 +142,17 @@ def gestion_subventions():
         user_id = session.get('user_id')
 
         if is_responsable:
+            # Le responsable voit les subventions dont il est assigné (parent) et
+            # celles dont un sous-élément lui est directement attribué.
             subventions = conn.execute(
-                'SELECT * FROM subventions WHERE assignee_1_id = ? OR assignee_2_id = ? ORDER BY ordre, id',
-                (user_id, user_id)
+                '''SELECT * FROM subventions
+                   WHERE assignee_1_id = ? OR assignee_2_id = ?
+                      OR id IN (
+                          SELECT subvention_id FROM subventions_sous_elements
+                          WHERE assignee_id = ?
+                      )
+                   ORDER BY ordre, id''',
+                (user_id, user_id, user_id)
             ).fetchall()
         else:
             subventions = conn.execute(

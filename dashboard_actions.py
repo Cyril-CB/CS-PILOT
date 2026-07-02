@@ -98,20 +98,25 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
             })
 
     # 2. Subventions : étapes (sous-éléments) à échéance et non terminées.
+    # Le responsable voit les étapes des subventions dont il est assigné (parent)
+    # ainsi que celles des sous-éléments qui lui sont directement attribués — en
+    # cohérence avec la notification d'attribution par e-mail.
     if profil == 'responsable':
-        sub_scope = 'AND (s.assignee_1_id = ? OR s.assignee_2_id = ?)'
-        sub_params = (user_id, user_id)
+        sub_scope = 'AND (s.assignee_1_id = ? OR s.assignee_2_id = ? OR se.assignee_id = ?)'
+        sub_params = (user_id, user_id, user_id)
     else:
         sub_scope = ''
         sub_params = ()
 
+    # On exclut uniquement les subventions refusées : une subvention acceptée
+    # garde des échéances actionnables (bilans qualitatif / financier).
     rows = conn.execute(
         f"""SELECT se.nom AS etape, se.date_echeance, s.nom AS sub_nom, s.annee_action
             FROM subventions_sous_elements se
             JOIN subventions s ON s.id = se.subvention_id
             WHERE se.date_echeance IS NOT NULL AND se.date_echeance != ''
               AND se.statut != 'fait'
-              AND s.groupe IN ('nouveau_projet', 'en_cours')
+              AND s.groupe != 'refusee'
               {sub_scope}
             ORDER BY se.date_echeance ASC
             LIMIT 25""",

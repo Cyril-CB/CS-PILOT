@@ -14,16 +14,17 @@ def _demande_recup(db, user_id, statut, date_demande='2026-06-01'):
     )
 
 
-def _subvention_avec_etape(db, nom, echeance, assignee_1_id=None):
+def _subvention_avec_etape(db, nom, echeance, assignee_1_id=None,
+                           groupe='en_cours', se_assignee_id=None):
     cur = db.execute(
-        "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id) VALUES (?, 'en_cours', '2026', ?)",
-        (nom, assignee_1_id)
+        "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id) VALUES (?, ?, '2026', ?)",
+        (nom, groupe, assignee_1_id)
     )
     sid = cur.lastrowid
     db.execute(
-        "INSERT INTO subventions_sous_elements (subvention_id, nom, statut, date_echeance, ordre) "
-        "VALUES (?, 'Préparer le dossier', 'en_cours', ?, 0)",
-        (sid, echeance)
+        "INSERT INTO subventions_sous_elements (subvention_id, nom, assignee_id, statut, date_echeance, ordre) "
+        "VALUES (?, 'Préparer le dossier', ?, 'en_cours', ?, 0)",
+        (sid, se_assignee_id, echeance)
     )
     return sid
 
@@ -91,3 +92,36 @@ def test_etape_faite_non_listee(app, db, sample_users):
     with app.test_request_context():
         actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
     assert not any(a['categorie'] == 'subvention' for a in actions)
+
+
+def test_responsable_voit_etape_de_sous_element_assigne(app, db, sample_users):
+    """Un responsable attribué à un sous-élément (mais pas à la subvention parente)
+    voit l'étape dans son panneau, en cohérence avec la notification e-mail."""
+    resp_id = sample_users['responsable_id']
+    _subvention_avec_etape(db, 'Portage', (date.today() + timedelta(days=3)).isoformat(),
+                           assignee_1_id=None, se_assignee_id=resp_id)
+    db.commit()
+    with app.test_request_context():
+        actions = construire_actions(db, 'responsable', resp_id, sample_users['secteur_id'])
+    titres = [a['titre'] for a in actions if a['categorie'] == 'subvention']
+    assert any('Portage' in t for t in titres)
+
+
+def test_subvention_acceptee_garde_ses_echeances(app, db, sample_users):
+    """Une subvention acceptée conserve ses échéances actionnables (bilans)."""
+    _subvention_avec_etape(db, 'Acceptee', (date.today() + timedelta(days=3)).isoformat(),
+                           groupe='acceptee')
+    db.commit()
+    with app.test_request_context():
+        actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+    assert any('Acceptee' in a['titre'] for a in actions if a['categorie'] == 'subvention')
+
+
+def test_subvention_refusee_exclue_du_panneau(app, db, sample_users):
+    """Une subvention refusée n'apparaît pas, même avec une échéance passée."""
+    _subvention_avec_etape(db, 'Refusee', (date.today() - timedelta(days=1)).isoformat(),
+                           groupe='refusee')
+    db.commit()
+    with app.test_request_context():
+        actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+    assert not any('Refusee' in a['titre'] for a in actions if a['categorie'] == 'subvention')

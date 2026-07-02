@@ -186,3 +186,27 @@ class TestNotificationAttribution:
         admin_client.post(f'/api/subventions/{sid}/modifier',
                           json={'field': 'assignee_1_id', 'value': None})
         assert captures == []
+
+
+class TestVisibiliteResponsable:
+    """Un responsable voit les subventions dont un sous-élément lui est attribué,
+    même s'il n'est pas assigné à la subvention parente."""
+
+    def test_responsable_voit_subvention_via_sous_element(self, app, resp_client, db, sample_users):
+        resp_id = sample_users['responsable_id']
+        # Subvention attribuée au responsable via un sous-élément uniquement.
+        cur = db.execute(
+            "INSERT INTO subventions (nom, groupe, annee_action) VALUES ('DossierSE','en_cours','2026')"
+        )
+        db.execute(
+            "INSERT INTO subventions_sous_elements (subvention_id, nom, assignee_id, ordre) VALUES (?, 'Bilan', ?, 0)",
+            (cur.lastrowid, resp_id)
+        )
+        # Subvention sans aucun lien avec le responsable : ne doit pas apparaître.
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('Cachee','en_cours','2026')")
+        db.commit()
+
+        resp = resp_client.get('/subventions')
+        assert resp.status_code == 200
+        assert b'DossierSE' in resp.data
+        assert b'Cachee' not in resp.data
