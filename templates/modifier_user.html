@@ -160,7 +160,13 @@
             responsableGroup.style.display = 'block';
             soldeGroup.style.display = 'none';
             congesGroup.style.display = 'block';
-        } else if (profil === 'directeur' || profil === 'prestataire') {
+        } else if (profil === 'directeur') {
+            // La direction peut être rattachée à un secteur (utile pour les budgets).
+            secteurGroup.style.display = 'block';
+            responsableGroup.style.display = 'none';
+            soldeGroup.style.display = 'none';
+            congesGroup.style.display = 'none';
+        } else if (profil === 'prestataire') {
             secteurGroup.style.display = 'none';
             responsableGroup.style.display = 'none';
             soldeGroup.style.display = 'none';

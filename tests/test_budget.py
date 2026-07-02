@@ -959,6 +959,33 @@ def test_paie_direction_rattachee_au_secteur_administratif(app, db):
     assert not any(e['id'] == did for e in op_emps)
 
 
+def test_paie_direction_assignee_a_son_secteur(app, db):
+    """Un directeur RATTACHÉ à un secteur (ex. « Pilotage ») est compté dans CE
+    secteur pour le budget, et n'est plus rattaché d'office à l'administratif
+    principal (pas de double comptage)."""
+    from blueprints.budget import _paie_employes_secteur
+    annee = 2026
+    with app.app_context():
+        # Deux secteurs administratifs : 'Admin' (id le plus petit = principal)
+        # et 'Pilotage'. La direction est explicitement rattachée à Pilotage.
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Admin','administratif')")
+        admin_sid = db.execute("SELECT id FROM secteurs WHERE nom='Admin'").fetchone()['id']
+        db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Pilotage','administratif')")
+        pil_sid = db.execute("SELECT id FROM secteurs WHERE nom='Pilotage'").fetchone()['id']
+        db.execute("INSERT INTO users (nom,prenom,login,password,profil,actif,secteur_id,date_entree) "
+                   "VALUES ('Dir','Pil','dir_pil','x','directeur',1,?,?)", (pil_sid, f'{annee-5}-01-01'))
+        did = db.execute("SELECT id FROM users WHERE login='dir_pil'").fetchone()['id']
+        db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,date_fin) VALUES (?, 'CDI', ?, NULL)",
+                   (did, f'{annee-5}-01-01'))
+        db.commit()
+        admin_emps = _paie_employes_secteur(db, admin_sid, annee)
+        pil_emps = _paie_employes_secteur(db, pil_sid, annee)
+    # Compté dans son secteur (Pilotage)...
+    assert any(e['id'] == did for e in pil_emps)
+    # ... et plus dans l'administratif principal (pas de double comptage).
+    assert not any(e['id'] == did for e in admin_emps)
+
+
 def test_paie_maintien_ajoute_au_brut(app, db, admin_client):
     """Le maintien de salaire s'ajoute au brut mensuel et est persisté sur la fiche."""
     annee = 2026
