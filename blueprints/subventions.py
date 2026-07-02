@@ -240,6 +240,29 @@ def api_ajouter_subvention():
         conn.close()
 
 
+def _notifier_attribution(conn, assignee_id, subvention_nom, annee_effective, sous_element_nom=None):
+    """Notifie par e-mail la personne nouvellement assignee a une subvention ou a
+    l'un de ses sous-elements. Silencieux : une notification ne doit jamais faire
+    echouer l'action (e-mail non configure, consentement absent, erreur SMTP...)."""
+    if not assignee_id:
+        return
+    try:
+        from email_service import (is_email_configured, peut_envoyer_email,
+                                    notifier_subvention_assignee)
+        if not is_email_configured():
+            return
+        peut, email = peut_envoyer_email(assignee_id)
+        if not peut or not email:
+            return
+        row = conn.execute('SELECT prenom FROM users WHERE id = ?', (assignee_id,)).fetchone()
+        notifier_subvention_assignee(
+            email, row['prenom'] if row else '', subvention_nom,
+            annee_effective, sous_element_nom
+        )
+    except Exception:
+        pass
+
+
 @subventions_bp.route('/api/subventions/<int:sub_id>/modifier', methods=['POST'])
 @login_required
 def api_modifier_subvention(sub_id):
@@ -273,11 +296,22 @@ def api_modifier_subvention(sub_id):
 
     conn = get_db()
     try:
+        # Detecter un changement d'assignation pour notifier le nouvel assigne.
+        infos_notif = None
+        if field in ('assignee_1_id', 'assignee_2_id') and value:
+            avant = conn.execute(
+                f'SELECT {field} AS ancien, nom, annee_action FROM subventions WHERE id = ?',
+                (sub_id,)
+            ).fetchone()
+            if avant and value != avant['ancien']:
+                infos_notif = (avant['nom'], avant['annee_action'])
         conn.execute(
             f'UPDATE subventions SET {field} = ?, updated_at = ? WHERE id = ?',
             (value, datetime.now().isoformat(), sub_id)
         )
         conn.commit()
+        if infos_notif:
+            _notifier_attribution(conn, value, infos_notif[0], infos_notif[1])
         return jsonify({'ok': True})
     finally:
         conn.close()
@@ -357,11 +391,25 @@ def api_modifier_sous_element(se_id):
 
     conn = get_db()
     try:
+        infos_notif = None
+        if field == 'assignee_id' and value:
+            avant = conn.execute(
+                'SELECT se.assignee_id AS ancien, se.nom AS se_nom, '
+                '       s.nom AS sub_nom, s.annee_action AS annee '
+                'FROM subventions_sous_elements se '
+                'JOIN subventions s ON s.id = se.subvention_id '
+                'WHERE se.id = ?',
+                (se_id,)
+            ).fetchone()
+            if avant and value != avant['ancien']:
+                infos_notif = (avant['sub_nom'], avant['annee'], avant['se_nom'])
         conn.execute(
             f'UPDATE subventions_sous_elements SET {field} = ? WHERE id = ?',
             (value, se_id)
         )
         conn.commit()
+        if infos_notif:
+            _notifier_attribution(conn, value, infos_notif[0], infos_notif[1], infos_notif[2])
         return jsonify({'ok': True})
     finally:
         conn.close()

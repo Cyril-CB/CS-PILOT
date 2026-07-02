@@ -121,3 +121,68 @@ class TestSubventionsBenevolesRendering:
         html = response.get_data(as_text=True)
         assert '<span class="sv-tag">Benevole 10</span>' in html
         assert '<span class="sv-tag">Benevole 1</span>' not in html
+
+
+class TestNotificationAttribution:
+    """Notification e-mail lors de l'attribution d'une subvention / sous-élément."""
+
+    def _capturer(self, monkeypatch):
+        import email_service
+        captures = []
+        monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
+        monkeypatch.setattr(email_service, 'peut_envoyer_email', lambda uid: (True, f'u{uid}@ex.fr'))
+
+        def fake(email, prenom, nom, annee=None, se=None):
+            captures.append({'email': email, 'nom': nom, 'annee': annee, 'se': se})
+            return (True, 'ok')
+        monkeypatch.setattr(email_service, 'notifier_subvention_assignee', fake)
+        return captures
+
+    def test_attribution_subvention_notifie(self, app, admin_client, db, sample_users, monkeypatch):
+        captures = self._capturer(monkeypatch)
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('CLAS','en_cours','2026')")
+        sid = db.execute("SELECT id FROM subventions WHERE nom='CLAS'").fetchone()['id']
+        db.commit()
+
+        resp = admin_client.post(f'/api/subventions/{sid}/modifier',
+                                 json={'field': 'assignee_1_id', 'value': sample_users['salarie_id']})
+        assert resp.status_code == 200
+        assert len(captures) == 1
+        assert captures[0]['nom'] == 'CLAS'
+        assert captures[0]['annee'] == '2026'
+        assert captures[0]['se'] is None
+
+    def test_attribution_sous_element_precise_l_etape(self, app, admin_client, db, sample_users, monkeypatch):
+        captures = self._capturer(monkeypatch)
+        cur = db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('Numerique','en_cours','2026')")
+        sid = cur.lastrowid
+        se_id = db.execute(
+            "INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) VALUES (?, 'Envoyer le bilan', 0)",
+            (sid,)
+        ).lastrowid
+        db.commit()
+
+        resp = admin_client.post(f'/api/subventions/sous-elements/{se_id}/modifier',
+                                 json={'field': 'assignee_id', 'value': sample_users['responsable_id']})
+        assert resp.status_code == 200
+        assert len(captures) == 1
+        assert captures[0]['nom'] == 'Numerique'
+        assert captures[0]['annee'] == '2026'
+        assert captures[0]['se'] == 'Envoyer le bilan'
+
+    def test_pas_de_notification_si_inchange_ou_vide(self, app, admin_client, db, sample_users, monkeypatch):
+        captures = self._capturer(monkeypatch)
+        db.execute(
+            "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id) VALUES ('X','en_cours','2026',?)",
+            (sample_users['salarie_id'],)
+        )
+        sid = db.execute("SELECT id FROM subventions WHERE nom='X'").fetchone()['id']
+        db.commit()
+
+        # Ré-assigner la même personne : pas de notification.
+        admin_client.post(f'/api/subventions/{sid}/modifier',
+                          json={'field': 'assignee_1_id', 'value': sample_users['salarie_id']})
+        # Vider l'assignation : pas de notification.
+        admin_client.post(f'/api/subventions/{sid}/modifier',
+                          json={'field': 'assignee_1_id', 'value': None})
+        assert captures == []

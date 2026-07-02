@@ -327,3 +327,39 @@ def notifier_relance_validation(responsable_email, responsable_prenom,
     <p>Connectez-vous a CS-PILOT pour proceder a la validation.</p>
     """
     return envoyer_email(responsable_email, f"Relance validation - {_e(mois_nom)} {annee}", contenu, responsable_prenom)
+
+
+def notifier_subvention_assignee(assignee_email, assignee_prenom, subvention_nom,
+                                 annee_effective=None, sous_element_nom=None):
+    """Notifie une personne qu'une subvention (ou l'une de ses etapes) lui a ete
+    attribuee. L'echeance n'est volontairement PAS mentionnee (pas toujours
+    connue au moment de l'attribution)."""
+    _e = html_module.escape
+    annee = f" ({_e(str(annee_effective))})" if annee_effective else ""
+    if sous_element_nom:
+        intro = (f"L'etape <strong>{_e(sous_element_nom)}</strong> de la subvention "
+                 f"<strong>{_e(subvention_nom)}</strong>{annee} vous a ete attribuee.")
+    else:
+        intro = f"La subvention <strong>{_e(subvention_nom)}</strong>{annee} vous a ete attribuee."
+
+    lignes = (f'<tr><td style="padding:8px 12px;background:#f3f4f6;border-radius:4px;'
+              f'font-weight:600;width:40%;">Subvention</td>'
+              f'<td style="padding:8px 12px;">{_e(subvention_nom)}</td></tr>')
+    if annee_effective:
+        lignes += (f'<tr><td style="padding:8px 12px;background:#f3f4f6;border-radius:4px;'
+                   f'font-weight:600;">Annee</td>'
+                   f'<td style="padding:8px 12px;">{_e(str(annee_effective))}</td></tr>')
+    if sous_element_nom:
+        lignes += (f'<tr><td style="padding:8px 12px;background:#f3f4f6;border-radius:4px;'
+                   f'font-weight:600;">Etape</td>'
+                   f'<td style="padding:8px 12px;">{_e(sous_element_nom)}</td></tr>')
+
+    contenu = f"""
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Attribution d'une subvention</h3>
+    <p>{intro}</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0;">
+        {lignes}
+    </table>
+    <p style="margin-top:16px;">Connectez-vous a CS-PILOT pour consulter le detail.</p>
+    """
+    return envoyer_email(assignee_email, f"Subvention {subvention_nom} - attribution", contenu, assignee_prenom)
