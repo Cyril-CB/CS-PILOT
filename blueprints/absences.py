@@ -26,7 +26,28 @@ MOTIFS_ABSENCE = [
     'Autre',
 ]
 
+# Correspondance motif d'absence -> type de journee du calendrier forfait jour
+# (direction). Les motifs non listes retombent sur 'autre' : toute absence
+# retire de toute facon le jour du decompte des jours travailles.
+MOTIF_VERS_TYPE_FORFAIT = {
+    'Congé payé': 'conge_paye',
+    'Congé conventionnel': 'conge_conv',
+    'Arrêt maladie': 'maladie',
+    'Sans solde': 'sans_solde',
+}
+
 DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')
+
+
+def _est_forfait_jour(conn, user_id):
+    """Vrai si l'utilisateur releve du forfait jours (direction).
+
+    La direction n'a pas d'horaires precis : son « calendrier » et son decompte
+    vivent dans presence_forfait_jour, et non dans heures_reelles / les compteurs
+    de conges salaries. C'est ce qui aiguille le report des absences.
+    """
+    row = conn.execute('SELECT profil FROM users WHERE id = ?', (user_id,)).fetchone()
+    return bool(row) and row['profil'] == 'directeur'
 
 
 def _get_documents_dir():
@@ -81,6 +102,12 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
         jours_ouvres: nombre de jours ouvres
         ajout: True pour une nouvelle absence, False pour une suppression
     """
+    # La direction (forfait jours) suit ses conges via presence_forfait_jour
+    # (decompte recalcule automatiquement) : ne pas toucher aux compteurs de
+    # conges salaries, qui ne la concernent pas.
+    if _est_forfait_jour(conn, user_id):
+        return
+
     if motif == 'Congé payé':
         user = conn.execute('SELECT cp_a_prendre, cp_pris FROM users WHERE id = ?', (user_id,)).fetchone()
         if not user:
@@ -117,8 +144,61 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
         conn.execute('UPDATE users SET cc_solde = ? WHERE id = ?', (cc_solde, user_id))
 
 
+def _reporter_absence_sur_forfait_jour(conn, absence_id, user_id, date_debut_str, date_fin_str, motif):
+    """Reporte une absence sur le calendrier forfait jours (direction).
+
+    Chaque jour ouvre non ferie de la periode prend le type de journee
+    correspondant a l'absence (maladie, conge_paye…). L'absence PRIME : elle
+    remplace le type du jour meme s'il avait ete saisi a la main, et efface les
+    horaires eventuels. Le decompte (jours travailles, soldes CP / maladie) se
+    recalcule tout seul a partir de presence_forfait_jour.
+    """
+    # Lazy import : evite tout cycle d'import au chargement de l'application.
+    from blueprints.forfait import initialiser_annee_forfait_jour
+
+    # S'assurer que CHAQUE annee couverte par l'absence est pre-remplie en
+    # « travaille » (annees intermediaires comprises pour une longue absence, ex.
+    # conge parental sur 2-3 ans), sinon une annee laissee vierge ne compterait
+    # aucun jour travaille. Sans commit : on reste dans la transaction appelante.
+    for annee in range(int(date_debut_str[:4]), int(date_fin_str[:4]) + 1):
+        initialiser_annee_forfait_jour(conn, user_id, annee, commit=False)
+
+    type_journee = MOTIF_VERS_TYPE_FORFAIT.get(motif, 'autre')
+    date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
+    date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
+
+    feries_rows = conn.execute('''
+        SELECT date FROM jours_feries
+        WHERE date >= ? AND date <= ?
+    ''', (date_debut_str, date_fin_str)).fetchall()
+    jours_feries = {row['date'] for row in feries_rows}
+
+    commentaire = f"Absence #{absence_id} - {motif}"
+    jour_actuel = date_debut
+    while jour_actuel <= date_fin:
+        date_str = jour_actuel.strftime('%Y-%m-%d')
+        # Uniquement jours ouvres et non feries (comme pour les salaries).
+        if jour_actuel.weekday() < 5 and date_str not in jours_feries:
+            # INSERT OR REPLACE : l'absence prime et efface horaires/commentaire.
+            conn.execute('''
+                INSERT OR REPLACE INTO presence_forfait_jour
+                (user_id, date, type_journee, commentaire)
+                VALUES (?, ?, ?, ?)
+            ''', (user_id, date_str, type_journee, commentaire))
+        jour_actuel += timedelta(days=1)
+
+
 def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, date_fin_str, motif):
-    """Reporte les jours d'absence sur heures_reelles avec declaration conforme (heures theoriques)."""
+    """Reporte les jours d'absence sur le calendrier de l'interesse.
+
+    - Salarie : sur heures_reelles (declaration conforme aux heures theoriques).
+    - Direction (forfait jours) : sur presence_forfait_jour (voir le helper dedie).
+    """
+    if _est_forfait_jour(conn, user_id):
+        _reporter_absence_sur_forfait_jour(conn, absence_id, user_id,
+                                           date_debut_str, date_fin_str, motif)
+        return
+
     date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
     date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
 
@@ -150,7 +230,24 @@ def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, 
 
 
 def _supprimer_absence_du_calendrier(conn, absence_id, user_id, date_debut_str, date_fin_str):
-    """Supprime les entrees heures_reelles liees a une absence."""
+    """Retire du calendrier les jours poses par une absence.
+
+    - Salarie : supprime les entrees heures_reelles de l'absence.
+    - Direction (forfait jours) : repasse en « travaille » les jours ENCORE
+      marques par cette absence (on ne touche pas a une saisie manuelle faite
+      depuis), et efface horaires/commentaire residuels.
+    """
+    if _est_forfait_jour(conn, user_id):
+        conn.execute('''
+            UPDATE presence_forfait_jour
+            SET type_journee = 'travaille', commentaire = NULL,
+                matin_debut = NULL, matin_fin = NULL,
+                aprem_debut = NULL, aprem_fin = NULL
+            WHERE user_id = ? AND date >= ? AND date <= ?
+              AND commentaire LIKE ?
+        ''', (user_id, date_debut_str, date_fin_str, f"Absence #{absence_id}%"))
+        return
+
     conn.execute('''
         DELETE FROM heures_reelles
         WHERE user_id = ? AND date >= ? AND date <= ?

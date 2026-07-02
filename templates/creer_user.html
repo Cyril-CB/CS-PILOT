@@ -172,8 +172,9 @@
             profilInfo.style.display = 'block';
             profilInfo.innerHTML = '<h4>💰 Profil Comptable</h4><p>Accès lecture seule à toutes les fiches + sa fiche personnelle (modification/validation).</p><p>Peut être rattaché à un secteur (optionnel) et doit pouvoir avoir un responsable hiérarchique.</p>';
         } else if (profil === 'directeur') {
+            secteurGroup.style.display = 'block';
             profilInfo.style.display = 'block';
-            profilInfo.innerHTML = '<h4>🎯 Profil Directeur</h4><p>Accès lecture seule à toutes les fiches + validation finale. <strong>Pas de fiche personnelle</strong> (forfait jour).</p>';
+            profilInfo.innerHTML = '<h4>🎯 Profil Directeur</h4><p>Accès lecture seule à toutes les fiches + validation finale. <strong>Pas de fiche personnelle</strong> (forfait jour).</p><p>Peut être rattaché à un secteur (optionnel) — utile pour les budgets, ex. Pilotage.</p>';
         } else if (profil === 'prestataire') {
             profilInfo.style.display = 'block';
             profilInfo.innerHTML = '<h4>📋 Profil Prestataire paie</h4><p>Accès uniquement à la page Préparation Paie. Ce profil n\'apparait pas dans les listes de salariés.</p>';

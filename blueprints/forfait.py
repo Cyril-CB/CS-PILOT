@@ -10,7 +10,7 @@ from utils import login_required, get_user_info, calculer_stats_forfait_jour, ca
 forfait_bp = Blueprint('forfait_bp', __name__)
 
 
-def initialiser_annee_forfait_jour(conn, user_id, annee):
+def initialiser_annee_forfait_jour(conn, user_id, annee, commit=True):
     """Pré-remplit le calendrier forfait jour d'une année.
 
     Par défaut, chaque jour ouvré (lundi → vendredi) qui n'est pas férié est
@@ -54,7 +54,8 @@ def initialiser_annee_forfait_jour(conn, user_id, annee):
             "(user_id, date, type_journee) VALUES (?, ?, ?)",
             jours_a_inserer
         )
-        conn.commit()
+        if commit:
+            conn.commit()
     return True
 
 

@@ -1842,11 +1842,11 @@ def _paie_mois_actifs(date_debut, date_fin, annee):
 def _paie_employes_secteur(conn, secteur_id, annee):
     """Salariés actifs du secteur avec un contrat CDI/CDD chevauchant l'année.
 
-    La direction (profil 'directeur'), généralement sans secteur opérationnel,
-    est rattachée au secteur administratif (et n'apparaît que là). Pour éviter
-    tout double comptage si plusieurs secteurs sont de type 'administratif',
-    la direction n'est incluse que dans le secteur administratif principal
-    (le plus petit id).
+    La direction (profil 'directeur') est comptée dans SON secteur lorsqu'elle en
+    a un (utile pour les budgets, ex. « Pilotage » = administratif + direction).
+    Une direction SANS secteur est rattachée par défaut au secteur administratif
+    principal (le plus petit id parmi les secteurs de type 'administratif') et n'y
+    apparaît qu'une fois — jamais en double avec un secteur explicitement assigné.
     """
     sect = conn.execute('SELECT type_secteur FROM secteurs WHERE id = ?', (secteur_id,)).fetchone()
     is_admin = bool(sect) and (sect['type_secteur'] == 'administratif')
@@ -1862,15 +1862,17 @@ def _paie_employes_secteur(conn, secteur_id, annee):
             SELECT id, nom, prenom, pesee, competence, maintien
             FROM users
             WHERE actif = 1 AND profil != 'prestataire'
-              AND (secteur_id = ? OR profil = 'directeur')
+              AND (secteur_id = ? OR (profil = 'directeur' AND secteur_id IS NULL))
             ORDER BY nom, prenom
         ''', (secteur_id,)).fetchall()
     else:
-        # Hors secteur administratif principal : la direction n'apparaît pas.
+        # Hors secteur administratif principal : on inclut la direction
+        # explicitement rattachée à CE secteur (les directions sans secteur, elles,
+        # restent sur l'administratif principal via la branche ci-dessus).
         rows = conn.execute('''
             SELECT id, nom, prenom, pesee, competence, maintien
             FROM users
-            WHERE actif = 1 AND profil != 'prestataire' AND profil != 'directeur'
+            WHERE actif = 1 AND profil != 'prestataire'
               AND secteur_id = ?
             ORDER BY nom, prenom
         ''', (secteur_id,)).fetchall()

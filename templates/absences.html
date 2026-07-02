@@ -17,7 +17,7 @@
                     <select id="user_id" name="user_id" required>
                         <option value="">-- Sélectionner un salarié --</option>
                         {% for s in salaries %}
-                        <option value="{{ s.id }}">{{ s.nom }} {{ s.prenom }} ({{ s.profil }})</option>
+                        <option value="{{ s.id }}" data-profil="{{ s.profil }}">{{ s.nom }} {{ s.prenom }} ({{ s.profil }})</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -202,11 +202,16 @@ document.getElementById('date_fin').addEventListener('change', calculerJoursOuvr
 
 // Affichage des compteurs conges
 function chargerCompteursConges() {
-    var userId = document.getElementById('user_id').value;
+    var select = document.getElementById('user_id');
+    var userId = select.value;
     var motif = document.getElementById('motif').value;
     var compteursDiv = document.getElementById('compteurs-conges');
+    var opt = select.options[select.selectedIndex];
+    var profil = opt ? opt.getAttribute('data-profil') : '';
 
-    if (!userId || (motif !== 'Congé payé' && motif !== 'Congé conventionnel')) {
+    // La direction (forfait jours) ne suit pas les compteurs de congés salariés :
+    // ses congés sont décomptés sur son calendrier forfait, pas ici.
+    if (!userId || profil === 'directeur' || (motif !== 'Congé payé' && motif !== 'Congé conventionnel')) {
         compteursDiv.style.display = 'none';
         return;
     }
