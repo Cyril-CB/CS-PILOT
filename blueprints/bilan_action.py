@@ -343,11 +343,14 @@ def bilan_action():
         ).fetchall()
         annee_courante = date.today().year
         annees = list(range(annee_courante + 1, annee_courante - 5, -1))
+        # Action pré-sélectionnée via ?action_id= (lien depuis la page subventions).
+        action_preselect = request.args.get('action_id', type=int)
         return render_template(
             'bilan_action.html',
             actions=actions,
             annees=annees,
             annee_courante=annee_courante,
+            action_preselect=action_preselect,
         )
     finally:
         conn.close()

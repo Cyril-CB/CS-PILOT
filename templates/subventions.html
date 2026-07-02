@@ -38,10 +38,8 @@
                             <th class="sv-col-amount">Montant accordé</th>
                             <th class="sv-col-date">Date notification</th>
                             <th class="sv-col-file">Justificatif</th>
-                            <th class="sv-col-select">Analytique</th>
+                            <th class="sv-col-select">Budget</th>
                             <th class="sv-col-text">Contact email</th>
-                            <th class="sv-col-select">Compte analytique 1</th>
-                            <th class="sv-col-select">Compte analytique 2</th>
                             <th class="sv-col-select">Bénévoles</th>
                             {% if not is_responsable %}
                             <th class="sv-col-actions"></th>
@@ -104,33 +102,22 @@
                                     <input type="file" accept=".pdf" onchange="uploadFile(this, {{ sub.id }})" hidden>
                                 </label>
                             </td>
-                            {# ── Analytique ── #}
-                            <td class="sv-col-select" onclick="editAnalytique(this, {{ sub.id }})">
-                                {% if sub.analytique_id %}
-                                    {% for a in analytiques %}{% if a.id == sub.analytique_id %}{{ a.nom }}{% endif %}{% endfor %}
-                                {% else %}
-                                    <span class="sv-placeholder">Choisir…</span>
+                            {# ── Budget (action analytique + lien bilan-action) ── #}
+                            <td class="sv-col-select sv-cell-budget">
+                                <span class="sv-budget-nom" onclick="editActionBudget(this, {{ sub.id }})">
+                                    {% if sub.action_budget_id %}
+                                        {% for a in actions_budget %}{% if a.id == sub.action_budget_id %}{{ a.nom }}{% endif %}{% endfor %}
+                                    {% else %}
+                                        <span class="sv-placeholder">Choisir…</span>
+                                    {% endif %}
+                                </span>
+                                {% if sub.action_budget_id %}
+                                <a class="sv-budget-lien" href="{{ url_for('bilan_action_bp.bilan_action') }}?action_id={{ sub.action_budget_id }}" title="Voir le bilan de cette action">📊</a>
                                 {% endif %}
                             </td>
                             {# ── Contact email ── #}
                             <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ sub.id }}, 'contact_email')">
                                 {{ sub.contact_email if sub.contact_email else '—' }}
-                            </td>
-                            {# ── Compte analytique 1 ── #}
-                            <td class="sv-col-select" onclick="editCompteComptable(this, {{ sub.id }}, 'compte_comptable_1_id')">
-                                {% if sub.compte_comptable_1_id %}
-                                    {% for cc in comptes_comptables %}{% if cc.id == sub.compte_comptable_1_id %}{{ cc.compte_num }} - {{ cc.libelle }}{% endif %}{% endfor %}
-                                {% else %}
-                                    <span class="sv-placeholder">Choisir…</span>
-                                {% endif %}
-                            </td>
-                            {# ── Compte analytique 2 ── #}
-                            <td class="sv-col-select" onclick="editCompteComptable(this, {{ sub.id }}, 'compte_comptable_2_id')">
-                                {% if sub.compte_comptable_2_id %}
-                                    {% for cc in comptes_comptables %}{% if cc.id == sub.compte_comptable_2_id %}{{ cc.compte_num }} - {{ cc.libelle }}{% endif %}{% endfor %}
-                                {% else %}
-                                    <span class="sv-placeholder">Choisir…</span>
-                                {% endif %}
                             </td>
                             {# ── Bénévoles ── #}
                             <td class="sv-col-select" onclick="editBenevoles(this, {{ sub.id }})">
@@ -236,15 +223,11 @@ var USERS = {};
 USERS[{{ u.id }}] = {nom: "{{ u.nom }}", prenom: "{{ u.prenom }}", initiales: "{{ users_map[u.id].initiales }}"};
 {% endfor %}
 
-var ANALYTIQUES = {};
-{% for a in analytiques %}
-ANALYTIQUES[{{ a.id }}] = "{{ a.nom }}";
+var ACTIONS_BUDGET = {};
+{% for a in actions_budget %}
+ACTIONS_BUDGET[{{ a.id }}] = "{{ a.nom }}";
 {% endfor %}
-
-var COMPTES_COMPTABLES = {};
-{% for cc in comptes_comptables %}
-COMPTES_COMPTABLES[{{ cc.id }}] = "{{ cc.compte_num }} - {{ cc.libelle }}";
-{% endfor %}
+var BILAN_ACTION_URL = "{{ url_for('bilan_action_bp.bilan_action') }}";
 
 var BENEVOLES = {};
 {% for b in benevoles_list %}
@@ -499,50 +482,43 @@ function editStatus(el, id) {
 }
 
 /* ── Edition inline : analytique ── */
-function editAnalytique(el, id) {
+function editActionBudget(el, id) {
     if (el.querySelector('select')) return;
     var sel = document.createElement('select');
     sel.className = 'sv-inline-select';
-    sel.innerHTML = '<option value="">— Aucun —</option>';
-    Object.keys(ANALYTIQUES).forEach(function(aid) {
-        sel.innerHTML += '<option value="'+aid+'">'+ANALYTIQUES[aid]+'</option>';
+    sel.innerHTML = '<option value="">— Aucune —</option>';
+    Object.keys(ACTIONS_BUDGET).forEach(function(aid) {
+        sel.innerHTML += '<option value="'+aid+'">'+ACTIONS_BUDGET[aid]+'</option>';
     });
-    sel.innerHTML += '<option value="__new__">+ Nouveau projet…</option>';
     el.textContent = '';
     el.appendChild(sel);
     sel.focus();
 
-    var busy = false;
-    function restorePlaceholder() {
-        el.textContent = '';
-        var sp = document.createElement('span');
-        sp.className = 'sv-placeholder';
-        sp.textContent = 'Choisir…';
-        el.appendChild(sp);
-    }
+    var saved = false;
     function save() {
-        if (busy) return;
-        busy = true;
+        if (saved) return;
+        saved = true;
         var val = sel.value;
-        if (val === '__new__') {
-            if (sel.parentNode) sel.parentNode.removeChild(sel);
-            var nom = prompt('Nom du nouveau projet analytique :');
-            if (!nom || !nom.trim()) { restorePlaceholder(); return; }
-            apiCall('/api/subventions/analytiques/ajouter', {nom: nom.trim()}).then(function(r) {
-                if (r.ok) {
-                    ANALYTIQUES[r.id] = nom.trim();
-                    apiCall('/api/subventions/' + id + '/modifier', {field: 'analytique_id', value: r.id}).then(function() {
-                        el.textContent = nom.trim();
-                    });
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'action_budget_id', value: val}).then(function(r) {
+            el.textContent = '';
+            var cell = el.closest('td');
+            var lien = cell ? cell.querySelector('.sv-budget-lien') : null;
+            if (val && ACTIONS_BUDGET[val]) {
+                el.textContent = ACTIONS_BUDGET[val];
+                if (!lien && cell) {
+                    lien = document.createElement('a');
+                    lien.className = 'sv-budget-lien';
+                    lien.title = 'Voir le bilan de cette action';
+                    lien.textContent = '📊';
+                    cell.appendChild(lien);
                 }
-            });
-            return;
-        }
-        apiCall('/api/subventions/' + id + '/modifier', {field: 'analytique_id', value: val}).then(function(r) {
-            if (val) {
-                el.textContent = ANALYTIQUES[val] || '';
+                if (lien) lien.href = BILAN_ACTION_URL + '?action_id=' + val;
             } else {
-                restorePlaceholder();
+                var sp = document.createElement('span');
+                sp.className = 'sv-placeholder';
+                sp.textContent = 'Choisir…';
+                el.appendChild(sp);
+                if (lien) lien.remove();
             }
         });
     }
@@ -559,40 +535,6 @@ function uploadFile(input, id) {
         if (r.ok) location.reload();
         else alert(r.error || 'Erreur');
     });
-}
-
-/* ── Edition inline : compte comptable (dropdown) ── */
-function editCompteComptable(el, id, field) {
-    if (el.querySelector('select')) return;
-    var sel = document.createElement('select');
-    sel.className = 'sv-inline-select';
-    sel.innerHTML = '<option value="">— Aucun —</option>';
-    Object.keys(COMPTES_COMPTABLES).forEach(function(cid) {
-        sel.innerHTML += '<option value="'+cid+'">'+COMPTES_COMPTABLES[cid]+'</option>';
-    });
-    el.textContent = '';
-    el.appendChild(sel);
-    sel.focus();
-
-    var saved = false;
-    function save() {
-        if (saved) return;
-        saved = true;
-        var val = sel.value;
-        apiCall('/api/subventions/' + id + '/modifier', {field: field, value: val}).then(function(r) {
-            el.textContent = '';
-            if (val && COMPTES_COMPTABLES[val]) {
-                el.textContent = COMPTES_COMPTABLES[val];
-            } else {
-                var sp = document.createElement('span');
-                sp.className = 'sv-placeholder';
-                sp.textContent = 'Choisir…';
-                el.appendChild(sp);
-            }
-        });
-    }
-    sel.addEventListener('blur', save);
-    sel.addEventListener('change', save);
 }
 
 /* ── Edition inline : bénévoles (multi-select) ── */

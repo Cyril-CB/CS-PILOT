@@ -128,12 +128,10 @@ def gestion_subventions():
                 'initiales': _get_initiales(u['prenom'], u['nom']),
             }
 
-        analytiques = conn.execute(
-            'SELECT id, nom FROM subventions_analytiques ORDER BY nom'
-        ).fetchall()
-
-        comptes_comptables = conn.execute(
-            'SELECT id, compte_num, libelle FROM comptabilite_comptes ORDER BY compte_num'
+        # Actions du plan comptable analytique (= actions de bilan-action), pour
+        # la colonne « Budget » : rattachement direct + lien vers bilan-action.
+        actions_budget = conn.execute(
+            'SELECT id, nom FROM comptabilite_actions ORDER BY nom'
         ).fetchall()
 
         benevoles_list = conn.execute(
@@ -193,8 +191,7 @@ def gestion_subventions():
         sous_elements=sous_elements,
         users=users,
         users_map=users_map,
-        analytiques=analytiques,
-        comptes_comptables=comptes_comptables,
+        actions_budget=actions_budget,
         benevoles_list=benevoles_list,
         groupes_config=GROUPES,
         statuts_config=SOUS_ELEMENT_STATUTS,
@@ -279,14 +276,15 @@ def api_modifier_subvention(sub_id):
         'date_notification', 'analytique_id', 'contact_email',
         'compte_comptable', 'annee_action',
         'compte_comptable_1_id', 'compte_comptable_2_id',
-        'benevoles_ids',
+        'benevoles_ids', 'action_budget_id',
     }
 
     if field not in allowed_fields:
         return jsonify({'ok': False, 'error': f'Champ non autorisé: {field}'}), 400
 
     if field in ('assignee_1_id', 'assignee_2_id', 'analytique_id',
-                 'compte_comptable_1_id', 'compte_comptable_2_id'):
+                 'compte_comptable_1_id', 'compte_comptable_2_id',
+                 'action_budget_id'):
         value = int(value) if value else None
     elif field in ('montant_demande', 'montant_accorde'):
         try:

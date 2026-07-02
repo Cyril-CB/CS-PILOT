@@ -2766,6 +2766,42 @@ a.btn-icon:-webkit-any-link {
     font-style: italic;
 }
 
+/* ── Cellule Budget (action analytique + lien bilan-action) ── */
+.sv-cell-budget {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sv-budget-nom {
+    cursor: pointer;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: background 0.15s;
+}
+
+.sv-budget-nom:hover {
+    background: var(--gray-100, #f1f3f5);
+}
+
+.sv-budget-lien {
+    text-decoration: none;
+    font-size: 0.95rem;
+    opacity: 0.65;
+    transition: opacity 0.15s, transform 0.15s;
+    flex-shrink: 0;
+}
+
+.sv-budget-lien:hover {
+    opacity: 1;
+    transform: scale(1.15);
+}
+
 /* ── Empty state ── */
 .sv-empty {
     text-align: center;

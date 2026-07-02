@@ -808,6 +808,7 @@ def init_db():
             compte_comptable_1_id INTEGER,
             compte_comptable_2_id INTEGER,
             benevoles_ids TEXT DEFAULT '[]',
+            action_budget_id INTEGER,
             ordre INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -815,7 +816,8 @@ def init_db():
             FOREIGN KEY (assignee_2_id) REFERENCES users(id),
             FOREIGN KEY (analytique_id) REFERENCES subventions_analytiques(id),
             FOREIGN KEY (compte_comptable_1_id) REFERENCES comptabilite_comptes(id),
-            FOREIGN KEY (compte_comptable_2_id) REFERENCES comptabilite_comptes(id)
+            FOREIGN KEY (compte_comptable_2_id) REFERENCES comptabilite_comptes(id),
+            FOREIGN KEY (action_budget_id) REFERENCES comptabilite_actions(id)
         )
     ''')
 
