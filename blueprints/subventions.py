@@ -128,12 +128,10 @@ def gestion_subventions():
                 'initiales': _get_initiales(u['prenom'], u['nom']),
             }
 
-        analytiques = conn.execute(
-            'SELECT id, nom FROM subventions_analytiques ORDER BY nom'
-        ).fetchall()
-
-        comptes_comptables = conn.execute(
-            'SELECT id, compte_num, libelle FROM comptabilite_comptes ORDER BY compte_num'
+        # Actions du plan comptable analytique (= actions de bilan-action), pour
+        # la colonne « Budget » : rattachement direct + lien vers bilan-action.
+        actions_budget = conn.execute(
+            'SELECT id, nom FROM comptabilite_actions ORDER BY nom'
         ).fetchall()
 
         benevoles_list = conn.execute(
@@ -144,9 +142,17 @@ def gestion_subventions():
         user_id = session.get('user_id')
 
         if is_responsable:
+            # Le responsable voit les subventions dont il est assigné (parent) et
+            # celles dont un sous-élément lui est directement attribué.
             subventions = conn.execute(
-                'SELECT * FROM subventions WHERE assignee_1_id = ? OR assignee_2_id = ? ORDER BY ordre, id',
-                (user_id, user_id)
+                '''SELECT * FROM subventions
+                   WHERE assignee_1_id = ? OR assignee_2_id = ?
+                      OR id IN (
+                          SELECT subvention_id FROM subventions_sous_elements
+                          WHERE assignee_id = ?
+                      )
+                   ORDER BY ordre, id''',
+                (user_id, user_id, user_id)
             ).fetchall()
         else:
             subventions = conn.execute(
@@ -193,8 +199,7 @@ def gestion_subventions():
         sous_elements=sous_elements,
         users=users,
         users_map=users_map,
-        analytiques=analytiques,
-        comptes_comptables=comptes_comptables,
+        actions_budget=actions_budget,
         benevoles_list=benevoles_list,
         groupes_config=GROUPES,
         statuts_config=SOUS_ELEMENT_STATUTS,
@@ -240,6 +245,29 @@ def api_ajouter_subvention():
         conn.close()
 
 
+def _notifier_attribution(conn, assignee_id, subvention_nom, annee_effective, sous_element_nom=None):
+    """Notifie par e-mail la personne nouvellement assignee a une subvention ou a
+    l'un de ses sous-elements. Silencieux : une notification ne doit jamais faire
+    echouer l'action (e-mail non configure, consentement absent, erreur SMTP...)."""
+    if not assignee_id:
+        return
+    try:
+        from email_service import (is_email_configured, peut_envoyer_email,
+                                    notifier_subvention_assignee)
+        if not is_email_configured():
+            return
+        peut, email = peut_envoyer_email(assignee_id)
+        if not peut or not email:
+            return
+        row = conn.execute('SELECT prenom FROM users WHERE id = ?', (assignee_id,)).fetchone()
+        notifier_subvention_assignee(
+            email, row['prenom'] if row else '', subvention_nom,
+            annee_effective, sous_element_nom
+        )
+    except Exception:
+        pass
+
+
 @subventions_bp.route('/api/subventions/<int:sub_id>/modifier', methods=['POST'])
 @login_required
 def api_modifier_subvention(sub_id):
@@ -256,14 +284,15 @@ def api_modifier_subvention(sub_id):
         'date_notification', 'analytique_id', 'contact_email',
         'compte_comptable', 'annee_action',
         'compte_comptable_1_id', 'compte_comptable_2_id',
-        'benevoles_ids',
+        'benevoles_ids', 'action_budget_id',
     }
 
     if field not in allowed_fields:
         return jsonify({'ok': False, 'error': f'Champ non autorisé: {field}'}), 400
 
     if field in ('assignee_1_id', 'assignee_2_id', 'analytique_id',
-                 'compte_comptable_1_id', 'compte_comptable_2_id'):
+                 'compte_comptable_1_id', 'compte_comptable_2_id',
+                 'action_budget_id'):
         value = int(value) if value else None
     elif field in ('montant_demande', 'montant_accorde'):
         try:
@@ -273,11 +302,22 @@ def api_modifier_subvention(sub_id):
 
     conn = get_db()
     try:
+        # Detecter un changement d'assignation pour notifier le nouvel assigne.
+        infos_notif = None
+        if field in ('assignee_1_id', 'assignee_2_id') and value:
+            avant = conn.execute(
+                f'SELECT {field} AS ancien, nom, annee_action FROM subventions WHERE id = ?',
+                (sub_id,)
+            ).fetchone()
+            if avant and value != avant['ancien']:
+                infos_notif = (avant['nom'], avant['annee_action'])
         conn.execute(
             f'UPDATE subventions SET {field} = ?, updated_at = ? WHERE id = ?',
             (value, datetime.now().isoformat(), sub_id)
         )
         conn.commit()
+        if infos_notif:
+            _notifier_attribution(conn, value, infos_notif[0], infos_notif[1])
         return jsonify({'ok': True})
     finally:
         conn.close()
@@ -357,11 +397,25 @@ def api_modifier_sous_element(se_id):
 
     conn = get_db()
     try:
+        infos_notif = None
+        if field == 'assignee_id' and value:
+            avant = conn.execute(
+                'SELECT se.assignee_id AS ancien, se.nom AS se_nom, '
+                '       s.nom AS sub_nom, s.annee_action AS annee '
+                'FROM subventions_sous_elements se '
+                'JOIN subventions s ON s.id = se.subvention_id '
+                'WHERE se.id = ?',
+                (se_id,)
+            ).fetchone()
+            if avant and value != avant['ancien']:
+                infos_notif = (avant['sub_nom'], avant['annee'], avant['se_nom'])
         conn.execute(
             f'UPDATE subventions_sous_elements SET {field} = ? WHERE id = ?',
             (value, se_id)
         )
         conn.commit()
+        if infos_notif:
+            _notifier_attribution(conn, value, infos_notif[0], infos_notif[1], infos_notif[2])
         return jsonify({'ok': True})
     finally:
         conn.close()

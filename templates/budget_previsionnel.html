@@ -244,7 +244,7 @@
         <label>Année du budget</label>
         <select id="anneeBudget" class="form-select" onchange="chargerBudget()">
             {% for a in annees_traitement %}
-            <option value="{{ a }}">{{ a }}</option>
+            <option value="{{ a }}" {% if a == annee_courante %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
         </select>
     </div>

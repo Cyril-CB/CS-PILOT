@@ -24,7 +24,7 @@
         <select id="selAction" class="form-select" onchange="onSelection()" style="min-width:220px;">
             <option value="">— Sélectionner une action —</option>
             {% for a in actions %}
-            <option value="{{ a.id }}">{{ a.nom }}</option>
+            <option value="{{ a.id }}"{% if action_preselect and a.id == action_preselect %} selected{% endif %}>{{ a.nom }}</option>
             {% endfor %}
         </select>
     </div>
@@ -604,5 +604,6 @@ function exporterPdf(){
         window.open('/api/bilan-action/export-pdf?action_id=' + action_id + '&annee=' + annee + '&onglet=' + currentOnglet, '_blank');
     });
 }
+{% if action_preselect %}onSelection();{% endif %}
 </script>
 {% endblock %}

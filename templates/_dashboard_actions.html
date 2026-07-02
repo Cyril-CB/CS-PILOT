@@ -1,0 +1,26 @@
+{# Panneau « Actions à faire » — inclus en haut des tableaux de bord
+   direction / responsable / comptable. Attend la variable `actions_a_faire`
+   (liste de dicts construite par dashboard_actions.construire_actions). #}
+{% set items = actions_a_faire|default([], true) %}
+<div class="section actions-panel">
+    <h2 class="actions-titre-h2">
+        🔔 Actions à faire
+        {% if items %}<span class="actions-count">{{ items|length }}</span>{% endif %}
+    </h2>
+    {% if items %}
+    <ul class="actions-list">
+        {% for a in items %}
+        <li class="action-item action-{{ a.urgence }}">
+            <span class="action-icone">{{ a.icone }}</span>
+            <div class="action-corps">
+                <div class="action-titre">{{ a.titre }}</div>
+                {% if a.detail %}<div class="action-detail">{{ a.detail }}</div>{% endif %}
+            </div>
+            <a href="{{ a.lien }}" class="btn btn-sm btn-primary action-lien">{{ a.lien_texte }} →</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="actions-empty">✅ Aucune action en attente — tout est à jour.</p>
+    {% endif %}
+</div>

@@ -930,7 +930,9 @@ def budget_previsionnel():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     now = datetime.now()
-    annees_traitement = [now.year, now.year + 1]
+    # Budgets accessibles de N-3 (consultation de l'historique) a N+3
+    # (previsionnel a moyen terme).
+    annees_traitement = list(range(now.year - 3, now.year + 4))
     conn = get_db()
     try:
         if profil == 'responsable':
@@ -955,6 +957,7 @@ def budget_previsionnel():
         return render_template(
             'budget_previsionnel.html',
             annees_traitement=annees_traitement,
+            annee_courante=now.year,
             secteurs=secteurs,
             secteur_id_defaut=secteur_id_defaut,
             annees_importees=[r['annee'] for r in annees_importees],
