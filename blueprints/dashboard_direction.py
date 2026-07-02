@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 from datetime import datetime, timedelta
 from database import get_db
 from utils import login_required, NOMS_MOIS
+from dashboard_actions import construire_actions
 import logging
 
 logger = logging.getLogger(__name__)
@@ -411,9 +412,11 @@ def dashboard_direction():
         logger.exception("Erreur lors du calcul du solde de trésorerie")
         solde_treso = None
 
+    actions_a_faire = construire_actions(conn, session.get('profil'), session.get('user_id'))
     conn.close()
 
     return render_template('dashboard_direction.html',
+                           actions_a_faire=actions_a_faire,
                            today=today,
                            mois=mois,
                            annee=annee,

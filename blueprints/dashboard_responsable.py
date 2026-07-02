@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 from datetime import datetime, timedelta
 from database import get_db
 from utils import login_required, NOMS_MOIS, calculer_solde_recup
+from dashboard_actions import construire_actions
 
 dashboard_responsable_bp = Blueprint('dashboard_responsable_bp', __name__)
 
@@ -342,9 +343,11 @@ def dashboard_responsable():
         LIMIT 5
     ''', (session['user_id'], session['user_id'], today_str)).fetchall()
 
+    actions_a_faire = construire_actions(conn, 'responsable', session['user_id'], secteur_id)
     conn.close()
 
     return render_template('dashboard_responsable.html',
+                           actions_a_faire=actions_a_faire,
                            today=today,
                            mois=mois,
                            annee=annee,

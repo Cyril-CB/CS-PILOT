@@ -8,6 +8,7 @@ from database import get_db
 from utils import (login_required, NOMS_MOIS, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode,
                    get_planning_valide_a_date, calculer_solde_recup)
+from dashboard_actions import construire_actions
 
 dashboard_comptable_bp = Blueprint('dashboard_comptable_bp', __name__)
 
@@ -256,9 +257,11 @@ def dashboard_comptable():
         WHERE actif = 1 AND profil NOT IN ('directeur', 'prestataire')
     ''').fetchone()['nb']
 
+    actions_a_faire = construire_actions(conn, 'comptable', session.get('user_id'))
     conn.close()
 
     return render_template('dashboard_comptable.html',
+                           actions_a_faire=actions_a_faire,
                            today=today,
                            mois=mois,
                            annee=annee,

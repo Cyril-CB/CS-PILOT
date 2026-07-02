@@ -3825,3 +3825,33 @@ a.btn-icon:-webkit-any-link {
     .cse-print-only { display: block !important; }
     .data-table { font-size: 0.85em; }
 }
+
+/* ── Panneau « Actions à faire » (haut des tableaux de bord) ── */
+.actions-panel { margin-bottom: 1.25rem; }
+.actions-titre-h2 { display: flex; align-items: center; gap: 8px; }
+.actions-count {
+    background: var(--primary, #2f6ea6); color: #fff; border-radius: 12px;
+    padding: 1px 10px; font-size: 0.8rem; font-weight: 700; line-height: 1.6;
+}
+.actions-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.action-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    border-radius: 8px; border-left: 4px solid var(--gray-300, #d1d5db);
+    background: var(--gray-50, #f9fafb);
+}
+.action-item.action-normal { border-left-color: #579bfc; }
+.action-item.action-urgent { border-left-color: #fdab3d; background: #fff7ea; }
+.action-item.action-retard { border-left-color: #e2445c; background: #fdECEC; }
+.action-icone { font-size: 1.25rem; flex: 0 0 auto; }
+.action-corps { flex: 1 1 auto; min-width: 0; }
+.action-titre { font-weight: 600; color: var(--gray-900, #111827); }
+.action-detail { font-size: 0.85rem; color: var(--gray-600, #4b5563); }
+.action-lien { flex: 0 0 auto; white-space: nowrap; }
+.actions-empty { color: var(--gray-500, #6b7280); font-style: italic; margin: 0; }
+[data-theme="dark"] .action-item { background: rgba(255,255,255,0.03); }
+[data-theme="dark"] .action-item.action-urgent { background: #3a2c12; }
+[data-theme="dark"] .action-item.action-retard { background: #3a1a1f; }
+@media (max-width: 640px) {
+    .action-item { flex-wrap: wrap; }
+    .action-lien { width: 100%; text-align: center; }
+}
