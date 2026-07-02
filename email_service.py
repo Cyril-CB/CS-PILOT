@@ -241,30 +241,40 @@ def peut_envoyer_email(user_id):
 # ── Notifications pre-construites ──
 
 def notifier_nouvelle_demande_recup(demande_user, responsable_email, responsable_prenom,
-                                     date_debut, date_fin, nb_jours, nb_heures):
-    """Notifie le responsable d'une nouvelle demande de recuperation."""
+                                     date_debut, date_fin, nb_jours, nb_heures,
+                                     type_libelle='récupération'):
+    """Notifie le responsable d'une nouvelle demande (recuperation ou congé).
+
+    `type_libelle` adapte le libelle du courriel selon le type de demande
+    ('récupération' par defaut, 'congé' pour une demande de congé).
+    """
     _e = html_module.escape
+    # Les heures ne concernent que la recuperation partielle ; on les masque
+    # pour un conge (nb_heures == 0), ou l'unite pertinente est le jour.
+    duree = f"{nb_jours} jour(s)" + (f" - {nb_heures:.2f}h" if nb_heures else "")
     contenu = f"""
-    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Nouvelle demande de recuperation</h3>
-    <p><strong>{_e(demande_user)}</strong> a depose une demande de recuperation.</p>
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Nouvelle demande de {type_libelle}</h3>
+    <p><strong>{_e(demande_user)}</strong> a depose une demande de {type_libelle}.</p>
     <table style="width:100%;border-collapse:collapse;margin:12px 0;">
         <tr><td style="padding:8px 12px;background:#f3f4f6;border-radius:4px;font-weight:600;width:40%;">Periode</td>
             <td style="padding:8px 12px;">{_e(date_debut)} au {_e(date_fin)}</td></tr>
         <tr><td style="padding:8px 12px;background:#f3f4f6;border-radius:4px;font-weight:600;">Duree</td>
-            <td style="padding:8px 12px;">{nb_jours} jour(s) - {nb_heures:.2f}h</td></tr>
+            <td style="padding:8px 12px;">{duree}</td></tr>
     </table>
     <p style="margin-top:16px;">Connectez-vous a CS-PILOT pour valider ou refuser cette demande.</p>
     """
-    return envoyer_email(responsable_email, "Nouvelle demande de recuperation", contenu, responsable_prenom)
+    return envoyer_email(responsable_email, f"Nouvelle demande de {type_libelle}", contenu, responsable_prenom)
 
 
 def notifier_demande_recup_validee_responsable(direction_email, direction_prenom,
                                                 demande_user, responsable_nom,
-                                                date_debut, date_fin, nb_jours):
-    """Notifie la direction qu'une demande a ete validee par le responsable."""
+                                                date_debut, date_fin, nb_jours,
+                                                type_libelle='récupération'):
+    """Notifie la direction qu'une demande (recuperation ou congé) a ete validee
+    par le responsable. `type_libelle` adapte le libelle du courriel."""
     _e = html_module.escape
     contenu = f"""
-    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Demande de recuperation a valider</h3>
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Demande de {type_libelle} a valider</h3>
     <p>La demande de <strong>{_e(demande_user)}</strong> a ete validee par <strong>{_e(responsable_nom)}</strong>
        et est maintenant en attente de votre validation.</p>
     <table style="width:100%;border-collapse:collapse;margin:12px 0;">
@@ -277,27 +287,29 @@ def notifier_demande_recup_validee_responsable(direction_email, direction_prenom
     </table>
     <p style="margin-top:16px;">Connectez-vous a CS-PILOT pour valider ou refuser cette demande.</p>
     """
-    return envoyer_email(direction_email, "Demande de recuperation a valider", contenu, direction_prenom)
+    return envoyer_email(direction_email, f"Demande de {type_libelle} a valider", contenu, direction_prenom)
 
 
 def notifier_demande_recup_decision(salarie_email, salarie_prenom, decision,
-                                     date_debut, date_fin, nb_jours, motif_refus=''):
-    """Notifie le salarie de la decision sur sa demande de recuperation."""
+                                     date_debut, date_fin, nb_jours, motif_refus='',
+                                     type_libelle='récupération'):
+    """Notifie le salarie de la decision sur sa demande (recuperation ou congé).
+    `type_libelle` adapte le libelle du courriel."""
     _e = html_module.escape
     if decision == 'validee':
         statut_html = '<span style="color:#059669;font-weight:700;font-size:16px;">VALIDEE</span>'
-        detail = "<p>Vos jours de recuperation ont ete ajoutes automatiquement a votre calendrier.</p>"
+        detail = f"<p>Vos jours de {type_libelle} ont ete ajoutes automatiquement a votre calendrier.</p>"
     else:
         statut_html = '<span style="color:#dc2626;font-weight:700;font-size:16px;">REFUSEE</span>'
         detail = f"<p><strong>Motif du refus :</strong> {_e(motif_refus)}</p>" if motif_refus else ""
 
     contenu = f"""
-    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Decision sur votre demande de recuperation</h3>
-    <p>Votre demande de recuperation du <strong>{_e(date_debut)}</strong> au <strong>{_e(date_fin)}</strong>
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Decision sur votre demande de {type_libelle}</h3>
+    <p>Votre demande de {type_libelle} du <strong>{_e(date_debut)}</strong> au <strong>{_e(date_fin)}</strong>
        ({nb_jours} jour(s)) a ete : {statut_html}</p>
     {detail}
     """
-    sujet = f"Demande de recuperation {decision}"
+    sujet = f"Demande de {type_libelle} {decision}"
     return envoyer_email(salarie_email, sujet, contenu, salarie_prenom)
 
 

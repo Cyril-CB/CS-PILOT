@@ -488,7 +488,8 @@ def validation_demandes_recup():
         action = request.form.get('action')  # 'valider' ou 'refuser'
         motif_refus = request.form.get('motif_refus', '').strip()
         demande_type = request.form.get('demande_type', 'recup')  # 'recup' ou 'conge'
-        
+        libelle_demande = 'congé' if demande_type == 'conge' else 'récupération'
+
         if not demande_id or not action:
             flash('Paramètres invalides', 'error')
             return redirect(url_for('recup_bp.validation_demandes_recup'))
@@ -536,7 +537,8 @@ def validation_demandes_recup():
                             notifier_demande_recup_decision(
                                 email_sal, salarie['prenom'], 'refusee',
                                 demande['date_debut'], demande['date_fin'],
-                                demande['nb_jours'], motif_refus
+                                demande['nb_jours'], motif_refus,
+                                type_libelle=libelle_demande
                             )
 
             elif action == 'valider':
@@ -570,7 +572,8 @@ def validation_demandes_recup():
                             for d in directeurs:
                                 notifier_demande_recup_validee_responsable(
                                     d['email'], d['prenom'], demandeur_nom, responsable_nom,
-                                    demande['date_debut'], demande['date_fin'], demande['nb_jours']
+                                    demande['date_debut'], demande['date_fin'], demande['nb_jours'],
+                                    type_libelle=libelle_demande
                                 )
 
                 elif session.get('profil') in ['directeur', 'comptable']:
@@ -662,7 +665,8 @@ def validation_demandes_recup():
                                 notifier_demande_recup_decision(
                                     email_sal, salarie['prenom'], 'validee',
                                     demande['date_debut'], demande['date_fin'],
-                                    demande['nb_jours']
+                                    demande['nb_jours'],
+                                    type_libelle=libelle_demande
                                 )
         finally:
             conn.close()
@@ -859,7 +863,8 @@ def demande_conge():
                         demandeur_nom = f"{demandeur['prenom']} {demandeur['nom']}"
                         notifier_nouvelle_demande_recup(
                             demandeur_nom, resp['email'], resp['prenom'],
-                            date_debut, date_fin, nb_jours, 0
+                            date_debut, date_fin, nb_jours, 0,
+                            type_libelle='congé'
                         )
 
             # Si responsable -> notifier directement la direction
@@ -874,7 +879,8 @@ def demande_conge():
                     for d in directeurs:
                         notifier_demande_recup_validee_responsable(
                             d['email'], d['prenom'], demandeur_nom, demandeur_nom,
-                            date_debut, date_fin, nb_jours
+                            date_debut, date_fin, nb_jours,
+                            type_libelle='congé'
                         )
 
         except Exception as e:
