@@ -437,6 +437,31 @@ def _serialiser_blocs(conn, user_id, debut, fin):
     return blocs
 
 
+def _taches_non_placees(conn, user_id):
+    """Taches (non recurrentes, a faire) sans aucun bloc futur planifie.
+
+    Ce sont les taches que le moteur n'a pas pu caser : echeance depassee sans
+    capacite, horizon sature, ou tache non secable plus longue que le plus grand
+    creneau. N'ayant aucun bloc sur le calendrier, elles seraient invisibles et
+    non gerables ; on les expose a part pour qu'elles restent modifiables,
+    reportables et supprimables (sinon elles deviennent des « taches fantomes »
+    qui declenchent l'alerte sans pouvoir etre corrigees).
+    """
+    today = aujourd_hui().isoformat()
+    rows = conn.execute(
+        '''SELECT t.* FROM planif_taches t
+           WHERE t.user_id = ? AND t.type = 'tache' AND t.statut = 'a_faire'
+             AND t.recurrence_id IS NULL
+             AND NOT EXISTS (
+                 SELECT 1 FROM planif_blocs b
+                 WHERE b.tache_id = t.id AND b.date >= ?
+             )
+           ORDER BY t.deadline IS NULL, t.deadline''',
+        (user_id, today)
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # ── Validation des entrees ─────────────────────────────────────────────────
 
 def _parse_int(valeur, defaut=0, mini=None, maxi=None):
@@ -494,27 +519,16 @@ def planificateur():
         ).fetchall()
 
         # Taches sans bloc futur planifie = non placees (indicateur persistant).
-        today = aujourd_hui().isoformat()
         # Les occurrences recurrentes sont exclues : elles sont placees « au
         # mieux, la ou il reste de la place » et leur absence n'est pas une
         # anomalie a signaler.
-        taches_non_placees = conn.execute(
-            '''SELECT t.* FROM planif_taches t
-               WHERE t.user_id = ? AND t.type = 'tache' AND t.statut = 'a_faire'
-                 AND t.recurrence_id IS NULL
-                 AND NOT EXISTS (
-                     SELECT 1 FROM planif_blocs b
-                     WHERE b.tache_id = t.id AND b.date >= ?
-                 )
-               ORDER BY t.deadline IS NULL, t.deadline''',
-            (user_id, today)
-        ).fetchall()
+        taches_non_placees = _taches_non_placees(conn, user_id)
 
         return render_template(
             'planificateur.html',
             vue=vue, date_ref=date_ref,
             recurrences=[dict(r) for r in recurrences],
-            taches_non_placees=[dict(r) for r in taches_non_placees],
+            taches_non_placees=taches_non_placees,
             a_un_planning=a_un_planning,
             horaire_defaut_txt=horaire_defaut_txt,
         )
@@ -537,7 +551,12 @@ def api_blocs():
             conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
         )
         horaires = {k: [[d, f] for (d, f) in v] for k, v in horaires_min.items()}
-        return jsonify({'ok': True, 'blocs': blocs, 'horaires': horaires})
+        # Taches non placees : renvoyees a chaque rafraichissement pour que le
+        # bandeau reste a jour apres une action (creation, suppression...) sans
+        # rechargement complet de la page.
+        non_placees = _taches_non_placees(conn, user_id)
+        return jsonify({'ok': True, 'blocs': blocs, 'horaires': horaires,
+                        'non_placees': non_placees})
     finally:
         conn.close()
 

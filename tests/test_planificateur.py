@@ -432,6 +432,39 @@ def test_creer_tache_genere_des_blocs(comptable_client):
     assert all(b['titre'] == 'Cloture comptable' for b in data['blocs'])
 
 
+def test_tache_non_placee_exposee_et_supprimable(comptable_client):
+    """Une tache que le moteur ne peut pas caser (non secable, plus longue que
+    le plus grand creneau) n'a aucun bloc mais reste exposee dans `non_placees`,
+    donc modifiable / reportable / supprimable — plus de « tache fantome »."""
+    demain = (date.today() + timedelta(days=5)).isoformat()
+    r = comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Gros dossier', 'duree_min': 300,
+        'deadline': demain, 'priorite': 'normale', 'preference': 'aucune',
+        'secable': 0, 'duree_min_bloc': 30,
+    })
+    assert r.status_code == 200
+    # Signalee comme non planifiee des la creation.
+    assert any('Gros dossier' in (x.get('titre') or '')
+               for x in r.get_json().get('non_planifie', []))
+
+    debut = date.today().isoformat()
+    fin = (date.today() + timedelta(days=14)).isoformat()
+    data = comptable_client.get(
+        f'/planificateur/api/blocs?debut={debut}&fin={fin}').get_json()
+    # Aucun bloc sur le calendrier, mais exposee dans non_placees (avec son id).
+    assert all(b['titre'] != 'Gros dossier' for b in data['blocs'])
+    cibles = [t for t in data['non_placees'] if t['titre'] == 'Gros dossier']
+    assert len(cibles) == 1
+    tid = cibles[0]['id']
+
+    # Supprimable directement depuis le bandeau (l'action pointe sur cet id).
+    d = comptable_client.post(f'/planificateur/api/tache/{tid}/supprimer', json={})
+    assert d.status_code == 200
+    data2 = comptable_client.get(
+        f'/planificateur/api/blocs?debut={debut}&fin={fin}').get_json()
+    assert all(t['titre'] != 'Gros dossier' for t in data2['non_placees'])
+
+
 def test_creer_evenement_fixe_bloc_verrouille(comptable_client, db):
     jour = (date.today() + timedelta(days=2)).isoformat()
     resp = comptable_client.post('/planificateur/api/tache', json={
