@@ -472,8 +472,8 @@ def _intention_contrat(conn, kw, terme, mois, annee_eff, today):
                 f"Plusieurs salariés « {terme} » — contrats de :", '#contrats')
     # Sinon → nouvelle page contrats du mois (filtre selon les mots)
     params = {'mois': mois or today.month, 'annee': annee_eff}
-    if kw == 'cdd':
-        params['type'] = 'CDD'
+    if kw in ('cdd', 'cdi'):
+        params['type'] = kw.upper()
     reste_n = _normaliser(terme)
     if 'terminant' in reste_n or 'echeance' in reste_n or 'fin' in reste_n:
         params['filtre'] = 'echeance'
@@ -504,6 +504,11 @@ def _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois, today):
     for u in _resoudre_salarie(conn, terme):
         candidats.append(('Salarié', f"{u['prenom']} {u['nom']}",
                           _url_salarie(u['id']), u['secteur_nom'] or ''))
+    for sv in _resoudre_subvention(conn, terme):
+        candidats.append(('Subvention', sv['nom'],
+                          url_for('subventions_bp.gestion_subventions',
+                                  annee=sv['annee_action'] or 'toutes'),
+                          f"Année {sv['annee_action'] or '—'}"))
 
     if len(candidats) == 1:
         c = candidats[0]

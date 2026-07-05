@@ -156,6 +156,13 @@ class TestMoteurRH:
         assert v['type'] == 'redirect' and '/contrats' in v['url'] and 'mois=7' in v['url']
         assert 'filtre=echeance' in v['url'] and 'type=CDD' in v['url']
 
+    def test_cdi_en_cours_filtre_type_cdi(self, app, db, sample_users):
+        # « cdi » doit ajouter type=CDI (au même titre que « cdd »).
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'CDI en cours')
+        assert v['type'] == 'redirect' and '/contrats' in v['url'] and 'type=CDI' in v['url']
+
 
 class TestMoteurEntitesEtPeriodes:
     def test_mot_seul_fournisseur(self, app, db, sample_users):
@@ -169,6 +176,13 @@ class TestMoteurEntitesEtPeriodes:
             _seed(db)
         v = _analyse(app, db, 'Babilhome')
         assert v['type'] == 'redirect' and '/bilan-secteurs' in v['url'] and 'secteur_id=' in v['url']
+
+    def test_mot_seul_nom_de_subvention(self, app, db, sample_users):
+        # Un nom de subvention seul doit être résolu (pas « Rien trouvé »).
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'CLAS Familles')
+        assert v['type'] == 'redirect' and '/subventions' in v['url']
 
     def test_synonyme_secteur(self, app, db, sample_users):
         with app.app_context():
