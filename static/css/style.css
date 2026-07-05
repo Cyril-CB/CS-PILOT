@@ -2461,7 +2461,9 @@ a.btn-icon:-webkit-any-link {
     max-width: 320px;
     font-weight: 600;
     color: var(--gray-900);
-    position: relative;
+    /* La position (sticky) et donc le contexte de positionnement du liseré
+       .sv-left-color viennent de .sv-sticky : ne pas redéclarer position ici,
+       cela écraserait le sticky. */
     padding-left: 42px !important;
 }
 
@@ -2482,7 +2484,6 @@ a.btn-icon:-webkit-any-link {
 .sv-col-select { width: 160px; min-width: 160px; }
 .sv-col-text { width: 160px; min-width: 160px; }
 .sv-col-actions { width: 44px; min-width: 44px; text-align: center; }
-.sv-col-name-end { min-width: 200px; font-weight: 600; color: var(--gray-900); white-space: nowrap; }
 
 .sv-tag {
     display: inline-block;
@@ -2624,7 +2625,8 @@ a.btn-icon:-webkit-any-link {
 .sv-sub-spacer {
     min-width: 260px;
     max-width: 320px;
-    position: relative;
+    /* Figée comme la colonne nom (via .sv-sticky) ; le fond gris de .sv-sub-row
+       td (plus spécifique) reste opaque au défilement horizontal. */
 }
 
 .sv-sub-td {
