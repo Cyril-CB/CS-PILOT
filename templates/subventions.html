@@ -7,19 +7,22 @@
     <div class="sv-header">
         <div>
             <h1>Gestion des subventions</h1>
-            <p class="subtitle">Suivi des dossiers de subventions par statut</p>
+            <p class="subtitle">Suivi des dossiers de subventions par type</p>
         </div>
+        {% if not is_responsable %}
+        <button class="btn btn-secondary sv-manage-types-btn" onclick="openTypesManager()">⚙️ Gérer les types</button>
+        {% endif %}
     </div>
 
     {% for groupe in groupes %}
     <div class="sv-group" data-groupe="{{ groupe.key }}">
-        {# ── En-tête de groupe ── #}
+        {# ── En-tête de groupe (= type de subvention) ── #}
         <div class="sv-group-head" style="background:{{ groupe.color }};" onclick="toggleGroup(this)">
             <span class="sv-group-arrow">▾</span>
             <span class="sv-group-label">{{ groupe.label }}</span>
             <span class="sv-group-count">{{ groupe.lignes|length }} élément{{ 's' if groupe.lignes|length != 1 else '' }}</span>
             {% if not is_responsable %}
-            <button class="sv-group-add" onclick="event.stopPropagation(); promptAdd('{{ groupe.key }}')">+ Ajouter</button>
+            <button class="sv-group-add" onclick="event.stopPropagation(); promptAdd({{ groupe.type_id if groupe.type_id else 'null' }})">+ Ajouter</button>
             {% endif %}
         </div>
 
@@ -32,7 +35,8 @@
                             <th class="sv-col-name">Subvention</th>
                             <th class="sv-col-person">Assigné 1</th>
                             <th class="sv-col-person">Assigné 2</th>
-                            <th class="sv-col-status">Statut</th>
+                            <th class="sv-col-status">Type</th>
+                            <th class="sv-col-statut-mini">Statut</th>
                             <th class="sv-col-date">Échéance</th>
                             <th class="sv-col-amount">Montant demandé</th>
                             <th class="sv-col-amount">Montant accordé</th>
@@ -72,9 +76,25 @@
                                 <span class="sv-avatar-empty">+</span>
                                 {% endif %}
                             </td>
-                            {# ── Statut (= groupe) ── #}
+                            {# ── Type (défini à la création, modifiable) ── #}
                             <td class="sv-col-status">
-                                <span class="sv-status-pill" style="background:{{ groupe.color }};" onclick="editStatus(this, {{ sub.id }})">{{ groupe.label }}</span>
+                                {% set t = types_map.get(sub.type_id) %}
+                                {% if t %}
+                                <span class="sv-status-pill" style="background:{{ t.couleur }};" data-type-id="{{ sub.type_id }}" onclick="editType(this, {{ sub.id }})">{{ t.nom }}</span>
+                                {% else %}
+                                <span class="sv-type-empty" data-type-id="" onclick="editType(this, {{ sub.id }})">Choisir…</span>
+                                {% endif %}
+                            </td>
+                            {# ── Statut (avancement — conservé pour les tableaux de bord) ── #}
+                            <td class="sv-col-statut-mini">
+                                {% set ns_st = namespace(color='#579bfc', label='Nouveau projet') %}
+                                {% for st in statuts_config %}
+                                    {% if st.key == sub.groupe %}
+                                        {% set ns_st.color = st.color %}
+                                        {% set ns_st.label = st.label %}
+                                    {% endif %}
+                                {% endfor %}
+                                <span class="sv-statut-mini" style="background:{{ ns_st.color }};" data-statut="{{ sub.groupe }}" onclick="editStatus(this, {{ sub.id }})">{{ ns_st.label }}</span>
                             </td>
                             {# ── Date échéance ── #}
                             <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ sub.id }}, 'date_echeance')">
@@ -142,7 +162,7 @@
                         {# ── Sous-éléments (masqués par défaut) ── #}
                         <tr class="sv-sub-row" id="se-row-{{ sub.id }}" style="display:none;">
                             <td class="sv-sub-spacer"><span class="sv-left-color" style="background:{{ groupe.color }};"></span></td>
-                            <td colspan="{% if not is_responsable %}15{% else %}14{% endif %}" class="sv-sub-td">
+                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-sub-td">
                                 <table class="sv-sub-table">
                                     <thead>
                                         <tr>
@@ -169,7 +189,7 @@
                                             </td>
                                             <td>
                                                 {% set ns = namespace(color='#c4c4c4', label='Non commencé') %}
-                                                {% for st in statuts_config %}
+                                                {% for st in statuts_se_config %}
                                                     {% if st.key == se.statut %}
                                                         {% set ns.color = st.color %}
                                                         {% set ns.label = st.label %}
@@ -203,8 +223,8 @@
 
                     {% if not groupe.lignes %}
                         <tr>
-                            <td colspan="{% if not is_responsable %}16{% else %}15{% endif %}" class="sv-empty">
-                                Aucune subvention dans ce groupe
+                            <td colspan="{% if not is_responsable %}15{% else %}14{% endif %}" class="sv-empty">
+                                Aucune subvention dans ce type
                             </td>
                         </tr>
                     {% endif %}
@@ -214,7 +234,38 @@
         </div>
     </div>
     {% endfor %}
+
+    {% if not groupes %}
+    <div class="sv-group">
+        <div class="sv-group-body">
+            <div class="sv-empty" style="padding:2rem;">
+                Aucun type de subvention.
+                {% if not is_responsable %}Cliquez sur « ⚙️ Gérer les types » pour en créer un.{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 </div>
+
+{# ── Modale : gestion des types de subvention ── #}
+{% if not is_responsable %}
+<div id="sv-types-modal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeTypesManager()">
+    <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header">
+            <h3>Types de subvention</h3>
+            <button class="modal-close" onclick="closeTypesManager()" title="Fermer">&times;</button>
+        </div>
+        <p class="sv-types-hint">Les types classent les subventions par organisme financeur.
+            Supprimer un type ne supprime pas ses subventions : elles passent en « Sans type ».</p>
+        <ul id="sv-types-list" class="sv-types-list"></ul>
+        <div class="sv-types-add">
+            <input type="text" id="sv-new-type" placeholder="Nouveau type…" maxlength="60"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();addType();}">
+            <button class="btn btn-primary btn-sm" onclick="addType()">+ Ajouter</button>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <script>
 /* ── Config (depuis Jinja) ── */
@@ -234,14 +285,24 @@ var BENEVOLES = {};
 BENEVOLES[{{ b.id }}] = "{{ b.nom }}";
 {% endfor %}
 
-var GROUPES = [
-{% for g in groupes_config %}
-    {key: "{{ g.key }}", label: "{{ g.label }}", color: "{{ g.color }}"}{{ ',' if not loop.last else '' }}
+/* Types de subvention (catégories de la page) */
+var TYPES = [
+{% for t in types_config %}
+    {id: {{ t.id }}, nom: {{ t.nom|tojson }}, couleur: {{ t.couleur|tojson }}}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+var TYPES_DIRTY = false;
+
+/* Statut d'avancement (petite étiquette) */
+var STATUTS = [
+{% for s in statuts_config %}
+    {key: "{{ s.key }}", label: "{{ s.label }}", color: "{{ s.color }}"}{{ ',' if not loop.last else '' }}
 {% endfor %}
 ];
 
+/* Statuts des sous-éléments */
 var STATUTS_SE = [
-{% for s in statuts_config %}
+{% for s in statuts_se_config %}
     {key: "{{ s.key }}", label: "{{ s.label }}", color: "{{ s.color }}"}{{ ',' if not loop.last else '' }}
 {% endfor %}
 ];
@@ -260,6 +321,12 @@ function apiUpload(url, formData) {
     var headers = {};
     if (meta) headers['X-CSRFToken'] = meta.getAttribute('content');
     return fetch(url, {method: 'POST', headers: headers, body: formData}).then(function(r){return r.json();});
+}
+
+function escapeHtml(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
 }
 
 function getInitiales(prenom, nom) {
@@ -309,13 +376,13 @@ function toggleSubElements(subId, btn) {
     }
 }
 
-/* ── Ajouter subvention ── */
-function promptAdd(groupe) {
+/* ── Ajouter subvention (dans un type donné) ── */
+function promptAdd(typeId) {
     var nom = prompt('Nom de la subvention :');
     if (!nom || !nom.trim()) return;
     var annee = prompt('Année de l\'action :', new Date().getFullYear());
     if (annee === null) return;
-    apiCall('/api/subventions/ajouter', {nom: nom.trim(), groupe: groupe, annee_action: annee.trim()}).then(function(r) {
+    apiCall('/api/subventions/ajouter', {nom: nom.trim(), type_id: typeId, annee_action: annee.trim()}).then(function(r) {
         if (r.ok) location.reload();
         else alert(r.error || 'Erreur');
     });
@@ -457,27 +524,118 @@ function editPerson(el, id, field) {
     sel.addEventListener('change', save);
 }
 
-/* ── Edition inline : statut (groupe de la subvention) ── */
-function editStatus(el, id) {
-    if (el.querySelector('select') || el.tagName === 'SELECT') return;
-    var parent = el.parentElement;
+/* ── Rendu d'une cellule Type (pastille ou placeholder) ── */
+function renderTypeCell(td, typeId, subId) {
+    td.innerHTML = '';
+    var t = TYPES.find(function(x){ return String(x.id) === String(typeId); });
+    var sp = document.createElement('span');
+    if (t) {
+        sp.className = 'sv-status-pill';
+        sp.style.background = t.couleur;
+        sp.setAttribute('data-type-id', t.id);
+        sp.textContent = t.nom;
+    } else {
+        sp.className = 'sv-type-empty';
+        sp.setAttribute('data-type-id', '');
+        sp.textContent = 'Choisir…';
+    }
+    sp.onclick = function() { editType(sp, subId); };
+    td.appendChild(sp);
+}
+
+/* ── Edition inline : type de subvention (change de swimlane → reload) ── */
+function editType(el, id) {
+    var td = el.closest('td');
+    if (!td || td.querySelector('select')) return;
+    var currentId = el.getAttribute('data-type-id') || '';
     var sel = document.createElement('select');
     sel.className = 'sv-inline-select';
-    GROUPES.forEach(function(g) {
-        sel.innerHTML += '<option value="'+g.key+'">'+g.label+'</option>';
+    sel.innerHTML = '<option value="">— Sans type —</option>';
+    TYPES.forEach(function(t) {
+        var opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = t.nom;
+        if (String(t.id) === String(currentId)) opt.selected = true;
+        sel.appendChild(opt);
     });
-    parent.textContent = '';
-    parent.appendChild(sel);
+    td.innerHTML = '';
+    td.appendChild(sel);
     sel.focus();
 
-    sel.addEventListener('change', function() {
+    var handled = false;
+    function commit() {
+        if (handled) return;
+        handled = true;
         var val = sel.value;
-        apiCall('/api/subventions/' + id + '/modifier', {field: 'groupe', value: val}).then(function(r) {
-            if (r.ok) location.reload();
+        // Sans changement : restaurer la pastille sur place (pas de reload).
+        if (String(val) === String(currentId)) { renderTypeCell(td, currentId, id); return; }
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'type_id', value: val}).then(function(r) {
+            if (r.ok) {
+                location.reload();  // la ligne change de swimlane
+            } else {
+                alert(r.error || 'Erreur');
+                renderTypeCell(td, currentId, id);
+            }
         });
+    }
+    sel.addEventListener('change', commit);
+    sel.addEventListener('blur', commit);
+    sel.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { handled = true; renderTypeCell(td, currentId, id); }
     });
-    sel.addEventListener('blur', function() {
-        if (!sel._changed) location.reload();
+}
+
+/* ── Rendu d'une cellule Statut (petite étiquette) ── */
+function renderStatutCell(td, key, subId) {
+    var st = STATUTS.find(function(s){ return s.key === key; }) || STATUTS[0];
+    td.innerHTML = '';
+    var sp = document.createElement('span');
+    sp.className = 'sv-statut-mini';
+    sp.style.background = st.color;
+    sp.setAttribute('data-statut', st.key);
+    sp.textContent = st.label;
+    sp.onclick = function() { editStatus(sp, subId); };
+    td.appendChild(sp);
+}
+
+/* ── Edition inline : statut d'avancement (mise à jour sur place) ── */
+function editStatus(el, id) {
+    var td = el.closest('td');
+    if (!td || td.querySelector('select')) return;
+    var currentKey = el.getAttribute('data-statut') || 'nouveau_projet';
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    STATUTS.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s.key;
+        opt.textContent = s.label;
+        if (s.key === currentKey) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    var handled = false;
+    function commit() {
+        if (handled) return;
+        handled = true;
+        var val = sel.value;
+        // Sans changement : restaurer sans écrire ni recharger.
+        if (val === currentKey) { renderStatutCell(td, currentKey, id); return; }
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'groupe', value: val}).then(function(r) {
+            if (r.ok) {
+                renderStatutCell(td, val, id);
+            } else {
+                alert(r.error || 'Erreur');
+                renderStatutCell(td, currentKey, id);
+            }
+        });
+    }
+    sel.addEventListener('change', commit);
+    sel.addEventListener('blur', commit);
+    sel.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { handled = true; renderStatutCell(td, currentKey, id); }
     });
 }
 
@@ -614,6 +772,105 @@ function uploadSEDoc(input, seId) {
     apiUpload('/api/subventions/sous-elements/' + seId + '/document', fd).then(function(r) {
         if (r.ok) location.reload();
         else alert(r.error || 'Erreur');
+    });
+}
+
+/* ══════════════════════════════════════════
+   Types de subvention (gestion)
+   ══════════════════════════════════════════ */
+
+function openTypesManager() {
+    renderTypesList();
+    var modal = document.getElementById('sv-types-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeTypesManager() {
+    var modal = document.getElementById('sv-types-modal');
+    if (modal) modal.style.display = 'none';
+    // Recharger pour refléter les swimlanes si des types ont changé.
+    if (TYPES_DIRTY) location.reload();
+}
+
+function renderTypesList() {
+    var ul = document.getElementById('sv-types-list');
+    if (!ul) return;
+    ul.innerHTML = '';
+    if (!TYPES.length) {
+        var empty = document.createElement('li');
+        empty.className = 'sv-types-empty';
+        empty.textContent = 'Aucun type. Ajoutez-en un ci-dessous.';
+        ul.appendChild(empty);
+        return;
+    }
+    TYPES.forEach(function(t) {
+        var li = document.createElement('li');
+        li.className = 'sv-types-item';
+        li.innerHTML =
+            '<span class="sv-type-dot" style="background:' + escapeHtml(t.couleur) + '"></span>' +
+            '<span class="sv-type-name">' + escapeHtml(t.nom) + '</span>';
+
+        var actions = document.createElement('span');
+        actions.className = 'sv-types-item-actions';
+
+        var renameBtn = document.createElement('button');
+        renameBtn.className = 'sv-type-btn';
+        renameBtn.title = 'Renommer';
+        renameBtn.textContent = '✎';
+        renameBtn.onclick = function() { renameType(t.id); };
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'sv-type-btn sv-type-btn-del';
+        delBtn.title = 'Supprimer';
+        delBtn.textContent = '🗑';
+        delBtn.onclick = function() { deleteType(t.id, t.nom); };
+
+        actions.appendChild(renameBtn);
+        actions.appendChild(delBtn);
+        li.appendChild(actions);
+        ul.appendChild(li);
+    });
+}
+
+function addType() {
+    var input = document.getElementById('sv-new-type');
+    if (!input) return;
+    var nom = (input.value || '').trim();
+    if (!nom) return;
+    apiCall('/api/subventions/types/ajouter', {nom: nom}).then(function(r) {
+        if (!r.ok) { alert(r.error || 'Erreur'); return; }
+        if (!r.existe) {
+            TYPES.push({id: r.id, nom: r.nom, couleur: r.couleur});
+            TYPES_DIRTY = true;  // ne recharger au close que si un type a réellement changé
+        }
+        input.value = '';
+        input.focus();
+        renderTypesList();
+    });
+}
+
+function renameType(id) {
+    var t = TYPES.find(function(x){ return x.id === id; });
+    if (!t) return;
+    var nom = prompt('Renommer le type :', t.nom);
+    if (nom === null) return;
+    nom = nom.trim();
+    if (!nom || nom === t.nom) return;
+    apiCall('/api/subventions/types/' + id + '/modifier', {field: 'nom', value: nom}).then(function(r) {
+        if (!r.ok) { alert(r.error || 'Erreur'); return; }
+        t.nom = nom;
+        TYPES_DIRTY = true;
+        renderTypesList();
+    });
+}
+
+function deleteType(id, nom) {
+    if (!confirm('Supprimer le type « ' + nom + ' » ?\nLes subventions de ce type passeront en « Sans type ».')) return;
+    apiCall('/api/subventions/types/' + id + '/supprimer', {}).then(function(r) {
+        if (!r.ok) { alert(r.error || 'Erreur'); return; }
+        TYPES = TYPES.filter(function(x){ return x.id !== id; });
+        TYPES_DIRTY = true;
+        renderTypesList();
     });
 }
 

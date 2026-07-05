@@ -117,9 +117,10 @@ PAGE_PROMPTS = {
         "L'utilisateur est sur la page Subventions. Ce module permet de gérer les subventions reçues "
         "ou demandées par la structure. "
         "Points importants : "
+        "- Les subventions sont classées par type de financeur (SUBV. GLOBAL, CAF PS, CAF, VILLE, METROPOLE, ETAT, AUTRES), types personnalisables "
         "- Indiquer les deadlines (dates limites) est crucial pour ne pas rater les échéances "
         "- Les personnes assignées à une subvention y ont accès et voient les tâches qu'elles doivent réaliser "
-        "- Le suivi permet de connaître l'état d'avancement de chaque subvention "
+        "- Le suivi permet de connaître l'état d'avancement de chaque subvention (statut : nouveau projet, en cours, accepté, refusé) "
         "Tu peux répondre aux questions générales des responsables sur le fonctionnement des subventions "
         "dans le contexte associatif (demande, conventionnement, justification, bilan)."
     ),

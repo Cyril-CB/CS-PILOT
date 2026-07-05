@@ -68,7 +68,8 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Approbation des factures par les responsables
 
 ### Subventions et benevoles
-- Gestion des dossiers de subventions en kanban (Nouveau → Envoye → Accepte / Refuse)
+- Gestion des dossiers de subventions organises par type de financeur (SUBV. GLOBAL, CAF PS, CAF, VILLE, METROPOLE, ETAT, AUTRES — types personnalisables : creation / suppression)
+- Statut d'avancement editable par dossier (nouveau projet / en cours / accepte / refuse), conserve pour les tableaux de bord
 - Gestion des benevoles avec suivi des heures assignees
 
 ### CSE (Comite Social et Economique)

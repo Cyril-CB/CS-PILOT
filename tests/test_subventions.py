@@ -1,6 +1,190 @@
 import io
 
 
+class TestTypesSubvention:
+    """Catégories de la page subventions par type (créer / supprimer / assigner)."""
+
+    def test_types_par_defaut_sont_seedes(self, app, db):
+        with app.app_context():
+            noms = [r['nom'] for r in db.execute(
+                'SELECT nom FROM subventions_types ORDER BY ordre'
+            ).fetchall()]
+        assert noms == ['SUBV. GLOBAL', 'CAF PS', 'CAF', 'VILLE',
+                        'METROPOLE', 'ETAT', 'AUTRES']
+
+    def test_page_regroupe_par_type(self, app, admin_client, db, sample_users):
+        # Chaque type est un groupe (swimlane) ; la colonne « Type » remplace
+        # « Statut » qui devient une petite étiquette.
+        resp = admin_client.get('/subventions')
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert 'SUBV. GLOBAL' in html
+        assert 'AUTRES' in html
+        assert '>Type<' in html
+        assert '>Statut<' in html
+
+    def test_creer_type(self, app, admin_client, db, sample_users):
+        resp = admin_client.post('/api/subventions/types/ajouter',
+                                 json={'nom': 'RÉGION'})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data['ok'] is True
+        with app.app_context():
+            row = db.execute('SELECT nom FROM subventions_types WHERE id = ?',
+                             (data['id'],)).fetchone()
+        assert row['nom'] == 'RÉGION'
+
+    def test_creer_type_doublon_renvoie_existant(self, app, admin_client, db, sample_users):
+        r1 = admin_client.post('/api/subventions/types/ajouter', json={'nom': 'CAF'})
+        assert r1.get_json()['existe'] is True
+        with app.app_context():
+            nb = db.execute(
+                "SELECT COUNT(*) AS n FROM subventions_types WHERE nom = 'CAF'"
+            ).fetchone()['n']
+        assert nb == 1
+
+    def test_subvention_creee_avec_type(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            type_id = db.execute(
+                "SELECT id FROM subventions_types WHERE nom = 'VILLE'"
+            ).fetchone()['id']
+        resp = admin_client.post('/api/subventions/ajouter',
+                                 json={'nom': 'Aide locale', 'type_id': type_id,
+                                       'annee_action': '2026'})
+        assert resp.status_code == 200
+        sub_id = resp.get_json()['id']
+        with app.app_context():
+            row = db.execute('SELECT groupe, type_id FROM subventions WHERE id = ?',
+                             (sub_id,)).fetchone()
+        # Le type est enregistré ; le statut par défaut reste « nouveau_projet ».
+        assert row['type_id'] == type_id
+        assert row['groupe'] == 'nouveau_projet'
+
+    def test_modifier_type_subvention(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            cur = db.execute("INSERT INTO subventions (nom, groupe) VALUES ('X', 'nouveau_projet')")
+            sub_id = cur.lastrowid
+            type_id = db.execute("SELECT id FROM subventions_types WHERE nom = 'ETAT'").fetchone()['id']
+            db.commit()
+        resp = admin_client.post(f'/api/subventions/{sub_id}/modifier',
+                                 json={'field': 'type_id', 'value': type_id})
+        assert resp.status_code == 200
+        with app.app_context():
+            assert db.execute('SELECT type_id FROM subventions WHERE id = ?',
+                              (sub_id,)).fetchone()['type_id'] == type_id
+
+    def test_supprimer_type_bascule_subventions_en_sans_type(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            type_id = db.execute("SELECT id FROM subventions_types WHERE nom = 'METROPOLE'").fetchone()['id']
+            cur = db.execute(
+                "INSERT INTO subventions (nom, groupe, type_id) VALUES ('Dossier M', 'en_cours', ?)",
+                (type_id,)
+            )
+            sub_id = cur.lastrowid
+            db.commit()
+
+        resp = admin_client.post(f'/api/subventions/types/{type_id}/supprimer', json={})
+        assert resp.status_code == 200
+        with app.app_context():
+            assert db.execute('SELECT COUNT(*) AS n FROM subventions_types WHERE id = ?',
+                              (type_id,)).fetchone()['n'] == 0
+            # La subvention n'est pas supprimée : elle devient « Sans type ».
+            row = db.execute('SELECT type_id FROM subventions WHERE id = ?', (sub_id,)).fetchone()
+        assert row is not None
+        assert row['type_id'] is None
+
+    def test_subvention_sans_type_apparait_dans_groupe_dedie(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            db.execute("INSERT INTO subventions (nom, groupe) VALUES ('Non classee', 'nouveau_projet')")
+            db.commit()
+        html = admin_client.get('/subventions').get_data(as_text=True)
+        assert 'Non classee' in html
+        assert 'Sans type' in html
+
+    def test_statut_reste_editable_et_valide(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            cur = db.execute("INSERT INTO subventions (nom, groupe) VALUES ('Y', 'nouveau_projet')")
+            sub_id = cur.lastrowid
+            db.commit()
+        # Statut valide accepté.
+        ok = admin_client.post(f'/api/subventions/{sub_id}/modifier',
+                               json={'field': 'groupe', 'value': 'acceptee'})
+        assert ok.status_code == 200
+        with app.app_context():
+            assert db.execute('SELECT groupe FROM subventions WHERE id = ?',
+                              (sub_id,)).fetchone()['groupe'] == 'acceptee'
+        # Statut invalide rejeté.
+        ko = admin_client.post(f'/api/subventions/{sub_id}/modifier',
+                               json={'field': 'groupe', 'value': 'nimportequoi'})
+        assert ko.status_code == 400
+
+    def test_responsable_ne_peut_pas_gerer_les_types(self, app, resp_client, db, sample_users):
+        # Le bouton de gestion des types n'est pas rendu pour un responsable...
+        html = resp_client.get('/subventions').get_data(as_text=True)
+        assert 'Gérer les types' not in html
+        # ...et les endpoints de gestion des types lui sont interdits (403),
+        # même en appel direct : gérer les types est une action globale réservée
+        # à la direction / comptabilité.
+        with app.app_context():
+            type_id = db.execute("SELECT id FROM subventions_types WHERE nom = 'CAF'").fetchone()['id']
+        assert resp_client.post('/api/subventions/types/ajouter', json={'nom': 'X'}).status_code == 403
+        assert resp_client.post(f'/api/subventions/types/{type_id}/modifier',
+                                json={'field': 'nom', 'value': 'Y'}).status_code == 403
+        assert resp_client.post(f'/api/subventions/types/{type_id}/supprimer', json={}).status_code == 403
+        # La suppression n'a pas eu lieu.
+        with app.app_context():
+            assert db.execute('SELECT COUNT(*) AS n FROM subventions_types WHERE id = ?',
+                              (type_id,)).fetchone()['n'] == 1
+
+    def test_salarie_ne_peut_pas_gerer_les_types(self, app, auth_client, db, sample_users):
+        assert auth_client.post('/api/subventions/types/ajouter', json={'nom': 'Z'}).status_code == 403
+
+    def test_creer_type_nom_vide_refuse(self, app, admin_client, db, sample_users):
+        assert admin_client.post('/api/subventions/types/ajouter',
+                                 json={'nom': '   '}).status_code == 400
+
+    def test_creer_type_insensible_a_la_casse(self, app, admin_client, db, sample_users):
+        # « caf » ne crée pas de doublon de « CAF » (déjà seedé).
+        r = admin_client.post('/api/subventions/types/ajouter', json={'nom': 'caf'})
+        assert r.status_code == 200 and r.get_json()['existe'] is True
+        with app.app_context():
+            assert db.execute(
+                "SELECT COUNT(*) AS n FROM subventions_types WHERE nom = 'CAF' COLLATE NOCASE"
+            ).fetchone()['n'] == 1
+
+    def test_renommer_type_en_doublon_refuse(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            ville = db.execute("SELECT id FROM subventions_types WHERE nom = 'VILLE'").fetchone()['id']
+        # Renommer VILLE en « CAF » (déjà pris) doit échouer.
+        r = admin_client.post(f'/api/subventions/types/{ville}/modifier',
+                              json={'field': 'nom', 'value': 'CAF'})
+        assert r.status_code == 400
+
+    def test_modifier_type_couleur_valide_et_invalide(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            tid = db.execute("SELECT id FROM subventions_types WHERE nom = 'ETAT'").fetchone()['id']
+        assert admin_client.post(f'/api/subventions/types/{tid}/modifier',
+                                 json={'field': 'couleur', 'value': '#123abc'}).status_code == 200
+        # Une couleur non hexadécimale est refusée (protège le JS/CSS de la page).
+        assert admin_client.post(f'/api/subventions/types/{tid}/modifier',
+                                 json={'field': 'couleur', 'value': 'red; evil'}).status_code == 400
+        with app.app_context():
+            assert db.execute('SELECT couleur FROM subventions_types WHERE id = ?',
+                              (tid,)).fetchone()['couleur'] == '#123abc'
+
+    def test_modifier_subvention_type_inexistant_refuse(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            cur = db.execute("INSERT INTO subventions (nom, groupe) VALUES ('Z', 'nouveau_projet')")
+            sub_id = cur.lastrowid
+            db.commit()
+        r = admin_client.post(f'/api/subventions/{sub_id}/modifier',
+                              json={'field': 'type_id', 'value': 999999})
+        assert r.status_code == 404
+        with app.app_context():
+            assert db.execute('SELECT type_id FROM subventions WHERE id = ?',
+                              (sub_id,)).fetchone()['type_id'] is None
+
+
 class TestSousElementDocumentNaming:
     def _login_admin(self, client):
         client.post('/login', data={'login': 'admin', 'password': 'Admin1234'}, follow_redirects=False)
