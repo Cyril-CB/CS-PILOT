@@ -4,9 +4,10 @@ Blueprint fournisseurs_bp - Gestion des fournisseurs pour le module factures.
 Repertoire des fournisseurs avec aliases (pour l'IA) et code comptable.
 Acces : directeur, comptable.
 """
+import re
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
 from database import get_db
-from utils import login_required
+from utils import login_required, aujourd_hui
 
 fournisseurs_bp = Blueprint('fournisseurs_bp', __name__)
 
@@ -30,6 +31,55 @@ def liste_fournisseurs():
     conn.close()
 
     return render_template('fournisseurs.html', fournisseurs=fournisseurs)
+
+
+@fournisseurs_bp.route('/fournisseurs/<int:fournisseur_id>')
+@login_required
+def detail_fournisseur(fournisseur_id):
+    """Fiche fournisseur : informations, total des factures et liste des
+    factures de l'année sélectionnée (année courante par défaut, jusqu'à N-3)."""
+    if session.get('profil') not in PROFILS_AUTORISES:
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    try:
+        fournisseur = conn.execute(
+            'SELECT * FROM fournisseurs WHERE id = ?', (fournisseur_id,)
+        ).fetchone()
+        if not fournisseur:
+            flash('Fournisseur introuvable.', 'error')
+            return redirect(url_for('fournisseurs_bp.liste_fournisseurs'))
+
+        # Filtre par année : de N-3 à l'année courante (par défaut).
+        annee_courante = aujourd_hui().year
+        annees = [str(annee_courante - delta) for delta in range(0, 4)]  # N … N-3
+        annee_param = (request.args.get('annee') or '').strip()
+        annee_selected = annee_param if re.fullmatch(r'\d{4}', annee_param) else str(annee_courante)
+
+        factures = conn.execute('''
+            SELECT f.id, f.numero_facture, f.date_facture, f.montant_ttc,
+                   f.fichier_path, f.secteur_id, f.assigned_direction,
+                   s.nom AS secteur_nom
+            FROM factures f
+            LEFT JOIN secteurs s ON f.secteur_id = s.id
+            WHERE f.fournisseur_id = ?
+              AND substr(f.date_facture, 1, 4) = ?
+            ORDER BY f.date_facture DESC, f.id DESC
+        ''', (fournisseur_id, annee_selected)).fetchall()
+
+        total_ttc = sum((f['montant_ttc'] or 0) for f in factures)
+    finally:
+        conn.close()
+
+    return render_template(
+        'fournisseur_detail.html',
+        fournisseur=fournisseur,
+        factures=factures,
+        total_ttc=total_ttc,
+        annees=annees,
+        annee_selected=annee_selected,
+    )
 
 
 @fournisseurs_bp.route('/fournisseurs/ajouter', methods=['POST'])

@@ -28,7 +28,7 @@
             <tbody>
                 {% for f in fournisseurs %}
                 <tr>
-                    <td><strong>{{ f.nom }}</strong></td>
+                    <td><strong><a href="{{ url_for('fournisseurs_bp.detail_fournisseur', fournisseur_id=f.id) }}" class="fourn-lien">{{ f.nom }}</a></strong></td>
                     <td>{{ f.alias1 or '—' }}</td>
                     <td>{{ f.alias2 or '—' }}</td>
                     <td>{% if f.code_comptable %}<span class="badge" style="background:#6366f1;color:#fff;">{{ f.code_comptable }}</span>{% else %}—{% endif %}</td>

@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ fournisseur.nom }} - Fournisseur - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="margin-bottom:0.75rem;">
+        <a href="{{ url_for('fournisseurs_bp.liste_fournisseurs') }}" class="fourn-retour">← Retour aux fournisseurs</a>
+    </div>
+
+    {# ── En-tête fournisseur ── #}
+    <div class="fourn-entete">
+        <div>
+            <h1>{{ fournisseur.nom }}</h1>
+            <div class="fourn-meta">
+                <span class="fourn-meta-item">
+                    <span class="fourn-meta-label">Code comptable</span>
+                    {% if fournisseur.code_comptable %}
+                    <span class="badge" style="background:#6366f1;color:#fff;">{{ fournisseur.code_comptable }}</span>
+                    {% else %}<span class="fourn-meta-vide">—</span>{% endif %}
+                </span>
+                <span class="fourn-meta-item">
+                    <span class="fourn-meta-label">Adresse de contact</span>
+                    {% if fournisseur.email_contact %}
+                    <a href="mailto:{{ fournisseur.email_contact }}">{{ fournisseur.email_contact }}</a>
+                    {% else %}<span class="fourn-meta-vide">—</span>{% endif %}
+                </span>
+            </div>
+        </div>
+        <div class="fourn-total">
+            <span class="fourn-total-label">Total factures {{ annee_selected }}</span>
+            <span class="fourn-total-montant">{{ '{:,.2f}'.format(total_ttc or 0).replace(',', ' ').replace('.', ',') }} €</span>
+            <span class="fourn-total-sous">{{ factures|length }} facture{{ 's' if factures|length != 1 else '' }}</span>
+        </div>
+    </div>
+
+    {# ── Factures de l'année sélectionnée ── #}
+    <div class="section">
+        <div class="fourn-factures-head">
+            <h2 style="margin:0;">Factures</h2>
+            <label class="fourn-annee-filtre">
+                <span>Année</span>
+                <select class="fourn-annee-select"
+                        onchange="window.location='{{ url_for('fournisseurs_bp.detail_fournisseur', fournisseur_id=fournisseur.id) }}?annee='+encodeURIComponent(this.value)">
+                    {% for a in annees %}
+                    <option value="{{ a }}" {{ 'selected' if a == annee_selected else '' }}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Numéro</th>
+                    <th style="text-align:right;">Montant TTC</th>
+                    <th>Secteur alloué</th>
+                    <th style="text-align:center;">Fichier</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in factures %}
+                <tr>
+                    <td>
+                        {% if f.date_facture %}{{ f.date_facture[8:10] }}/{{ f.date_facture[5:7] }}/{{ f.date_facture[0:4] }}{% else %}—{% endif %}
+                    </td>
+                    <td>{{ f.numero_facture or '—' }}</td>
+                    <td style="text-align:right; white-space:nowrap;">{{ '{:,.2f}'.format(f.montant_ttc or 0).replace(',', ' ').replace('.', ',') }} €</td>
+                    <td>
+                        {% if f.secteur_nom %}{{ f.secteur_nom }}
+                        {% elif f.assigned_direction %}Direction
+                        {% else %}<span class="fourn-meta-vide">—</span>{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if f.fichier_path %}
+                        <a href="{{ url_for('factures_bp.telecharger_facture', facture_id=f.id) }}" class="btn-icon" title="Télécharger la facture" aria-label="Télécharger">📄</a>
+                        {% else %}<span class="fourn-meta-vide">—</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not factures %}
+                <tr><td colspan="5" style="text-align:center; padding:2rem; color:#888;">Aucune facture pour {{ annee_selected }}.</td></tr>
+                {% endif %}
+            </tbody>
+            {% if factures %}
+            <tfoot>
+                <tr>
+                    <td colspan="2" style="font-weight:700;">Total {{ annee_selected }}</td>
+                    <td style="text-align:right; font-weight:700; white-space:nowrap;">{{ '{:,.2f}'.format(total_ttc or 0).replace(',', ' ').replace('.', ',') }} €</td>
+                    <td colspan="2"></td>
+                </tr>
+            </tfoot>
+            {% endif %}
+        </table>
+    </div>
+</div>
+{% endblock %}
