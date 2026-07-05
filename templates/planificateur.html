@@ -333,6 +333,13 @@
 .planif-detail-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem;}
 .planif-detail-actions .btn{font-size:.82rem;padding:.4rem .7rem;}
 .planif-alerte{background:#fdf2cf;border:1px solid #ba7a2a;color:#7a5314;border-radius:var(--radius-sm);padding:.6rem .8rem;margin-bottom:1rem;font-size:.88rem;}
+.planif-alerte-intro{margin-bottom:.5rem;font-weight:600;}
+.planif-np-item{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;padding:.4rem 0;border-top:1px solid rgba(186,122,42,.35);}
+.planif-np-item:first-of-type{border-top:none;}
+.planif-np-nom{font-weight:600;}
+.planif-np-meta{color:#8a6a2e;font-size:.8rem;}
+.planif-np-actions{display:flex;gap:.35rem;margin-left:auto;flex-wrap:wrap;}
+.planif-np-actions .btn{font-size:.78rem;padding:.3rem .55rem;}
 .planif-toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:.5rem;z-index:10000;}
 .planif-toast{background:var(--gray-900);color:#fff;padding:.7rem 1rem;border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);font-size:.85rem;max-width:340px;animation:planifIn .2s ease;}
 .planif-toast.err{background:#7f1d1d;}
@@ -369,6 +376,7 @@
   const state = { vue: DATA.vue || 'semaine', date: DATA.date || isoToday() };
   let blocsCache = [];
   let horairesCache = {};
+  let nonPlaceesCache = DATA.taches_non_placees || [];
 
   // ── Helpers dates ──
   function isoToday(){ const d=new Date(); return iso(d); }
@@ -442,8 +450,10 @@
       const j = await apiGet('{{ url_for("planificateur_bp.api_blocs") }}?debut='+deb+'&fin='+fin);
       blocsCache = (j && j.blocs) ? j.blocs : [];
       horairesCache = (j && j.horaires) ? j.horaires : {};
+      nonPlaceesCache = (j && j.non_placees) ? j.non_placees : [];
     }catch(e){ blocsCache=[]; horairesCache={}; }
     rendre();
+    rendreNonPlacees();
   }
   function rendre(){
     document.querySelectorAll('#planifViews button').forEach(b=>b.classList.toggle('active', b.dataset.vue===state.vue));
@@ -844,14 +854,46 @@
   document.getElementById('t_secable').addEventListener('change', e=>{ document.getElementById('grpMinBloc').style.display=e.target.checked?'':'none'; });
   document.addEventListener('keydown', e=>{ if(e.key==='Escape') planifFermerModales(); });
 
-  // Bandeau tâches non placées (chargé côté serveur)
-  (function(){
-    const np=DATA.taches_non_placees||[];
-    if(np.length){
-      const titres=np.map(t=>esc(t.titre)).slice(0,5).join(', ');
-      document.getElementById('planifAlertes').innerHTML='<div class="planif-alerte">⚠️ '+np.length+' tâche(s) sans créneau planifié : '+titres+'. Ajustez les horaires, échéances ou cliquez sur « Replanifier ».</div>';
-    }
-  })();
+  // ── Bandeau tâches non placées (actionnable) ──
+  // Une tâche que le moteur n'a pas pu caser n'a aucun bloc sur le calendrier :
+  // sans ce panneau, elle serait invisible et impossible à corriger/supprimer.
+  function npToBloc(t){
+    return { tache_id:t.id, titre:t.titre, description:t.description||'', type:'tache',
+      deadline:t.deadline||'', priorite:t.priorite||'normale', preference:t.preference||'aucune',
+      secable:!!t.secable, duree_min_bloc:t.duree_min_bloc||30, tache_duree_min:t.duree_min };
+  }
+  async function actionNonPlacee(act, t){
+    try{
+      let res=null;
+      if(act==='reporter'){ const d=prompt('Reporter à partir de quelle date ? (AAAA-MM-JJ)', addDays(isoToday(),1)); if(!d) return; res=await apiPost('/planificateur/api/tache/'+t.id+'/reporter',{date_min:d}); }
+      else if(act==='suppr'){ if(!confirm('Supprimer définitivement la tâche « '+t.titre+' » ?')) return; res=await apiPost('/planificateur/api/tache/'+t.id+'/supprimer',{}); }
+      else if(act==='modifier'){ return ouvrirEdition(npToBloc(t)); }
+      if(res){ toast('✓ Mis à jour','ok'); montrerNonPlanifie(res.non_planifie); }
+      await charger();
+    }catch(e){ toast(e.message,'err'); }
+  }
+  function rendreNonPlacees(){
+    const box=document.getElementById('planifAlertes');
+    const np=nonPlaceesCache||[];
+    if(!np.length){ box.innerHTML=''; return; }
+    let h='<div class="planif-alerte"><div class="planif-alerte-intro">⚠️ '+np.length+' tâche(s) sans créneau planifié (échéance dépassée, capacité insuffisante ou tâche non sécable trop longue). Modifiez-les, reportez-les ou supprimez-les :</div>';
+    np.forEach((t,i)=>{
+      const ech = t.deadline ? ('échéance '+fmtFR(t.deadline)) : 'sans échéance';
+      h+='<div class="planif-np-item"><span class="planif-np-nom">'+esc(t.titre)+'</span>'
+        +'<span class="planif-np-meta">'+dureeTxt(t.duree_min)+' · '+ech+(t.secable?'':' · non sécable')+'</span>'
+        +'<span class="planif-np-actions">'
+        +'<button class="btn btn-secondary" data-np="modifier" data-i="'+i+'">✏️ Modifier</button>'
+        +'<button class="btn btn-secondary" data-np="reporter" data-i="'+i+'">📆 Reporter</button>'
+        +'<button class="btn btn-danger" data-np="suppr" data-i="'+i+'">🗑 Supprimer</button>'
+        +'</span></div>';
+    });
+    h+='</div>';
+    box.innerHTML=h;
+    box.querySelectorAll('[data-np]').forEach(btn=>{
+      btn.addEventListener('click', ()=>actionNonPlacee(btn.dataset.np, np[+btn.dataset.i]));
+    });
+  }
+  rendreNonPlacees();
 
   charger();
 })();
