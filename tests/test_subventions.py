@@ -405,9 +405,11 @@ class TestFiltreAnnee:
         return aujourd_hui().year
 
     def _seed_deux_annees(self, db):
+        # « SubvAncienne » sur une année dans la plage du menu (N-2) pour pouvoir
+        # la sélectionner ; l'année courante reste le défaut.
         n = self._annee_courante()
         db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvActuelle','en_cours',?)", (str(n),))
-        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvAncienne','en_cours',?)", (str(n - 5),))
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvAncienne','en_cours',?)", (str(n - 2),))
         db.commit()
         return n
 
@@ -421,7 +423,7 @@ class TestFiltreAnnee:
     def test_annee_specifique_filtre(self, app, admin_client, db, sample_users):
         with app.app_context():
             n = self._seed_deux_annees(db)
-        html = admin_client.get(f'/subventions?annee={n - 5}').get_data(as_text=True)
+        html = admin_client.get(f'/subventions?annee={n - 2}').get_data(as_text=True)
         assert 'SubvAncienne' in html
         assert 'SubvActuelle' not in html
 
@@ -451,6 +453,19 @@ class TestFiltreAnnee:
         html = admin_client.get('/subventions?annee=abcd').get_data(as_text=True)
         assert 'SubvActuelle' in html
         assert 'SubvAncienne' not in html
+
+    def test_annee_hors_plage_repli_sur_annee_courante(self, app, admin_client, db, sample_users):
+        """Une année hors plage (N-5) passée en URL retombe sur l'année courante :
+        le filtre affiché et les données interrogées restent cohérents."""
+        n = self._annee_courante()
+        with app.app_context():
+            db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvActuelle','en_cours',?)", (str(n),))
+            db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvHorsPlage','en_cours',?)", (str(n - 5),))
+            db.commit()
+        html = admin_client.get(f'/subventions?annee={n - 5}').get_data(as_text=True)
+        assert 'SubvActuelle' in html
+        assert 'SubvHorsPlage' not in html
+        assert f'<option value="{n}" selected>' in html
 
     def test_le_filtre_est_visible_pour_le_responsable(self, app, resp_client, db, sample_users):
         # Le filtre par année est utile à tous (contrairement à « Gérer les types »).

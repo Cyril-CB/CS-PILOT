@@ -3355,6 +3355,112 @@ a.btn-icon:-webkit-any-link {
     animation: fadeInUp var(--transition-slow) both;
 }
 
+/* ── Fiche fournisseur ── */
+.fourn-lien { color: var(--primary); text-decoration: none; }
+.fourn-lien:hover { text-decoration: underline; }
+
+.fourn-retour {
+    color: var(--gray-600, #4b5563);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+.fourn-retour:hover { color: var(--primary); }
+
+.fourn-entete {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    background: var(--white);
+    padding: 1.5rem 1.75rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--gray-200);
+    border-left: 5px solid var(--primary);
+    margin-bottom: 1.5rem;
+}
+
+.fourn-entete h1 { margin: 0 0 0.75rem; }
+
+.fourn-meta { display: flex; flex-wrap: wrap; gap: 1.5rem 2.5rem; }
+
+.fourn-meta-item { display: flex; flex-direction: column; gap: 3px; }
+
+.fourn-meta-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--gray-500);
+    font-weight: 600;
+}
+
+.fourn-meta-vide { color: var(--gray-400, #9ca3af); }
+
+.fourn-total {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: 0.5rem 1.25rem;
+    border-left: 1px solid var(--gray-200);
+    min-width: 180px;
+}
+
+.fourn-total-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--gray-500);
+    font-weight: 600;
+}
+
+.fourn-total-montant {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.fourn-total-sous { font-size: 0.8rem; color: var(--gray-500); }
+
+.fourn-factures-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.fourn-annee-filtre {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-500);
+    white-space: nowrap;
+}
+
+.fourn-annee-select {
+    padding: 7px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-900);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.fourn-annee-select:hover { border-color: var(--primary); }
+.fourn-annee-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+[data-theme="dark"] .fourn-entete { background: var(--white); border-color: var(--gray-300); border-left-color: var(--primary-light); }
+[data-theme="dark"] .fourn-total { border-left-color: var(--gray-300); }
+[data-theme="dark"] .fourn-annee-select { background: var(--gray-50); color: var(--gray-900); border-color: var(--gray-300); }
+
 /* ── Modale générique ── */
 .modal-overlay {
     position: fixed;

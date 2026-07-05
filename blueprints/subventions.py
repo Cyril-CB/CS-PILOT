@@ -171,13 +171,15 @@ def gestion_subventions():
         # Filtre par année de l'action : plage N-3 à N+2, année courante par
         # défaut. La valeur spéciale « toutes » désactive le filtre (utile pour
         # retrouver les subventions hors plage ou sans année renseignée).
+        # L'année est bornée au menu affiché : une année hors plage passée en URL
+        # retombe sur l'année courante (filtre affiché et données cohérents).
         annee_courante = aujourd_hui().year
         annees = [str(annee_courante + delta) for delta in range(-3, 3)]  # N-3 … N+2
         annee_param = (request.args.get('annee') or '').strip()
         if annee_param == 'toutes':
             annee_selected = 'toutes'
             annee_filter = None
-        elif re.fullmatch(r'\d{4}', annee_param):
+        elif annee_param in annees:
             annee_selected = annee_param
             annee_filter = annee_param
         else:
