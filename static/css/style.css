@@ -2299,6 +2299,8 @@ a.btn-icon:-webkit-any-link {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
     margin-bottom: 2rem;
     background: var(--white);
     padding: 1.75rem 2rem;
@@ -2851,6 +2853,42 @@ a.btn-icon:-webkit-any-link {
 
 .sv-type-empty:hover { border-color: var(--primary); color: var(--primary); }
 
+/* ── Actions de l'en-tête (filtre année + gérer les types) ── */
+.sv-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.sv-annee-filtre {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--gray-700);
+    white-space: nowrap;
+}
+
+.sv-annee-label { color: var(--gray-500); }
+
+.sv-annee-select {
+    padding: 7px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 8px;
+    background: var(--white);
+    color: var(--gray-900);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.sv-annee-select:hover { border-color: var(--primary); }
+.sv-annee-select:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
 /* ── Bouton « Gérer les types » ── */
 .sv-manage-types-btn { white-space: nowrap; flex-shrink: 0; }
 
@@ -2948,6 +2986,7 @@ a.btn-icon:-webkit-any-link {
 [data-theme="dark"] .sv-types-item { border-color: var(--gray-300); }
 [data-theme="dark"] .sv-type-btn:hover { background: var(--gray-100); }
 [data-theme="dark"] .sv-types-add input { background: var(--gray-50); color: var(--gray-900); border-color: var(--gray-300); }
+[data-theme="dark"] .sv-annee-select { background: var(--gray-50); color: var(--gray-900); border-color: var(--gray-300); }
 
 /* ── Benevoles : colonne commentaire + textarea inline ── */
 .sv-col-comment { min-width: 200px; max-width: 300px; white-space: pre-wrap; word-break: break-word; }

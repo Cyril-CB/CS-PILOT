@@ -9,9 +9,20 @@
             <h1>Gestion des subventions</h1>
             <p class="subtitle">Suivi des dossiers de subventions par type</p>
         </div>
-        {% if not is_responsable %}
-        <button class="btn btn-secondary sv-manage-types-btn" onclick="openTypesManager()">⚙️ Gérer les types</button>
-        {% endif %}
+        <div class="sv-header-actions">
+            <label class="sv-annee-filtre">
+                <span class="sv-annee-label">Année</span>
+                <select id="sv-annee-select" class="sv-annee-select" onchange="changerAnnee(this.value)">
+                    {% for a in annees %}
+                    <option value="{{ a }}" {{ 'selected' if a == annee_selected else '' }}>{{ a }}</option>
+                    {% endfor %}
+                    <option value="toutes" {{ 'selected' if annee_selected == 'toutes' else '' }}>Toutes les années</option>
+                </select>
+            </label>
+            {% if not is_responsable %}
+            <button class="btn btn-secondary sv-manage-types-btn" onclick="openTypesManager()">⚙️ Gérer les types</button>
+            {% endif %}
+        </div>
     </div>
 
     {% for groupe in groupes %}
@@ -307,6 +318,10 @@ var STATUTS_SE = [
 {% endfor %}
 ];
 
+/* Filtre année (année de l'action) */
+var ANNEE_SELECTED = "{{ annee_selected }}";
+var ANNEE_COURANTE = "{{ annee_courante }}";
+
 /* ── Helpers ── */
 function apiCall(url, body) {
     return fetch(url, {
@@ -376,11 +391,19 @@ function toggleSubElements(subId, btn) {
     }
 }
 
+/* ── Filtre par année ── */
+function changerAnnee(val) {
+    window.location = "{{ url_for('subventions_bp.gestion_subventions') }}?annee=" + encodeURIComponent(val);
+}
+
 /* ── Ajouter subvention (dans un type donné) ── */
 function promptAdd(typeId) {
     var nom = prompt('Nom de la subvention :');
     if (!nom || !nom.trim()) return;
-    var annee = prompt('Année de l\'action :', new Date().getFullYear());
+    // Par défaut, l'année du filtre courant (pour que la subvention reste
+    // visible après création) ; sinon l'année en cours.
+    var defautAnnee = (ANNEE_SELECTED && ANNEE_SELECTED !== 'toutes') ? ANNEE_SELECTED : ANNEE_COURANTE;
+    var annee = prompt('Année de l\'action :', defautAnnee);
     if (annee === null) return;
     apiCall('/api/subventions/ajouter', {nom: nom.trim(), type_id: typeId, annee_action: annee.trim()}).then(function(r) {
         if (r.ok) location.reload();
