@@ -269,3 +269,46 @@ def export_journal_actions():
         mimetype='text/csv; charset=utf-8',
         headers={'Content-Disposition': f'attachment; filename={nom_fichier}'},
     )
+
+
+# ================= Journal des recherches (barre intelligente) =================
+
+# Nombre de recherches recentes affichees dans l'onglet « Barre intelligente ».
+LIMITE_RECHERCHES = 50
+
+# Requete CONSTANTE (aucune saisie utilisateur n'y est concatenee). Liste les
+# dernieres recherches de la barre intelligente avec leur auteur et le fait
+# qu'elles aient abouti (a_resultat) ou non.
+_RECHERCHES_QUERY = '''
+    SELECT r.id, r.date_heure, r.terme, r.type_resultat, r.a_resultat, r.libelle,
+           u.nom AS nom, u.prenom AS prenom
+    FROM recherche_log r
+    LEFT JOIN users u ON r.user_id = u.id
+    ORDER BY r.date_heure DESC, r.id DESC
+    LIMIT :limite
+'''
+
+
+@securite_bp.route('/securite/journal-recherches')
+@login_required
+def journal_recherches():
+    """Affiche les dernieres recherches de la barre intelligente (direction/compta).
+
+    Permet a la direction de voir les termes reellement saisis et s'ils ont
+    abouti, afin d'enrichir les synonymes reconnus par le moteur de recherche.
+    """
+    if not _check_acces():
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    try:
+        entrees = conn.execute(_RECHERCHES_QUERY, {'limite': LIMITE_RECHERCHES}).fetchall()
+    finally:
+        conn.close()
+
+    return render_template(
+        'journal_recherches.html',
+        entrees=entrees,
+        limite=LIMITE_RECHERCHES,
+    )

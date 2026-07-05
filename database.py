@@ -432,6 +432,27 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_journal_actions_date ON journal_actions(date_heure)"
     )
 
+    # ===== Journal des recherches (barre intelligente, migration 0054) =====
+    # Trace les termes saisis dans la barre de recherche intelligente et le fait
+    # que la recherche ait abouti (redirection / choix) ou non. Permet a la
+    # direction de voir les termes reellement utilises (et d'ajouter des
+    # synonymes). Aucune donnee sensible : uniquement le terme saisi.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recherche_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_heure TEXT DEFAULT CURRENT_TIMESTAMP,
+            user_id INTEGER,
+            terme TEXT NOT NULL,
+            type_resultat TEXT,
+            a_resultat INTEGER DEFAULT 0,
+            libelle TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_recherche_log_date ON recherche_log(date_heure)"
+    )
+
     # ===== Table des demandes de recuperation =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS demandes_recup (
