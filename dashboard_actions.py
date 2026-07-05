@@ -122,15 +122,24 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
             LIMIT 25""",
         sub_params
     ).fetchall()
+    # La page subventions filtre par année (année courante par défaut). Pour que
+    # la subvention pointée reste visible, on cible son année si elle est dans la
+    # plage du filtre (N-3..N+2), sinon « toutes » (année absente ou hors plage).
+    annee_min, annee_max = today.year - 3, today.year + 2
     for r in rows:
         ech = _to_date(r['date_echeance'])
         annee = f" ({r['annee_action']})" if r['annee_action'] else ''
+        annee_sub = (r['annee_action'] or '').strip()
+        if annee_sub.isdigit() and len(annee_sub) == 4 and annee_min <= int(annee_sub) <= annee_max:
+            lien_sub = url_for('subventions_bp.gestion_subventions', annee=annee_sub)
+        else:
+            lien_sub = url_for('subventions_bp.gestion_subventions', annee='toutes')
         actions.append({
             'categorie': 'subvention',
             'icone': '💶',
             'titre': f"{r['sub_nom']}{annee} — {r['etape']}",
             'detail': f"échéance le {_fr(ech)}" if ech else '',
-            'lien': url_for('subventions_bp.gestion_subventions'),
+            'lien': lien_sub,
             'lien_texte': 'Voir',
             'urgence': _urgence_echeance(ech, today),
         })

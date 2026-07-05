@@ -9,9 +9,20 @@
             <h1>Gestion des subventions</h1>
             <p class="subtitle">Suivi des dossiers de subventions par type</p>
         </div>
-        {% if not is_responsable %}
-        <button class="btn btn-secondary sv-manage-types-btn" onclick="openTypesManager()">⚙️ Gérer les types</button>
-        {% endif %}
+        <div class="sv-header-actions">
+            <label class="sv-annee-filtre">
+                <span class="sv-annee-label">Année</span>
+                <select id="sv-annee-select" class="sv-annee-select" onchange="changerAnnee(this.value)">
+                    {% for a in annees %}
+                    <option value="{{ a }}" {{ 'selected' if a == annee_selected else '' }}>{{ a }}</option>
+                    {% endfor %}
+                    <option value="toutes" {{ 'selected' if annee_selected == 'toutes' else '' }}>Toutes les années</option>
+                </select>
+            </label>
+            {% if not is_responsable %}
+            <button class="btn btn-secondary sv-manage-types-btn" onclick="openTypesManager()">⚙️ Gérer les types</button>
+            {% endif %}
+        </div>
     </div>
 
     {% for groupe in groupes %}
@@ -32,7 +43,7 @@
                 <table class="sv-board">
                     <thead>
                         <tr>
-                            <th class="sv-col-name">Subvention</th>
+                            <th class="sv-col-name sv-sticky">Subvention</th>
                             <th class="sv-col-person">Assigné 1</th>
                             <th class="sv-col-person">Assigné 2</th>
                             <th class="sv-col-status">Type</th>
@@ -48,14 +59,13 @@
                             {% if not is_responsable %}
                             <th class="sv-col-actions"></th>
                             {% endif %}
-                            <th class="sv-col-name-end">Subvention</th>
                         </tr>
                     </thead>
                     <tbody>
                     {% for sub in groupe.lignes %}
                         <tr class="sv-row" data-id="{{ sub.id }}">
-                            {# ── Nom (sticky) ── #}
-                            <td class="sv-col-name sv-cell-name">
+                            {# ── Nom (colonne figée au défilement) ── #}
+                            <td class="sv-col-name sv-cell-name sv-sticky">
                                 <span class="sv-expand-btn" onclick="toggleSubElements({{ sub.id }}, this)" title="Sous-éléments">▸</span>
                                 <span class="sv-cell-text" onclick="editText(this, {{ sub.id }}, 'nom')">{{ sub.nom }}</span>
                                 <span class="sv-left-color" style="background:{{ groupe.color }};"></span>
@@ -157,12 +167,11 @@
                                 <button class="sv-del-btn" onclick="deleteSub({{ sub.id }})" title="Supprimer">🗑️</button>
                             </td>
                             {% endif %}
-                            <td class="sv-col-name-end">{{ sub.nom }}</td>
                         </tr>
                         {# ── Sous-éléments (masqués par défaut) ── #}
                         <tr class="sv-sub-row" id="se-row-{{ sub.id }}" style="display:none;">
-                            <td class="sv-sub-spacer"><span class="sv-left-color" style="background:{{ groupe.color }};"></span></td>
-                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-sub-td">
+                            <td class="sv-sub-spacer sv-sticky"><span class="sv-left-color" style="background:{{ groupe.color }};"></span></td>
+                            <td colspan="{% if not is_responsable %}13{% else %}12{% endif %}" class="sv-sub-td">
                                 <table class="sv-sub-table">
                                     <thead>
                                         <tr>
@@ -223,7 +232,7 @@
 
                     {% if not groupe.lignes %}
                         <tr>
-                            <td colspan="{% if not is_responsable %}15{% else %}14{% endif %}" class="sv-empty">
+                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-empty">
                                 Aucune subvention dans ce type
                             </td>
                         </tr>
@@ -307,6 +316,10 @@ var STATUTS_SE = [
 {% endfor %}
 ];
 
+/* Filtre année (année de l'action) */
+var ANNEE_SELECTED = "{{ annee_selected }}";
+var ANNEE_COURANTE = "{{ annee_courante }}";
+
 /* ── Helpers ── */
 function apiCall(url, body) {
     return fetch(url, {
@@ -376,11 +389,19 @@ function toggleSubElements(subId, btn) {
     }
 }
 
+/* ── Filtre par année ── */
+function changerAnnee(val) {
+    window.location = "{{ url_for('subventions_bp.gestion_subventions') }}?annee=" + encodeURIComponent(val);
+}
+
 /* ── Ajouter subvention (dans un type donné) ── */
 function promptAdd(typeId) {
     var nom = prompt('Nom de la subvention :');
     if (!nom || !nom.trim()) return;
-    var annee = prompt('Année de l\'action :', new Date().getFullYear());
+    // Par défaut, l'année du filtre courant (pour que la subvention reste
+    // visible après création) ; sinon l'année en cours.
+    var defautAnnee = (ANNEE_SELECTED && ANNEE_SELECTED !== 'toutes') ? ANNEE_SELECTED : ANNEE_COURANTE;
+    var annee = prompt('Année de l\'action :', defautAnnee);
     if (annee === null) return;
     apiCall('/api/subventions/ajouter', {nom: nom.trim(), type_id: typeId, annee_action: annee.trim()}).then(function(r) {
         if (r.ok) location.reload();

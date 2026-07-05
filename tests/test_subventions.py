@@ -97,7 +97,8 @@ class TestTypesSubvention:
         with app.app_context():
             db.execute("INSERT INTO subventions (nom, groupe) VALUES ('Non classee', 'nouveau_projet')")
             db.commit()
-        html = admin_client.get('/subventions').get_data(as_text=True)
+        # ?annee=toutes : la subvention n'a pas d'année, on veut la voir ici.
+        html = admin_client.get('/subventions?annee=toutes').get_data(as_text=True)
         assert 'Non classee' in html
         assert 'Sans type' in html
 
@@ -299,7 +300,7 @@ class TestSubventionsBenevolesRendering:
             )
             db.commit()
 
-        response = admin_client.get('/subventions')
+        response = admin_client.get('/subventions?annee=toutes')
         assert response.status_code == 200
 
         html = response.get_data(as_text=True)
@@ -390,7 +391,68 @@ class TestVisibiliteResponsable:
         db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('Cachee','en_cours','2026')")
         db.commit()
 
-        resp = resp_client.get('/subventions')
+        resp = resp_client.get('/subventions?annee=toutes')
         assert resp.status_code == 200
         assert b'DossierSE' in resp.data
         assert b'Cachee' not in resp.data
+
+
+class TestFiltreAnnee:
+    """Filtre par année de l'action : plage N-3..N+2, année courante par défaut."""
+
+    def _annee_courante(self):
+        from utils import aujourd_hui
+        return aujourd_hui().year
+
+    def _seed_deux_annees(self, db):
+        n = self._annee_courante()
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvActuelle','en_cours',?)", (str(n),))
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) VALUES ('SubvAncienne','en_cours',?)", (str(n - 5),))
+        db.commit()
+        return n
+
+    def test_defaut_affiche_annee_courante_seulement(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            self._seed_deux_annees(db)
+        html = admin_client.get('/subventions').get_data(as_text=True)
+        assert 'SubvActuelle' in html
+        assert 'SubvAncienne' not in html
+
+    def test_annee_specifique_filtre(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            n = self._seed_deux_annees(db)
+        html = admin_client.get(f'/subventions?annee={n - 5}').get_data(as_text=True)
+        assert 'SubvAncienne' in html
+        assert 'SubvActuelle' not in html
+
+    def test_toutes_annees_affiche_tout(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            self._seed_deux_annees(db)
+        html = admin_client.get('/subventions?annee=toutes').get_data(as_text=True)
+        assert 'SubvActuelle' in html
+        assert 'SubvAncienne' in html
+
+    def test_selecteur_annee_rendu(self, app, admin_client, db, sample_users):
+        n = self._annee_courante()
+        html = admin_client.get('/subventions').get_data(as_text=True)
+        # Plage N-3 .. N+2 présente, année courante sélectionnée, option « Toutes ».
+        assert f'<option value="{n - 3}"' in html
+        assert f'<option value="{n + 2}"' in html
+        assert f'<option value="{n}" selected>' in html
+        assert 'Toutes les années' in html
+        # Hors plage : N-4 et N+3 absents du sélecteur.
+        assert f'<option value="{n - 4}"' not in html
+        assert f'<option value="{n + 3}"' not in html
+
+    def test_annee_invalide_retombe_sur_annee_courante(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            self._seed_deux_annees(db)
+        # Un paramètre non valide ne doit pas planter et retombe sur l'année courante.
+        html = admin_client.get('/subventions?annee=abcd').get_data(as_text=True)
+        assert 'SubvActuelle' in html
+        assert 'SubvAncienne' not in html
+
+    def test_le_filtre_est_visible_pour_le_responsable(self, app, resp_client, db, sample_users):
+        # Le filtre par année est utile à tous (contrairement à « Gérer les types »).
+        html = resp_client.get('/subventions').get_data(as_text=True)
+        assert 'sv-annee-select' in html

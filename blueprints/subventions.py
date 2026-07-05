@@ -13,7 +13,7 @@ from datetime import datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify, send_file)
 from database import get_db, DATA_DIR
-from utils import login_required
+from utils import login_required, aujourd_hui
 
 subventions_bp = Blueprint('subventions_bp', __name__)
 
@@ -168,23 +168,49 @@ def gestion_subventions():
         is_responsable = session.get('profil') == 'responsable'
         user_id = session.get('user_id')
 
+        # Filtre par année de l'action : plage N-3 à N+2, année courante par
+        # défaut. La valeur spéciale « toutes » désactive le filtre (utile pour
+        # retrouver les subventions hors plage ou sans année renseignée).
+        annee_courante = aujourd_hui().year
+        annees = [str(annee_courante + delta) for delta in range(-3, 3)]  # N-3 … N+2
+        annee_param = (request.args.get('annee') or '').strip()
+        if annee_param == 'toutes':
+            annee_selected = 'toutes'
+            annee_filter = None
+        elif re.fullmatch(r'\d{4}', annee_param):
+            annee_selected = annee_param
+            annee_filter = annee_param
+        else:
+            annee_selected = str(annee_courante)
+            annee_filter = str(annee_courante)
+
         if is_responsable:
             # Le responsable voit les subventions dont il est assigné (parent) et
             # celles dont un sous-élément lui est directement attribué.
-            subventions = conn.execute(
+            base_sql = (
                 '''SELECT * FROM subventions
-                   WHERE assignee_1_id = ? OR assignee_2_id = ?
-                      OR id IN (
-                          SELECT subvention_id FROM subventions_sous_elements
-                          WHERE assignee_id = ?
-                      )
-                   ORDER BY ordre, id''',
-                (user_id, user_id, user_id)
-            ).fetchall()
+                   WHERE (assignee_1_id = ? OR assignee_2_id = ?
+                          OR id IN (
+                              SELECT subvention_id FROM subventions_sous_elements
+                              WHERE assignee_id = ?
+                          ))'''
+            )
+            params = [user_id, user_id, user_id]
+            if annee_filter is not None:
+                base_sql += ' AND annee_action = ?'
+                params.append(annee_filter)
+            base_sql += ' ORDER BY ordre, id'
+            subventions = conn.execute(base_sql, params).fetchall()
         else:
-            subventions = conn.execute(
-                'SELECT * FROM subventions ORDER BY ordre, id'
-            ).fetchall()
+            if annee_filter is not None:
+                subventions = conn.execute(
+                    'SELECT * FROM subventions WHERE annee_action = ? ORDER BY ordre, id',
+                    (annee_filter,)
+                ).fetchall()
+            else:
+                subventions = conn.execute(
+                    'SELECT * FROM subventions ORDER BY ordre, id'
+                ).fetchall()
 
         subventions_data = []
         for s in subventions:
@@ -260,6 +286,9 @@ def gestion_subventions():
         statuts_config=STATUTS,
         statuts_se_config=SOUS_ELEMENT_STATUTS,
         is_responsable=is_responsable,
+        annees=annees,
+        annee_selected=annee_selected,
+        annee_courante=str(annee_courante),
     )
 
 

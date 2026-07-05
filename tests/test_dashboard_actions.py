@@ -125,3 +125,41 @@ def test_subvention_refusee_exclue_du_panneau(app, db, sample_users):
     with app.test_request_context():
         actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
     assert not any('Refusee' in a['titre'] for a in actions if a['categorie'] == 'subvention')
+
+
+def test_lien_action_cible_l_annee_de_la_subvention(app, db, sample_users):
+    """Le lien d'une action pointe vers l'année de la subvention (si dans la plage
+    du filtre N-3..N+2) pour que la ligne reste visible sur la page filtrée ;
+    sinon vers « toutes » (année absente ou hors plage)."""
+    from utils import aujourd_hui
+    n = aujourd_hui().year
+    ech = (date.today() + timedelta(days=3)).isoformat()
+
+    def _sub(nom, annee_action):
+        cur = db.execute(
+            "INSERT INTO subventions (nom, groupe, annee_action) VALUES (?, 'en_cours', ?)",
+            (nom, annee_action)
+        )
+        db.execute(
+            "INSERT INTO subventions_sous_elements (subvention_id, nom, statut, date_echeance, ordre) "
+            "VALUES (?, 'Bilan', 'en_cours', ?, 0)",
+            (cur.lastrowid, ech)
+        )
+
+    _sub('AnCourante', str(n))       # dans la plage → année ciblée
+    _sub('SansAnnee', None)          # sans année → toutes
+    _sub('Vieille', str(n - 10))     # hors plage → toutes
+    db.commit()
+
+    with app.test_request_context():
+        actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+    def lien_de(nom):
+        for a in actions:
+            if a['categorie'] == 'subvention' and a['titre'].startswith(nom):
+                return a['lien']
+        return None
+
+    assert f'annee={n}' in lien_de('AnCourante')
+    assert 'annee=toutes' in lien_de('SansAnnee')
+    assert 'annee=toutes' in lien_de('Vieille')
