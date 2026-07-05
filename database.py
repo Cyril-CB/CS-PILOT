@@ -80,6 +80,19 @@ ALL_MIGRATION_VERSIONS = [
     ('0040', 'Module CSE'),
 ]
 
+# Types de subvention par defaut (migration 0052)
+# (nom, couleur, ordre) — types manageables (creation / suppression) servant a
+# regrouper les subventions par organisme financeur sur la page subventions.
+_TYPES_SUBVENTION_DEFAUT = [
+    ('SUBV. GLOBAL', '#579bfc', 0),
+    ('CAF PS', '#00c875', 1),
+    ('CAF', '#a25ddc', 2),
+    ('VILLE', '#fdab3d', 3),
+    ('METROPOLE', '#e2445c', 4),
+    ('ETAT', '#037f4c', 5),
+    ('AUTRES', '#808080', 6),
+]
+
 # Postes de depense par defaut (migration 0012)
 _POSTES_DEPENSE_DEFAUT = [
     ('Alimentation', ['creche', 'accueil_loisirs', 'famille', 'emploi_formation', 'administratif', 'entretien']),
@@ -788,11 +801,30 @@ def init_db():
         )
     ''')
 
+    # Types de subvention (categories manageables : SUBV. GLOBAL, CAF, VILLE...).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS subventions_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL UNIQUE,
+            couleur TEXT DEFAULT '#579bfc',
+            ordre INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    cursor.execute("SELECT COUNT(*) FROM subventions_types")
+    if cursor.fetchone()[0] == 0:
+        for nom_type, couleur_type, ordre_type in _TYPES_SUBVENTION_DEFAUT:
+            cursor.execute(
+                'INSERT INTO subventions_types (nom, couleur, ordre) VALUES (?, ?, ?)',
+                (nom_type, couleur_type, ordre_type)
+            )
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS subventions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nom TEXT NOT NULL,
             groupe TEXT NOT NULL DEFAULT 'nouveau_projet',
+            type_id INTEGER,
             assignee_1_id INTEGER,
             assignee_2_id INTEGER,
             date_echeance TEXT,
@@ -817,7 +849,8 @@ def init_db():
             FOREIGN KEY (analytique_id) REFERENCES subventions_analytiques(id),
             FOREIGN KEY (compte_comptable_1_id) REFERENCES comptabilite_comptes(id),
             FOREIGN KEY (compte_comptable_2_id) REFERENCES comptabilite_comptes(id),
-            FOREIGN KEY (action_budget_id) REFERENCES comptabilite_actions(id)
+            FOREIGN KEY (action_budget_id) REFERENCES comptabilite_actions(id),
+            FOREIGN KEY (type_id) REFERENCES subventions_types(id)
         )
     ''')
 
