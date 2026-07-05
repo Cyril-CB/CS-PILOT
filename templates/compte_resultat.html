@@ -356,6 +356,6 @@ document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + doc
 document.getElementById('filtreAnnee').addEventListener('change', function() {
     document.getElementById('btnExportPdf').href = '/api/cr/export-pdf?annee=' + this.value;
 });
-chargerCR();
+{% if vue_preselect == 'bilan' %}switchTab('bilan');{% else %}chargerCR();{% endif %}
 </script>
 {% endblock %}

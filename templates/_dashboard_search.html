@@ -1,0 +1,86 @@
+{# Barre de recherche intelligente — incluse sur les tableaux de bord direction / comptable.
+   Envoie la requête à /api/search (CSRF injecté automatiquement par base.html) et
+   traite le verdict : redirect (navigation), choices (liste de choix), none (aide). #}
+<div class="ds-search">
+    <div class="ds-search-bar">
+        <span class="ds-search-icon">🔎</span>
+        <input type="text" id="dsSearchInput" autocomplete="off"
+               placeholder="Rechercher : un fournisseur, « budget clas 2025 », « absence Marie », « facture 225678 »…">
+        <button type="button" class="ds-search-btn" onclick="dsSearch()">Rechercher</button>
+    </div>
+    <div id="dsSearchResults" class="ds-search-results" style="display:none;"></div>
+</div>
+
+<script>
+(function () {
+    var input = document.getElementById('dsSearchInput');
+    var box = document.getElementById('dsSearchResults');
+    if (!input || !box) return;
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c];
+        });
+    }
+
+    function render(v) {
+        box.style.display = '';
+        if (v.type === 'redirect') {
+            box.innerHTML = '<div class="ds-res-loading">Ouverture : ' + esc(v.label) + '…</div>';
+            window.location = v.url;
+            return;
+        }
+        if (v.type === 'choices') {
+            var h = '<div class="ds-res-prompt">' + esc(v.prompt) + '</div>';
+            (v.options || []).forEach(function (o) {
+                h += '<a class="ds-res-item" href="' + esc(o.url) + '">' +
+                     '<span class="ds-res-label">' + esc(o.label) + '</span>' +
+                     (o.sous_titre ? '<span class="ds-res-sub">' + esc(o.sous_titre) + '</span>' : '') +
+                     '</a>';
+            });
+            box.innerHTML = h;
+            return;
+        }
+        // none
+        var h = '<div class="ds-res-none">' + esc(v.message) + '</div>';
+        if (v.exemples && v.exemples.length) {
+            h += '<div class="ds-res-ex">';
+            v.exemples.forEach(function (e) {
+                h += '<button type="button" class="ds-res-chip" data-q="' + esc(e) + '">' + esc(e) + '</button>';
+            });
+            h += '</div>';
+        }
+        box.innerHTML = h;
+        box.querySelectorAll('.ds-res-chip').forEach(function (b) {
+            b.addEventListener('click', function () {
+                input.value = b.getAttribute('data-q');
+                dsSearch();
+            });
+        });
+    }
+
+    window.dsSearch = function () {
+        var q = (input.value || '').trim();
+        if (!q) { box.style.display = 'none'; return; }
+        box.style.display = '';
+        box.innerHTML = '<div class="ds-res-loading">Recherche…</div>';
+        fetch('/api/search', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: q})
+        }).then(function (r) { return r.json(); })
+          .then(render)
+          .catch(function () {
+              box.innerHTML = '<div class="ds-res-none">Erreur de recherche.</div>';
+          });
+    };
+
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); dsSearch(); }
+        if (e.key === 'Escape') { box.style.display = 'none'; }
+    });
+    input.addEventListener('input', function () {
+        if (!input.value.trim()) box.style.display = 'none';
+    });
+})();
+</script>

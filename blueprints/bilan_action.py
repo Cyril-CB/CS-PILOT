@@ -343,14 +343,23 @@ def bilan_action():
         ).fetchall()
         annee_courante = date.today().year
         annees = list(range(annee_courante + 1, annee_courante - 5, -1))
-        # Action pré-sélectionnée via ?action_id= (lien depuis la page subventions).
+        # Présélection via query (lien depuis subventions / barre de recherche) :
+        # ?action_id= (+ ?annee= et ?onglet=previsionnel|realise).
         action_preselect = request.args.get('action_id', type=int)
+        annee_preselect = request.args.get('annee', type=int)
+        if annee_preselect not in annees:
+            annee_preselect = None
+        onglet_preselect = request.args.get('onglet')
+        if onglet_preselect not in ('previsionnel', 'realise'):
+            onglet_preselect = 'previsionnel'
         return render_template(
             'bilan_action.html',
             actions=actions,
             annees=annees,
             annee_courante=annee_courante,
             action_preselect=action_preselect,
+            annee_preselect=annee_preselect,
+            onglet_preselect=onglet_preselect,
         )
     finally:
         conn.close()

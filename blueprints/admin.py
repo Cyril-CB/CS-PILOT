@@ -377,12 +377,13 @@ def gestion_secteurs():
                 nom = request.form.get('nom')
                 description = request.form.get('description')
                 type_secteur = request.form.get('type_secteur') or None
+                synonymes = (request.form.get('synonymes') or '').strip() or None
 
                 try:
                     conn.execute('''
-                        INSERT INTO secteurs (nom, description, type_secteur)
-                        VALUES (?, ?, ?)
-                    ''', (nom, description, type_secteur))
+                        INSERT INTO secteurs (nom, description, type_secteur, synonymes)
+                        VALUES (?, ?, ?, ?)
+                    ''', (nom, description, type_secteur, synonymes))
                     conn.commit()
                     flash(f'Secteur "{nom}" créé avec succès', 'success')
                 except Exception as e:
@@ -393,15 +394,16 @@ def gestion_secteurs():
                 nom = request.form.get('nom')
                 description = request.form.get('description')
                 type_secteur = request.form.get('type_secteur') or None
+                synonymes = (request.form.get('synonymes') or '').strip() or None
 
                 if not nom:
                     flash('Le nom du secteur est requis', 'error')
                 else:
                     try:
                         conn.execute('''
-                            UPDATE secteurs SET nom = ?, description = ?, type_secteur = ?
+                            UPDATE secteurs SET nom = ?, description = ?, type_secteur = ?, synonymes = ?
                             WHERE id = ?
-                        ''', (nom, description, type_secteur, secteur_id))
+                        ''', (nom, description, type_secteur, synonymes, secteur_id))
                         conn.commit()
                         flash(f'Secteur "{nom}" modifié avec succès', 'success')
                     except Exception as e:

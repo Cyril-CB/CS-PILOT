@@ -3461,6 +3461,102 @@ a.btn-icon:-webkit-any-link {
 [data-theme="dark"] .fourn-total { border-left-color: var(--gray-300); }
 [data-theme="dark"] .fourn-annee-select { background: var(--gray-50); color: var(--gray-900); border-color: var(--gray-300); }
 
+/* ── Barre de recherche intelligente (dashboards) ── */
+.ds-search { margin-bottom: 1.25rem; animation: fadeInUp var(--transition-slow) both; }
+
+.ds-search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-left: 5px solid var(--primary);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 8px 14px;
+}
+
+.ds-search-icon { font-size: 1.1rem; opacity: 0.7; flex-shrink: 0; }
+
+.ds-search-bar input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 1rem;
+    color: var(--gray-900);
+    padding: 8px 4px;
+}
+
+.ds-search-btn {
+    flex-shrink: 0;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 18px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+.ds-search-btn:hover { background: var(--primary-dark, #1d4ed8); }
+
+.ds-search-results {
+    margin-top: 8px;
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.ds-res-loading, .ds-res-none { padding: 12px 16px; color: var(--gray-500); font-size: 0.9rem; }
+
+.ds-res-prompt {
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--gray-700, #374151);
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.ds-res-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 11px 16px;
+    text-decoration: none;
+    color: var(--gray-900);
+    border-bottom: 1px solid var(--gray-100, #f1f3f5);
+    transition: background var(--transition-fast);
+}
+.ds-res-item:last-child { border-bottom: none; }
+.ds-res-item:hover { background: var(--gray-100, #f1f3f5); }
+
+.ds-res-label { font-weight: 600; }
+.ds-res-sub { font-size: 0.82rem; color: var(--gray-500); }
+
+.ds-res-ex { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 16px 12px; }
+.ds-res-chip {
+    background: var(--gray-100, #f1f3f5);
+    border: 1px solid var(--gray-200);
+    color: var(--gray-700, #374151);
+    border-radius: 99px;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+.ds-res-chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+[data-theme="dark"] .ds-search-bar,
+[data-theme="dark"] .ds-search-results { background: var(--white); border-color: var(--gray-300); }
+[data-theme="dark"] .ds-search-bar input { color: var(--gray-900); }
+[data-theme="dark"] .ds-res-item:hover,
+[data-theme="dark"] .ds-res-chip { background: var(--gray-100); }
+
 /* ── Modale générique ── */
 .modal-overlay {
     position: fixed;

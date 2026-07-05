@@ -255,6 +255,8 @@ from blueprints.import_bi import import_bi_bp
 from blueprints.commandes_salaries import commandes_salaries_bp
 from blueprints.cse import cse_bp
 from blueprints.planificateur import planificateur_bp
+from blueprints.contrats import contrats_bp
+from blueprints.recherche import recherche_bp
 
 app.register_blueprint(auth)
 app.register_blueprint(dashboard_bp)
@@ -308,6 +310,8 @@ app.register_blueprint(import_bi_bp)
 app.register_blueprint(commandes_salaries_bp)
 app.register_blueprint(cse_bp)
 app.register_blueprint(planificateur_bp)
+app.register_blueprint(contrats_bp)
+app.register_blueprint(recherche_bp)
 
 
 # ==================== Context Processors ====================
