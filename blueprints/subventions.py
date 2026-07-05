@@ -7,6 +7,7 @@ Les responsables ne voient que les subventions auxquelles ils sont assignes.
 import os
 import re
 import json
+import sqlite3
 import unicodedata
 from datetime import datetime
 from flask import (Blueprint, render_template, request, redirect,
@@ -77,6 +78,14 @@ def _peut_voir():
 
 def _peut_modifier():
     return session.get('profil') in ('directeur', 'comptable', 'responsable')
+
+
+def _peut_gerer_types():
+    """La gestion des types (creation / renommage / suppression) est une action
+    globale : elle modifie le classement de toutes les subventions. Elle est donc
+    reservee a la direction et a la comptabilite — en coherence avec l'interface
+    qui masque « Gerer les types » aux responsables."""
+    return session.get('profil') in ('directeur', 'comptable')
 
 
 def _get_initiales(prenom, nom):
@@ -366,6 +375,14 @@ def api_modifier_subvention(sub_id):
 
     conn = get_db()
     try:
+        # Coherence avec la creation : refuser un type inexistant plutot que de
+        # laisser une reference orpheline (les FK ne sont pas activees).
+        if field == 'type_id' and value is not None:
+            if not conn.execute(
+                'SELECT 1 FROM subventions_types WHERE id = ?', (value,)
+            ).fetchone():
+                return jsonify({'ok': False, 'error': 'Type introuvable'}), 404
+
         # Detecter un changement d'assignation pour notifier le nouvel assigne.
         infos_notif = None
         if field in ('assignee_1_id', 'assignee_2_id') and value:
@@ -415,7 +432,7 @@ def api_supprimer_subvention(sub_id):
 @subventions_bp.route('/api/subventions/types/ajouter', methods=['POST'])
 @login_required
 def api_ajouter_type():
-    if not _peut_modifier():
+    if not _peut_gerer_types():
         return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -437,10 +454,21 @@ def api_ajouter_type():
             'SELECT COUNT(*) AS n, COALESCE(MAX(ordre), -1) AS m FROM subventions_types'
         ).fetchone()
         couleur = TYPE_COULEURS[row['n'] % len(TYPE_COULEURS)]
-        cursor = conn.execute(
-            'INSERT INTO subventions_types (nom, couleur, ordre) VALUES (?, ?, ?)',
-            (nom, couleur, row['m'] + 1)
-        )
+        try:
+            cursor = conn.execute(
+                'INSERT INTO subventions_types (nom, couleur, ordre) VALUES (?, ?, ?)',
+                (nom, couleur, row['m'] + 1)
+            )
+        except sqlite3.IntegrityError:
+            # Course entre deux creations simultanees du meme nom : renvoyer l'existant.
+            existing = conn.execute(
+                'SELECT id, nom, couleur FROM subventions_types WHERE nom = ? COLLATE NOCASE',
+                (nom,)
+            ).fetchone()
+            if existing:
+                return jsonify({'ok': True, 'id': existing['id'], 'nom': existing['nom'],
+                                'couleur': existing['couleur'], 'existe': True})
+            return jsonify({'ok': False, 'error': 'Ce type existe déjà'}), 400
         conn.commit()
         return jsonify({'ok': True, 'id': cursor.lastrowid, 'nom': nom, 'couleur': couleur})
     finally:
@@ -450,7 +478,7 @@ def api_ajouter_type():
 @subventions_bp.route('/api/subventions/types/<int:type_id>/modifier', methods=['POST'])
 @login_required
 def api_modifier_type(type_id):
-    if not _peut_modifier():
+    if not _peut_gerer_types():
         return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -461,6 +489,10 @@ def api_modifier_type(type_id):
         return jsonify({'ok': False, 'error': f'Champ non autorisé: {field}'}), 400
     if field == 'nom' and not value:
         return jsonify({'ok': False, 'error': 'Nom requis'}), 400
+    # La couleur alimente des attributs de style et le JS inline de la page :
+    # on impose un code hexadecimal strict (#rrggbb) pour eviter toute injection.
+    if field == 'couleur' and not re.fullmatch(r'#[0-9A-Fa-f]{6}', value):
+        return jsonify({'ok': False, 'error': 'Couleur invalide'}), 400
 
     conn = get_db()
     try:
@@ -485,7 +517,7 @@ def api_modifier_type(type_id):
 @subventions_bp.route('/api/subventions/types/<int:type_id>/supprimer', methods=['POST'])
 @login_required
 def api_supprimer_type(type_id):
-    if not _peut_modifier():
+    if not _peut_gerer_types():
         return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
 
     conn = get_db()

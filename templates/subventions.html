@@ -288,7 +288,7 @@ BENEVOLES[{{ b.id }}] = "{{ b.nom }}";
 /* Types de subvention (catégories de la page) */
 var TYPES = [
 {% for t in types_config %}
-    {id: {{ t.id }}, nom: {{ t.nom|tojson }}, couleur: "{{ t.couleur }}"}{{ ',' if not loop.last else '' }}
+    {id: {{ t.id }}, nom: {{ t.nom|tojson }}, couleur: {{ t.couleur|tojson }}}{{ ',' if not loop.last else '' }}
 {% endfor %}
 ];
 var TYPES_DIRTY = false;
@@ -524,6 +524,25 @@ function editPerson(el, id, field) {
     sel.addEventListener('change', save);
 }
 
+/* ── Rendu d'une cellule Type (pastille ou placeholder) ── */
+function renderTypeCell(td, typeId, subId) {
+    td.innerHTML = '';
+    var t = TYPES.find(function(x){ return String(x.id) === String(typeId); });
+    var sp = document.createElement('span');
+    if (t) {
+        sp.className = 'sv-status-pill';
+        sp.style.background = t.couleur;
+        sp.setAttribute('data-type-id', t.id);
+        sp.textContent = t.nom;
+    } else {
+        sp.className = 'sv-type-empty';
+        sp.setAttribute('data-type-id', '');
+        sp.textContent = 'Choisir…';
+    }
+    sp.onclick = function() { editType(sp, subId); };
+    td.appendChild(sp);
+}
+
 /* ── Edition inline : type de subvention (change de swimlane → reload) ── */
 function editType(el, id) {
     var td = el.closest('td');
@@ -543,16 +562,40 @@ function editType(el, id) {
     td.appendChild(sel);
     sel.focus();
 
-    var done = false;
-    function save() {
-        if (done) return;
-        done = true;
-        apiCall('/api/subventions/' + id + '/modifier', {field: 'type_id', value: sel.value}).then(function(r) {
-            location.reload();
+    var handled = false;
+    function commit() {
+        if (handled) return;
+        handled = true;
+        var val = sel.value;
+        // Sans changement : restaurer la pastille sur place (pas de reload).
+        if (String(val) === String(currentId)) { renderTypeCell(td, currentId, id); return; }
+        apiCall('/api/subventions/' + id + '/modifier', {field: 'type_id', value: val}).then(function(r) {
+            if (r.ok) {
+                location.reload();  // la ligne change de swimlane
+            } else {
+                alert(r.error || 'Erreur');
+                renderTypeCell(td, currentId, id);
+            }
         });
     }
-    sel.addEventListener('change', save);
-    sel.addEventListener('blur', function() { if (!done) location.reload(); });
+    sel.addEventListener('change', commit);
+    sel.addEventListener('blur', commit);
+    sel.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { handled = true; renderTypeCell(td, currentId, id); }
+    });
+}
+
+/* ── Rendu d'une cellule Statut (petite étiquette) ── */
+function renderStatutCell(td, key, subId) {
+    var st = STATUTS.find(function(s){ return s.key === key; }) || STATUTS[0];
+    td.innerHTML = '';
+    var sp = document.createElement('span');
+    sp.className = 'sv-statut-mini';
+    sp.style.background = st.color;
+    sp.setAttribute('data-statut', st.key);
+    sp.textContent = st.label;
+    sp.onclick = function() { editStatus(sp, subId); };
+    td.appendChild(sp);
 }
 
 /* ── Edition inline : statut d'avancement (mise à jour sur place) ── */
@@ -573,25 +616,27 @@ function editStatus(el, id) {
     td.appendChild(sel);
     sel.focus();
 
-    var done = false;
-    function save() {
-        if (done) return;
-        done = true;
+    var handled = false;
+    function commit() {
+        if (handled) return;
+        handled = true;
         var val = sel.value;
+        // Sans changement : restaurer sans écrire ni recharger.
+        if (val === currentKey) { renderStatutCell(td, currentKey, id); return; }
         apiCall('/api/subventions/' + id + '/modifier', {field: 'groupe', value: val}).then(function(r) {
-            var st = STATUTS.find(function(s){return s.key===val;}) || STATUTS[0];
-            td.innerHTML = '';
-            var sp = document.createElement('span');
-            sp.className = 'sv-statut-mini';
-            sp.style.background = st.color;
-            sp.setAttribute('data-statut', val);
-            sp.textContent = st.label;
-            sp.onclick = function() { editStatus(sp, id); };
-            td.appendChild(sp);
+            if (r.ok) {
+                renderStatutCell(td, val, id);
+            } else {
+                alert(r.error || 'Erreur');
+                renderStatutCell(td, currentKey, id);
+            }
         });
     }
-    sel.addEventListener('change', save);
-    sel.addEventListener('blur', save);
+    sel.addEventListener('change', commit);
+    sel.addEventListener('blur', commit);
+    sel.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { handled = true; renderStatutCell(td, currentKey, id); }
+    });
 }
 
 /* ── Edition inline : analytique ── */
@@ -796,8 +841,8 @@ function addType() {
         if (!r.ok) { alert(r.error || 'Erreur'); return; }
         if (!r.existe) {
             TYPES.push({id: r.id, nom: r.nom, couleur: r.couleur});
+            TYPES_DIRTY = true;  // ne recharger au close que si un type a réellement changé
         }
-        TYPES_DIRTY = true;
         input.value = '';
         input.focus();
         renderTypesList();

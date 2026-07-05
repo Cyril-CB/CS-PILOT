@@ -1825,6 +1825,17 @@ def init_db():
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE presence_forfait_jour ADD COLUMN {col} TEXT")
 
+    # Migration 0052 : colonne type_id sur subventions si elle n'existe pas.
+    # Fallback indispensable : la table subventions_types (et ses types par
+    # defaut) est creee au demarrage par init_db, mais la colonne type_id d'une
+    # base preexistante n'est ajoutee que par la migration 0052. Sans ce
+    # fallback, la page afficherait les types tout en faisant echouer la
+    # creation d'une subvention tant que la migration n'est pas appliquee.
+    try:
+        cursor.execute("SELECT type_id FROM subventions LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE subventions ADD COLUMN type_id INTEGER REFERENCES subventions_types(id)")
+
     # Migration 0038 : corriger les colonnes numeriques creees en TEXT dans
     # variables_paie / variables_paie_defauts (cases mutuelle toutes cochees).
     # Fallback indispensable : les bases creees par d'anciennes versions

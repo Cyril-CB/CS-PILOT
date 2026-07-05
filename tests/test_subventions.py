@@ -119,9 +119,70 @@ class TestTypesSubvention:
         assert ko.status_code == 400
 
     def test_responsable_ne_peut_pas_gerer_les_types(self, app, resp_client, db, sample_users):
-        # Le bouton de gestion des types n'est pas rendu pour un responsable.
+        # Le bouton de gestion des types n'est pas rendu pour un responsable...
         html = resp_client.get('/subventions').get_data(as_text=True)
         assert 'Gérer les types' not in html
+        # ...et les endpoints de gestion des types lui sont interdits (403),
+        # même en appel direct : gérer les types est une action globale réservée
+        # à la direction / comptabilité.
+        with app.app_context():
+            type_id = db.execute("SELECT id FROM subventions_types WHERE nom = 'CAF'").fetchone()['id']
+        assert resp_client.post('/api/subventions/types/ajouter', json={'nom': 'X'}).status_code == 403
+        assert resp_client.post(f'/api/subventions/types/{type_id}/modifier',
+                                json={'field': 'nom', 'value': 'Y'}).status_code == 403
+        assert resp_client.post(f'/api/subventions/types/{type_id}/supprimer', json={}).status_code == 403
+        # La suppression n'a pas eu lieu.
+        with app.app_context():
+            assert db.execute('SELECT COUNT(*) AS n FROM subventions_types WHERE id = ?',
+                              (type_id,)).fetchone()['n'] == 1
+
+    def test_salarie_ne_peut_pas_gerer_les_types(self, app, auth_client, db, sample_users):
+        assert auth_client.post('/api/subventions/types/ajouter', json={'nom': 'Z'}).status_code == 403
+
+    def test_creer_type_nom_vide_refuse(self, app, admin_client, db, sample_users):
+        assert admin_client.post('/api/subventions/types/ajouter',
+                                 json={'nom': '   '}).status_code == 400
+
+    def test_creer_type_insensible_a_la_casse(self, app, admin_client, db, sample_users):
+        # « caf » ne crée pas de doublon de « CAF » (déjà seedé).
+        r = admin_client.post('/api/subventions/types/ajouter', json={'nom': 'caf'})
+        assert r.status_code == 200 and r.get_json()['existe'] is True
+        with app.app_context():
+            assert db.execute(
+                "SELECT COUNT(*) AS n FROM subventions_types WHERE nom = 'CAF' COLLATE NOCASE"
+            ).fetchone()['n'] == 1
+
+    def test_renommer_type_en_doublon_refuse(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            ville = db.execute("SELECT id FROM subventions_types WHERE nom = 'VILLE'").fetchone()['id']
+        # Renommer VILLE en « CAF » (déjà pris) doit échouer.
+        r = admin_client.post(f'/api/subventions/types/{ville}/modifier',
+                              json={'field': 'nom', 'value': 'CAF'})
+        assert r.status_code == 400
+
+    def test_modifier_type_couleur_valide_et_invalide(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            tid = db.execute("SELECT id FROM subventions_types WHERE nom = 'ETAT'").fetchone()['id']
+        assert admin_client.post(f'/api/subventions/types/{tid}/modifier',
+                                 json={'field': 'couleur', 'value': '#123abc'}).status_code == 200
+        # Une couleur non hexadécimale est refusée (protège le JS/CSS de la page).
+        assert admin_client.post(f'/api/subventions/types/{tid}/modifier',
+                                 json={'field': 'couleur', 'value': 'red; evil'}).status_code == 400
+        with app.app_context():
+            assert db.execute('SELECT couleur FROM subventions_types WHERE id = ?',
+                              (tid,)).fetchone()['couleur'] == '#123abc'
+
+    def test_modifier_subvention_type_inexistant_refuse(self, app, admin_client, db, sample_users):
+        with app.app_context():
+            cur = db.execute("INSERT INTO subventions (nom, groupe) VALUES ('Z', 'nouveau_projet')")
+            sub_id = cur.lastrowid
+            db.commit()
+        r = admin_client.post(f'/api/subventions/{sub_id}/modifier',
+                              json={'field': 'type_id', 'value': 999999})
+        assert r.status_code == 404
+        with app.app_context():
+            assert db.execute('SELECT type_id FROM subventions WHERE id = ?',
+                              (sub_id,)).fetchone()['type_id'] is None
 
 
 class TestSousElementDocumentNaming:
