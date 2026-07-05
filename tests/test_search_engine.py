@@ -53,14 +53,28 @@ class TestMoteurFinance:
         assert v['type'] == 'redirect' and '/fournisseurs/' in v['url']
 
     def test_budget_action_construction_bilan_action(self, app, db, sample_users):
-        # « budget <action> » → bilan-action (Budget action) ; onglet réalisé si passé.
+        # « budget <action> » → bilan-action (Budget action) ; onglet réalisé pour
+        # une année passée récente (dans la fenêtre présélectionnable).
         n = _annee()
         with app.app_context():
             _seed(db)
         v = _analyse(app, db, f'budget clas {n + 1}')
         assert '/bilan-action' in v['url'] and 'onglet=previsionnel' in v['url']
-        v2 = _analyse(app, db, 'budget clas 2020')
+        v2 = _analyse(app, db, f'budget clas {n - 1}')
         assert '/bilan-action' in v2['url'] and 'onglet=realise' in v2['url']
+
+    def test_budget_action_annee_ancienne_va_a_bilan_secteurs(self, app, db, sample_users):
+        # Année réalisée hors fenêtre de « Budget action » (> 4 ans) : on renvoie la
+        # consultation du clôturé vers bilan-secteurs (qui accepte toute année),
+        # plutôt que vers bilan-action qui ignorerait l'année et retomberait sur
+        # l'année courante.
+        n = _annee()
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, f'budget clas {n - 6}')
+        assert '/bilan-secteurs' in v['url'] and 'action_id=' in v['url']
+        assert f'annee={n - 6}' in v['url']
+        assert '/bilan-action' not in v['url']
 
     def test_bilan_secteur_va_a_bilan_secteurs(self, app, db, sample_users):
         with app.app_context():
@@ -157,6 +171,18 @@ class TestMoteurRH:
         v = _analyse(app, db, 'absence Marie')
         assert v['type'] == 'choices' and len(v['options']) >= 2
         assert all('search_user_id=' in o['url'] for o in v['options'])
+
+    def test_absence_synonymes_maladie_arret(self, app, db, sample_users):
+        # « maladie » / « arrêt(s) » sont des synonymes d'« absence » : ils doivent
+        # déclencher la même intention (ex. « maladie Marie », « arrêts Marie »).
+        with app.app_context():
+            _seed(db)
+        for q in ('maladie Fatou', 'arrêts Fatou', 'arret Fatou', 'malade Fatou'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/absences' in v['url'] and 'search_user_id=' in v['url'], q
+        # Comme « absence Marie », un synonyme + prénom ambigu propose un choix.
+        v = _analyse(app, db, 'maladie Marie')
+        assert v['type'] == 'choices' and all('search_user_id=' in o['url'] for o in v['options'])
 
     def test_heures_salarie(self, app, db, sample_users):
         with app.app_context():
@@ -303,3 +329,38 @@ class TestSynonymesSecteurs:
         # Le moteur reconnaît le secteur par son synonyme.
         v = _analyse(app, db, 'ef')
         assert v['type'] == 'redirect' and 'secteur_id=' in v['url']
+
+
+class TestJournalRecherches:
+    def test_recherche_est_journalisee_avec_resultat(self, app, db, admin_client, sample_users):
+        # Chaque recherche est tracée avec le fait qu'elle ait abouti ou non.
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search', json={'query': 'EDF'})
+        admin_client.post('/api/search', json={'query': 'zzztotalementinconnu'})
+        with app.app_context():
+            rows = db.execute(
+                "SELECT terme, a_resultat FROM recherche_log ORDER BY id").fetchall()
+        termes = {r['terme']: r['a_resultat'] for r in rows}
+        assert termes.get('EDF') == 1
+        assert termes.get('zzztotalementinconnu') == 0
+
+    def test_recherche_vide_non_journalisee(self, app, db, admin_client, sample_users):
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search', json={'query': '   '})
+        with app.app_context():
+            nb = db.execute("SELECT COUNT(*) FROM recherche_log").fetchone()[0]
+        assert nb == 0
+
+    def test_onglet_barre_intelligente_liste_les_recherches(self, app, db, admin_client, sample_users):
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search', json={'query': 'EDF'})
+        html = admin_client.get('/securite/journal-recherches').get_data(as_text=True)
+        assert 'Barre intelligente' in html
+        assert 'EDF' in html
+
+    def test_journal_recherches_refuse_salarie(self, app, auth_client, sample_users):
+        r = auth_client.get('/securite/journal-recherches', follow_redirects=False)
+        assert r.status_code in (301, 302)

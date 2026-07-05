@@ -263,12 +263,20 @@ _KW_TRESO = {'tresorerie', 'treso', 'solde'}
 _KW_SUBV = {'subvention', 'subventions'}
 _KW_INDIC = {'indicateur', 'indicateurs'}
 _KW_SALARIE = {'salarie', 'salaries', 'salariee', 'fiche', 'employe', 'employee'}
-_KW_ABSENCE = {'absence', 'absences', 'conge', 'conges'}
+_KW_ABSENCE = {'absence', 'absences', 'conge', 'conges',
+               # Synonymes courants : arrêt / congé maladie.
+               'maladie', 'maladies', 'malade', 'arret', 'arrets'}
 _KW_PESEE = {'pesee', 'pese'}
 _KW_HEURES = {'heure', 'heures', 'temps'}
 _KW_CONTRAT = {'contrat', 'contrats', 'cdd', 'cdi'}
 _KW_PLANNING = {'planning', 'plannings', 'horaire', 'horaires'}
 _KW_SALLES = {'salle', 'salles', 'reservation', 'reservations'}
+
+# Nombre d'années passées présélectionnables par la page « Budget action »
+# (bilan_action.py : annees = current+1 … current-4). Au-delà (année réalisée
+# plus ancienne), la construction budgétaire n'est plus proposée : on renvoie la
+# consultation du clôturé vers bilan-secteurs, qui accepte n'importe quelle année.
+_BILAN_ACTION_ANNEES_PASSEES = 4
 
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
 _MOTS_OUTILS = {'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
@@ -457,6 +465,22 @@ def _intention_bilan(conn, terme, annee_eff):
                      f'Bilan {annee_eff}')
 
 
+def _url_budget_action(a, annee_eff, passe, is_prev, today):
+    """(url, libellé) de budget pour une action selon l'année demandée.
+
+    La page « Budget action » (bilan-action) ne présélectionne que les années de
+    sa fenêtre (année courante et les quatre précédentes). Pour une année réalisée
+    plus ancienne, la présélection serait ignorée et la page retomberait sur
+    l'année courante : on renvoie alors la consultation du clôturé vers
+    bilan-secteurs, qui accepte n'importe quelle année."""
+    if passe and annee_eff < today.year - _BILAN_ACTION_ANNEES_PASSEES:
+        return (url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=annee_eff),
+                f"Bilan — {a['nom']} {annee_eff}")
+    onglet = 'realise' if (passe and not is_prev) else 'previsionnel'
+    return (url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet=onglet),
+            f"Budget action — {a['nom']} {annee_eff}")
+
+
 def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
     """Budget / prévisionnel / actualisé :
     - sans entité, ou « prev/budget <année> » → budget-prévisionnel (général) ;
@@ -485,11 +509,8 @@ def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
             f"Budget prévisionnel — {s['nom']} {annee_eff}")
 
     if len(actions) == 1 and not secteurs:
-        a = actions[0]
-        onglet = 'realise' if (passe and not is_prev) else 'previsionnel'
-        return _redirect(
-            url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet=onglet),
-            f"Budget action — {a['nom']} {annee_eff}")
+        url, label = _url_budget_action(actions[0], annee_eff, passe, is_prev, today)
+        return _redirect(url, label)
 
     options = []
     for s in secteurs:
@@ -497,9 +518,8 @@ def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
                else url_for('budget_bp.budget_previsionnel', annee=annee_eff, secteur_id=s['id']))
         options.append({'label': f"Secteur {s['nom']}", 'sous_titre': f'Budget {annee_eff}', 'url': url})
     for a in actions:
-        onglet = 'realise' if (passe and not is_prev) else 'previsionnel'
-        options.append({'label': f"Action {a['nom']}", 'sous_titre': f'Budget action {annee_eff}',
-                        'url': url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet=onglet)})
+        url, label = _url_budget_action(a, annee_eff, passe, is_prev, today)
+        options.append({'label': f"Action {a['nom']}", 'sous_titre': label, 'url': url})
     if options:
         return _choices(f"« {terme} » — budget de :", options)
 

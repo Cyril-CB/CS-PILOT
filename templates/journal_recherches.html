@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Sécurité — Barre intelligente{% endblock %}
+
+{% block content %}
+<style>
+    .journal-page { max-width: 1100px; margin: 0 auto; }
+    .journal-table-wrap {
+        background: var(--white);
+        border: 1px solid var(--gray-200);
+        border-radius: 12px;
+        padding: 8px;
+        box-shadow: var(--shadow-sm);
+        overflow-x: auto;
+    }
+    .journal-terme { font-weight: 600; color: var(--gray-900); }
+    .journal-user-nom { font-size: 0.82rem; color: var(--gray-500); }
+    .journal-dest { color: var(--gray-600); font-size: 0.85rem; }
+    .journal-date small { color: var(--gray-500); }
+    .journal-tabs { display: flex; gap: 8px; margin: 18px 0 4px; border-bottom: 2px solid var(--gray-200); flex-wrap: wrap; }
+    .journal-tab {
+        padding: 10px 18px; text-decoration: none; color: var(--gray-600);
+        font-weight: 600; border-bottom: 3px solid transparent; margin-bottom: -2px;
+    }
+    .journal-tab:hover { color: var(--gray-900); }
+    .journal-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+</style>
+
+<div class="journal-page">
+    <h1>🔒 Journal de sécurité</h1>
+    <div class="journal-tabs">
+        <a href="{{ url_for('securite_bp.journal_acces') }}" class="journal-tab">🔑 Connexions</a>
+        <a href="{{ url_for('securite_bp.journal_actions') }}" class="journal-tab">📋 Actions</a>
+        <a href="{{ url_for('securite_bp.journal_recherches') }}" class="journal-tab active">🔎 Barre intelligente</a>
+    </div>
+    <p class="subtitle">
+        Termes saisis dans la barre de recherche intelligente des tableaux de bord —
+        affichage des {{ limite }} recherches les plus récentes.
+    </p>
+
+    <!-- Statistiques rapides (sur les entrées affichées) -->
+    <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));">
+        <div class="stat-card">
+            <div class="stat-icon">🔎</div>
+            <div class="stat-content">
+                <h3>Recherches affichées</h3>
+                <p class="stat-value">{{ entrees|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">✅</div>
+            <div class="stat-content">
+                <h3>Avec résultat</h3>
+                <p class="stat-value">{{ entrees|selectattr('a_resultat', 'equalto', 1)|list|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon">🚫</div>
+            <div class="stat-content">
+                <h3>Sans résultat</h3>
+                <p class="stat-value">{{ entrees|rejectattr('a_resultat', 'equalto', 1)|list|length }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tableau des recherches -->
+    <div class="journal-table-wrap">
+        {% if entrees %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date et heure</th>
+                    <th>Utilisateur</th>
+                    <th>Terme recherché</th>
+                    <th>Résultat</th>
+                    <th>Destination</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entrees %}
+                <tr>
+                    <td class="journal-date" style="white-space: nowrap;">
+                        {% set parts = (e.date_heure or '').split(' ') %}
+                        <strong>{{ parts[0] }}</strong>
+                        {% if parts|length > 1 %}<br><small>{{ parts[1] }}</small>{% endif %}
+                    </td>
+                    <td>
+                        {% if e.prenom or e.nom %}
+                        <span class="journal-user-nom">{{ e.prenom }} {{ e.nom }}</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td><span class="journal-terme">{{ e.terme }}</span></td>
+                    <td>
+                        {% if e.a_resultat %}
+                        <span class="badge badge-success">✅ Résultat</span>
+                        {% else %}
+                        <span class="badge badge-danger">🚫 Aucun</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="journal-dest">{{ e.libelle or '—' }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-data">Aucune recherche enregistrée pour le moment.</p>
+        {% endif %}
+    </div>
+
+    <div class="help-box" style="margin-top: 1.5rem;">
+        <h4>ℹ️ À propos de la barre intelligente</h4>
+        <ul>
+            <li><strong>✅ Résultat</strong> : la recherche a mené à une page (redirection) ou proposé un choix.</li>
+            <li><strong>🚫 Aucun</strong> : aucune correspondance trouvée pour le terme saisi.</li>
+        </ul>
+        <p>
+            Cette liste sert à repérer les termes fréquemment utilisés (et ceux qui
+            n'aboutissent pas) afin d'enrichir les synonymes reconnus par le moteur.
+            <strong>Confidentialité :</strong> réservée à la direction et à la comptabilité.
+        </p>
+    </div>
+</div>
+{% endblock %}
