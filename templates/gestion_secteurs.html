@@ -40,7 +40,7 @@
                     <td>{{ s.nb_users }} personne(s)</td>
                     <td style="text-align: center; white-space: nowrap;">
                         <button type="button" class="btn-icon" title="Modifier"
-                                onclick="openEditSecteur({{ s.id }}, '{{ s.nom|replace("'", "\\'") }}', '{{ s.description|default('', true)|replace("'", "\\'") }}', '{{ s.type_secteur|default('', true) }}')">✏️</button>
+                                onclick="openEditSecteur({{ s.id }}, '{{ s.nom|replace("'", "\\'") }}', '{{ s.description|default('', true)|replace("'", "\\'") }}', '{{ s.type_secteur|default('', true) }}', '{{ s.synonymes|default('', true)|replace("'", "\\'") }}')">✏️</button>
                         {% if s.nb_users == 0 %}
                         <form method="POST" style="display: inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce secteur ?');">
                             <input type="hidden" name="action" value="supprimer">
@@ -85,6 +85,13 @@
                 <label for="description">Description (optionnel)</label>
                 <textarea id="description" name="description" rows="2"
                           placeholder="Ex: Personnel de la crèche Babilou"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="synonymes">Synonymes (optionnel)</label>
+                <input type="text" id="synonymes" name="synonymes"
+                       placeholder="Ex: bab, babil">
+                <small style="color:var(--gray-500);">Termes séparés par des virgules, reconnus par la barre de recherche (ex. « bab » → ce secteur).</small>
             </div>
 
             <div class="form-actions">
@@ -169,6 +176,12 @@
                 <textarea id="edit_description" name="description" rows="2"></textarea>
             </div>
 
+            <div class="form-group">
+                <label for="edit_synonymes">Synonymes (optionnel)</label>
+                <input type="text" id="edit_synonymes" name="synonymes" placeholder="Ex: bab, babil">
+                <small style="color:var(--gray-500);">Termes séparés par des virgules, reconnus par la barre de recherche.</small>
+            </div>
+
             <div class="form-actions">
                 <button type="button" class="btn btn-secondary" onclick="closeEditSecteur()">Annuler</button>
                 <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
@@ -208,11 +221,12 @@
 </div>
 
 <script>
-function openEditSecteur(id, nom, description, typeSecteur) {
+function openEditSecteur(id, nom, description, typeSecteur, synonymes) {
     document.getElementById('edit_secteur_id').value = id;
     document.getElementById('edit_nom').value = nom;
     document.getElementById('edit_description').value = description;
     document.getElementById('edit_type_secteur').value = typeSecteur;
+    document.getElementById('edit_synonymes').value = synonymes || '';
     document.getElementById('editSecteurModal').style.display = 'flex';
 }
 

@@ -84,6 +84,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 ### Tableau de bord direction
 - Vue d'ensemble effectifs, absences, validations et anomalies
 - Demandes de recuperation en attente et top conges cumules
+- Barre de recherche intelligente (direction / comptabilite) : detecte l'intention et redirige vers la bonne page (facture par numero, fiche fournisseur, budget d'une action ou d'un secteur, tresorerie, subventions, bilan/CR, absences ou fiche temps d'un salarie, contrats du mois...). Reconnait les periodes (mois, annee, mois dernier...) et les synonymes de secteurs ; propose un choix en cas d'ambiguite (plusieurs salaries homonymes)
 
 ### Reservations de salles
 - Gestion des reservations de salles avec recurrences

@@ -18,7 +18,7 @@
         <label>Année</label>
         <select id="filtreAnnee" class="form-select" onchange="chargerBilan()">
             {% for a in annees %}
-            <option value="{{ a }}" {% if a == annee_courante %}selected{% endif %}>{{ a }}</option>
+            <option value="{{ a }}" {% if a == (annee_sel if annee_sel is defined else annee_courante) %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
         </select>
     </div>
@@ -29,7 +29,7 @@
             <option value="">— Tous —</option>
             {% endif %}
             {% for s in secteurs %}
-            <option value="{{ s.id }}" {% if est_responsable %}selected{% endif %}>{{ s.nom }}</option>
+            <option value="{{ s.id }}" {% if est_responsable or (presel_secteur_id is defined and presel_secteur_id == s.id) %}selected{% endif %}>{{ s.nom }}</option>
             {% endfor %}
         </select>
     </div>
@@ -38,7 +38,7 @@
         <select id="filtreAction" class="form-select" onchange="chargerBilan()">
             <option value="">— Toutes —</option>
             {% for a in actions %}
-            <option value="{{ a.id }}">{{ a.nom }}</option>
+            <option value="{{ a.id }}" {% if presel_action_id is defined and presel_action_id == a.id %}selected{% endif %}>{{ a.nom }}</option>
             {% endfor %}
         </select>
     </div>
@@ -304,6 +304,16 @@ if (EST_RESPONSABLE) {
         chargerBilan();
     });
 }
+
+// Présélection depuis la barre de recherche (?secteur_id=/?action_id=/?annee=) :
+// charger automatiquement le bilan correspondant.
+{% if presel_actif is defined and presel_actif %}
+if (!EST_RESPONSABLE) {
+    document.addEventListener('DOMContentLoaded', function() {
+        chargerBilan();
+    });
+}
+{% endif %}
 
 // Export PDF
 function exporterPdf() {

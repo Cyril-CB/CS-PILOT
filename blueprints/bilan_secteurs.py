@@ -63,6 +63,13 @@ def bilan_secteurs():
     annee_courante = now.year
     annees = list(range(annee_courante - 3, annee_courante + 2))
 
+    # Présélection depuis la barre de recherche (?secteur_id=&action_id=&annee=).
+    presel_secteur_id = request.args.get('secteur_id', type=int)
+    presel_action_id = request.args.get('action_id', type=int)
+    presel_annee = request.args.get('annee', type=int)
+    annee_sel = presel_annee if presel_annee in annees else annee_courante
+    presel_actif = bool(presel_secteur_id or presel_action_id or presel_annee)
+
     est_resp = _est_responsable()
     secteur_resp_id = session.get('secteur_id') if est_resp else None
 
@@ -92,7 +99,11 @@ def bilan_secteurs():
                                secteurs=secteurs, actions=actions,
                                annees_importees=[r['annee'] for r in annees_importees],
                                est_responsable=est_resp,
-                               secteur_responsable_id=secteur_resp_id)
+                               secteur_responsable_id=secteur_resp_id,
+                               annee_sel=annee_sel,
+                               presel_secteur_id=presel_secteur_id,
+                               presel_action_id=presel_action_id,
+                               presel_actif=presel_actif)
     finally:
         conn.close()
 

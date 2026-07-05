@@ -32,7 +32,7 @@
         <label>Année</label>
         <select id="selAnnee" class="form-select" onchange="onSelection()">
             {% for a in annees %}
-            <option value="{{ a }}" {% if a == annee_courante %}selected{% endif %}>{{ a }}</option>
+            <option value="{{ a }}" {% if a == (annee_preselect if (annee_preselect is defined and annee_preselect) else annee_courante) %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
         </select>
     </div>
@@ -604,6 +604,6 @@ function exporterPdf(){
         window.open('/api/bilan-action/export-pdf?action_id=' + action_id + '&annee=' + annee + '&onglet=' + currentOnglet, '_blank');
     });
 }
-{% if action_preselect %}onSelection();{% endif %}
+{% if action_preselect %}onSelection();{% if onglet_preselect == 'realise' %}switchOnglet('realise');{% endif %}{% endif %}
 </script>
 {% endblock %}

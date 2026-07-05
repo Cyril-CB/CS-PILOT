@@ -251,11 +251,18 @@ def compte_resultat():
         ).fetchall()
         annees_list = [r['annee'] for r in annees_importees]
         annee_courante = annees_list[0] if annees_list else now.year
+        # Présélection depuis la barre de recherche : ?annee= et ?vue=cr|bilan.
+        annee_param = request.args.get('annee', type=int)
+        annee_sel = annee_param if annee_param in annees_list else annee_courante
+        vue_preselect = request.args.get('vue')
+        if vue_preselect not in ('cr', 'bilan'):
+            vue_preselect = 'cr'
         return render_template(
             'compte_resultat.html',
-            annee_courante=annee_courante,
+            annee_courante=annee_sel,
             annees_importees=annees_list,
             noms_cat_json={**NOMS_CAT_CR, **NOMS_CAT_BILAN},
+            vue_preselect=vue_preselect,
         )
     finally:
         conn.close()

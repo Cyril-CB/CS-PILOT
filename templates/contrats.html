@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Contrats - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="margin-bottom:1rem;">
+        <h1>Contrats</h1>
+        <p class="subtitle">Contrats par mois et par filtre (en cours, échéances, CDD…)</p>
+    </div>
+
+    <div class="section">
+        {# ── Barre de filtres (GET) ── #}
+        <form method="GET" action="{{ url_for('contrats_bp.liste_contrats') }}" class="contrats-filtres">
+            <label>Mois
+                <select name="mois">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {{ 'selected' if m == mois_selected else '' }}>{{ noms_mois[m] }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Année
+                <select name="annee">
+                    {% for a in annees %}
+                    <option value="{{ a }}" {{ 'selected' if a == annee_selected else '' }}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Type
+                <select name="type">
+                    <option value="">Tous</option>
+                    {% for t in types_dispo %}
+                    <option value="{{ t }}" {{ 'selected' if t == type_selected else '' }}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Filtre
+                <select name="filtre">
+                    {% for key, libelle in filtres %}
+                    <option value="{{ key }}" {{ 'selected' if key == filtre_selected else '' }}>{{ libelle }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary btn-sm">Afficher</button>
+        </form>
+
+        <p class="contrats-resume">
+            {{ contrats|length }} contrat{{ 's' if contrats|length != 1 else '' }} —
+            {{ noms_mois[mois_selected] }} {{ annee_selected }}
+        </p>
+
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Salarié</th>
+                    <th>Secteur</th>
+                    <th>Type</th>
+                    <th>Début</th>
+                    <th>Échéance</th>
+                    <th>Quotité</th>
+                    <th style="text-align:center;">Contrat</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in contrats %}
+                <tr>
+                    <td><strong>{{ c.prenom }} {{ c.nom }}</strong></td>
+                    <td>{{ c.secteur_nom or '—' }}</td>
+                    <td>{% if c.type_contrat %}<span class="badge" style="background:#6366f1;color:#fff;">{{ c.type_contrat }}</span>{% else %}—{% endif %}</td>
+                    <td>{% if c.date_debut %}{{ c.date_debut[8:10] }}/{{ c.date_debut[5:7] }}/{{ c.date_debut[0:4] }}{% else %}—{% endif %}</td>
+                    <td>{% if c.date_fin %}{{ c.date_fin[8:10] }}/{{ c.date_fin[5:7] }}/{{ c.date_fin[0:4] }}{% else %}<span style="color:#888;">CDI / en cours</span>{% endif %}</td>
+                    <td>
+                        {% if c.temps_hebdo %}{{ c.temps_hebdo }} h/sem
+                        {% elif c.forfait %}Forfait{% if c.nbr_jours %} {{ c.nbr_jours }} j{% endif %}
+                        {% else %}—{% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        {% if c.fichier_path %}
+                        <a href="{{ url_for('infos_salaries_bp.telecharger_contrat', contrat_id=c.id) }}" class="btn-icon" title="Télécharger le contrat" aria-label="Télécharger">📄</a>
+                        {% else %}<span style="color:#bbb;">—</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not contrats %}
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:#888;">Aucun contrat pour ce filtre.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

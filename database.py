@@ -250,6 +250,7 @@ def init_db():
             nom TEXT NOT NULL UNIQUE,
             description TEXT,
             type_secteur TEXT DEFAULT NULL,
+            synonymes TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -1794,6 +1795,12 @@ def init_db():
         cursor.execute("SELECT type_secteur FROM secteurs LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE secteurs ADD COLUMN type_secteur TEXT DEFAULT NULL")
+
+    # Migration 0053 : synonymes de secteurs (barre de recherche intelligente)
+    try:
+        cursor.execute("SELECT synonymes FROM secteurs LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE secteurs ADD COLUMN synonymes TEXT")
 
     # Migration : ajouter temps_hebdo si n'existe pas dans contrats
     try:
