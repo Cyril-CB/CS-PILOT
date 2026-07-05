@@ -11,7 +11,7 @@ import logging
 from flask import Blueprint, request, session, jsonify
 from database import get_db
 from utils import login_required, aujourd_hui, maintenant
-from search_engine import analyser_recherche
+from search_engine import analyser_recherche, anonymiser_terme_salaries
 
 recherche_bp = Blueprint('recherche_bp', __name__)
 
@@ -24,14 +24,17 @@ def _journaliser_recherche(conn, terme, verdict):
     """Trace la recherche (terme + a-t-elle abouti) — best-effort, jamais bloquant.
 
     Une redirection ou une liste de choix comptent comme un résultat ; un verdict
-    « none » (aucune correspondance) est enregistré comme sans résultat. Toute
-    erreur de journalisation reste silencieuse : elle ne doit pas casser la
-    recherche elle-même.
+    « none » (aucune correspondance) est enregistré comme sans résultat. Le terme
+    et le libellé de destination sont anonymisés (noms de salariés → « salarié »)
+    pour ne pas révéler quels salariés font l'objet de recherches. Toute erreur de
+    journalisation reste silencieuse : elle ne doit pas casser la recherche.
     """
     try:
         type_resultat = verdict.get('type', '')
         a_resultat = 1 if type_resultat in ('redirect', 'choices') else 0
         libelle = verdict.get('label') or verdict.get('prompt') or verdict.get('message') or ''
+        terme = anonymiser_terme_salaries(conn, terme)
+        libelle = anonymiser_terme_salaries(conn, libelle)
         conn.execute(
             'INSERT INTO recherche_log (date_heure, user_id, terme, type_resultat, a_resultat, libelle) '
             'VALUES (?, ?, ?, ?, ?, ?)',
@@ -40,7 +43,7 @@ def _journaliser_recherche(conn, terme, verdict):
         )
         conn.commit()
     except Exception:
-        logger.exception("Impossible de journaliser la recherche « %s »", terme)
+        logger.exception("Impossible de journaliser la recherche")
 
 
 @recherche_bp.route('/api/search', methods=['POST'])

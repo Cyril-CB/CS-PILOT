@@ -179,6 +179,42 @@ def _resoudre_salarie(conn, terme):
     return exact or prefixe
 
 
+def anonymiser_terme_salaries(conn, texte):
+    """Masque les noms/prénoms de salariés dans un texte de recherche.
+
+    Remplace par « salarié » tout mot correspondant (normalisé) à un nom ou un
+    prénom d'utilisateur, afin que le journal des recherches ne révèle pas quels
+    salariés font l'objet de recherches (confidentialité RH). Les « salarié »
+    consécutifs sont fusionnés (« absence Marie Dupont » → « absence salarié »).
+    Fonction pure et défensive : renvoie le texte inchangé en cas d'erreur.
+    """
+    if not texte:
+        return texte
+    try:
+        noms = set()
+        for r in conn.execute("SELECT nom, prenom FROM users").fetchall():
+            for champ in (r['nom'], r['prenom']):
+                for mot in _normaliser(champ or '').split():
+                    if len(mot) >= 2:
+                        noms.add(mot)
+        if not noms:
+            return texte
+        resultat, masque_precedent = [], False
+        for tok in texte.split():
+            sous_mots = _normaliser(tok).split()
+            est_nom = bool(sous_mots) and any(m in noms for m in sous_mots)
+            if est_nom:
+                if not masque_precedent:
+                    resultat.append('salarié')
+                    masque_precedent = True
+            else:
+                resultat.append(tok)
+                masque_precedent = False
+        return ' '.join(resultat).strip()
+    except Exception:
+        return texte
+
+
 def _resoudre_action(conn, terme):
     terme_n = _normaliser(terme)
     if not terme_n:
@@ -258,7 +294,9 @@ def _salarie_ou_choix(salaries, faire_url, prompt, ancre=''):
 
 _KW_FACTURE = {'facture', 'factures'}
 _KW_BUDGET = {'budget', 'budgets'}
-_KW_PREV = {'prev', 'previsionnel', 'previsionnels', 'actualise'}  # prévisionnel / actualisé (normalisés)
+_KW_PREV = {'prev', 'previsionnel', 'previsionnels', 'actualise',
+            'bp',    # budget prévisionnel
+            'bpa'}   # budget prévisionnel actualisé
 _KW_TRESO = {'tresorerie', 'treso', 'solde'}
 _KW_SUBV = {'subvention', 'subventions'}
 _KW_INDIC = {'indicateur', 'indicateurs'}

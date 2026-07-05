@@ -116,6 +116,17 @@ class TestMoteurFinance:
         v = _analyse(app, db, 'actualisé babilhome 2026')
         assert '/budget-previsionnel' in v['url'] and 'secteur_id=' in v['url']
 
+    def test_bp_et_bpa_synonymes_previsionnel(self, app, db, sample_users):
+        # « BP » (budget prévisionnel) et « BPA » (budget prévisionnel actualisé)
+        # sont des synonymes de prévisionnel.
+        n = _annee()
+        with app.app_context():
+            _seed(db)
+        assert '/budget-previsionnel' in _analyse(app, db, f'BP {n}')['url']
+        assert '/budget-previsionnel' in _analyse(app, db, f'BPA {n}')['url']
+        v = _analyse(app, db, f'BP babilhome {n}')
+        assert '/budget-previsionnel' in v['url'] and 'secteur_id=' in v['url']
+
     def test_action_seule_propose_consultation_et_construction(self, app, db, sample_users):
         # Un nom d'action seul (sans mot-clé) → deux alternatives (doute).
         with app.app_context():
@@ -360,6 +371,29 @@ class TestJournalRecherches:
         html = admin_client.get('/securite/journal-recherches').get_data(as_text=True)
         assert 'Barre intelligente' in html
         assert 'EDF' in html
+
+    def test_noms_salaries_anonymises_dans_le_terme(self, app, db, admin_client, sample_users):
+        # Le terme journalisé ne doit pas révéler le nom du salarié recherché.
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search', json={'query': 'absence Fatou'})
+        with app.app_context():
+            row = db.execute(
+                "SELECT terme FROM recherche_log ORDER BY id DESC LIMIT 1").fetchone()
+        assert 'Fatou' not in row['terme']
+        assert 'salarié' in row['terme']
+        assert 'absence' in row['terme']  # l'intention reste visible
+
+    def test_nom_dans_libelle_destination_anonymise(self, app, db, admin_client, sample_users):
+        # Même la destination (« Prénom Nom » d'une fiche salarié) est anonymisée.
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search', json={'query': 'salarié Fatou'})
+        with app.app_context():
+            row = db.execute(
+                "SELECT terme, libelle FROM recherche_log ORDER BY id DESC LIMIT 1").fetchone()
+        assert 'Fatou' not in row['terme']
+        assert 'Fatou' not in (row['libelle'] or '') and 'Bernard' not in (row['libelle'] or '')
 
     def test_journal_recherches_refuse_salarie(self, app, auth_client, sample_users):
         r = auth_client.get('/securite/journal-recherches', follow_redirects=False)
