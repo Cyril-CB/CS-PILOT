@@ -30,6 +30,18 @@ os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 # reste Europe/Paris en production).
 os.environ.setdefault('APP_TIMEZONE', 'UTC')
 
+# Hachage de mot de passe rapide POUR LES TESTS UNIQUEMENT (ce fichier n'est
+# chargé que par pytest). scrypt — le défaut werkzeug utilisé en production —
+# coûte ~100 ms par appel et, multiplié par les utilisateurs créés dans chaque
+# test, domine la durée de la suite. On bascule le hachage par défaut sur
+# pbkdf2 à 1 itération : generate_password_hash() est appelé sans argument
+# `method` un peu partout dans l'app, donc modifier ses valeurs par défaut
+# accélère tous les appels sans toucher au code applicatif. check_password_hash
+# lit l'algorithme depuis le hash stocké : la logique d'authentification reste
+# identique (aucun test ne dépend de l'algorithme utilisé).
+import werkzeug.security as _werkzeug_security  # noqa: E402
+_werkzeug_security.generate_password_hash.__defaults__ = ('pbkdf2:sha256:1', 16)
+
 
 @pytest.fixture(scope='function')
 def app(tmp_path):
