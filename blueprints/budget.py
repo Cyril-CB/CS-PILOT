@@ -945,6 +945,14 @@ def budget_previsionnel():
         else:
             secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY nom').fetchall()
             secteur_id_defaut = secteurs[0]['id'] if secteurs else None
+            # Présélection depuis la barre de recherche : ?secteur_id=
+            secteur_param = request.args.get('secteur_id', type=int)
+            if secteur_param and any(s['id'] == secteur_param for s in secteurs):
+                secteur_id_defaut = secteur_param
+
+        # Présélection de l'année depuis la barre de recherche : ?annee=
+        annee_param = request.args.get('annee', type=int)
+        annee_selection = annee_param if annee_param in annees_traitement else now.year
 
         annees_importees = conn.execute(
             'SELECT DISTINCT annee FROM bilan_fec_imports ORDER BY annee DESC'
@@ -957,7 +965,7 @@ def budget_previsionnel():
         return render_template(
             'budget_previsionnel.html',
             annees_traitement=annees_traitement,
-            annee_courante=now.year,
+            annee_courante=annee_selection,
             secteurs=secteurs,
             secteur_id_defaut=secteur_id_defaut,
             annees_importees=[r['annee'] for r in annees_importees],

@@ -9,6 +9,8 @@ def _seed(db):
     db.execute("INSERT INTO secteurs (nom, synonymes) VALUES ('Babilhome', 'bab, babil')")
     db.execute("INSERT INTO fournisseurs (nom, code_comptable) VALUES ('EDF', 'EDF')")
     db.execute("INSERT INTO comptabilite_actions (nom) VALUES ('CLAS')")
+    db.execute("INSERT INTO comptabilite_actions (nom) VALUES ('Fracture numerique')")
+    db.execute("INSERT INTO users (nom, prenom, login, password, profil, actif) VALUES ('Borand', 'Cyril', 'cb', 'x', 'directeur', 1)")
     # Deux « Marie » supplémentaires (sample_users en crée déjà une) → désambiguïsation.
     db.execute("INSERT INTO users (nom, prenom, login, password, profil, actif) VALUES ('Lopez', 'Marie', 'ml', 'x', 'responsable', 1)")
     db.execute("INSERT INTO users (nom, prenom, login, password, profil, actif) VALUES ('Martin', 'Marie', 'mm', 'x', 'responsable', 1)")
@@ -50,26 +52,64 @@ class TestMoteurFinance:
         v = _analyse(app, db, 'factures edf')
         assert v['type'] == 'redirect' and '/fournisseurs/' in v['url']
 
-    def test_budget_action_annee_passee_realise(self, app, db, sample_users):
-        with app.app_context():
-            _seed(db)
-        v = _analyse(app, db, 'budget clas 2020')
-        assert v['type'] == 'redirect'
-        assert '/bilan-secteurs' in v['url'] and 'action_id=' in v['url'] and 'annee=2020' in v['url']
-
-    def test_budget_action_annee_future_previsionnel(self, app, db, sample_users):
+    def test_budget_action_construction_bilan_action(self, app, db, sample_users):
+        # « budget <action> » → bilan-action (Budget action) ; onglet réalisé si passé.
         n = _annee()
         with app.app_context():
             _seed(db)
         v = _analyse(app, db, f'budget clas {n + 1}')
-        assert v['type'] == 'redirect'
-        assert '/bilan-action' in v['url'] and f'annee={n + 1}' in v['url'] and 'onglet=previsionnel' in v['url']
+        assert '/bilan-action' in v['url'] and 'onglet=previsionnel' in v['url']
+        v2 = _analyse(app, db, 'budget clas 2020')
+        assert '/bilan-action' in v2['url'] and 'onglet=realise' in v2['url']
 
-    def test_budget_secteur_toujours_bilan_secteurs(self, app, db, sample_users):
+    def test_bilan_secteur_va_a_bilan_secteurs(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'bilan babilhome 2025')
+        assert '/bilan-secteurs' in v['url'] and 'secteur_id=' in v['url'] and 'annee=2025' in v['url']
+
+    def test_bilan_action_va_a_bilan_secteurs(self, app, db, sample_users):
+        # « bilan <action> » = consultation → bilan-secteurs (avec action_id).
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'bilan CLAS 2025')
+        assert '/bilan-secteurs' in v['url'] and 'action_id=' in v['url']
+
+    def test_bilan_seul_va_a_compte_resultat(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'bilan 2025')
+        assert '/compte-resultat' in v['url'] and 'vue=bilan' in v['url']
+
+    def test_budget_secteur_courant_va_a_previsionnel(self, app, db, sample_users):
+        n = _annee()
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, f'budget babilhome {n}')
+        assert '/budget-previsionnel' in v['url'] and 'secteur_id=' in v['url']
+
+    def test_budget_secteur_passe_va_a_bilan_secteurs(self, app, db, sample_users):
         with app.app_context():
             _seed(db)
         v = _analyse(app, db, 'budget babilhome 2020')
-        assert v['type'] == 'redirect' and '/bilan-secteurs' in v['url'] and 'secteur_id=' in v['url']
+        assert '/bilan-secteurs' in v['url'] and 'secteur_id=' in v['url']
+
+    def test_prev_et_budget_general_va_a_previsionnel(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        assert '/budget-previsionnel' in _analyse(app, db, 'prev 2026')['url']
+        assert '/budget-previsionnel' in _analyse(app, db, 'budget 2026')['url']
+        v = _analyse(app, db, 'actualisé babilhome 2026')
+        assert '/budget-previsionnel' in v['url'] and 'secteur_id=' in v['url']
+
+    def test_action_seule_propose_consultation_et_construction(self, app, db, sample_users):
+        # Un nom d'action seul (sans mot-clé) → deux alternatives (doute).
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'fracture numerique')
+        assert v['type'] == 'choices' and len(v['options']) == 2
+        urls = ' '.join(o['url'] for o in v['options'])
+        assert '/bilan-action' in urls and '/bilan-secteurs' in urls
 
     def test_tresorerie_mois(self, app, db, sample_users):
         n = _annee()
@@ -205,6 +245,33 @@ class TestMoteurEntitesEtPeriodes:
         assert _analyse(app, db, 'aide')['type'] == 'none'
         assert _analyse(app, db, '')['type'] == 'none'
         assert _analyse(app, db, 'zzztotalementinconnu')['type'] == 'none'
+
+
+class TestNouvellesIntentions:
+    def test_planning_salarie(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        for q in ('planning Cyril', 'horaire Cyril'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/planning_theorique' in v['url'] and 'user_id=' in v['url']
+
+    def test_rh(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        for q in ('RH', 'infos RH', 'information RH'):
+            assert '/rh/statistiques' in _analyse(app, db, q)['url']
+
+    def test_analyse_pesee(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        for q in ('analyse poste', 'analyse pesée', 'calcul pesée', 'estimation pesée'):
+            assert '/pesee_alisfa' in _analyse(app, db, q)['url']
+
+    def test_salles(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        for q in ('salles', 'salle', 'réservation'):
+            assert '/salles' in _analyse(app, db, q)['url']
 
 
 class TestApiSearch:

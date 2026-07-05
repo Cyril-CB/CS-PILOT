@@ -257,7 +257,8 @@ def _salarie_ou_choix(salaries, faire_url, prompt, ancre=''):
 # ── Détection d'intention principale ──
 
 _KW_FACTURE = {'facture', 'factures'}
-_KW_BUDGET = {'budget', 'budgets', 'previsionnel', 'previsionnel'}
+_KW_BUDGET = {'budget', 'budgets'}
+_KW_PREV = {'prev', 'previsionnel', 'previsionnels', 'actualise'}  # prévisionnel / actualisé (normalisés)
 _KW_TRESO = {'tresorerie', 'treso', 'solde'}
 _KW_SUBV = {'subvention', 'subventions'}
 _KW_INDIC = {'indicateur', 'indicateurs'}
@@ -266,6 +267,8 @@ _KW_ABSENCE = {'absence', 'absences', 'conge', 'conges'}
 _KW_PESEE = {'pesee', 'pese'}
 _KW_HEURES = {'heure', 'heures', 'temps'}
 _KW_CONTRAT = {'contrat', 'contrats', 'cdd', 'cdi'}
+_KW_PLANNING = {'planning', 'plannings', 'horaire', 'horaires'}
+_KW_SALLES = {'salle', 'salles', 'reservation', 'reservations'}
 
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
 _MOTS_OUTILS = {'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
@@ -296,6 +299,13 @@ def analyser_recherche(conn, query, profil, today):
         if mois:
             params['mois'] = mois
         return _redirect(url_for('tresorerie_bp.tresorerie', **params), 'Trésorerie')
+    # RH : « infos RH », « information RH », « RH »
+    if reste_str in ('rh', 'info rh', 'infos rh', 'information rh', 'informations rh'):
+        return _redirect(url_for('rh_statistiques_bp.rh_statistiques'), 'Statistiques RH')
+    # Pesée / analyse de poste ALISFA (outil de cotation)
+    if any(p in norm for p in ('analyse poste', 'analyse pesee', 'calcul pesee',
+                               'estimation pesee', 'cotation poste')):
+        return _redirect(url_for('pesee_alisfa_bp.pesee_alisfa'), 'Analyse / pesée ALISFA')
 
     # Retirer les mots outils en tête (« voir », « liste », « les »…) pour révéler le mot-clé.
     while reste and reste[0] in _MOTS_OUTILS:
@@ -307,7 +317,7 @@ def analyser_recherche(conn, query, profil, today):
     # ── A. Compta / finance ──
     if kw in _KW_FACTURE:
         return _intention_facture(conn, apres_kw, mois, annee_eff)
-    if kw in _KW_BUDGET:
+    if kw in _KW_BUDGET or kw in _KW_PREV:
         return _intention_budget(conn, kw, apres_kw, annee_eff, annee_explicite, today)
     if kw in _KW_TRESO or 'tresorerie' in reste:
         params = {'annee': annee_eff}
@@ -317,8 +327,9 @@ def analyser_recherche(conn, query, profil, today):
     if kw in _KW_SUBV:
         return _intention_subvention(conn, apres_kw, annee, annee_explicite)
     if kw == 'bilan':
-        return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='bilan'),
-                         f'Bilan {annee_eff}')
+        # « bilan » seul → compte-résultat (bilan de la structure) ; « bilan <secteur|action> »
+        # → bilan-secteurs (consultation).
+        return _intention_bilan(conn, apres_kw, annee_eff)
     if kw in ('cr', 'resultat'):
         return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='cr'),
                          f'Compte de résultat {annee_eff}')
@@ -328,6 +339,8 @@ def analyser_recherche(conn, query, profil, today):
     if kw in ('compte', 'comptes'):
         return _redirect(url_for('plan_comptable_general_bp.plan_comptable_general'),
                          'Plan comptable général')
+    if kw in _KW_SALLES:
+        return _redirect(url_for('salles_bp.salles'), 'Réservation de salles')
 
     # ── B. RH ──
     if kw in _KW_CONTRAT:
@@ -367,6 +380,15 @@ def analyser_recherche(conn, query, profil, today):
                 salaries, lambda uid: _url_salarie(uid, ancre),
                 f"Plusieurs salariés « {apres_kw} » :", ancre)
         return _aide("Précisez un salarié : ex. « salarié Marie ».")
+    if kw in _KW_PLANNING:
+        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        if apres_kw and salaries:
+            return _salarie_ou_choix(
+                salaries, lambda uid: url_for('planning_bp.planning_theorique', user_id=uid),
+                f"Plusieurs salariés « {apres_kw} » — planning de :")
+        return _redirect(url_for('planning_bp.planning_theorique'), 'Planning théorique')
+    if kw == 'rh':
+        return _redirect(url_for('rh_statistiques_bp.rh_statistiques'), 'Statistiques RH')
 
     # ── Mot(s) seul(s) : résolution multi-types ──
     return _resoudre_terme_libre(conn, reste_str, annee, annee_explicite, mois, today)
@@ -406,43 +428,83 @@ def _intention_facture(conn, terme, mois, annee_eff):
     return _redirect(url_for('factures_bp.liste_factures'), 'Factures')
 
 
+def _intention_bilan(conn, terme, annee_eff):
+    """« bilan » : sans entité → compte-résultat (bilan de la structure) ; avec un
+    secteur ou une action → bilan-secteurs (consultation du clôturé / réalisé)."""
+    if not terme:
+        return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='bilan'),
+                         f'Bilan {annee_eff}')
+    secteurs = _resoudre_secteur(conn, terme)
+    actions = _resoudre_action(conn, terme)
+    if len(secteurs) == 1 and not actions:
+        s = secteurs[0]
+        return _redirect(url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'], annee=annee_eff),
+                         f"Bilan — {s['nom']} {annee_eff}")
+    if len(actions) == 1 and not secteurs:
+        a = actions[0]
+        return _redirect(url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=annee_eff),
+                         f"Bilan — {a['nom']} {annee_eff}")
+    options = []
+    for s in secteurs:
+        options.append({'label': f"Secteur {s['nom']}", 'sous_titre': f'Bilan {annee_eff}',
+                        'url': url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'], annee=annee_eff)})
+    for a in actions:
+        options.append({'label': f"Action {a['nom']}", 'sous_titre': f'Bilan {annee_eff}',
+                        'url': url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=annee_eff)})
+    if options:
+        return _choices(f"« {terme} » — bilan de :", options)
+    return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='bilan'),
+                     f'Bilan {annee_eff}')
+
+
 def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
+    """Budget / prévisionnel / actualisé :
+    - sans entité, ou « prev/budget <année> » → budget-prévisionnel (général) ;
+    - secteur année courante/future → budget-prévisionnel (secteur) ; secteur année
+      passée (clôturé) → bilan-secteurs ;
+    - action → bilan-action (« Budget action », construction ; onglet réalisé si
+      année passée)."""
+    is_prev = kw in _KW_PREV
     passe = annee_explicite and annee_eff < today.year
-    # « prévisionnel [année] » sans entité → vue budgets
-    if kw in ('previsionnel', 'previsionnel') and not terme:
-        return _redirect(url_for('budget_bp.gestion_budgets', annee=annee_eff),
+
+    if not terme:
+        return _redirect(url_for('budget_bp.budget_previsionnel', annee=annee_eff),
                          f'Budget prévisionnel {annee_eff}')
-    if terme:
-        # Secteur → toujours bilan-secteurs
-        secteurs = _resoudre_secteur(conn, terme)
-        if len(secteurs) == 1:
+
+    secteurs = _resoudre_secteur(conn, terme)
+    actions = _resoudre_action(conn, terme)
+
+    if len(secteurs) == 1 and not actions:
+        s = secteurs[0]
+        if passe:
             return _redirect(
-                url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=secteurs[0]['id'], annee=annee_eff),
-                f"Budget — {secteurs[0]['nom']} {annee_eff}")
-        # Action → bilan-secteurs (réalisé) si année passée, sinon bilan-action
-        actions = _resoudre_action(conn, terme)
-        if len(actions) == 1:
-            a = actions[0]
-            if passe:
-                return _redirect(
-                    url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=annee_eff),
-                    f"Budget réalisé — {a['nom']} {annee_eff}")
-            return _redirect(
-                url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet='previsionnel'),
-                f"Budget — {a['nom']} {annee_eff}")
-        # Plusieurs correspondances (secteurs + actions)
-        options = []
-        for s in secteurs:
-            options.append({'label': f"Secteur {s['nom']}", 'sous_titre': f'Budget {annee_eff}',
-                            'url': url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'], annee=annee_eff)})
-        for a in actions:
-            url = (url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=annee_eff) if passe
-                   else url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet='previsionnel'))
-            options.append({'label': f"Action {a['nom']}", 'sous_titre': f'Budget {annee_eff}', 'url': url})
-        if options:
-            return _choices(f"« {terme} » — budget de :", options)
-    # Budget sans entité → vue d'ensemble
-    return _redirect(url_for('budget_bp.gestion_budgets', annee=annee_eff), f'Budgets {annee_eff}')
+                url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'], annee=annee_eff),
+                f"Bilan — {s['nom']} {annee_eff}")
+        return _redirect(
+            url_for('budget_bp.budget_previsionnel', annee=annee_eff, secteur_id=s['id']),
+            f"Budget prévisionnel — {s['nom']} {annee_eff}")
+
+    if len(actions) == 1 and not secteurs:
+        a = actions[0]
+        onglet = 'realise' if (passe and not is_prev) else 'previsionnel'
+        return _redirect(
+            url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet=onglet),
+            f"Budget action — {a['nom']} {annee_eff}")
+
+    options = []
+    for s in secteurs:
+        url = (url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'], annee=annee_eff) if passe
+               else url_for('budget_bp.budget_previsionnel', annee=annee_eff, secteur_id=s['id']))
+        options.append({'label': f"Secteur {s['nom']}", 'sous_titre': f'Budget {annee_eff}', 'url': url})
+    for a in actions:
+        onglet = 'realise' if (passe and not is_prev) else 'previsionnel'
+        options.append({'label': f"Action {a['nom']}", 'sous_titre': f'Budget action {annee_eff}',
+                        'url': url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=annee_eff, onglet=onglet)})
+    if options:
+        return _choices(f"« {terme} » — budget de :", options)
+
+    return _redirect(url_for('budget_bp.budget_previsionnel', annee=annee_eff),
+                     f'Budget prévisionnel {annee_eff}')
 
 
 def _intention_subvention(conn, terme, annee, annee_explicite):
@@ -509,6 +571,24 @@ def _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois, today):
                           url_for('subventions_bp.gestion_subventions',
                                   annee=sv['annee_action'] or 'toutes'),
                           f"Année {sv['annee_action'] or '—'}"))
+
+    an = annee if annee_explicite else today.year
+    actions = _resoudre_action(conn, terme)
+
+    # Action seule → doute consultation / construction : proposer les deux.
+    if not candidats and len(actions) == 1:
+        a = actions[0]
+        return _choices(f"« {a['nom'] } » — que voir ?", [
+            {'label': f"Budget action — {a['nom']}", 'sous_titre': 'Construction du budget',
+             'url': url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=an, onglet='previsionnel')},
+            {'label': f"Bilan — {a['nom']}", 'sous_titre': 'Consultation (réalisé / clôturé)',
+             'url': url_for('bilan_secteurs_bp.bilan_secteurs', action_id=a['id'], annee=an)},
+        ])
+    # Sinon, une action rejoint les autres candidats (construction du budget par défaut).
+    for a in actions:
+        candidats.append(('Budget action', a['nom'],
+                          url_for('bilan_action_bp.bilan_action', action_id=a['id'], annee=an,
+                                  onglet='previsionnel'), 'Construction du budget'))
 
     if len(candidats) == 1:
         c = candidats[0]

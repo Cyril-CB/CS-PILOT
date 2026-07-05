@@ -26,7 +26,8 @@ def _make_action(app, nom='Action Test'):
 def test_page_accessible_directeur(admin_client):
     r = admin_client.get('/bilan-action')
     assert r.status_code == 200
-    assert 'Bilan action' in r.get_data(as_text=True)
+    # La page a été renommée « Budget action » (mais l'URL /bilan-action reste).
+    assert 'Budget action' in r.get_data(as_text=True)
 
 
 def test_page_refuse_salarie(auth_client):
