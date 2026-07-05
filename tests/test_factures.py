@@ -113,6 +113,22 @@ class TestDetailFournisseur:
         assert 'INV-N' not in html
         assert '50,00' in html
 
+    def test_annee_hors_plage_repli_annee_courante(self, app, db, comptable_client):
+        """Une année hors plage (ex. N-10) passée en URL retombe sur l'année
+        courante : le filtre affiché et les données interrogées restent cohérents."""
+        n = self._annee()
+        with app.app_context():
+            fid = self._fournisseur(db, nom='THETA', code='THETA')
+            self._facture(db, fid, 'INV-NOW', f'{n}-02-10', 100.0)
+            self._facture(db, fid, 'INV-VERYOLD', f'{n-10}-05-01', 777.0)
+            db.commit()
+
+        html = comptable_client.get(f'/fournisseurs/{fid}?annee={n-10}').get_data(as_text=True)
+        assert 'INV-NOW' in html          # année courante affichée (repli)
+        assert 'INV-VERYOLD' not in html  # année hors plage non interrogée
+        # Le sélecteur reflète bien l'année courante sélectionnée.
+        assert f'<option value="{n}" selected>' in html
+
     def test_plage_annees_n_moins_3(self, app, db, comptable_client):
         n = self._annee()
         with app.app_context():

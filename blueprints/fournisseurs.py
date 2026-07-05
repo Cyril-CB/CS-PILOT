@@ -4,7 +4,6 @@ Blueprint fournisseurs_bp - Gestion des fournisseurs pour le module factures.
 Repertoire des fournisseurs avec aliases (pour l'IA) et code comptable.
 Acces : directeur, comptable.
 """
-import re
 from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
 from database import get_db
 from utils import login_required, aujourd_hui
@@ -54,8 +53,11 @@ def detail_fournisseur(fournisseur_id):
         # Filtre par année : de N-3 à l'année courante (par défaut).
         annee_courante = aujourd_hui().year
         annees = [str(annee_courante - delta) for delta in range(0, 4)]  # N … N-3
+        # On borne l'année au menu affiché : une année hors plage passée en URL
+        # (ex. ?annee=2020) retombe sur l'année courante, pour que le filtre
+        # affiché et les données interrogées restent cohérents.
         annee_param = (request.args.get('annee') or '').strip()
-        annee_selected = annee_param if re.fullmatch(r'\d{4}', annee_param) else str(annee_courante)
+        annee_selected = annee_param if annee_param in annees else str(annee_courante)
 
         factures = conn.execute('''
             SELECT f.id, f.numero_facture, f.date_facture, f.montant_ttc,
