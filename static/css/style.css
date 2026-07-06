@@ -1284,6 +1284,7 @@ a.btn-icon:-webkit-any-link {
 .cal-day-conge_paye { background: #dbeafe; }
 .cal-day-conge_conv { background: #fef3c7; }
 .cal-day-repos_forfait { background: #e0e7ff; }
+.cal-day-forfait_jour { background: #ccfbf1; }
 .cal-day-ferie { background: #fce7f3; }
 .cal-day-maladie { background: #fed7aa; }
 .cal-day-sans_solde { background: #f3f4f6; }
@@ -1295,6 +1296,7 @@ a.btn-icon:-webkit-any-link {
 [data-theme="dark"] .cal-day-conge_paye { background: #1e3a5f; }
 [data-theme="dark"] .cal-day-conge_conv { background: #78350f; }
 [data-theme="dark"] .cal-day-repos_forfait { background: #312e81; }
+[data-theme="dark"] .cal-day-forfait_jour { background: #134e4a; }
 [data-theme="dark"] .cal-day-ferie { background: #831843; }
 [data-theme="dark"] .cal-day-maladie { background: #7c2d12; }
 [data-theme="dark"] .cal-day-sans_solde { background: var(--gray-200); }

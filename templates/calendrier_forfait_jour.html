@@ -36,6 +36,10 @@
             <span style="font-size: 0.9rem;">Repos forfait</span>
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <div class="cal-swatch cal-day-forfait_jour"></div>
+            <span style="font-size: 0.9rem;">Forfait jour</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
             <div class="cal-swatch cal-day-ferie"></div>
             <span style="font-size: 0.9rem;">Jour férié</span>
         </div>
@@ -81,6 +85,9 @@
                 {% elif j.presence.type == 'repos_forfait' %}
                     {% set classe_jour = 'cal-day-repos_forfait' %}
                     {% set texte_type = 'RTT' %}
+                {% elif j.presence.type == 'forfait_jour' %}
+                    {% set classe_jour = 'cal-day-forfait_jour' %}
+                    {% set texte_type = 'Forfait jour' %}
                 {% elif j.presence.type == 'ferie' %}
                     {% set classe_jour = 'cal-day-ferie' %}
                     {% set texte_type = 'Férié' %}
@@ -149,6 +156,7 @@
                     <option value="conge_paye">🏖️ Congé payé</option>
                     <option value="conge_conv">🏖️ Congé conventionnel</option>
                     <option value="repos_forfait">🏠 Repos forfait jour (RTT)</option>
+                    <option value="forfait_jour">📅 Forfait jour</option>
                     <option value="ferie">🎉 Jour férié</option>
                     <option value="maladie">🤒 Arrêt maladie</option>
                     <option value="sans_solde">💰 Sans solde</option>

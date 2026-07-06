@@ -34,6 +34,7 @@ MOTIF_VERS_TYPE_FORFAIT = {
     'Congé conventionnel': 'conge_conv',
     'Arrêt maladie': 'maladie',
     'Sans solde': 'sans_solde',
+    'Forfait jour': 'forfait_jour',
 }
 
 DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')

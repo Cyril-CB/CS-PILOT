@@ -1,7 +1,7 @@
 """
 Blueprint recup_bp.
 """
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, make_response
 from datetime import datetime, timedelta
 import sqlite3
 from database import get_db
@@ -795,19 +795,34 @@ def historique_demandes_recup():
 # ==================== DEMANDES DE CONGES ====================
 
 TYPES_CONGE = ['Congé payé', 'Congé conventionnel']
+# Type réservé à la direction (régime forfait jours) : un jour de repos posé au
+# titre du forfait. Proposé en plus des congés classiques uniquement au directeur.
+TYPE_CONGE_FORFAIT = 'Forfait jour'
+
+
+def _types_conge_pour(profil):
+    """Liste des types de congé proposés selon le profil."""
+    if profil == 'directeur':
+        return TYPES_CONGE + [TYPE_CONGE_FORFAIT]
+    return TYPES_CONGE
 
 
 @recup_bp.route('/demande_conge', methods=['GET', 'POST'])
 @login_required
 def demande_conge():
-    """Créer une demande de congé (payé ou conventionnel)"""
+    """Créer une demande de congé (payé ou conventionnel).
+
+    La direction (forfait jours) n'a pas de responsable au-dessus : sa demande est
+    auto-validée à la création et reportée immédiatement sur le calendrier forfait
+    jour (et donc sur la prépa paie via la table absences).
+    """
     if request.method == 'POST':
         type_conge = request.form.get('type_conge', '').strip()
         date_debut = request.form.get('date_debut')
         date_fin = request.form.get('date_fin')
         motif_demande = request.form.get('motif_demande', '').strip()
 
-        if not type_conge or type_conge not in TYPES_CONGE:
+        if not type_conge or type_conge not in _types_conge_pour(session.get('profil')):
             flash('Type de congé invalide', 'error')
             return redirect(url_for('recup_bp.demande_conge'))
 
@@ -838,19 +853,42 @@ def demande_conge():
                   f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.', 'warning')
 
         # Déterminer le statut initial selon le profil
-        if session.get('profil') == 'responsable':
+        if session.get('profil') == 'directeur':
+            # Forfait jours : pas de responsable au-dessus → auto-validation.
+            statut_initial = 'validee'
+        elif session.get('profil') == 'responsable':
             statut_initial = 'en_attente_direction'
         else:
             statut_initial = 'en_attente_responsable'
 
         try:
-            conn.execute('''
+            cur = conn.execute('''
                 INSERT INTO demandes_conges
                 (user_id, type_conge, date_debut, date_fin, nb_jours, motif_demande, statut)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (session['user_id'], type_conge, date_debut, date_fin, nb_jours, motif_demande, statut_initial))
+            demande_id = cur.lastrowid
+
+            if statut_initial == 'validee':
+                # Tampon d'auto-validation (direction) + report immédiat sur le
+                # calendrier forfait jour et création de l'absence (→ prépa paie).
+                valideur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
+                                        (session['user_id'],)).fetchone()
+                nom_valideur = f"{valideur['prenom']} {valideur['nom']}" if valideur else ''
+                conn.execute(
+                    'UPDATE demandes_conges SET validation_direction = ?, date_validation_direction = ? WHERE id = ?',
+                    (nom_valideur, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), demande_id))
+                demande = {
+                    'user_id': session['user_id'], 'type_conge': type_conge,
+                    'date_debut': date_debut, 'date_fin': date_fin, 'nb_jours': nb_jours,
+                }
+                _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
+
             conn.commit()
-            flash(f'Demande de {type_conge.lower()} créée : {nb_jours} jour(s)', 'success')
+            if statut_initial == 'validee':
+                flash(f'Congé enregistré et validé : {nb_jours} jour(s) reporté(s) sur votre calendrier.', 'success')
+            else:
+                flash(f'Demande de {type_conge.lower()} créée : {nb_jours} jour(s)', 'success')
 
             # Notification email au responsable (si configuré)
             if is_email_configured() and statut_initial == 'en_attente_responsable':
@@ -899,7 +937,7 @@ def demande_conge():
     conn.close()
 
     return render_template('demande_conge.html',
-                           types_conge=TYPES_CONGE,
+                           types_conge=_types_conge_pour(session.get('profil')),
                            solde_cp=solde_cp,
                            solde_cc=solde_cc)
 
@@ -922,6 +960,109 @@ def mes_demandes_conges():
     conn.close()
 
     return render_template('mes_demandes_conges.html', demandes=demandes)
+
+
+@recup_bp.route('/demande_conge/<int:demande_id>/pdf')
+@login_required
+def demande_conge_pdf(demande_id):
+    """Édite une demande de congés en PDF (dates, type, motif) avec les deux
+    signatures (Direction / Comité de présidence)."""
+    conn = get_db()
+    demande = conn.execute('''
+        SELECT d.*, u.nom, u.prenom
+        FROM demandes_conges d JOIN users u ON d.user_id = u.id
+        WHERE d.id = ?
+    ''', (demande_id,)).fetchone()
+    conn.close()
+
+    if not demande:
+        flash('Demande introuvable', 'error')
+        return redirect(url_for('recup_bp.mes_demandes_conges'))
+
+    # Accès : le demandeur lui-même, ou la direction / comptabilité.
+    if demande['user_id'] != session['user_id'] and session.get('profil') not in ('directeur', 'comptable'):
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER
+
+    def _fr(d):
+        try:
+            return datetime.strptime(d, '%Y-%m-%d').strftime('%d/%m/%Y')
+        except (ValueError, TypeError):
+            return d or ''
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('T', parent=styles['Heading1'], fontSize=16,
+                                 textColor=colors.HexColor('#1e40af'), alignment=TA_CENTER, spaceAfter=6)
+    heading_style = ParagraphStyle('H', parent=styles['Heading2'], fontSize=12,
+                                   textColor=colors.HexColor('#1e40af'), spaceBefore=15, spaceAfter=10)
+
+    elements = [Paragraph('DEMANDE DE CONGÉS', title_style), Spacer(1, 0.5 * cm)]
+    elements.append(Paragraph(f"<b>Salarié :</b> {demande['prenom']} {demande['nom']}", styles['Normal']))
+    elements.append(Paragraph(f"<b>Demande déposée le :</b> {_fr((demande['date_demande'] or '')[:10])}", styles['Normal']))
+    elements.append(Spacer(1, 0.4 * cm))
+
+    statut_labels = {'en_attente_responsable': 'En attente responsable',
+                     'en_attente_direction': 'En attente direction',
+                     'validee': 'Validée', 'refusee': 'Refusée'}
+    data = [
+        ['Type de congé', demande['type_conge']],
+        ['Du', _fr(demande['date_debut'])],
+        ['Au', _fr(demande['date_fin'])],
+        ['Nombre de jours ouvrés', f"{demande['nb_jours']:g}"],
+        ['Motif', demande['motif_demande'] or '-'],
+        ['Statut', statut_labels.get(demande['statut'], demande['statut'])],
+    ]
+    table = Table(data, colWidths=[6 * cm, 10 * cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#e2e8f0')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 1.2 * cm))
+
+    # Signatures : Direction (pré-remplie si validée) + Comité de présidence.
+    elements.append(Paragraph('SIGNATURES', heading_style))
+    elements.append(Spacer(1, 0.3 * cm))
+    nom_direction = demande['validation_direction'] or ''
+    data_sig = [
+        ['Direction', 'Comité de présidence', 'Date'],
+        ['', '', ''],
+        [nom_direction, '', ''],
+    ]
+    table_sig = Table(data_sig, colWidths=[6 * cm, 6 * cm, 4 * cm], rowHeights=[0.5 * cm, 2 * cm, 0.5 * cm])
+    table_sig.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('LINEBELOW', (0, 1), (-1, 1), 1, colors.black),
+        ('FONTSIZE', (0, 2), (-1, 2), 9),
+        ('TEXTCOLOR', (0, 2), (-1, 2), colors.HexColor('#475569')),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    elements.append(table_sig)
+
+    doc.build(elements)
+    buffer.seek(0)
+    response = make_response(buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = (
+        f"attachment; filename=demande_conge_{demande['nom']}_{demande['date_debut']}.pdf")
+    return response
 
 
 @recup_bp.route('/supprimer_demande_conge', methods=['POST'])

@@ -249,8 +249,11 @@ def rapport_forfait_jour_pdf(mois, annee):
     nb_jours_horaires = 0
 
     for p in presences:
-        if p['type_journee'] in stats_mois:
-            stats_mois[p['type_journee']] += 1
+        # « Forfait jour » consomme le quota de repos forfait : on l'y agrège
+        # (le libellé distinct reste visible dans le détail jour par jour).
+        type_j = 'repos_forfait' if p['type_journee'] == 'forfait_jour' else p['type_journee']
+        if type_j in stats_mois:
+            stats_mois[type_j] += 1
         heures_jour = calculer_heures(p['matin_debut'], p['matin_fin']) + \
                       calculer_heures(p['aprem_debut'], p['aprem_fin'])
         if heures_jour > 0:
@@ -316,6 +319,7 @@ def rapport_forfait_jour_pdf(mois, annee):
         'conge_paye': 'Congé payé',
         'conge_conv': 'Congé conventionnel',
         'repos_forfait': 'Repos forfait jour',
+        'forfait_jour': 'Forfait jour',
         'ferie': 'Jour férié',
         'maladie': 'Arrêt maladie',
         'sans_solde': 'Sans solde',
