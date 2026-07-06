@@ -228,6 +228,80 @@ def test_api_budget_previsionnel_actualise_combine_n_partiel_et_n_1(app, db, adm
     assert row_charge['temp'] == 1200.0
 
 
+def test_api_budget_previsionnel_detail_liste_les_operations(app, db, admin_client, sample_users):
+    # Le détail d'une somme compta liste les opérations FEC, filtrées par secteur.
+    n = datetime.now().year
+    secteur_id = sample_users['secteur_id']
+    with app.app_context():
+        db.execute('INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES (?, ?)',
+                   ('ANA-DET', secteur_id))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('bi.txt', ?, 3)", (n,))
+        imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+        for mois, montant in [(1, 100), (2, 250)]:
+            db.execute('INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) '
+                       'VALUES (?, ?, ?, ?, ?, ?, ?)', ('601000', 'Charge', 'ANA-DET', n, mois, montant, imp))
+        # Opération d'un autre secteur (code non autorisé) : doit être exclue.
+        db.execute('INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?)', ('601000', 'Autre', 'ANA-AUTRE', n, 3, 999, imp))
+        db.commit()
+
+    r = admin_client.get(f'/api/budget-previsionnel/detail?compte=601000&annee={n}&secteur_id={secteur_id}')
+    ops = r.get_json()['operations']
+    assert sorted(o['montant'] for o in ops) == [100.0, 250.0]  # l'opération hors secteur est exclue
+    assert all(o['mois_nom'] for o in ops)
+
+
+def test_api_budget_previsionnel_detail_respecte_mois_max(app, db, admin_client, sample_users):
+    # En « actualisé », la colonne N est partielle : le détail respecte mois_max.
+    n = datetime.now().year
+    secteur_id = sample_users['secteur_id']
+    with app.app_context():
+        db.execute('INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES (?, ?)',
+                   ('ANA-MM', secteur_id))
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('bi.txt', ?, 3)", (n,))
+        imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+        for mois in (1, 2, 5):
+            db.execute('INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) '
+                       'VALUES (?, ?, ?, ?, ?, ?, ?)', ('601000', 'C', 'ANA-MM', n, mois, 100, imp))
+        db.commit()
+
+    r = admin_client.get(f'/api/budget-previsionnel/detail?compte=601000&annee={n}&secteur_id={secteur_id}&mois_max=2')
+    ops = r.get_json()['operations']
+    assert [o['mois'] for o in ops] == [1, 2]  # le mois 5 est exclu
+
+
+def test_api_budget_previsionnel_detail_refuse_salarie(auth_client):
+    r = auth_client.get('/api/budget-previsionnel/detail?compte=601000&annee=2026')
+    assert r.status_code == 403
+
+
+def test_api_budget_previsionnel_detail_responsable_sans_secteur_refuse(app, db, resp_client, sample_users):
+    # Sécurité : un responsable autorisé mais SANS secteur ne doit pas récupérer
+    # toutes les opérations du compte (fuite) — l'accès est refusé (403).
+    from app_options import set_option_bool
+    n = datetime.now().year
+    with app.app_context():
+        set_option_bool('budget_previsionnel_responsable_autorise', True)
+        db.execute("UPDATE users SET secteur_id = NULL WHERE id = ?", (sample_users['responsable_id'],))
+        # Une opération existe pour ce compte/année : elle ne doit PAS fuiter.
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('bi.txt', ?, 1)", (n,))
+        imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+        db.execute('INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?)', ('601000', 'X', 'ANA-X', n, 1, 500, imp))
+        db.commit()
+    r = resp_client.get(f'/api/budget-previsionnel/detail?compte=601000&annee={n}')
+    assert r.status_code == 403
+
+
+def test_budget_previsionnel_sommes_cliquables_et_modale(admin_client):
+    # La page embarque l'indice, la fenêtre de détail, le handler et le style lien.
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert 'Cliquez les sommes pour afficher le détail' in html
+    assert 'bpDetailModal' in html
+    assert 'bpVoirDetail' in html
+    assert 'bp-detail' in html
+
+
 def test_api_budget_previsionnel_save_line_refuse_responsable(resp_client, sample_users):
     secteur_id = sample_users['secteur_id']
     response = resp_client.post('/api/budget-previsionnel/save-line', json={

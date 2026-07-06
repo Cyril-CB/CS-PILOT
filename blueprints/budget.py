@@ -977,6 +977,73 @@ def budget_previsionnel():
         conn.close()
 
 
+@budget_bp.route('/api/budget-previsionnel/detail')
+@login_required
+def api_budget_previsionnel_detail():
+    """Opérations comptables (FEC) derrière une somme d'une colonne compta.
+
+    Reproduit exactement le filtrage de _compute_budget_previsionnel (compte +
+    année + rattachement au secteur via les codes autorisés, et éventuellement le
+    plafond de mois pour la colonne N en mode « actualisé ») afin que le détail
+    corresponde à la somme affichée.
+    """
+    profil = session.get('profil')
+    if not _can_access_budget_previsionnel(profil):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    compte = (request.args.get('compte') or '').strip()
+    annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
+    global_mode = request.args.get('global') == '1'
+    mois_max = request.args.get('mois_max', type=int)
+    if not compte or not annee:
+        return jsonify({'operations': []})
+
+    conn = get_db()
+    try:
+        # Le responsable est verrouillé sur son propre secteur (comme la page).
+        if profil == 'responsable':
+            global_mode = False
+            user = conn.execute('SELECT secteur_id FROM users WHERE id = ?',
+                                (session.get('user_id'),)).fetchone()
+            secteur_id = user['secteur_id'] if user else None
+            if not secteur_id:
+                return jsonify({'error': 'Aucun secteur associé à votre compte'}), 403
+
+        # Hors mode global, un secteur est OBLIGATOIRE pour délimiter le périmètre :
+        # sans lui on ne renvoie rien (jamais toutes les opérations du compte).
+        if not global_mode and not secteur_id:
+            return jsonify({'operations': []})
+
+        allowed_codes = _secteur_allowed_codes(conn, secteur_id) if not global_mode else set()
+
+        query = ('SELECT annee, mois, libelle, code_analytique, montant '
+                 'FROM bilan_fec_donnees WHERE compte_num = ? AND annee = ?')
+        params = [compte, annee]
+        if mois_max and 1 <= mois_max <= 12:
+            query += ' AND mois <= ?'
+            params.append(mois_max)
+        query += ' ORDER BY mois, id'
+        rows = conn.execute(query, params).fetchall()
+
+        operations = []
+        for r in rows:
+            if not global_mode and not _code_allowed(
+                    r['code_analytique'], compte, allowed_codes):
+                continue
+            m = r['mois']
+            operations.append({
+                'annee': r['annee'],
+                'mois': m,
+                'mois_nom': NOMS_MOIS[m] if m and 1 <= m <= 12 else '',
+                'libelle': r['libelle'] or '',
+                'montant': round(float(r['montant'] or 0), 2),
+            })
+        return jsonify({'operations': operations})
+    finally:
+        conn.close()
+
+
 @budget_bp.route('/api/budget-previsionnel/config', methods=['POST'])
 @login_required
 def api_budget_previsionnel_config_save():
