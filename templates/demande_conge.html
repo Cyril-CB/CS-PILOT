@@ -44,9 +44,15 @@
             <ul>
                 <li>Seuls les <strong>jours ouvrés</strong> (lundi-vendredi) sont comptés</li>
                 <li>Les <strong>congés payés</strong> et <strong>congés conventionnels</strong> peuvent être demandés via ce formulaire</li>
+                {% if session.profil == 'directeur' %}
+                <li>En tant que direction (forfait jours), votre demande est <strong>validée automatiquement</strong> et reportée sur votre <strong>calendrier forfait jour</strong> (et la prépa paie)</li>
+                <li>Le type <strong>« Forfait jour »</strong> correspond à un jour de repos posé au titre du forfait</li>
+                <li>Vous pouvez éditer chaque congé validé en <strong>PDF</strong> (avec signatures) depuis "Mes demandes"</li>
+                {% else %}
                 <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
                 <li>Une demande de congé peut conduire à un <strong>solde négatif</strong> (congé par anticipation). Dans ce cas, elle peut être refusée si les jours en cours d'acquisition sont insuffisants</li>
                 <li>Vous pouvez suivre l'état de votre demande dans "Mes demandes"</li>
+                {% endif %}
             </ul>
         </div>
 

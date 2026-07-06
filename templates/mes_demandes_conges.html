@@ -36,8 +36,12 @@
                     <td data-label="Type">
                         {% if d.type_conge == 'Congé payé' %}
                         <span class="badge" style="background: #dbeafe; color: #1e40af;">CP</span>
-                        {% else %}
+                        {% elif d.type_conge == 'Congé conventionnel' %}
                         <span class="badge" style="background: #fae8ff; color: #86198f;">CC</span>
+                        {% elif d.type_conge == 'Forfait jour' %}
+                        <span class="badge" style="background: #ccfbf1; color: #0f766e;">Forfait jour</span>
+                        {% else %}
+                        <span class="badge" style="background: var(--gray-100); color: var(--gray-700);">{{ d.type_conge }}</span>
                         {% endif %}
                     </td>
                     <td data-label="Période">
@@ -91,6 +95,10 @@
                                 🗑 Supprimer
                             </button>
                         </form>
+                        {% elif d.statut == 'validee' %}
+                        <a href="{{ url_for('recup_bp.demande_conge_pdf', demande_id=d.id) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.4rem 0.6rem;">
+                            📄 PDF
+                        </a>
                         {% else %}
                         <span style="color: var(--gray-400);">-</span>
                         {% endif %}

@@ -508,6 +508,7 @@ def calculer_stats_forfait_jour(user_id, annee):
         'conge_paye': 0,
         'conge_conv': 0,
         'repos_forfait': 0,
+        'forfait_jour': 0,
         'ferie': 0,
         'maladie': 0,
         'sans_solde': 0,

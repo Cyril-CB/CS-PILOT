@@ -28,6 +28,7 @@ MOTIFS_ABSENCE_PAIE = [
     'Evènement familial',
     'Sans solde',
     'Mi-temps thérapeutique',
+    'Forfait jour',
     'Autre',
 ]
 
