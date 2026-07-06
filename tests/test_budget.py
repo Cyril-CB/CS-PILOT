@@ -275,6 +275,24 @@ def test_api_budget_previsionnel_detail_refuse_salarie(auth_client):
     assert r.status_code == 403
 
 
+def test_api_budget_previsionnel_detail_responsable_sans_secteur_refuse(app, db, resp_client, sample_users):
+    # Sécurité : un responsable autorisé mais SANS secteur ne doit pas récupérer
+    # toutes les opérations du compte (fuite) — l'accès est refusé (403).
+    from app_options import set_option_bool
+    n = datetime.now().year
+    with app.app_context():
+        set_option_bool('budget_previsionnel_responsable_autorise', True)
+        db.execute("UPDATE users SET secteur_id = NULL WHERE id = ?", (sample_users['responsable_id'],))
+        # Une opération existe pour ce compte/année : elle ne doit PAS fuiter.
+        db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('bi.txt', ?, 1)", (n,))
+        imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+        db.execute('INSERT INTO bilan_fec_donnees (compte_num, libelle, code_analytique, annee, mois, montant, import_id) '
+                   'VALUES (?, ?, ?, ?, ?, ?, ?)', ('601000', 'X', 'ANA-X', n, 1, 500, imp))
+        db.commit()
+    r = resp_client.get(f'/api/budget-previsionnel/detail?compte=601000&annee={n}')
+    assert r.status_code == 403
+
+
 def test_budget_previsionnel_sommes_cliquables_et_modale(admin_client):
     # La page embarque l'indice, la fenêtre de détail, le handler et le style lien.
     html = admin_client.get('/budget-previsionnel').get_data(as_text=True)

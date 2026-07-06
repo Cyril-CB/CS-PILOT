@@ -1007,10 +1007,15 @@ def api_budget_previsionnel_detail():
             user = conn.execute('SELECT secteur_id FROM users WHERE id = ?',
                                 (session.get('user_id'),)).fetchone()
             secteur_id = user['secteur_id'] if user else None
+            if not secteur_id:
+                return jsonify({'error': 'Aucun secteur associé à votre compte'}), 403
 
-        allowed_codes = set()
-        if secteur_id and not global_mode:
-            allowed_codes = _secteur_allowed_codes(conn, secteur_id)
+        # Hors mode global, un secteur est OBLIGATOIRE pour délimiter le périmètre :
+        # sans lui on ne renvoie rien (jamais toutes les opérations du compte).
+        if not global_mode and not secteur_id:
+            return jsonify({'operations': []})
+
+        allowed_codes = _secteur_allowed_codes(conn, secteur_id) if not global_mode else set()
 
         query = ('SELECT annee, mois, libelle, code_analytique, montant '
                  'FROM bilan_fec_donnees WHERE compte_num = ? AND annee = ?')
@@ -1023,7 +1028,7 @@ def api_budget_previsionnel_detail():
 
         operations = []
         for r in rows:
-            if not global_mode and secteur_id and not _code_allowed(
+            if not global_mode and not _code_allowed(
                     r['code_analytique'], compte, allowed_codes):
                 continue
             m = r['mois']
