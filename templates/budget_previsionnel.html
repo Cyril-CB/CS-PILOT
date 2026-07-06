@@ -8,6 +8,10 @@
 .budget-prev-table th:last-child, .budget-prev-table td:last-child { border-right: none; }
 .budget-prev-table tbody tr:nth-child(even) { background: var(--gray-050, #fafbfc); }
 .budget-prev-table .bp-col-num { text-align: right; white-space: nowrap; }
+/* Sommes compta cliquables : lien sans soulignement + indice à côté des titres. */
+.bp-detail { cursor: pointer; color: var(--primary, #2563eb); text-decoration: none; }
+.bp-detail:hover { text-decoration: none; opacity: 0.7; }
+.bp-detail-hint { font-size: 0.78rem; font-weight: 400; color: var(--gray-500, #6b7280); }
 .budget-prev-table .bp-col-compte { width: 90px; }
 .budget-prev-table .bp-col-libelle { width: 270px; }
 .budget-prev-table .bp-col-value { width: 95px; }
@@ -340,6 +344,19 @@
     </div>
 </div>
 
+<!-- Fenêtre de détail des opérations comptables derrière une somme -->
+<div id="bpDetailModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+    <div class="modal-content" style="max-width:700px;">
+        <div class="modal-header">
+            <h3 id="bpDetailTitle">Détail du compte</h3>
+            <button class="modal-close" onclick="this.closest('.modal-overlay').style.display='none'">&times;</button>
+        </div>
+        <div class="modal-body" style="padding:0 1.5rem 1.5rem;">
+            <div id="bpDetailContent"></div>
+        </div>
+    </div>
+</div>
+
 <script>
 var isReadOnly = {{ 'true' if profil == 'responsable' else 'false' }};
 var canEditPs = {{ 'true' if profil in ['directeur', 'comptable'] else 'false' }};
@@ -402,8 +419,18 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
     const type = document.getElementById('typeBudget').value;
     const nTemp = type === 'initial' ? 'N+1 Temp.' : 'N Temp.';
     const nDef = type === 'initial' ? 'N+1 Déf.' : 'N Déf.';
-    const html = '<h3>Charges</h3>' + buildTable(charges, nTemp, nDef, globalMode) +
-                 '<h3 style="margin-top:18px;">Produits</h3>' + buildTable(produits, nTemp, nDef, globalMode);
+    // Contexte de « drill-down » : les colonnes compta (N-2/N-1/N) deviennent
+    // cliquables et affichent les opérations sous-jacentes. En « actualisé », la
+    // colonne N est un cumul partiel (mois <= last_month) : on passe ce plafond.
+    const ctx = {
+        annee: parseInt(document.getElementById('anneeBudget').value),
+        secteur: document.getElementById('secteurBudget').value,
+        global: globalMode,
+        moisMax: (type === 'actualise' && meta && meta.last_month) ? meta.last_month : 0
+    };
+    const hint = ' <span class="bp-detail-hint">(Cliquez les sommes pour afficher le détail)</span>';
+    const html = '<h3>Charges' + hint + '</h3>' + buildTable(charges, nTemp, nDef, globalMode, ctx) +
+                 '<h3 style="margin-top:18px;">Produits' + hint + '</h3>' + buildTable(produits, nTemp, nDef, globalMode, ctx);
     document.getElementById(targetId).innerHTML = html;
     bindBudgetInputHandlers(targetId);
     bindPsButtons(targetId);
@@ -431,8 +458,17 @@ function bindBudgetInputHandlers(targetId){
     });
 }
 
-function buildTable(rows, labelTemp, labelDef, globalMode){
+function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
     if (!rows.length) return '<p style="color:var(--text-muted);">Aucune donnée disponible.</p>';
+    ctx = ctx || {};
+    // Cellule d'une colonne compta (N-2/N-1/N) : cliquable pour voir le détail.
+    function comptaCell(compte, anneeCol, value, moisMax){
+        const attrs = 'data-compte="' + escapeHtml(compte) + '" data-annee-col="' + anneeCol + '"' +
+            (ctx.global ? ' data-global="1"' : ' data-secteur="' + escapeHtml(ctx.secteur || '') + '"') +
+            (moisMax ? ' data-mois-max="' + moisMax + '"' : '');
+        return '<td class="bp-col-num"><span class="bp-detail" ' + attrs +
+            ' onclick="bpVoirDetail(this)">' + fmt(value) + '</span></td>';
+    }
     let html = '<div class="bp-table-scroll"><table class="data-table budget-prev-table"><colgroup>' +
       '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-input"><col class="bp-col-input"><col class="bp-col-comment">' +
       '</colgroup><thead><tr>' +
@@ -472,7 +508,9 @@ function buildTable(rows, labelTemp, labelDef, globalMode){
             : '';
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + paieBtn + '</td>' +
-          '<td class="bp-col-num">' + fmt(r['N-2']) + '</td><td class="bp-col-num">' + fmt(r['N-1']) + '</td><td class="bp-col-num">' + fmt(r['N']) + '</td>' +
+          comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], 0) +
+          comptaCell(r.compte_num, ctx.annee - 1, r['N-1'], 0) +
+          comptaCell(r.compte_num, ctx.annee, r['N'], ctx.moisMax) +
           '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td><td>' + commentInput + '</td></tr>';
     }
     pushCatTotal();
@@ -487,6 +525,42 @@ function renderResult(targetId, totaux){
       ' € = <strong>' + fmt(totaux.resultat_temp) + ' €</strong><br>' +
       'Définitif : Produits ' + fmt(totaux.produits_def) + ' € - Charges ' + fmt(totaux.charges_def) +
       ' € = <strong>' + fmt(totaux.resultat_def) + ' €</strong>';
+}
+
+// Détail d'une somme compta : ouvre la fenêtre et liste les opérations (FEC).
+function bpVoirDetail(el){
+    const d = el.dataset;
+    const compte = d.compte, annee = d.anneeCol;
+    let url = '/api/budget-previsionnel/detail?compte=' + encodeURIComponent(compte) +
+              '&annee=' + encodeURIComponent(annee);
+    if (d.global === '1') url += '&global=1';
+    else if (d.secteur) url += '&secteur_id=' + encodeURIComponent(d.secteur);
+    if (d.moisMax) url += '&mois_max=' + encodeURIComponent(d.moisMax);
+
+    document.getElementById('bpDetailTitle').textContent = 'Détail du compte ' + compte + ' — ' + annee;
+    document.getElementById('bpDetailContent').innerHTML = '<p>Chargement…</p>';
+    document.getElementById('bpDetailModal').style.display = 'flex';
+
+    fetch(url).then(r => r.json()).then(data => {
+        const ops = data.operations || [];
+        if (!ops.length){
+            document.getElementById('bpDetailContent').innerHTML = '<p>Aucune opération trouvée.</p>';
+            return;
+        }
+        let total = 0;
+        let html = '<table class="data-table"><thead><tr><th>Mois</th><th>Libellé</th>' +
+                   '<th style="text-align:right;">Montant</th></tr></thead><tbody>';
+        for (const op of ops){
+            total += Number(op.montant || 0);
+            html += '<tr><td>' + escapeHtml(op.mois_nom) + '</td><td>' + escapeHtml(op.libelle) +
+                    '</td><td style="text-align:right;">' + fmt(op.montant) + ' €</td></tr>';
+        }
+        html += '</tbody><tfoot><tr><th colspan="2" style="text-align:right;">Total</th>' +
+                '<th style="text-align:right;">' + fmt(total) + ' €</th></tr></tfoot></table>';
+        document.getElementById('bpDetailContent').innerHTML = html;
+    }).catch(() => {
+        document.getElementById('bpDetailContent').innerHTML = '<p>Erreur réseau.</p>';
+    });
 }
 
 const saveTimers = {};
