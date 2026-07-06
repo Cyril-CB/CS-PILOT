@@ -316,6 +316,15 @@ _KW_SALLES = {'salle', 'salles', 'reservation', 'reservations'}
 # consultation du clôturé vers bilan-secteurs, qui accepte n'importe quelle année.
 _BILAN_ACTION_ANNEES_PASSEES = 4
 
+# Déposer une demande de congés : « demande (de) congé(s) », « poser congé(s) »,
+# « prendre congé(s) » (+ variantes « demander », « faire une demande de… »).
+# Le verbe est requis : « congé Marie » reste l'intention « absences ».
+_RE_DEMANDE_CONGE = re.compile(
+    r'\b(?:demande|demandes|demander|demandez|pose|poser|posez|prendre|prends|prend|prenez)\b'
+    r'(?:\s+(?:de|d|un|une|des|mes|ma|mon|le|la|les|nouvelle))*'
+    r'\s+conges?\b'
+)
+
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
 _MOTS_OUTILS = {'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
                 'ouvre', 'ouvrir', 'les', 'la', 'le', 'des', 'du', 'de', 'mes', 'mon', 'ma'}
@@ -352,6 +361,9 @@ def analyser_recherche(conn, query, profil, today):
     if any(p in norm for p in ('analyse poste', 'analyse pesee', 'calcul pesee',
                                'estimation pesee', 'cotation poste')):
         return _redirect(url_for('pesee_alisfa_bp.pesee_alisfa'), 'Analyse / pesée ALISFA')
+    # Déposer une demande de congés (direction et comptable y ont accès).
+    if _RE_DEMANDE_CONGE.search(norm):
+        return _redirect(url_for('recup_bp.demande_conge'), 'Demande de congés')
 
     # Retirer les mots outils en tête (« voir », « liste », « les »…) pour révéler le mot-clé.
     while reste and reste[0] in _MOTS_OUTILS:

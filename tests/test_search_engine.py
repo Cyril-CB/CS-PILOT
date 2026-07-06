@@ -398,3 +398,28 @@ class TestJournalRecherches:
     def test_journal_recherches_refuse_salarie(self, app, auth_client, sample_users):
         r = auth_client.get('/securite/journal-recherches', follow_redirects=False)
         assert r.status_code in (301, 302)
+
+
+class TestDemandeConge:
+    def test_variantes_renvoient_vers_la_demande(self, app, db, sample_users):
+        with app.app_context():
+            _seed(db)
+        for q in ('demande de congés', 'demande congé', 'demande congés',
+                  'poser congé', 'poser des congés', 'prendre congé',
+                  'prendre un congé', 'demander un congé', 'faire une demande de congé'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/demande_conge' in v['url'], q
+
+    def test_accessible_au_comptable(self, app, db, sample_users):
+        # La barre est réservée direction + comptable : les deux y ont droit.
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'demande de congés', profil='comptable')
+        assert v['type'] == 'redirect' and '/demande_conge' in v['url']
+
+    def test_absence_non_confondue_avec_demande(self, app, db, sample_users):
+        # Sans verbe, « absence/congé <nom> » reste l'intention « absences ».
+        with app.app_context():
+            _seed(db)
+        v = _analyse(app, db, 'absence Fatou')
+        assert '/absences' in v['url'] and '/demande_conge' not in v['url']
