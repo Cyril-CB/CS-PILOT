@@ -167,6 +167,57 @@ def test_longue_absence_directeur_couvre_toutes_les_annees(app, admin_client, sa
     assert s2028['travaille'] > 0 and s2028['autre'] > 0
 
 
+def test_forfait_jour_directeur_decompte_le_repos_forfait(app, admin_client, sample_users):
+    """Un « Forfait jour » saisi via /absences pour un directeur le marque sur son
+    calendrier forfait (type dédié) et décompte le quota de repos forfait."""
+    annee = 2026
+    jour = _un_jour_ouvre(annee, 8)
+    uid = sample_users['directeur_id']
+
+    with app.app_context():
+        repos_avant = utils.calculer_stats_forfait_jour(uid, annee)['soldes']['repos_forfait_restants']
+
+    resp = admin_client.post('/absences', data={
+        'user_id': uid, 'motif': 'Forfait jour',
+        'date_debut': jour, 'date_fin': jour,
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+
+    # Libellé dédié sur le calendrier forfait
+    assert _type_du_jour(app, uid, jour) == 'forfait_jour'
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(uid, annee)
+    # « Forfait jour » est agrégé au repos forfait pour le décompte du quota
+    assert stats['repos_forfait'] == 1
+    assert stats['soldes']['repos_forfait_restants'] == repos_avant - 1
+    assert stats['travaille'] == _jours_ouvres_attendus(annee) - 1
+
+
+def test_conge_paye_salarie_met_a_jour_compteur_et_calendrier(app, admin_client, db, sample_users):
+    """Un congé payé saisi via /absences pour un SALARIÉ incrémente son compteur
+    cp_pris et remplit son calendrier (heures_reelles)."""
+    jour = _un_jour_ouvre(2026, 9)
+    uid = sample_users['salarie_id']
+    cp_avant = db.execute("SELECT cp_pris FROM users WHERE id = ?", (uid,)).fetchone()['cp_pris'] or 0
+
+    admin_client.post('/absences', data={
+        'user_id': uid, 'motif': 'Congé payé',
+        'date_debut': jour, 'date_fin': jour,
+    }, follow_redirects=True)
+
+    cp_apres = db.execute("SELECT cp_pris FROM users WHERE id = ?", (uid,)).fetchone()['cp_pris'] or 0
+    assert cp_apres == cp_avant + 1  # solde CP salarié mis à jour
+
+    with app.app_context():
+        conn = database.get_db()
+        row = conn.execute(
+            "SELECT type_saisie FROM heures_reelles WHERE user_id = ? AND date = ?", (uid, jour)
+        ).fetchone()
+        conn.close()
+    assert row is not None and row['type_saisie'] == 'absence'  # calendrier salarié rempli
+
+
 def test_arret_maladie_salarie_reste_sur_heures_reelles(app, admin_client, sample_users):
     """Le comportement salarié est inchangé : l'absence va sur heures_reelles et
     RIEN n'est écrit sur le calendrier forfait jours."""

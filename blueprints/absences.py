@@ -16,6 +16,7 @@ absences_bp = Blueprint('absences_bp', __name__)
 MOTIFS_ABSENCE = [
     'Congé payé',
     'Congé conventionnel',
+    'Forfait jour',
     'Arrêt maladie',
     'Congé parental',
     'Jour enfant malade',
