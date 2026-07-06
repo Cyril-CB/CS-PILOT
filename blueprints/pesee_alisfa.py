@@ -252,7 +252,7 @@ def _get_api_key_for_model(model):
 
 def call_openai(api_key, messages, model="gpt-4o"):
     """Appel API OpenAI avec température 0 et seed fixe."""
-    from blueprints.api_keys import is_openai_reasoning_model
+    from blueprints.api_keys import is_openai_reasoning_model, get_openai_reasoning_effort
     is_reasoning = is_openai_reasoning_model(model)
 
     payload = {
@@ -261,8 +261,11 @@ def call_openai(api_key, messages, model="gpt-4o"):
         "response_format": {"type": "json_object"},
         "max_completion_tokens": 8000,
     }
-    # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent ni temperature ni seed
-    if not is_reasoning:
+    # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent ni temperature ni
+    # seed, mais acceptent reasoning_effort (low/medium/high/xhigh).
+    if is_reasoning:
+        payload["reasoning_effort"] = get_openai_reasoning_effort()
+    else:
         payload["temperature"] = 0
         payload["seed"] = 42
 

@@ -17,6 +17,7 @@ import os
 from blueprints.api_keys import (
     AI_PROVIDERS, MODEL_TO_PROVIDER, get_provider_for_model,
     get_available_models, anthropic_supports_temperature, is_openai_reasoning_model,
+    EFFORT_LEVELS, get_openai_reasoning_effort,
 )
 from blueprints import pesee_alisfa
 
@@ -62,6 +63,12 @@ class TestCatalogueModeles:
         assert 'claude-sonnet-4-5-20250929' not in anthropic_ids
         assert 'claude-opus-4-6' not in anthropic_ids
 
+    def test_modeles_openai_a_jour(self):
+        """Les nouveaux modèles OpenAI (GPT-5.5 / GPT-5.4) sont proposés."""
+        openai_ids = [m['id'] for m in AI_PROVIDERS['openai']['models']]
+        assert 'gpt-5.5' in openai_ids
+        assert 'gpt-5.4' in openai_ids
+
 
 class TestPredicatsCompatibilite:
     def test_anthropic_temperature(self):
@@ -72,6 +79,8 @@ class TestPredicatsCompatibilite:
         assert anthropic_supports_temperature('claude-fable-5') is False
 
     def test_openai_raisonnement(self):
+        assert is_openai_reasoning_model('gpt-5.5') is True
+        assert is_openai_reasoning_model('gpt-5.4') is True
         assert is_openai_reasoning_model('gpt-5.2') is True
         assert is_openai_reasoning_model('o3-mini') is True
         assert is_openai_reasoning_model('o1') is True
@@ -114,6 +123,61 @@ class TestPayloadOpenAI:
         payload = mock_post.call_args.kwargs['json']
         assert payload['temperature'] == 0
         assert payload['seed'] == 42
+
+
+class TestEffortRaisonnement:
+    def test_niveaux_effort(self):
+        assert EFFORT_LEVELS == ['low', 'medium', 'high', 'xhigh']
+
+    def test_defaut_medium(self, app):
+        with app.app_context():
+            assert get_openai_reasoning_effort() == 'medium'
+
+    def test_respecte_le_reglage(self, app):
+        from utils import save_setting
+        with app.app_context():
+            save_setting('openai_reasoning_effort', 'xhigh')
+            assert get_openai_reasoning_effort() == 'xhigh'
+
+    def test_valeur_invalide_retombe_sur_defaut(self, app):
+        from utils import save_setting
+        with app.app_context():
+            save_setting('openai_reasoning_effort', 'nawak')
+            assert get_openai_reasoning_effort() == 'medium'
+
+    def test_payload_reasoning_inclut_effort(self, app):
+        from utils import save_setting
+        with app.app_context():
+            save_setting('openai_reasoning_effort', 'high')
+            with patch.object(pesee_alisfa.http_requests, 'post',
+                              return_value=_fake_openai_response()) as mock_post:
+                pesee_alisfa.call_openai('sk-x', [{'role': 'user', 'content': 'hi'}], 'gpt-5.5')
+            payload = mock_post.call_args.kwargs['json']
+        assert payload['reasoning_effort'] == 'high'
+        assert 'temperature' not in payload and 'seed' not in payload
+
+    def test_payload_modele_standard_sans_effort(self, app):
+        with app.app_context():
+            with patch.object(pesee_alisfa.http_requests, 'post',
+                              return_value=_fake_openai_response()) as mock_post:
+                pesee_alisfa.call_openai('sk-x', [{'role': 'user', 'content': 'hi'}], 'gpt-4.1-mini')
+            payload = mock_post.call_args.kwargs['json']
+        assert 'reasoning_effort' not in payload
+
+    def test_route_effort_enregistre(self, app, admin_client):
+        r = admin_client.post('/api/api_keys/effort', json={'effort': 'high'})
+        assert r.status_code == 200 and r.get_json()['effort'] == 'high'
+        from utils import get_setting
+        with app.app_context():
+            assert get_setting('openai_reasoning_effort') == 'high'
+
+    def test_route_effort_invalide_refusee(self, admin_client):
+        r = admin_client.post('/api/api_keys/effort', json={'effort': 'nawak'})
+        assert r.status_code == 400
+
+    def test_route_effort_refuse_salarie(self, auth_client):
+        r = auth_client.post('/api/api_keys/effort', json={'effort': 'high'})
+        assert r.status_code == 403
 
 
 class TestModelesDisponibles:

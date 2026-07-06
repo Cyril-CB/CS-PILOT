@@ -78,6 +78,19 @@
             <span class="ak-model-tag {{ 'ak-gratuit' if 'gratuit' in m.label else '' }}">{{ m.label }}</span>
             {% endfor %}
         </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding-top:12px;border-top:1px dashed var(--gray-200);">
+            <label for="akEffort" style="font-size:13px;font-weight:600;color:var(--gray-700);">
+                Effort de raisonnement <span style="font-weight:400;color:var(--gray-500);">(modèles GPT-5)</span>
+            </label>
+            <select id="akEffort" class="ak-key-input" style="width:auto;min-width:130px;padding:8px 12px;font-family:inherit;">
+                {% for lvl in effort_levels %}
+                <option value="{{ lvl }}" {{ 'selected' if reasoning_effort == lvl else '' }}>{{ lvl }}</option>
+                {% endfor %}
+            </select>
+            <button class="ak-btn ak-btn-outline" id="akEffortSaveBtn" onclick="akSaveEffort()">Enregistrer</button>
+            <span class="ak-success" id="akSuccessEffort" style="margin-top:0;"></span>
+            <span class="ak-error" id="akErrorEffort" style="margin-top:0;"></span>
+        </div>
         {% if providers_status.openai.has_key %}
         <div class="ak-btn-row">
             <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('openai')">Modifier la cle</button>
@@ -275,6 +288,38 @@ async function akDeleteKey(provider) {
     } catch(e) {
         alert('Erreur : ' + e.message);
     }
+}
+
+async function akSaveEffort() {
+    const sel = document.getElementById('akEffort');
+    const errEl = document.getElementById('akErrorEffort');
+    const succEl = document.getElementById('akSuccessEffort');
+    const btn = document.getElementById('akEffortSaveBtn');
+
+    errEl.style.display = 'none';
+    succEl.style.display = 'none';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch('/api/api_keys/effort', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({effort: sel.value}),
+        });
+        const data = await res.json();
+        if (data.success) {
+            succEl.textContent = 'Effort enregistre : ' + data.effort;
+            succEl.style.display = 'inline-block';
+        } else {
+            errEl.textContent = data.error || 'Erreur inconnue';
+            errEl.style.display = 'inline-block';
+        }
+    } catch(e) {
+        errEl.textContent = 'Erreur reseau : ' + e.message;
+        errEl.style.display = 'inline-block';
+    }
+
+    btn.disabled = false;
 }
 
 async function akSaveChatbotModel() {

@@ -234,14 +234,17 @@ def _get_api_key_for_model(model):
 
 def _call_openai(api_key, messages, model):
     """Appel API OpenAI pour le chatbot."""
-    from blueprints.api_keys import is_openai_reasoning_model
+    from blueprints.api_keys import is_openai_reasoning_model, get_openai_reasoning_effort
     payload = {
         "model": model,
         "messages": messages,
         "max_completion_tokens": 1000,
     }
     # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent pas temperature
-    if not is_openai_reasoning_model(model):
+    # mais acceptent reasoning_effort (low/medium/high/xhigh).
+    if is_openai_reasoning_model(model):
+        payload["reasoning_effort"] = get_openai_reasoning_effort()
+    else:
         payload["temperature"] = 0.7
     resp = http_requests.post(
         "https://api.openai.com/v1/chat/completions",

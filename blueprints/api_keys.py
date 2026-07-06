@@ -19,7 +19,9 @@ AI_PROVIDERS = {
         'key_setting': 'openai_api_key',
         'key_prefix': 'sk-',
         'models': [
-            {'id': 'gpt-5.2', 'label': 'gpt-5.2 (recommande)'},
+            {'id': 'gpt-5.5', 'label': 'gpt-5.5 (recommande)'},
+            {'id': 'gpt-5.4', 'label': 'gpt-5.4'},
+            {'id': 'gpt-5.2', 'label': 'gpt-5.2'},
             {'id': 'gpt-4.1-mini', 'label': 'gpt-4.1-mini (~gratuit)'},
         ],
     },
@@ -89,9 +91,29 @@ def is_openai_reasoning_model(model_id):
 
     Les modèles o1/o3/o4 et la famille GPT-5 ne supportent pas les paramètres
     `temperature` / `seed` personnalisés (température figée à 1) : les omettre
-    évite une erreur 400.
+    évite une erreur 400. Ils acceptent en revanche `reasoning_effort`.
     """
     return str(model_id).startswith(('o1', 'o3', 'o4', 'gpt-5'))
+
+
+# Niveaux d'effort de raisonnement acceptés par les modèles OpenAI (o-series /
+# GPT-5). Plus l'effort est élevé, plus le modèle « réfléchit » (meilleure
+# qualité, mais plus lent et plus coûteux en tokens).
+EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
+DEFAULT_EFFORT = 'medium'
+
+
+def get_openai_reasoning_effort():
+    """Niveau d'effort de raisonnement OpenAI configuré (défaut : medium).
+
+    Défensif : toute erreur d'accès au réglage retombe sur le défaut, pour ne
+    jamais faire échouer un appel IA à cause de ce paramètre optionnel.
+    """
+    try:
+        val = get_setting('openai_reasoning_effort')
+    except Exception:
+        val = None
+    return val if val in EFFORT_LEVELS else DEFAULT_EFFORT
 
 
 def get_configured_providers():
@@ -204,7 +226,9 @@ def gestion_cles_api():
     return render_template('gestion_cles_api.html', providers=AI_PROVIDERS,
                            providers_status=providers_status,
                            chatbot_model=chatbot_model,
-                           available_models=available_models)
+                           available_models=available_models,
+                           reasoning_effort=get_openai_reasoning_effort(),
+                           effort_levels=EFFORT_LEVELS)
 
 
 @api_keys_bp.route('/api/api_keys/save', methods=['POST'])
@@ -253,6 +277,22 @@ def api_delete_key():
 
     delete_setting(AI_PROVIDERS[provider_id]['key_setting'])
     return jsonify({'success': True})
+
+
+@api_keys_bp.route('/api/api_keys/effort', methods=['POST'])
+@login_required
+def api_set_effort():
+    """Définit le niveau d'effort de raisonnement OpenAI (GPT-5 / o-series)."""
+    if session.get('profil') not in PROFILS_AUTORISES:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.get_json() or {}
+    effort = (data.get('effort') or '').strip()
+    if effort not in EFFORT_LEVELS:
+        return jsonify({'error': "Niveau d'effort invalide"}), 400
+
+    save_setting('openai_reasoning_effort', effort)
+    return jsonify({'success': True, 'effort': effort})
 
 
 @api_keys_bp.route('/api/api_keys/status')
