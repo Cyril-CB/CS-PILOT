@@ -109,6 +109,21 @@ class TestDemandeCongeDirection:
         html = admin_client.get('/dashboard_direction').get_data(as_text=True)
         assert '/demande_conge' in html
 
+    def test_forfait_jour_consomme_le_quota_repos_forfait(self, app, db, sample_users):
+        # Un jour « Forfait jour » doit décompter le quota de repos forfait
+        # (sinon la direction pourrait en poser sans limite).
+        from utils import calculer_stats_forfait_jour
+        uid = sample_users['directeur_id']
+        with app.app_context():
+            base = calculer_stats_forfait_jour(uid, 2026)
+            db.execute(
+                "INSERT OR REPLACE INTO presence_forfait_jour (user_id, date, type_journee) "
+                "VALUES (?, '2026-06-10', 'forfait_jour')", (uid,))
+            db.commit()
+            apres = calculer_stats_forfait_jour(uid, 2026)
+        assert apres['repos_forfait'] == base['repos_forfait'] + 1
+        assert apres['soldes']['repos_forfait_restants'] == base['soldes']['repos_forfait_restants'] - 1
+
     def test_calendrier_affiche_le_jour_forfait(self, app, db, admin_client):
         # Le calendrier forfait jour doit rendre le nouveau type sans erreur.
         jour = _jour_ouvre(mois=6, jour=10)

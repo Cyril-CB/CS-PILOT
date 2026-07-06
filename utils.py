@@ -508,7 +508,6 @@ def calculer_stats_forfait_jour(user_id, annee):
         'conge_paye': 0,
         'conge_conv': 0,
         'repos_forfait': 0,
-        'forfait_jour': 0,
         'ferie': 0,
         'maladie': 0,
         'sans_solde': 0,
@@ -516,8 +515,12 @@ def calculer_stats_forfait_jour(user_id, annee):
     }
 
     for p in presences:
-        if p['type_journee'] in stats:
-            stats[p['type_journee']] = p['nb']
+        # « Forfait jour » (congé de repos posé par la direction) consomme le même
+        # quota de repos forfait que « repos_forfait » (RTT) : on l'y agrège pour
+        # que le solde restant en tienne compte.
+        type_j = 'repos_forfait' if p['type_journee'] == 'forfait_jour' else p['type_journee']
+        if type_j in stats:
+            stats[type_j] += p['nb']
 
     stats['config'] = {
         'jours_contrat': JOURS_CONTRAT,
