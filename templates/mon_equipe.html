@@ -73,7 +73,7 @@
                     <span class="card-label">Recuperation</span>
                 </div>
 
-                {% elif jour.matin or jour.aprem %}
+                {% elif jour.matin or jour.aprem or jour.soir %}
                 <!-- Horaires -->
                 <div class="day-card card-present {% if jour.type_saisie == 'theorique' %}card-theorique{% endif %}">
                     {% if jour.matin and jour.matin[0] and jour.matin[1] %}
@@ -85,6 +85,11 @@
                     <div class="slot slot-aprem">{{ jour.aprem[0] }} - {{ jour.aprem[1] }}</div>
                     {% elif jour.aprem and jour.aprem[0] %}
                     <div class="slot slot-aprem">{{ jour.aprem[0] }} - ...</div>
+                    {% endif %}
+                    {% if jour.soir and jour.soir[0] and jour.soir[1] %}
+                    <div class="slot slot-soir">🌙 {{ jour.soir[0] }} - {{ jour.soir[1] }}</div>
+                    {% elif jour.soir and jour.soir[0] %}
+                    <div class="slot slot-soir">🌙 {{ jour.soir[0] }} - ...</div>
                     {% endif %}
                 </div>
 
@@ -134,7 +139,7 @@
                     <div class="day-card card-recup">
                         <span class="card-label">Recuperation</span>
                     </div>
-                    {% elif jour.matin or jour.aprem %}
+                    {% elif jour.matin or jour.aprem or jour.soir %}
                     <div class="day-card card-present {% if jour.type_saisie == 'theorique' %}card-theorique{% endif %}">
                         {% if jour.matin and jour.matin[0] and jour.matin[1] %}
                         <div class="slot slot-matin">{{ jour.matin[0] }} - {{ jour.matin[1] }}</div>
@@ -145,6 +150,11 @@
                         <div class="slot slot-aprem">{{ jour.aprem[0] }} - {{ jour.aprem[1] }}</div>
                         {% elif jour.aprem and jour.aprem[0] %}
                         <div class="slot slot-aprem">{{ jour.aprem[0] }} - ...</div>
+                        {% endif %}
+                        {% if jour.soir and jour.soir[0] and jour.soir[1] %}
+                        <div class="slot slot-soir">🌙 {{ jour.soir[0] }} - {{ jour.soir[1] }}</div>
+                        {% elif jour.soir and jour.soir[0] %}
+                        <div class="slot slot-soir">🌙 {{ jour.soir[0] }} - ...</div>
                         {% endif %}
                     </div>
                     {% else %}
@@ -462,6 +472,7 @@
 .slot { white-space: nowrap; font-weight: 600; }
 .slot-matin { margin-bottom: 2px; }
 .slot-aprem { font-size: 0.76rem; }
+.slot-soir { font-size: 0.74rem; color: var(--gray-500); margin-top: 2px; }
 
 /* ---- Legend ---- */
 .equipe-legend {

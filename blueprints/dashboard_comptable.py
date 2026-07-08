@@ -6,6 +6,7 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash
 from datetime import datetime
 from database import get_db
 from utils import (login_required, NOMS_MOIS, get_user_info, calculer_heures,
+                   calculer_heures_reelles_jour,
                    get_heures_theoriques_jour, get_type_periode,
                    get_planning_valide_a_date, calculer_solde_recup)
 from dashboard_actions import construire_actions
@@ -37,6 +38,7 @@ def dashboard_comptable():
     heures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir,
                commentaire, type_saisie, declaration_conforme
         FROM heures_reelles
         WHERE user_id = ?
@@ -58,9 +60,7 @@ def dashboard_comptable():
         if h['declaration_conforme']:
             total_reel = total_theorique
         else:
-            heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-            heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-            total_reel = heures_matin + heures_aprem
+            total_reel = calculer_heures_reelles_jour(h)
         heures_enrichies.append({
             'date': h['date'],
             'total_reel': total_reel,

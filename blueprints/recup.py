@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import sqlite3
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
+                   calculer_heures_reelles_jour,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle)
 from email_service import (
@@ -75,11 +76,13 @@ def _reporter_recup_partielle(conn, demande, demande_id):
     conn.execute('''
         INSERT INTO heures_reelles
         (user_id, date, type_saisie, commentaire, declaration_conforme,
-         heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem)
-        VALUES (?, ?, 'recup_partielle', ?, 0, ?, ?, ?, ?)
+         heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem,
+         heure_debut_soir, heure_fin_soir)
+        VALUES (?, ?, 'recup_partielle', ?, 0, ?, ?, ?, ?, ?, ?)
     ''', (user_id, date_str, commentaire,
           calcul['matin_debut'], calcul['matin_fin'],
-          calcul['aprem_debut'], calcul['aprem_fin']))
+          calcul['aprem_debut'], calcul['aprem_fin'],
+          calcul.get('soir_debut'), calcul.get('soir_fin')))
     return True
 
 
@@ -256,8 +259,9 @@ def demande_recup():
         # Calculer le solde (similaire au dashboard)
         heures = conn.execute('''
             SELECT date, heure_debut_matin, heure_fin_matin,
-                   heure_debut_aprem, heure_fin_aprem, declaration_conforme
-            FROM heures_reelles 
+                   heure_debut_aprem, heure_fin_aprem,
+                   heure_debut_soir, heure_fin_soir, declaration_conforme
+            FROM heures_reelles
             WHERE user_id = ?
             ORDER BY date
         ''', (session['user_id'],)).fetchall()
@@ -290,10 +294,8 @@ def demande_recup():
             if h['declaration_conforme']:
                 total_reel = total_theorique
             else:
-                heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-                heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-                total_reel = heures_matin + heures_aprem
-            
+                total_reel = calculer_heures_reelles_jour(h)
+
             solde_recup += (total_reel - total_theorique)
         
         # Calculer les heures EXACTES pour chaque jour de la période
@@ -381,8 +383,9 @@ def demande_recup():
     # Calculer le solde disponible (même logique que ci-dessus)
     heures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem, declaration_conforme
-        FROM heures_reelles 
+               heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir, declaration_conforme
+        FROM heures_reelles
         WHERE user_id = ?
         ORDER BY date
     ''', (session['user_id'],)).fetchall()
@@ -415,10 +418,8 @@ def demande_recup():
         if h['declaration_conforme']:
             total_reel = total_theorique
         else:
-            heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-            heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-            total_reel = heures_matin + heures_aprem
-        
+            total_reel = calculer_heures_reelles_jour(h)
+
         solde_recup += (total_reel - total_theorique)
     
     conn.close()

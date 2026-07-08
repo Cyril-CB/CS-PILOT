@@ -267,22 +267,32 @@ def init_db():
             lundi_matin_fin TEXT,
             lundi_aprem_debut TEXT,
             lundi_aprem_fin TEXT,
+            lundi_soir_debut TEXT,
+            lundi_soir_fin TEXT,
             mardi_matin_debut TEXT,
             mardi_matin_fin TEXT,
             mardi_aprem_debut TEXT,
             mardi_aprem_fin TEXT,
+            mardi_soir_debut TEXT,
+            mardi_soir_fin TEXT,
             mercredi_matin_debut TEXT,
             mercredi_matin_fin TEXT,
             mercredi_aprem_debut TEXT,
             mercredi_aprem_fin TEXT,
+            mercredi_soir_debut TEXT,
+            mercredi_soir_fin TEXT,
             jeudi_matin_debut TEXT,
             jeudi_matin_fin TEXT,
             jeudi_aprem_debut TEXT,
             jeudi_aprem_fin TEXT,
+            jeudi_soir_debut TEXT,
+            jeudi_soir_fin TEXT,
             vendredi_matin_debut TEXT,
             vendredi_matin_fin TEXT,
             vendredi_aprem_debut TEXT,
             vendredi_aprem_fin TEXT,
+            vendredi_soir_debut TEXT,
+            vendredi_soir_fin TEXT,
             total_hebdo REAL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
@@ -326,6 +336,8 @@ def init_db():
             heure_fin_matin TEXT,
             heure_debut_aprem TEXT,
             heure_fin_aprem TEXT,
+            heure_debut_soir TEXT,
+            heure_fin_soir TEXT,
             commentaire TEXT,
             type_saisie TEXT DEFAULT 'heures_sup',
             declaration_conforme INTEGER DEFAULT 0,
@@ -1822,6 +1834,22 @@ def init_db():
         cursor.execute("SELECT synonymes FROM secteurs LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE secteurs ADD COLUMN synonymes TEXT")
+
+    # Migration 0055 : 3e creneau optionnel « soir » (personnel d'entretien en
+    # periode de vacances). Colonnes nullables : les plannings/saisies existants
+    # restent inchanges (soir vide = 0 heure).
+    for col in ('heure_debut_soir', 'heure_fin_soir'):
+        try:
+            cursor.execute(f"SELECT {col} FROM heures_reelles LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(f"ALTER TABLE heures_reelles ADD COLUMN {col} TEXT")
+    for _jour in ('lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'):
+        for _suffixe in ('soir_debut', 'soir_fin'):
+            col = f"{_jour}_{_suffixe}"
+            try:
+                cursor.execute(f"SELECT {col} FROM planning_theorique LIMIT 1")
+            except sqlite3.OperationalError:
+                cursor.execute(f"ALTER TABLE planning_theorique ADD COLUMN {col} TEXT")
 
     # Migration : ajouter temps_hebdo si n'existe pas dans contrats
     try:

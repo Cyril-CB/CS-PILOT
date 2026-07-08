@@ -81,6 +81,7 @@ def rh_statistiques():
         SELECT hr.user_id, hr.date,
                hr.heure_debut_matin, hr.heure_fin_matin,
                hr.heure_debut_aprem, hr.heure_fin_aprem,
+               hr.heure_debut_soir, hr.heure_fin_soir,
                hr.declaration_conforme
         FROM heures_reelles hr
         JOIN users u ON hr.user_id = u.id

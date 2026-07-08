@@ -7,6 +7,7 @@ import json
 from database import get_db
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, calculer_heures,
+                    calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
 from app_options import get_option_bool
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
@@ -15,13 +16,16 @@ from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
 validation_bp = Blueprint('validation_bp', __name__)
 
 
-def _formater_horaires(matin_debut=None, matin_fin=None, aprem_debut=None, aprem_fin=None):
-    """Formate les horaires d'une journée pour l'affichage."""
+def _formater_horaires(matin_debut=None, matin_fin=None, aprem_debut=None, aprem_fin=None,
+                       soir_debut=None, soir_fin=None):
+    """Formate les horaires d'une journée pour l'affichage (3 créneaux)."""
     plages = []
     if matin_debut and matin_fin:
         plages.append(f"{matin_debut} - {matin_fin}")
     if aprem_debut and aprem_fin:
         plages.append(f"{aprem_debut} - {aprem_fin}")
+    if soir_debut and soir_fin:
+        plages.append(f"{soir_debut} - {soir_fin}")
     return ' / '.join(plages) if plages else '-'
 
 
@@ -490,14 +494,14 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                     horaires_reels = horaires_theoriques
                 else:
                     est_saisi = True
-                    heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-                    heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-                    heures_reelles_jour = heures_matin + heures_aprem
+                    heures_reelles_jour = calculer_heures_reelles_jour(h)
                     horaires_reels = _formater_horaires(
                         h['heure_debut_matin'],
                         h['heure_fin_matin'],
                         h['heure_debut_aprem'],
                         h['heure_fin_aprem'],
+                        slot_horaire(h, 'heure_debut_soir'),
+                        slot_horaire(h, 'heure_fin_soir'),
                     )
 
                 type_saisie = h['type_saisie']
@@ -579,7 +583,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem, declaration_conforme
+               heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir, declaration_conforme
         FROM heures_reelles
         WHERE user_id = ? AND date < ?
         ORDER BY date
@@ -600,9 +605,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         if h['declaration_conforme']:
             total_reel = total_theorique
         else:
-            heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-            heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-            total_reel = heures_matin + heures_aprem
+            total_reel = calculer_heures_reelles_jour(h)
 
         solde_anterieur += (total_reel - total_theorique)
 

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
+                   calculer_heures_reelles_jour, slot_horaire,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
 
 exports_bp = Blueprint('exports_bp', __name__)
@@ -104,8 +105,10 @@ def export_pdf_mensuel():
                 matin_fin = planning_dict.get(f'{jour_nom}_matin_fin')
                 aprem_debut = planning_dict.get(f'{jour_nom}_aprem_debut')
                 aprem_fin = planning_dict.get(f'{jour_nom}_aprem_fin')
-                
-                # Formater les horaires théoriques
+                soir_debut = planning_dict.get(f'{jour_nom}_soir_debut')
+                soir_fin = planning_dict.get(f'{jour_nom}_soir_fin')
+
+                # Formater les horaires théoriques (3 créneaux)
                 horaires_parts = []
                 if matin_debut and matin_fin:
                     horaires_parts.append(f"{matin_debut}-{matin_fin}")
@@ -113,7 +116,10 @@ def export_pdf_mensuel():
                 if aprem_debut and aprem_fin:
                     horaires_parts.append(f"{aprem_debut}-{aprem_fin}")
                     heures_theo_jour += calculer_heures(aprem_debut, aprem_fin)
-                
+                if soir_debut and soir_fin:
+                    horaires_parts.append(f"{soir_debut}-{soir_fin}")
+                    heures_theo_jour += calculer_heures(soir_debut, soir_fin)
+
                 if horaires_parts:
                     horaires_theo_str = " / ".join(horaires_parts)
                 else:
@@ -145,7 +151,10 @@ def export_pdf_mensuel():
                     if h['heure_debut_aprem'] and h['heure_fin_aprem']:
                         horaires_parts_reelles.append(f"{h['heure_debut_aprem']}-{h['heure_fin_aprem']}")
                         heures_reelles_jour += calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-                    
+                    if slot_horaire(h, 'heure_debut_soir') and slot_horaire(h, 'heure_fin_soir'):
+                        horaires_parts_reelles.append(f"{h['heure_debut_soir']}-{h['heure_fin_soir']}")
+                        heures_reelles_jour += calculer_heures(h['heure_debut_soir'], h['heure_fin_soir'])
+
                     if horaires_parts_reelles:
                         horaires_reels_str = " / ".join(horaires_parts_reelles)
                     else:
@@ -180,8 +189,9 @@ def export_pdf_mensuel():
     solde_anterieur = 0
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem, declaration_conforme, type_saisie
-        FROM heures_reelles 
+               heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie
+        FROM heures_reelles
         WHERE user_id = ? AND date < ?
         ORDER BY date
     ''', (user_id_param, premier_jour.strftime('%Y-%m-%d'))).fetchall()
@@ -201,21 +211,9 @@ def export_pdf_mensuel():
         
         total_theorique = 0
         if planning_ant:
-            # Convertir Row en dict
-            planning_ant_dict = dict(planning_ant)
-            noms_jours_minuscule = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']
-            jour_nom = noms_jours_minuscule[jour_semaine_ant_pdf]
-            
-            matin_debut = planning_ant_dict.get(f'{jour_nom}_matin_debut')
-            matin_fin = planning_ant_dict.get(f'{jour_nom}_matin_fin')
-            aprem_debut = planning_ant_dict.get(f'{jour_nom}_aprem_debut')
-            aprem_fin = planning_ant_dict.get(f'{jour_nom}_aprem_fin')
-            
-            if matin_debut and matin_fin:
-                total_theorique += calculer_heures(matin_debut, matin_fin)
-            if aprem_debut and aprem_fin:
-                total_theorique += calculer_heures(aprem_debut, aprem_fin)
-        
+            # Heures théoriques du jour (3 créneaux, gérés par le helper commun).
+            total_theorique = get_heures_theoriques_jour(planning_ant, jour_semaine_ant_pdf)
+
         # Calculer les heures réelles
         if h.get('type_saisie') == 'recup_journee':
             # Récupération = 0h réelles
@@ -224,10 +222,8 @@ def export_pdf_mensuel():
             # Déclaration conforme = heures théoriques
             total_reel = total_theorique
         else:
-            # Saisie manuelle
-            heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-            heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-            total_reel = heures_matin + heures_aprem
+            # Saisie manuelle (matin + après-midi + soir)
+            total_reel = calculer_heures_reelles_jour(h)
         
         solde_anterieur += (total_reel - total_theorique)
     

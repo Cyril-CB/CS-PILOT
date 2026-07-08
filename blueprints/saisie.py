@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import json
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
+                    calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                     calculer_solde_recup)
 from app_options import get_option_bool
@@ -87,6 +88,8 @@ def saisie_heures():
                 'heure_fin_matin',
                 'heure_debut_aprem',
                 'heure_fin_aprem',
+                'heure_debut_soir',
+                'heure_fin_soir',
             ))
         )
         declaration_conforme = request.form.get('declaration_conforme') if declaration_conforme_active else (
@@ -99,6 +102,8 @@ def saisie_heures():
             heure_fin_matin = None
             heure_debut_aprem = None
             heure_fin_aprem = None
+            heure_debut_soir = None
+            heure_fin_soir = None
             type_saisie = 'declaration_conforme'
             if not commentaire:
                 commentaire = 'Déclaration conforme au planning'
@@ -109,6 +114,8 @@ def saisie_heures():
             heure_fin_matin = None
             heure_debut_aprem = None
             heure_fin_aprem = None
+            heure_debut_soir = None
+            heure_fin_soir = None
             type_saisie = 'recup_journee'
             if not commentaire:
                 commentaire = 'Récupération journée complète'
@@ -118,6 +125,9 @@ def saisie_heures():
             heure_fin_matin = request.form.get('heure_fin_matin') or None
             heure_debut_aprem = request.form.get('heure_debut_aprem') or None
             heure_fin_aprem = request.form.get('heure_fin_aprem') or None
+            # Créneau soir optionnel (proposé uniquement en période de vacances).
+            heure_debut_soir = request.form.get('heure_debut_soir') or None
+            heure_fin_soir = request.form.get('heure_fin_soir') or None
             type_saisie = 'heures_modifiees'
             declaration_conforme_val = 0
         
@@ -131,15 +141,19 @@ def saisie_heures():
                     'heure_fin_matin': anciennes_donnees['heure_fin_matin'],
                     'heure_debut_aprem': anciennes_donnees['heure_debut_aprem'],
                     'heure_fin_aprem': anciennes_donnees['heure_fin_aprem'],
+                    'heure_debut_soir': slot_horaire(anciennes_donnees, 'heure_debut_soir'),
+                    'heure_fin_soir': slot_horaire(anciennes_donnees, 'heure_fin_soir'),
                     'commentaire': anciennes_donnees['commentaire'],
                     'type_saisie': anciennes_donnees['type_saisie']
                 })
-            
+
             nouvelles_valeurs = json.dumps({
                 'heure_debut_matin': heure_debut_matin,
                 'heure_fin_matin': heure_fin_matin,
                 'heure_debut_aprem': heure_debut_aprem,
                 'heure_fin_aprem': heure_fin_aprem,
+                'heure_debut_soir': heure_debut_soir,
+                'heure_fin_soir': heure_fin_soir,
                 'commentaire': commentaire,
                 'type_saisie': type_saisie
             })
@@ -162,21 +176,14 @@ def saisie_heures():
                 
                 # 2. Détection gros changement d'heures
                 if anciennes_donnees['type_saisie'] != 'recup_journee' and type_saisie != 'recup_journee':
-                    # Calculer les heures avant et après
-                    heures_avant = 0
-                    if anciennes_donnees['heure_debut_matin'] and anciennes_donnees['heure_fin_matin']:
-                        heures_avant += calculer_heures(anciennes_donnees['heure_debut_matin'], 
-                                                        anciennes_donnees['heure_fin_matin'])
-                    if anciennes_donnees['heure_debut_aprem'] and anciennes_donnees['heure_fin_aprem']:
-                        heures_avant += calculer_heures(anciennes_donnees['heure_debut_aprem'], 
-                                                        anciennes_donnees['heure_fin_aprem'])
-                    
-                    heures_apres = 0
-                    if heure_debut_matin and heure_fin_matin:
-                        heures_apres += calculer_heures(heure_debut_matin, heure_fin_matin)
-                    if heure_debut_aprem and heure_fin_aprem:
-                        heures_apres += calculer_heures(heure_debut_aprem, heure_fin_aprem)
-                    
+                    # Calculer les heures avant et après (3 créneaux inclus)
+                    heures_avant = calculer_heures_reelles_jour(anciennes_donnees)
+                    heures_apres = calculer_heures_reelles_jour({
+                        'heure_debut_matin': heure_debut_matin, 'heure_fin_matin': heure_fin_matin,
+                        'heure_debut_aprem': heure_debut_aprem, 'heure_fin_aprem': heure_fin_aprem,
+                        'heure_debut_soir': heure_debut_soir, 'heure_fin_soir': heure_fin_soir,
+                    })
+
                     ecart = abs(heures_apres - heures_avant)
                     if ecart > SEUIL_ECART_ANOMALIE_HEURES:
                         # ANOMALIE ALERTE : Gros changement d'heures
@@ -219,11 +226,11 @@ def saisie_heures():
                         if planning:
                             total_theorique = get_heures_theoriques_jour(planning, date_saisie.weekday())
 
-                    heures_apres = 0
-                    if heure_debut_matin and heure_fin_matin:
-                        heures_apres += calculer_heures(heure_debut_matin, heure_fin_matin)
-                    if heure_debut_aprem and heure_fin_aprem:
-                        heures_apres += calculer_heures(heure_debut_aprem, heure_fin_aprem)
+                    heures_apres = calculer_heures_reelles_jour({
+                        'heure_debut_matin': heure_debut_matin, 'heure_fin_matin': heure_fin_matin,
+                        'heure_debut_aprem': heure_debut_aprem, 'heure_fin_aprem': heure_fin_aprem,
+                        'heure_debut_soir': heure_debut_soir, 'heure_fin_soir': heure_fin_soir,
+                    })
 
                     ecart = abs(heures_apres - total_theorique)
                     if ecart > SEUIL_ECART_ANOMALIE_HEURES:
@@ -238,12 +245,14 @@ def saisie_heures():
             
             # Enregistrer la modification
             conn.execute('''
-                INSERT OR REPLACE INTO heures_reelles 
-                (user_id, date, heure_debut_matin, heure_fin_matin, 
-                 heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO heures_reelles
+                (user_id, date, heure_debut_matin, heure_fin_matin,
+                 heure_debut_aprem, heure_fin_aprem, heure_debut_soir, heure_fin_soir,
+                 commentaire, type_saisie, declaration_conforme)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (user_id_cible, date, heure_debut_matin, heure_fin_matin,
-                  heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme_val))
+                  heure_debut_aprem, heure_fin_aprem, heure_debut_soir, heure_fin_soir,
+                  commentaire, type_saisie, declaration_conforme_val))
             
             # Enregistrer dans l'historique
             conn.execute('''
@@ -311,6 +320,12 @@ def saisie_heures():
 
     next_page = request.args.get('next', '')
 
+    # Le 3e créneau « soir » n'est proposé qu'en période de vacances (personnel
+    # d'entretien). On l'affiche aussi si une saisie soir existe déjà pour ce jour.
+    est_vacances = get_type_periode(date_defaut) == 'vacances'
+    a_soir = bool(heures_existantes and (heures_existantes.get('heure_debut_soir')
+                                         or heures_existantes.get('heure_fin_soir')))
+
     return render_template('saisie_heures.html',
                           date_defaut=date_defaut,
                           heures_existantes=heures_existantes,
@@ -319,4 +334,6 @@ def saisie_heures():
                           next_page=next_page,
                           solde_recup=solde_recup,
                           mois_verrouille=mois_verrouille,
+                          soir_disponible=est_vacances or a_soir,
+                          soir_rempli=a_soir,
                           declaration_conforme_active=declaration_conforme_active)

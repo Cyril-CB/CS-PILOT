@@ -153,48 +153,35 @@ def planning_theorique():
         horaires = {}
         total_hebdo = 0
 
+        # Créneaux d'une journée : matin + après-midi + soir (3e optionnel).
+        creneaux = ('matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin',
+                    'soir_debut', 'soir_fin')
         for jour in jours:
-            matin_debut = request.form.get(f'{jour}_matin_debut') or None
-            matin_fin = request.form.get(f'{jour}_matin_fin') or None
-            aprem_debut = request.form.get(f'{jour}_aprem_debut') or None
-            aprem_fin = request.form.get(f'{jour}_aprem_fin') or None
-
-            horaires[f'{jour}_matin_debut'] = matin_debut
-            horaires[f'{jour}_matin_fin'] = matin_fin
-            horaires[f'{jour}_aprem_debut'] = aprem_debut
-            horaires[f'{jour}_aprem_fin'] = aprem_fin
-
-            # Calculer les heures du jour
-            if matin_debut and matin_fin:
-                total_hebdo += calculer_heures(matin_debut, matin_fin)
-            if aprem_debut and aprem_fin:
-                total_hebdo += calculer_heures(aprem_debut, aprem_fin)
+            for suffixe in creneaux:
+                horaires[f'{jour}_{suffixe}'] = request.form.get(f'{jour}_{suffixe}') or None
+            # Calculer les heures du jour (3 créneaux)
+            for slot in ('matin', 'aprem', 'soir'):
+                total_hebdo += calculer_heures(horaires[f'{jour}_{slot}_debut'],
+                                               horaires[f'{jour}_{slot}_fin'])
 
         conn = get_db()
         try:
-            # CRÉER un nouveau planning (historisation) avec type_alternance
-            conn.execute('''
-                INSERT INTO planning_theorique
-                (user_id, type_periode, date_debut_validite, type_alternance,
-                 lundi_matin_debut, lundi_matin_fin, lundi_aprem_debut, lundi_aprem_fin,
-                 mardi_matin_debut, mardi_matin_fin, mardi_aprem_debut, mardi_aprem_fin,
-                 mercredi_matin_debut, mercredi_matin_fin, mercredi_aprem_debut, mercredi_aprem_fin,
-                 jeudi_matin_debut, jeudi_matin_fin, jeudi_aprem_debut, jeudi_aprem_fin,
-                 vendredi_matin_debut, vendredi_matin_fin, vendredi_aprem_debut, vendredi_aprem_fin,
-                 total_hebdo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (user_id_cible, type_periode, date_debut_validite, type_alternance,
-                  horaires['lundi_matin_debut'], horaires['lundi_matin_fin'],
-                  horaires['lundi_aprem_debut'], horaires['lundi_aprem_fin'],
-                  horaires['mardi_matin_debut'], horaires['mardi_matin_fin'],
-                  horaires['mardi_aprem_debut'], horaires['mardi_aprem_fin'],
-                  horaires['mercredi_matin_debut'], horaires['mercredi_matin_fin'],
-                  horaires['mercredi_aprem_debut'], horaires['mercredi_aprem_fin'],
-                  horaires['jeudi_matin_debut'], horaires['jeudi_matin_fin'],
-                  horaires['jeudi_aprem_debut'], horaires['jeudi_aprem_fin'],
-                  horaires['vendredi_matin_debut'], horaires['vendredi_matin_fin'],
-                  horaires['vendredi_aprem_debut'], horaires['vendredi_aprem_fin'],
-                  total_hebdo))
+            # CRÉER un nouveau planning (historisation). Les colonnes de créneaux
+            # sont générées depuis les constantes (jours × créneaux) : aucune
+            # donnée utilisateur n'entre dans le SQL, seulement des valeurs liées.
+            slot_cols, slot_vals = [], []
+            for jour in jours:
+                for suffixe in creneaux:
+                    slot_cols.append(f'{jour}_{suffixe}')
+                    slot_vals.append(horaires[f'{jour}_{suffixe}'])
+            colonnes = ('user_id, type_periode, date_debut_validite, type_alternance, '
+                        + ', '.join(slot_cols) + ', total_hebdo')
+            placeholders = ', '.join(['?'] * (4 + len(slot_cols) + 1))
+            conn.execute(
+                f'INSERT INTO planning_theorique ({colonnes}) VALUES ({placeholders})',
+                [user_id_cible, type_periode, date_debut_validite, type_alternance]
+                + slot_vals + [total_hebdo]
+            )
 
             # Si alternance, enregistrer la date de référence
             if type_alternance in ['semaine_1', 'semaine_2'] and date_reference:

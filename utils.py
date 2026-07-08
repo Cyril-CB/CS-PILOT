@@ -181,6 +181,31 @@ def calculer_heures(debut, fin):
         return 0
 
 
+def slot_horaire(row, key):
+    """Lit une valeur de créneau d'un Row/dict de manière tolérante.
+
+    Renvoie None si la clé est absente (ancienne ligne sans colonne « soir », ou
+    SELECT n'ayant pas récupéré la colonne), sans lever d'exception.
+    """
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
+def calculer_heures_reelles_jour(row):
+    """Total d'heures d'une saisie (heures_reelles) : matin + après-midi + soir.
+
+    Le créneau « soir » (optionnel, personnel d'entretien en vacances) est
+    additionné aux deux créneaux habituels ; absent/vide, il compte pour 0.
+    """
+    return (
+        calculer_heures(slot_horaire(row, 'heure_debut_matin'), slot_horaire(row, 'heure_fin_matin'))
+        + calculer_heures(slot_horaire(row, 'heure_debut_aprem'), slot_horaire(row, 'heure_fin_aprem'))
+        + calculer_heures(slot_horaire(row, 'heure_debut_soir'), slot_horaire(row, 'heure_fin_soir'))
+    )
+
+
 def get_heures_theoriques_jour(planning, jour_semaine):
     """Récupère les heures théoriques pour un jour de la semaine (0=lundi, 4=vendredi)"""
     if not planning or jour_semaine < 0 or jour_semaine > 4:
@@ -193,11 +218,15 @@ def get_heures_theoriques_jour(planning, jour_semaine):
     matin_fin = planning[f'{jour_nom}_matin_fin']
     aprem_debut = planning[f'{jour_nom}_aprem_debut']
     aprem_fin = planning[f'{jour_nom}_aprem_fin']
+    # Créneau soir optionnel (peut être absent d'un planning historisé ancien).
+    soir_debut = slot_horaire(planning, f'{jour_nom}_soir_debut')
+    soir_fin = slot_horaire(planning, f'{jour_nom}_soir_fin')
 
     heures_matin = calculer_heures(matin_debut, matin_fin)
     heures_aprem = calculer_heures(aprem_debut, aprem_fin)
+    heures_soir = calculer_heures(soir_debut, soir_fin)
 
-    return heures_matin + heures_aprem
+    return heures_matin + heures_aprem + heures_soir
 
 
 def _heure_vers_minutes(h):
@@ -297,22 +326,30 @@ def calculer_recup_partielle(planning, jour_semaine, abs_debut, abs_fin):
     matin_fin = planning[f'{jour_nom}_matin_fin']
     aprem_debut = planning[f'{jour_nom}_aprem_debut']
     aprem_fin = planning[f'{jour_nom}_aprem_fin']
+    # Créneau soir optionnel (vacances) : peut être absent d'un planning ancien.
+    soir_debut = slot_horaire(planning, f'{jour_nom}_soir_debut')
+    soir_fin = slot_horaire(planning, f'{jour_nom}_soir_fin')
 
     heures_theoriques = (
         calculer_heures(matin_debut, matin_fin)
         + calculer_heures(aprem_debut, aprem_fin)
+        + calculer_heures(soir_debut, soir_fin)
     )
     if heures_theoriques <= 0:
         return None
 
     segs_matin = _soustraire_creneau(matin_debut, matin_fin, abs_debut, abs_fin)
     segs_aprem = _soustraire_creneau(aprem_debut, aprem_fin, abs_debut, abs_fin)
+    segs_soir = _soustraire_creneau(soir_debut, soir_fin, abs_debut, abs_fin)
 
     matin_d, matin_f = _fusionner_segments(segs_matin)
     aprem_d, aprem_f = _fusionner_segments(segs_aprem)
+    soir_d, soir_f = _fusionner_segments(segs_soir)
 
     heures_travaillees = (
-        calculer_heures(matin_d, matin_f) + calculer_heures(aprem_d, aprem_f)
+        calculer_heures(matin_d, matin_f)
+        + calculer_heures(aprem_d, aprem_f)
+        + calculer_heures(soir_d, soir_f)
     )
     heures_recup = round(heures_theoriques - heures_travaillees, 2)
 
@@ -322,6 +359,8 @@ def calculer_recup_partielle(planning, jour_semaine, abs_debut, abs_fin):
         'matin_fin': matin_f,
         'aprem_debut': aprem_d,
         'aprem_fin': aprem_f,
+        'soir_debut': soir_d,
+        'soir_fin': soir_f,
         'heures_theoriques': heures_theoriques,
     }
 
@@ -558,7 +597,8 @@ def calculer_solde_recup(user_id):
 
         heures = conn.execute('''
             SELECT date, heure_debut_matin, heure_fin_matin,
-                   heure_debut_aprem, heure_fin_aprem, declaration_conforme
+                   heure_debut_aprem, heure_fin_aprem,
+                   heure_debut_soir, heure_fin_soir, declaration_conforme
             FROM heures_reelles
             WHERE user_id = ?
             ORDER BY date
@@ -583,9 +623,7 @@ def calculer_solde_recup(user_id):
             if h['declaration_conforme']:
                 total_reel = total_theorique
             else:
-                heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-                heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-                total_reel = heures_matin + heures_aprem
+                total_reel = calculer_heures_reelles_jour(h)
 
             solde += (total_reel - total_theorique)
 

@@ -123,6 +123,9 @@
                                 <table style="width: 100%; font-size: 0.9rem;">
                                     <tr><td><strong>Matin :</strong></td><td>{{ m.anciennes_valeurs_obj.heure_debut_matin or '-' }} → {{ m.anciennes_valeurs_obj.heure_fin_matin or '-' }}</td></tr>
                                     <tr><td><strong>Après-midi :</strong></td><td>{{ m.anciennes_valeurs_obj.heure_debut_aprem or '-' }} → {{ m.anciennes_valeurs_obj.heure_fin_aprem or '-' }}</td></tr>
+                                    {% if m.anciennes_valeurs_obj.heure_debut_soir or m.anciennes_valeurs_obj.heure_fin_soir %}
+                                    <tr><td><strong>Soir :</strong></td><td>{{ m.anciennes_valeurs_obj.heure_debut_soir or '-' }} → {{ m.anciennes_valeurs_obj.heure_fin_soir or '-' }}</td></tr>
+                                    {% endif %}
                                     <tr><td><strong>Type :</strong></td><td>{{ m.anciennes_valeurs_obj.type_saisie }}</td></tr>
                                     <tr><td><strong>Commentaire :</strong></td><td>{{ m.anciennes_valeurs_obj.commentaire or '-' }}</td></tr>
                                 </table>
@@ -139,6 +142,9 @@
                                 <table style="width: 100%; font-size: 0.9rem;">
                                     <tr><td><strong>Matin :</strong></td><td>{{ m.nouvelles_valeurs_obj.heure_debut_matin or '-' }} → {{ m.nouvelles_valeurs_obj.heure_fin_matin or '-' }}</td></tr>
                                     <tr><td><strong>Après-midi :</strong></td><td>{{ m.nouvelles_valeurs_obj.heure_debut_aprem or '-' }} → {{ m.nouvelles_valeurs_obj.heure_fin_aprem or '-' }}</td></tr>
+                                    {% if m.nouvelles_valeurs_obj.heure_debut_soir or m.nouvelles_valeurs_obj.heure_fin_soir %}
+                                    <tr><td><strong>Soir :</strong></td><td>{{ m.nouvelles_valeurs_obj.heure_debut_soir or '-' }} → {{ m.nouvelles_valeurs_obj.heure_fin_soir or '-' }}</td></tr>
+                                    {% endif %}
                                     <tr><td><strong>Type :</strong></td><td>{{ m.nouvelles_valeurs_obj.type_saisie }}</td></tr>
                                     <tr><td><strong>Commentaire :</strong></td><td>{{ m.nouvelles_valeurs_obj.commentaire or '-' }}</td></tr>
                                 </table>

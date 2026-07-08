@@ -1058,7 +1058,9 @@ a.btn-icon:-webkit-any-link {
 
 .time-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    /* 2 créneaux (matin/après-midi) par défaut, 3 quand le « soir » optionnel
+       est ajouté ; reflow automatique et passage à 1 colonne sur mobile. */
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 2rem;
 }
 
