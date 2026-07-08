@@ -933,6 +933,20 @@ def test_paie_simulation_persiste_pesee_competence(app, db, admin_client):
     assert u['pesee'] == 120 and u['competence'] == 5
 
 
+def test_paie_simulation_persiste_competence_decimale(app, db, admin_client):
+    """Les points de compétence acceptent 2 décimales (ex. 4,25) sans troncature."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'employes': {str(uid): {'pesee': 120, 'competence': 4.25, 'anciennete': 3, 'nouvelle_pesee': ''}},
+               'ajouts': [], 'fermetures': []}
+    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
+    with app.app_context():
+        u = db.execute("SELECT competence FROM users WHERE id=?", (uid,)).fetchone()
+    assert u['competence'] == 4.25
+
+
 def test_paie_simulation_refuse_responsable(resp_client, sample_users):
     sid = sample_users['secteur_id']
     r = resp_client.post('/api/budget-previsionnel/paie-simulation', json={

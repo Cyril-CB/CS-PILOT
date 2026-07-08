@@ -306,7 +306,8 @@ def modifier_pesee():
     pesee_val = request.form.get('pesee', '').strip()
     pesee = int(pesee_val) if pesee_val else None
     competence_val = request.form.get('competence', '').strip()
-    competence = int(competence_val) if competence_val else None
+    # Les points de compétence peuvent comporter des décimales (ex. 4,25).
+    competence = float(competence_val) if competence_val else None
     maintien_val = request.form.get('maintien', '').strip()
     maintien = float(maintien_val) if maintien_val else 0
 
