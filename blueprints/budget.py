@@ -2344,7 +2344,8 @@ def api_paie_simulation_save():
             conn.execute(
                 'UPDATE users SET pesee = ?, competence = ?, maintien = ? WHERE id = ?',
                 (int(float(pesee)) if str(pesee).strip() not in ('', 'None') else None,
-                 int(float(comp)) if str(comp).strip() not in ('', 'None') else None,
+                 # Les points de compétence peuvent comporter des décimales (ex. 4,25).
+                 float(comp) if str(comp).strip() not in ('', 'None') else None,
                  float(maint) if str(maint).strip() not in ('', 'None') else 0,
                  uid)
             )

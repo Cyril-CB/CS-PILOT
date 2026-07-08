@@ -1618,7 +1618,7 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="pesee"', ov.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_pesee"', ov.nouvelle_pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="anciennete"', ov.anciennete, '1') + '</td>' +
-                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="maintien"', ov.maintien, '0.01') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-' + m + '"></td>'; }).join('') +
                 '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-tot"></td></tr>';
