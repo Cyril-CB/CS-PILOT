@@ -545,6 +545,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!useSpecificVacationPlanning && (!typePeriodeSelect.value || typePeriodeSelect.value === 'vacances')) {
             typePeriodeSelect.value = 'periode_scolaire';
         }
+        // Une affectation programmatique de .value ne déclenche pas l'événement
+        // « change » : on re-synchronise le créneau soir à la main, sinon des heures
+        // de soirée saisies en vacances resteraient visibles/actives (et soumises)
+        // après un repli en période scolaire.
+        gererCreneauSoir();
     }
     
     // Gestion affichage date de référence selon type d'alternance
