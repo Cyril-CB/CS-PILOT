@@ -56,11 +56,23 @@
     box-shadow: inset 0 -2px 0 var(--gray-300, #d3c2b1);
 }
 .bp-ps-btn {
-    margin-left: 8px;
     padding: 2px 8px;
     font-size: 0.72rem;
     white-space: nowrap;
-    vertical-align: middle;
+}
+/* Cellule Libellé : le texte peut se replier sur plusieurs lignes, les boutons
+   (PS / Paie / fiche) restent alignés à droite sur la ligne, sans jamais
+   passer dessous (ce qui agrandissait la hauteur des lignes du tableau). */
+.bp-libelle-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.bp-libelle-flex .bp-btns {
+    display: inline-flex;
+    gap: 6px;
+    flex-shrink: 0;
 }
 /* Simulateur PS : modale large */
 .ps-modal-overlay {
@@ -539,10 +551,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-paie-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de paie">🧮 Paie</button>'
             : '';
         const ficheBtn = (actualise && !globalMode && !psComptes[r.compte_num] && !r.is_salary)
-            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements">📋 Fiche</button>'
+            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements" aria-label="Fiche de travail">📋</button>'
             : '';
+        const boutons = psBtn + paieBtn + ficheBtn;
         html += '<tr' + rowStyle + '>' +
-          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + paieBtn + ficheBtn + '</td>' +
+          '<td>' + escapeHtml(r.compte_num) + '</td>' +
+          '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) + '</span>' +
+          (boutons ? '<span class="bp-btns">' + boutons + '</span>' : '') + '</div></td>' +
           comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], 0) +
           comptaCell(r.compte_num, ctx.annee - 1, r['N-1'], 0) +
           comptaCell(r.compte_num, ctx.annee, r['N'], ctx.moisMax) +
