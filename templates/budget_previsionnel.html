@@ -502,13 +502,15 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
     let currentCat = null, catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
     function pushCatTotal(){
         if (!currentCat) return;
+        // Cellules Déf./Écart taguées : rafraîchies en direct pendant la saisie
+        // d'une valeur définitive, sans re-rendre le tableau (focus conservé).
         html += '<tr class="bp-cat-total"><td colspan="2">Total catégorie ' + currentCat + '</td>' +
           '<td class="bp-col-num">' + fmt(catTotals.n2) + '</td><td class="bp-col-num">' + fmt(catTotals.n1) + '</td>' +
           '<td class="bp-col-num">' + fmt(catTotals.n) + '</td>' +
           (actualise ? '<td class="bp-col-num">' + fmt(catTotals.initial) + '</td>' : '') +
           '<td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
-          '<td class="bp-col-num">' + fmt(catTotals.def) + '</td>' +
-          (actualise ? '<td class="bp-col-num">' + fmtEcart(catTotals.ecart) + '</td>' : '') +
+          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmt(catTotals.def) + '</td>' +
+          (actualise ? '<td class="bp-col-num" data-bp-cat-ecart="' + escapeHtml(currentCat) + '">' + fmtEcart(catTotals.ecart) + '</td>' : '') +
           '<td></td></tr>';
     }
     for (const r of rows){
@@ -565,13 +567,28 @@ function fmtEcart(ecart){
     const style = Math.abs(ecart) < 0.005 ? 'color:var(--text-muted);' : 'font-weight:600;';
     return '<span style="' + style + '">' + signe + fmt(ecart) + '</span>';
 }
+// Rafraîchit en direct, après édition d'une valeur définitive : l'écart de la
+// ligne, les totaux Déf./Écart de sa catégorie et le compte de résultat.
+// Scopé sur #budgetTables : l'onglet global (lecture seule) a ses propres
+// cellules pour les mêmes comptes et ne doit pas recevoir de valeurs secteur.
 function updateEcartCell(compte){
     const row = currentRows.find(r => r.compte_num === compte);
-    if (!row || row.initial === undefined) return;
-    document.querySelectorAll('[data-bp-ecart-compte]').forEach(function(el){
-        if (el.getAttribute('data-bp-ecart-compte') !== compte) return;
-        el.innerHTML = fmtEcart(ecartValue(row));
-    });
+    const root = document.getElementById('budgetTables');
+    if (!row || !root) return;
+    if (row.initial !== undefined){
+        root.querySelectorAll('[data-bp-ecart-compte]').forEach(function(el){
+            if (el.getAttribute('data-bp-ecart-compte') !== compte) return;
+            el.innerHTML = fmtEcart(ecartValue(row));
+        });
+    }
+    const rowsCat = currentRows.filter(r => r.categorie === row.categorie);
+    const defCell = root.querySelector('[data-bp-cat-def="' + row.categorie + '"]');
+    if (defCell) defCell.textContent = fmt(rowsCat.reduce((s, r) => s + Number(r.def || 0), 0));
+    if (row.initial !== undefined){
+        const ecartCell = root.querySelector('[data-bp-cat-ecart="' + row.categorie + '"]');
+        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => s + ecartValue(r), 0));
+    }
+    renderResultFromRows();
 }
 
 function renderResult(targetId, totaux){
