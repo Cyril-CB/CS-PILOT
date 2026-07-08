@@ -234,6 +234,115 @@ def test_archiver_message_manuellement(auth_client, db, sample_users):
     assert row['statut'] == 'archive'
 
 
+# ──────────────────────────────────────────────────────────────────────────
+#  Notification e-mail à la publication
+# ──────────────────────────────────────────────────────────────────────────
+
+def _preparer_emails(db, sample_users):
+    """Attribue e-mails et consentements pour tester la diffusion.
+
+    - direction : profil pro → reçoit toujours ;
+    - salarié auteur : consentement activé → reçoit ;
+    - responsable / comptable : pas d'e-mail → exclus.
+    """
+    db.execute("UPDATE users SET email = 'dir@ex.fr' WHERE id = ?",
+               (sample_users['directeur_id'],))
+    db.execute("UPDATE users SET email = 'sal@ex.fr', email_notifications_enabled = 1 WHERE id = ?",
+               (sample_users['salarie_id'],))
+    db.commit()
+
+
+def test_publication_diffuse_selon_audience_et_consentement(auth_client, db, sample_users, monkeypatch):
+    import email_service
+    _faire_membre(db, sample_users['salarie_id'], sample_users['directeur_id'])
+    _preparer_emails(db, sample_users)
+    # Salarié sans consentement → exclu ; prestataire → exclu (même avec e-mail).
+    db.execute("INSERT INTO users (nom, prenom, login, password, profil, email, email_notifications_enabled) "
+               "VALUES ('Sans', 'Consent', 'nc', 'x', 'salarie', 'nc@ex.fr', 0)")
+    db.execute("INSERT INTO users (nom, prenom, login, password, profil, email, email_notifications_enabled) "
+               "VALUES ('Presta', 'Taire', 'pr', 'x', 'prestataire', 'pr@ex.fr', 1)")
+    db.commit()
+
+    captures = {}
+    monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
+
+    def fake_notif(destinataires, titre, contenu, date_validite=None, auteur_nom=''):
+        captures['dests'] = destinataires
+        captures['titre'] = titre
+        return len(destinataires), 0, []
+    monkeypatch.setattr(email_service, 'notifier_publication_cse', fake_notif)
+
+    resp = auth_client.post(
+        '/cse/messages/creer',
+        data={'titre': 'Info', 'contenu': 'Coucou', 'date_validite': '2999-12-31',
+              'notifier_email': '1'},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    emails = {e for e, _ in captures['dests']}
+    assert emails == {'dir@ex.fr', 'sal@ex.fr'}   # consentement OFF et prestataire exclus
+    assert captures['titre'] == 'Info'
+    assert 'notifiée(s) par e-mail' in resp.get_data(as_text=True)
+
+
+def test_publication_sans_case_n_envoie_pas(auth_client, db, sample_users, monkeypatch):
+    import email_service
+    _faire_membre(db, sample_users['salarie_id'], sample_users['directeur_id'])
+    _preparer_emails(db, sample_users)
+
+    appels = []
+    monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
+    monkeypatch.setattr(email_service, 'notifier_publication_cse',
+                        lambda *a, **k: appels.append(a) or (0, 0, []))
+
+    # Pas de champ notifier_email → aucune diffusion, mais le message est publié.
+    auth_client.post('/cse/messages/creer',
+                     data={'contenu': 'Silencieux', 'date_validite': '2999-12-31'},
+                     follow_redirects=True)
+    assert appels == []
+    n = db.execute("SELECT COUNT(*) AS n FROM cse_messages WHERE statut='actif'").fetchone()['n']
+    assert n == 1
+
+
+def test_publication_survit_a_une_erreur_email(auth_client, db, sample_users, monkeypatch):
+    import email_service
+    _faire_membre(db, sample_users['salarie_id'], sample_users['directeur_id'])
+    _preparer_emails(db, sample_users)
+
+    monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
+
+    def boom(*a, **k):
+        raise RuntimeError("SMTP indisponible")
+    monkeypatch.setattr(email_service, 'notifier_publication_cse', boom)
+
+    resp = auth_client.post(
+        '/cse/messages/creer',
+        data={'contenu': 'Malgré tout', 'date_validite': '2999-12-31', 'notifier_email': '1'},
+        follow_redirects=True,
+    )
+    # L'échec d'envoi est silencieux : la publication aboutit quand même.
+    assert resp.status_code == 200
+    n = db.execute("SELECT COUNT(*) AS n FROM cse_messages WHERE contenu='Malgré tout'").fetchone()['n']
+    assert n == 1
+
+
+def test_publication_sans_email_configure_publie_quand_meme(auth_client, db, sample_users, monkeypatch):
+    import email_service
+    _faire_membre(db, sample_users['salarie_id'], sample_users['directeur_id'])
+    _preparer_emails(db, sample_users)
+    monkeypatch.setattr(email_service, 'is_email_configured', lambda: False)
+
+    resp = auth_client.post(
+        '/cse/messages/creer',
+        data={'contenu': 'Sans SMTP', 'date_validite': '2999-12-31', 'notifier_email': '1'},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'Le message a été publié.' in html          # pas de mention d'e-mail
+    assert 'notifiée(s) par e-mail' not in html
+
+
 def test_banniere_sur_dashboard(auth_client, db, sample_users):
     _inserer_message(db, 'Info importante', '2999-12-31', statut='actif',
                      cree_par=sample_users['directeur_id'])
