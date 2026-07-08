@@ -830,6 +830,28 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
                 'commentaire': s['commentaire'] or ''
             }
 
+    # En budget actualisé, le budget initial (définitif) de la même année est
+    # affiché en face pour mesurer l'écart d'atterrissage. En vue globale, on
+    # consolide l'initial de tous les secteurs.
+    initial_map = {}
+    if type_budget == 'actualise':
+        if global_mode:
+            init_rows = conn.execute('''
+                SELECT compte_num, SUM(valeur_def) AS total_def
+                FROM budget_prev_saisies
+                WHERE type_budget = 'initial' AND annee = ?
+                GROUP BY compte_num
+            ''', (annee,)).fetchall()
+        elif secteur_id:
+            init_rows = conn.execute('''
+                SELECT compte_num, valeur_def AS total_def
+                FROM budget_prev_saisies
+                WHERE type_budget = 'initial' AND annee = ? AND secteur_id = ?
+            ''', (annee, secteur_id)).fetchall()
+        else:
+            init_rows = []
+        initial_map = {r['compte_num']: float(r['total_def'] or 0) for r in init_rows}
+
     accounts = []
     for compte, vals in totals.items():
         n2 = round(vals['N-2'], 2)
@@ -866,7 +888,7 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         saved_temp = save_data.get('valeur_temp')
         if saved_temp is not None:
             temp = float(saved_temp)
-        accounts.append({
+        account = {
             'compte_num': compte,
             'libelle': vals['libelle'],
             'categorie': compte[:2],
@@ -878,7 +900,10 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
             'temp': round(temp, 2),
             'def': round(float(save_data.get('valeur_def', 0)), 2),
             'commentaire': save_data.get('commentaire', '')
-        })
+        }
+        if type_budget == 'actualise':
+            account['initial'] = round(initial_map.get(compte, 0.0), 2)
+        accounts.append(account)
 
     accounts.sort(key=lambda r: r['compte_num'])
     salary_brut = None
@@ -1860,6 +1885,256 @@ def api_ps_simulation_save():
 
         conn.commit()
         return jsonify({'success': True, 'total': total, 'reported': True, 'computed': computed})
+    finally:
+        conn.close()
+
+
+# ============================================================
+# FICHE DE TRAVAIL (BUDGET ACTUALISÉ, COMPTES NON PARAMÉTRÉS)
+# ============================================================
+
+# Méthodes de projection des mois restants (après le mois d'arrêté du réel).
+FICHE_METHODES = {
+    'n1': 'N-1 mois par mois',
+    'moyenne_n1_n2': 'moyenne N-1 / N-2',
+    'tendance': 'tendance du réel',
+    'solde_initial': 'solde du budget initial',
+    'manuel': 'saisie mensuelle',
+}
+
+
+def _fiche_contexte(conn, compte_num, annee, secteur_id):
+    """Contexte de calcul d'une fiche : réel mensuel N / N-1 / N-2 du compte
+    (périmètre analytique du secteur), mois d'arrêté du réel (même définition
+    que le tableau : dernier mois importé de l'année N, tous comptes du
+    secteur confondus) et budget initial définitif du compte."""
+    allowed_codes = _secteur_allowed_codes(conn, secteur_id) if secteur_id else set()
+
+    def code_ok(code, compte):
+        if not secteur_id:
+            return True
+        return _code_allowed(code, compte, allowed_codes)
+
+    mensuels = {annee: {}, annee - 1: {}, annee - 2: {}}
+    last_month = 0
+    rows = conn.execute('''
+        SELECT compte_num, code_analytique, annee, mois, montant
+        FROM bilan_fec_donnees
+        WHERE annee IN (?, ?, ?)
+          AND (compte_num LIKE '6%' OR compte_num LIKE '7%')
+    ''', (annee - 2, annee - 1, annee)).fetchall()
+    for r in rows:
+        if not code_ok(r['code_analytique'], r['compte_num']):
+            continue
+        mois = r['mois']
+        if not mois or not (1 <= mois <= 12):
+            continue
+        if r['annee'] == annee:
+            last_month = max(last_month, mois)
+        if r['compte_num'] != compte_num:
+            continue
+        par_mois = mensuels[r['annee']]
+        par_mois[mois] = par_mois.get(mois, 0.0) + float(r['montant'] or 0)
+
+    init_row = conn.execute('''
+        SELECT valeur_def FROM budget_prev_saisies
+        WHERE type_budget = 'initial' AND annee = ? AND secteur_id = ? AND compte_num = ?
+    ''', (annee, secteur_id, compte_num)).fetchone()
+    budget_initial = float(init_row['valeur_def'] or 0) if init_row else 0.0
+
+    return {
+        'reel': mensuels[annee],
+        'n1': mensuels[annee - 1],
+        'n2': mensuels[annee - 2],
+        'last_month': last_month,
+        'budget_initial': budget_initial,
+    }
+
+
+def _compute_fiche_travail(donnees, contexte):
+    """Calcule une fiche de travail : réel à date + projection des mois
+    restants selon la méthode choisie + lignes d'ajustement. Le total est
+    recalculé côté serveur (source de vérité, le JS ne fait qu'un aperçu)."""
+    d = donnees if isinstance(donnees, dict) else {}
+    methode = d.get('methode') if d.get('methode') in FICHE_METHODES else 'n1'
+    reel = contexte['reel']
+    n1 = contexte['n1']
+    n2 = contexte['n2']
+    last_month = contexte['last_month']
+
+    mois_reel = {m: round(reel.get(m, 0.0), 2) for m in range(1, last_month + 1)}
+    total_reel = sum(mois_reel.values())
+    restants = range(last_month + 1, 13)
+
+    saisis = d.get('mois_prevus') or {}
+    mois_prevus = {}
+    for m in restants:
+        if methode == 'n1':
+            val = n1.get(m, 0.0)
+        elif methode == 'moyenne_n1_n2':
+            val = (n1.get(m, 0.0) + n2.get(m, 0.0)) / 2.0
+        elif methode == 'tendance':
+            val = (total_reel / last_month) if last_month else 0.0
+        elif methode == 'solde_initial':
+            nb_restants = 12 - last_month
+            val = (contexte['budget_initial'] - total_reel) / nb_restants if nb_restants else 0.0
+        else:  # manuel
+            val = _ps_num(saisis.get(str(m), saisis.get(m)))
+        mois_prevus[m] = round(val, 2)
+    total_prevu = sum(mois_prevus.values())
+
+    ajustements = []
+    for a in (d.get('ajustements') or []):
+        if not isinstance(a, dict):
+            continue
+        montant = _ps_num(a.get('montant'))
+        libelle = str(a.get('libelle') or '').strip()
+        if not montant and not libelle:
+            continue
+        ajustements.append({'libelle': libelle, 'montant': round(montant, 2)})
+    total_ajustements = sum(a['montant'] for a in ajustements)
+
+    return {
+        'methode': methode,
+        'mois_reel': mois_reel,
+        'mois_prevus': mois_prevus,
+        'ajustements': ajustements,
+        'total_reel': round(total_reel, 2),
+        'total_prevu': round(total_prevu, 2),
+        'total_ajustements': round(total_ajustements, 2),
+        'total': round(total_reel + total_prevu + total_ajustements, 2),
+    }
+
+
+def _fiche_commentaire_auto(computed, last_month):
+    """Commentaire de traçabilité écrit sur le compte au report du total."""
+    label = FICHE_METHODES.get(computed['methode'], computed['methode'])
+    if last_month:
+        base = f"Fiche : réel à fin {NOMS_MOIS[last_month].lower()} + {label}"
+    else:
+        base = f"Fiche : {label}"
+    nb = len(computed['ajustements'])
+    if nb:
+        base += f", {nb} ajustement(s)"
+    return base
+
+
+@budget_bp.route('/api/budget-previsionnel/fiche-travail')
+@login_required
+def api_fiche_travail_get():
+    """Fiche de travail d'un compte (budget actualisé) : saisie enregistrée +
+    contexte de calcul (réel mensuel, références N-1/N-2, budget initial)."""
+    profil = session.get('profil')
+    if not _can_access_budget_previsionnel(profil):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    compte_num = (request.args.get('compte_num') or '').strip()
+    annee = request.args.get('annee', type=int)
+    secteur_id = request.args.get('secteur_id', type=int)
+    type_budget = request.args.get('type_budget', 'actualise')
+    if type_budget != 'actualise':
+        return jsonify({'error': 'La fiche de travail est réservée au budget actualisé'}), 400
+
+    conn = get_db()
+    try:
+        # Un responsable ne consulte que son secteur (même règle que la page).
+        if profil == 'responsable':
+            user = conn.execute('SELECT secteur_id FROM users WHERE id = ?',
+                                (session.get('user_id'),)).fetchone()
+            if not user or not user['secteur_id']:
+                return jsonify({'error': 'Aucun secteur associé'}), 400
+            secteur_id = user['secteur_id']
+        if not compte_num or not annee or not secteur_id:
+            return jsonify({'error': 'Compte, secteur et année requis'}), 400
+
+        contexte = _fiche_contexte(conn, compte_num, annee, secteur_id)
+        row = conn.execute('''
+            SELECT donnees, total, updated_at FROM budget_fiches_travail
+            WHERE compte_num = ? AND annee = ? AND secteur_id = ? AND type_budget = ?
+        ''', (compte_num, annee, secteur_id, type_budget)).fetchone()
+        donnees = None
+        if row:
+            try:
+                donnees = json.loads(row['donnees']) if row['donnees'] else None
+            except (ValueError, TypeError):
+                donnees = None
+        return jsonify({
+            'found': bool(row),
+            'donnees': donnees,
+            'total': row['total'] if row else None,
+            'updated_at': row['updated_at'] if row else None,
+            'contexte': {
+                'reel_mensuel': contexte['reel'],
+                'n1_mensuel': contexte['n1'],
+                'n2_mensuel': contexte['n2'],
+                'last_month': contexte['last_month'],
+                'last_month_label': (NOMS_MOIS[contexte['last_month']]
+                                     if 1 <= contexte['last_month'] <= 12 else ''),
+                'budget_initial': round(contexte['budget_initial'], 2),
+                'methodes': FICHE_METHODES,
+            },
+        })
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/fiche-travail', methods=['POST'])
+@login_required
+def api_fiche_travail_save():
+    """Enregistre une fiche de travail et reporte le total sur la valeur
+    définitive du compte, avec un commentaire auto traçant la méthode."""
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    data = request.get_json() or {}
+    compte_num = (data.get('compte_num') or '').strip()
+    annee = data.get('annee')
+    secteur_id = data.get('secteur_id')
+    type_budget = data.get('type_budget')
+    donnees = data.get('donnees') or {}
+    if not isinstance(donnees, dict):
+        donnees = {}
+    if not compte_num or not annee or not secteur_id:
+        return jsonify({'error': 'Compte, secteur et année requis'}), 400
+    if type_budget != 'actualise':
+        return jsonify({'error': 'La fiche de travail est réservée au budget actualisé'}), 400
+
+    conn = get_db()
+    try:
+        contexte = _fiche_contexte(conn, compte_num, int(annee), int(secteur_id))
+        computed = _compute_fiche_travail(donnees, contexte)
+        total = computed['total']
+        commentaire = _fiche_commentaire_auto(computed, contexte['last_month'])
+
+        conn.execute('''
+            INSERT INTO budget_fiches_travail
+            (compte_num, annee, secteur_id, type_budget, donnees, total, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(compte_num, annee, secteur_id, type_budget) DO UPDATE SET
+                donnees = excluded.donnees,
+                total = excluded.total,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (compte_num, int(annee), int(secteur_id), type_budget,
+              json.dumps(donnees), total, user_id))
+
+        # Report sur la valeur définitive du compte + commentaire auto de
+        # traçabilité, en préservant la valeur temporaire éventuelle.
+        conn.execute('''
+            INSERT INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_def, commentaire, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(type_budget, annee, secteur_id, compte_num) DO UPDATE SET
+                valeur_def = excluded.valeur_def,
+                commentaire = excluded.commentaire,
+                updated_by = excluded.updated_by,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (type_budget, int(annee), int(secteur_id), compte_num, total, commentaire, user_id))
+
+        conn.commit()
+        return jsonify({'success': True, 'total': total, 'commentaire': commentaire,
+                        'reported': True, 'computed': computed})
     finally:
         conn.close()
 

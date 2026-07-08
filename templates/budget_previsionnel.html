@@ -344,6 +344,18 @@
     </div>
 </div>
 
+<!-- Fiche de travail d'un compte (budget actualisé) : réel + projection + ajustements -->
+<div id="ficheTravailModal" class="ps-modal-overlay" onclick="if(event.target===this)closeFicheTravail()">
+    <div class="ps-modal" role="dialog" aria-modal="true">
+        <div class="ps-modal-header">
+            <h3 id="ficheTitle">Fiche de travail</h3>
+            <button class="modal-close" type="button" onclick="closeFicheTravail()" aria-label="Fermer">&times;</button>
+        </div>
+        <div class="ps-modal-body" id="ficheBody"></div>
+        <div class="ps-modal-footer" id="ficheFooter"></div>
+    </div>
+</div>
+
 <!-- Fenêtre de détail des opérations comptables derrière une somme -->
 <div id="bpDetailModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
     <div class="modal-content" style="max-width:700px;">
@@ -426,7 +438,8 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
         annee: parseInt(document.getElementById('anneeBudget').value),
         secteur: document.getElementById('secteurBudget').value,
         global: globalMode,
-        moisMax: (type === 'actualise' && meta && meta.last_month) ? meta.last_month : 0
+        moisMax: (type === 'actualise' && meta && meta.last_month) ? meta.last_month : 0,
+        actualise: type === 'actualise'
     };
     const hint = ' <span class="bp-detail-hint">(Cliquez les sommes pour afficher le détail)</span>';
     const html = '<h3>Charges' + hint + '</h3>' + buildTable(charges, nTemp, nDef, globalMode, ctx) +
@@ -449,6 +462,7 @@ function bindBudgetInputHandlers(targetId){
     root.querySelectorAll('input[data-bp-def-compte]').forEach((input) => {
         input.addEventListener('input', function(){
             queueSave(this.dataset.bpDefCompte || '', this.value, null);
+            updateEcartCell(this.dataset.bpDefCompte || '');
         });
     });
     root.querySelectorAll('input[data-bp-comment-compte]').forEach((input) => {
@@ -469,26 +483,44 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         return '<td class="bp-col-num"><span class="bp-detail" ' + attrs +
             ' onclick="bpVoirDetail(this)">' + fmt(value) + '</span></td>';
     }
+    // En actualisé : colonnes « Budget initial » (définitif du budget initial de
+    // la même année) et « Écart » = (Définitif si saisi, sinon Temporaire) − initial.
+    const actualise = !!ctx.actualise;
     let html = '<div class="bp-table-scroll"><table class="data-table budget-prev-table"><colgroup>' +
-      '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-input"><col class="bp-col-input"><col class="bp-col-comment">' +
+      '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value">' +
+      (actualise ? '<col class="bp-col-value">' : '') +
+      '<col class="bp-col-input"><col class="bp-col-input">' +
+      (actualise ? '<col class="bp-col-value">' : '') +
+      '<col class="bp-col-comment">' +
       '</colgroup><thead><tr>' +
-      '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th><th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th><th>Commentaire</th>' +
+      '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th>' +
+      (actualise ? '<th class="bp-col-num" title="Valeur définitive du budget initial de l\'année">Initial</th>' : '') +
+      '<th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th>' +
+      (actualise ? '<th class="bp-col-num" title="Définitif (sinon Temporaire) − Budget initial">Écart</th>' : '') +
+      '<th>Commentaire</th>' +
       '</tr></thead><tbody>';
-    let currentCat = null, catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
+    let currentCat = null, catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
     function pushCatTotal(){
         if (!currentCat) return;
+        // Cellules Déf./Écart taguées : rafraîchies en direct pendant la saisie
+        // d'une valeur définitive, sans re-rendre le tableau (focus conservé).
         html += '<tr class="bp-cat-total"><td colspan="2">Total catégorie ' + currentCat + '</td>' +
           '<td class="bp-col-num">' + fmt(catTotals.n2) + '</td><td class="bp-col-num">' + fmt(catTotals.n1) + '</td>' +
-          '<td class="bp-col-num">' + fmt(catTotals.n) + '</td><td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
-          '<td class="bp-col-num">' + fmt(catTotals.def) + '</td><td></td></tr>';
+          '<td class="bp-col-num">' + fmt(catTotals.n) + '</td>' +
+          (actualise ? '<td class="bp-col-num">' + fmt(catTotals.initial) + '</td>' : '') +
+          '<td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
+          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmt(catTotals.def) + '</td>' +
+          (actualise ? '<td class="bp-col-num" data-bp-cat-ecart="' + escapeHtml(currentCat) + '">' + fmtEcart(catTotals.ecart) + '</td>' : '') +
+          '<td></td></tr>';
     }
     for (const r of rows){
         if (currentCat !== r.categorie){
             pushCatTotal();
             currentCat = r.categorie;
-            catTotals = {n2:0,n1:0,n:0,temp:0,def:0};
+            catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
         }
         catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
+        if (actualise){ catTotals.initial += Number(r.initial || 0); catTotals.ecart += ecartValue(r); }
         const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
         const tempInput = (!globalMode && !isReadOnly && isBrut)
@@ -506,16 +538,57 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const paieBtn = (!globalMode && canEditPs && salaryMeta && salaryMeta.salary_brut_account === r.compte_num)
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-paie-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de paie">🧮 Paie</button>'
             : '';
+        const ficheBtn = (actualise && !globalMode && !psComptes[r.compte_num] && !r.is_salary)
+            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements">📋 Fiche</button>'
+            : '';
         html += '<tr' + rowStyle + '>' +
-          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + paieBtn + '</td>' +
+          '<td>' + escapeHtml(r.compte_num) + '</td><td>' + escapeHtml(r.libelle) + psBtn + paieBtn + ficheBtn + '</td>' +
           comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], 0) +
           comptaCell(r.compte_num, ctx.annee - 1, r['N-1'], 0) +
           comptaCell(r.compte_num, ctx.annee, r['N'], ctx.moisMax) +
-          '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td><td>' + commentInput + '</td></tr>';
+          (actualise ? '<td class="bp-col-num">' + fmt(r.initial) + '</td>' : '') +
+          '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td>' +
+          (actualise ? '<td class="bp-col-num"><span data-bp-ecart-compte="' + escapeHtml(r.compte_num) + '">' + fmtEcart(ecartValue(r)) + '</span></td>' : '') +
+          '<td>' + commentInput + '</td></tr>';
     }
     pushCatTotal();
     html += '</tbody></table></div>';
     return html;
+}
+
+// Écart d'atterrissage d'une ligne (actualisé) : Définitif si saisi, sinon
+// Temporaire, moins le budget initial du compte.
+function ecartValue(r){
+    const retenu = Number(r.def || 0) !== 0 ? Number(r.def) : Number(r.temp || 0);
+    return retenu - Number(r.initial || 0);
+}
+function fmtEcart(ecart){
+    const signe = ecart > 0 ? '+' : '';
+    const style = Math.abs(ecart) < 0.005 ? 'color:var(--text-muted);' : 'font-weight:600;';
+    return '<span style="' + style + '">' + signe + fmt(ecart) + '</span>';
+}
+// Rafraîchit en direct, après édition d'une valeur définitive : l'écart de la
+// ligne, les totaux Déf./Écart de sa catégorie et le compte de résultat.
+// Scopé sur #budgetTables : l'onglet global (lecture seule) a ses propres
+// cellules pour les mêmes comptes et ne doit pas recevoir de valeurs secteur.
+function updateEcartCell(compte){
+    const row = currentRows.find(r => r.compte_num === compte);
+    const root = document.getElementById('budgetTables');
+    if (!row || !root) return;
+    if (row.initial !== undefined){
+        root.querySelectorAll('[data-bp-ecart-compte]').forEach(function(el){
+            if (el.getAttribute('data-bp-ecart-compte') !== compte) return;
+            el.innerHTML = fmtEcart(ecartValue(row));
+        });
+    }
+    const rowsCat = currentRows.filter(r => r.categorie === row.categorie);
+    const defCell = root.querySelector('[data-bp-cat-def="' + row.categorie + '"]');
+    if (defCell) defCell.textContent = fmt(rowsCat.reduce((s, r) => s + Number(r.def || 0), 0));
+    if (row.initial !== undefined){
+        const ecartCell = root.querySelector('[data-bp-cat-ecart="' + row.categorie + '"]');
+        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => s + ecartValue(r), 0));
+    }
+    renderResultFromRows();
 }
 
 function renderResult(targetId, totaux){
@@ -667,6 +740,9 @@ function bindPsButtons(targetId){
     });
     root.querySelectorAll('button[data-paie-compte]').forEach(function(btn){
         btn.addEventListener('click', function(){ openPaieSimulator(this.dataset.paieCompte || ''); });
+    });
+    root.querySelectorAll('button[data-fiche-compte]').forEach(function(btn){
+        btn.addEventListener('click', function(){ openFicheTravail(this.dataset.ficheCompte || ''); });
     });
 }
 
@@ -1450,6 +1526,280 @@ function savePsSimulator(){
             renderResultFromRows();
         }
         if (msg) msg.textContent = '✓ Enregistré · total reporté : ' + fmt(data.total) + ' €';
+    }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
+}
+
+// ===================== Fiche de travail (budget actualisé) =====================
+// Comptes non paramétrés (ni PS, ni paie) : le définitif se construit dans une
+// fiche = réel à date (verrouillé) + projection des mois restants (méthode au
+// choix) + lignes d'ajustement. Le serveur recalcule et reporte le total.
+var ficheSim = null;  // { compte, libelle, ctx, state, contexte }
+var FICHE_METHODES_JS = {
+    n1: 'N-1 mois par mois',
+    moyenne_n1_n2: 'Moyenne N-1 / N-2',
+    tendance: 'Tendance du réel',
+    solde_initial: 'Solde du budget initial',
+    manuel: 'Saisie mensuelle'
+};
+var FICHE_METHODES_HINTS = {
+    n1: 'Chaque mois restant reprend le montant du même mois en N-1.',
+    moyenne_n1_n2: 'Chaque mois restant = moyenne du même mois en N-1 et N-2.',
+    tendance: 'Chaque mois restant = moyenne mensuelle du réel déjà comptabilisé.',
+    solde_initial: 'Le reste (budget initial − réel à date) est réparti sur les mois restants.',
+    manuel: 'Saisissez librement chaque mois restant.'
+};
+
+function openFicheTravail(compteNum){
+    var ctx = getCurrentBudgetContext();
+    var rowMeta = currentRows.find(function(r){ return r.compte_num === compteNum; });
+    ficheSim = {compte: compteNum, libelle: rowMeta ? rowMeta.libelle : '', ctx: ctx, state: null, contexte: null};
+    document.getElementById('ficheTitle').textContent =
+        'Fiche de travail — ' + compteNum + (ficheSim.libelle ? ' (' + ficheSim.libelle + ')' : '') +
+        ' — budget actualisé ' + ctx.annee;
+    var url = '/api/budget-previsionnel/fiche-travail?compte_num=' + encodeURIComponent(compteNum) +
+        '&annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id + '&type_budget=' + encodeURIComponent(ctx.type_budget);
+    fetch(url).then(r => r.json()).then(function(d){
+        if (d && d.error){ alert(d.error); return; }
+        ficheSim.contexte = (d && d.contexte) || {reel_mensuel:{}, n1_mensuel:{}, n2_mensuel:{}, last_month:0, budget_initial:0};
+        ficheSim.state = mergeFicheState(d && d.found ? d.donnees : null);
+        renderFicheTravail();
+        recomputeFiche();
+        document.getElementById('ficheTravailModal').classList.add('open');
+    }).catch(function(){ alert('Erreur réseau lors du chargement de la fiche'); });
+}
+function closeFicheTravail(){ document.getElementById('ficheTravailModal').classList.remove('open'); ficheSim = null; }
+document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && document.getElementById('ficheTravailModal').classList.contains('open')) closeFicheTravail();
+});
+
+function mergeFicheState(saved){
+    var st = {methode: 'n1', mois_prevus: {}, ajustements: []};
+    if (saved && typeof saved === 'object'){
+        if (FICHE_METHODES_JS[saved.methode]) st.methode = saved.methode;
+        if (saved.mois_prevus && typeof saved.mois_prevus === 'object') st.mois_prevus = Object.assign({}, saved.mois_prevus);
+        if (Array.isArray(saved.ajustements)){
+            st.ajustements = saved.ajustements.filter(function(a){ return a && typeof a === 'object'; })
+                .map(function(a){ return {libelle: a.libelle || '', montant: a.montant != null ? a.montant : ''}; });
+        }
+    }
+    return st;
+}
+
+function ficheMois(map, m){
+    if (!map) return 0;
+    var v = map[m] !== undefined ? map[m] : map[String(m)];
+    return psNum(v);
+}
+
+// Aperçu client — même logique que le serveur (qui reste la source de vérité).
+function computeFicheClient(){
+    var cx = ficheSim.contexte, st = ficheSim.state;
+    var lastMonth = cx.last_month || 0;
+    var totalReel = 0, m;
+    for (m = 1; m <= lastMonth; m++) totalReel += ficheMois(cx.reel_mensuel, m);
+    var prevus = {};
+    for (m = lastMonth + 1; m <= 12; m++){
+        var val;
+        if (st.methode === 'n1') val = ficheMois(cx.n1_mensuel, m);
+        else if (st.methode === 'moyenne_n1_n2') val = (ficheMois(cx.n1_mensuel, m) + ficheMois(cx.n2_mensuel, m)) / 2;
+        else if (st.methode === 'tendance') val = lastMonth ? totalReel / lastMonth : 0;
+        else if (st.methode === 'solde_initial') val = (12 - lastMonth) ? (psNum(cx.budget_initial) - totalReel) / (12 - lastMonth) : 0;
+        else val = ficheMois(st.mois_prevus, m);
+        prevus[m] = val;
+    }
+    var totalPrevu = 0; Object.keys(prevus).forEach(function(k){ totalPrevu += prevus[k]; });
+    var totalAjust = 0;
+    (st.ajustements || []).forEach(function(a){ totalAjust += psNum(a.montant); });
+    return {total_reel: totalReel, mois_prevus: prevus, total_prevu: totalPrevu,
+            total_ajustements: totalAjust, total: totalReel + totalPrevu + totalAjust};
+}
+
+function renderFicheTravail(){
+    var cx = ficheSim.contexte, st = ficheSim.state;
+    var lastMonth = cx.last_month || 0;
+    var dis = canEditPs ? '' : ' disabled';
+    var totN1 = 0, totN2 = 0, m;
+    for (m = 1; m <= 12; m++){ totN1 += ficheMois(cx.n1_mensuel, m); totN2 += ficheMois(cx.n2_mensuel, m); }
+
+    var html = '<div class="ps-legend">' +
+        (lastMonth
+            ? 'Réel comptabilisé jusqu\'à <strong>fin ' + escapeHtml(cx.last_month_label || '') + '</strong> (verrouillé). '
+            : 'Aucun réel importé pour l\'année : toute l\'année est projetée. ') +
+        'Modifier un mois projeté bascule automatiquement en « Saisie mensuelle ».<br>' +
+        'Budget initial du compte : <strong>' + fmt(cx.budget_initial) + ' €</strong> · Réalisé N-1 : ' + fmt(totN1) +
+        ' € · Réalisé N-2 : ' + fmt(totN2) + ' €</div>';
+
+    html += '<div class="ps-params" style="align-items:center;gap:12px;">' +
+        '<div class="ps-field" style="margin:0;"><label>Méthode de projection</label>' +
+        '<select class="ps-input" id="ficheMethode" style="text-align:left;min-width:230px;"' + dis + '>' +
+        Object.keys(FICHE_METHODES_JS).map(function(k){
+            return '<option value="' + k + '"' + (st.methode === k ? ' selected' : '') + '>' + FICHE_METHODES_JS[k] + '</option>';
+        }).join('') + '</select></div>' +
+        '<div id="ficheMethodeHint" style="font-size:.78rem;color:var(--text-muted);flex:1;min-width:200px;"></div></div>';
+
+    html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr><th style="text-align:left;"></th>';
+    for (m = 1; m <= 12; m++) html += '<th>' + MOIS_COURT[m-1] + '</th>';
+    html += '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
+
+    html += '<tr><td style="text-align:left;font-weight:600;">Réel ' + ficheSim.ctx.annee + '</td>';
+    for (m = 1; m <= 12; m++){
+        html += (m <= lastMonth)
+            ? '<td class="bp-ps-calc">' + fmt(ficheMois(cx.reel_mensuel, m)) + '</td>'
+            : '<td style="color:var(--text-muted);text-align:center;">—</td>';
+    }
+    html += '<td class="bp-ps-calc" id="fiche-total-reel"></td></tr>';
+
+    html += '<tr><td style="text-align:left;font-weight:600;">Projection</td>';
+    for (m = 1; m <= 12; m++){
+        html += (m <= lastMonth)
+            ? '<td style="color:var(--text-muted);text-align:center;">—</td>'
+            : '<td><input class="ps-input" type="number" step="0.01" data-fiche-mois="' + m + '"' + dis + '></td>';
+    }
+    html += '<td class="bp-ps-calc" id="fiche-total-prevu"></td></tr>';
+
+    html += '<tr><td style="text-align:left;color:var(--text-muted);">Rappel N-1</td>';
+    for (m = 1; m <= 12; m++) html += '<td style="color:var(--text-muted);">' + fmt(ficheMois(cx.n1_mensuel, m)) + '</td>';
+    html += '<td style="color:var(--text-muted);">' + fmt(totN1) + '</td></tr>';
+    html += '<tr><td style="text-align:left;color:var(--text-muted);">Rappel N-2</td>';
+    for (m = 1; m <= 12; m++) html += '<td style="color:var(--text-muted);">' + fmt(ficheMois(cx.n2_mensuel, m)) + '</td>';
+    html += '<td style="color:var(--text-muted);">' + fmt(totN2) + '</td></tr>';
+    html += '</tbody></table></div>';
+
+    html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Ajustements (+/−)</h4>';
+    html += '<div id="ficheAjustements"></div>';
+    if (canEditPs) html += '<button class="btn btn-sm btn-secondary" type="button" onclick="ficheAddAjustement()">+ Ajouter un ajustement</button>';
+
+    html += '<div class="ps-params" style="margin-top:14px;justify-content:flex-end;gap:18px;font-size:.9rem;">' +
+        '<div>Réel : <strong id="fiche-syn-reel"></strong></div>' +
+        '<div>Projection : <strong id="fiche-syn-prevu"></strong></div>' +
+        '<div>Ajustements : <strong id="fiche-syn-ajust"></strong></div>' +
+        '<div style="font-size:1rem;">Total fiche : <strong id="fiche-syn-total"></strong></div></div>';
+
+    document.getElementById('ficheBody').innerHTML = html;
+    document.getElementById('ficheFooter').innerHTML = canEditPs
+        ? '<span id="ficheSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>' +
+          '<button class="btn btn-secondary" type="button" onclick="closeFicheTravail()">Annuler</button>' +
+          '<button class="btn btn-primary" type="button" onclick="saveFicheTravail()">💾 Enregistrer et reporter en définitif</button>'
+        : '<span style="margin-right:auto;color:var(--text-muted);">Lecture seule</span>' +
+          '<button class="btn btn-secondary" type="button" onclick="closeFicheTravail()">Fermer</button>';
+
+    renderFicheAjustements();
+    bindFicheInputs();
+}
+
+function bindFicheInputs(){
+    var sel = document.getElementById('ficheMethode');
+    if (sel) sel.addEventListener('change', function(){
+        var st = ficheSim.state;
+        // Passage volontaire en manuel : on repart des valeurs de la méthode
+        // précédente plutôt que de zéros.
+        if (this.value === 'manuel' && st.methode !== 'manuel'){
+            var c = computeFicheClient();
+            st.mois_prevus = {};
+            Object.keys(c.mois_prevus).forEach(function(k){ st.mois_prevus[k] = Math.round(c.mois_prevus[k] * 100) / 100; });
+        }
+        st.methode = this.value;
+        recomputeFiche();
+    });
+    document.querySelectorAll('#ficheBody input[data-fiche-mois]').forEach(function(el){
+        el.addEventListener('input', function(){
+            var st = ficheSim.state;
+            var m = parseInt(this.dataset.ficheMois, 10);
+            if (st.methode !== 'manuel'){
+                // Édition directe d'un mois projeté : on fige la projection
+                // courante puis on bascule en saisie mensuelle.
+                var c = computeFicheClient();
+                st.mois_prevus = {};
+                Object.keys(c.mois_prevus).forEach(function(k){ st.mois_prevus[k] = Math.round(c.mois_prevus[k] * 100) / 100; });
+                st.methode = 'manuel';
+                var sel2 = document.getElementById('ficheMethode');
+                if (sel2) sel2.value = 'manuel';
+            }
+            st.mois_prevus[m] = this.value;
+            recomputeFiche();
+        });
+    });
+}
+
+function renderFicheAjustements(){
+    var wrap = document.getElementById('ficheAjustements');
+    if (!wrap || !ficheSim) return;
+    var st = ficheSim.state;
+    var dis = canEditPs ? '' : ' disabled';
+    if (!(st.ajustements || []).length){
+        wrap.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem;margin:4px 0 8px;">' +
+            'Aucun ajustement — ajoutez par exemple une facture attendue, une résiliation, une régularisation…</p>';
+        return;
+    }
+    wrap.innerHTML = st.ajustements.map(function(a, i){
+        return '<div style="display:flex;gap:8px;margin-bottom:6px;align-items:center;">' +
+            '<input class="ps-input" style="flex:1;text-align:left;" placeholder="Libellé (ex. facture attendue en novembre)"' +
+            ' value="' + escapeHtml(a.libelle || '') + '" data-fiche-aj="' + i + '" data-fiche-akey="libelle"' + dis + '>' +
+            '<input class="ps-input" type="number" step="0.01" style="width:130px;" placeholder="Montant ±"' +
+            ' value="' + psAttr(a.montant) + '" data-fiche-aj="' + i + '" data-fiche-akey="montant"' + dis + '>' +
+            (canEditPs ? '<button class="btn btn-sm btn-danger" type="button" onclick="ficheRemoveAjustement(' + i + ')">×</button>' : '') +
+            '</div>';
+    }).join('');
+    wrap.querySelectorAll('[data-fiche-aj]').forEach(function(el){
+        el.addEventListener('input', function(){
+            var i = parseInt(this.dataset.ficheAj, 10);
+            if (ficheSim.state.ajustements[i]) ficheSim.state.ajustements[i][this.dataset.ficheAkey] = this.value;
+            recomputeFiche();
+        });
+    });
+}
+function ficheAddAjustement(){
+    if (!ficheSim) return;
+    ficheSim.state.ajustements.push({libelle:'', montant:''});
+    renderFicheAjustements(); recomputeFiche();
+}
+function ficheRemoveAjustement(i){
+    if (!ficheSim) return;
+    ficheSim.state.ajustements.splice(i, 1);
+    renderFicheAjustements(); recomputeFiche();
+}
+
+function recomputeFiche(){
+    if (!ficheSim) return;
+    var c = computeFicheClient();
+    var st = ficheSim.state;
+    document.querySelectorAll('#ficheBody input[data-fiche-mois]').forEach(function(el){
+        if (el === document.activeElement) return;  // ne pas écraser la saisie en cours
+        var m = parseInt(el.dataset.ficheMois, 10);
+        var v = (st.methode === 'manuel') ? ficheMois(st.mois_prevus, m) : (c.mois_prevus[m] || 0);
+        el.value = Math.round(v * 100) / 100;
+    });
+    psSet('fiche-total-reel', fmt(c.total_reel));
+    psSet('fiche-total-prevu', fmt(c.total_prevu));
+    psSet('fiche-syn-reel', fmt(c.total_reel) + ' €');
+    psSet('fiche-syn-prevu', fmt(c.total_prevu) + ' €');
+    psSet('fiche-syn-ajust', fmt(c.total_ajustements) + ' €');
+    psSet('fiche-syn-total', fmt(c.total) + ' €');
+    var hint = document.getElementById('ficheMethodeHint');
+    if (hint) hint.textContent = FICHE_METHODES_HINTS[st.methode] || '';
+}
+
+function saveFicheTravail(){
+    if (!ficheSim || !canEditPs) return;
+    var ctx = ficheSim.ctx || getCurrentBudgetContext();
+    var msg = document.getElementById('ficheSaveMsg');
+    if (msg) msg.textContent = 'Enregistrement…';
+    fetch('/api/budget-previsionnel/fiche-travail', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            compte_num: ficheSim.compte, annee: ctx.annee, secteur_id: ctx.secteur_id,
+            type_budget: ctx.type_budget, donnees: ficheSim.state
+        })
+    }).then(r => r.json()).then(function(data){
+        if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
+        var row = currentRows.find(function(r){ return r.compte_num === ficheSim.compte; });
+        if (row){
+            row.def = Number(data.total || 0);
+            if (data.commentaire) row.commentaire = data.commentaire;
+            renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
+            renderResultFromRows();
+        }
+        if (msg) msg.textContent = '✓ Enregistré · reporté en définitif : ' + fmt(data.total) + ' €';
     }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
 }
 
