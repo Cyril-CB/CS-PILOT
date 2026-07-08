@@ -1602,6 +1602,27 @@ def init_db():
         )
     ''')
 
+    # Fiches de travail du budget actualisé (comptes non paramétrés PS / paie,
+    # migration 0056) : construction du définitif = réel à date + projection
+    # (méthode au choix) + ajustements. Détail stocké en JSON ; total = montant
+    # reporté sur la valeur définitive du compte.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS budget_fiches_travail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            compte_num TEXT NOT NULL,
+            annee INTEGER NOT NULL,
+            secteur_id INTEGER NOT NULL,
+            type_budget TEXT NOT NULL CHECK(type_budget IN ('initial', 'actualise')),
+            donnees TEXT,
+            total REAL DEFAULT 0,
+            updated_by INTEGER,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (secteur_id) REFERENCES secteurs(id) ON DELETE CASCADE,
+            FOREIGN KEY (updated_by) REFERENCES users(id),
+            UNIQUE(compte_num, annee, secteur_id, type_budget)
+        )
+    ''')
+
     # ===== Tables module Planificateur de taches / Time Blocking (migration 0049) =====
 
     # Definitions des taches recurrentes (generent des occurrences de taches).

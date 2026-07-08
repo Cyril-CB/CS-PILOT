@@ -473,7 +473,10 @@ body {
     max-width: 1400px;
     margin: 2rem auto;
     padding: 0 2rem;
-    animation: fadeIn var(--transition-normal) both;
+    /* Pas de fill-mode : une animation d'opacité retenue (both/forwards) laisse
+       le conteneur créer un contexte d'empilement permanent, qui piège les
+       modales internes (z-index 10000) SOUS la sidebar (z-index 100). */
+    animation: fadeIn var(--transition-normal);
 }
 
 .form-container,

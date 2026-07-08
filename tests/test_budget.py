@@ -1211,3 +1211,139 @@ def test_paie_temps_hebdo_absent_temps_plein(app, db, admin_client):
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 23000.0) < 0.01
+
+
+# ============================================================
+# Fiche de travail (budget actualisé)
+# ============================================================
+
+def _setup_fiche_secteur(db, annee):
+    """Secteur + code analytique + réel mensuel du compte 606000 :
+    N : jan/fév/mars = 100/200/300 (arrêté à fin mars) ;
+    N-1 : 12 × 50 ; N-2 : 12 × 100 ; budget initial définitif = 1 500 €."""
+    db.execute("INSERT INTO secteurs (nom, type_secteur) VALUES ('Fiche test','accueil_loisirs')")
+    sid = db.execute("SELECT id FROM secteurs WHERE nom='Fiche test'").fetchone()['id']
+    db.execute("INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES ('ANA-FT', ?)", (sid,))
+    db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('ft.txt', ?, 1)", (annee,))
+    imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+    for mois, montant in ((1, 100), (2, 200), (3, 300)):
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, code_analytique, annee, mois, montant, import_id) "
+                   "VALUES ('606000', 'ANA-FT', ?, ?, ?, ?)", (annee, mois, montant, imp))
+    for mois in range(1, 13):
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, code_analytique, annee, mois, montant, import_id) "
+                   "VALUES ('606000', 'ANA-FT', ?, ?, 50, ?)", (annee - 1, mois, imp))
+        db.execute("INSERT INTO bilan_fec_donnees (compte_num, code_analytique, annee, mois, montant, import_id) "
+                   "VALUES ('606000', 'ANA-FT', ?, ?, 100, ?)", (annee - 2, mois, imp))
+    db.execute("INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_def) "
+               "VALUES ('initial', ?, ?, '606000', 1500)", (annee, sid))
+    db.commit()
+    return sid
+
+
+def test_fiche_travail_contexte(app, db, admin_client):
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    r = admin_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
+                         f'&annee={annee}&secteur_id={sid}&type_budget=actualise')
+    assert r.status_code == 200
+    data = r.get_json()
+    assert data['found'] is False
+    cx = data['contexte']
+    assert cx['last_month'] == 3
+    assert cx['budget_initial'] == 1500.0
+    assert cx['reel_mensuel']['2'] == 200.0     # clés JSON sérialisées en chaînes
+    assert cx['n1_mensuel']['12'] == 50.0
+    assert cx['n2_mensuel']['7'] == 100.0
+
+
+def test_fiche_travail_methodes_et_report(app, db, admin_client):
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+        # Valeur temporaire corrigée à la main : elle doit être préservée.
+        db.execute("INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def) "
+                   "VALUES ('actualise', ?, ?, '606000', 999, 0)", (annee, sid))
+        db.commit()
+
+    def poster(donnees):
+        r = admin_client.post('/api/budget-previsionnel/fiche-travail', json={
+            'compte_num': '606000', 'annee': annee, 'secteur_id': sid,
+            'type_budget': 'actualise', 'donnees': donnees})
+        assert r.status_code == 200
+        return r.get_json()
+
+    # Réel jan-mars = 600. N-1 avr-déc : 9 × 50 = 450.
+    assert poster({'methode': 'n1'})['total'] == 1050.0
+    # Moyenne N-1/N-2 : (50 + 100) / 2 × 9 = 675.
+    assert poster({'methode': 'moyenne_n1_n2'})['total'] == 1275.0
+    # Tendance : 600 / 3 = 200 par mois × 9 = 1800.
+    assert poster({'methode': 'tendance'})['total'] == 2400.0
+    # Solde du budget initial : le total atterrit sur l'initial.
+    assert poster({'methode': 'solde_initial'})['total'] == 1500.0
+    # Saisie mensuelle + ajustements (600 + 10 + 20 + 100 − 30).
+    data = poster({'methode': 'manuel', 'mois_prevus': {'4': 10, '12': 20},
+                   'ajustements': [{'libelle': 'Facture attendue', 'montant': 100},
+                                   {'libelle': 'Avoir', 'montant': -30}]})
+    assert data['total'] == 700.0
+    assert 'saisie mensuelle' in data['commentaire']
+    assert '2 ajustement(s)' in data['commentaire']
+
+    with app.app_context():
+        row = db.execute("SELECT valeur_temp, valeur_def, commentaire FROM budget_prev_saisies "
+                         "WHERE type_budget='actualise' AND annee=? AND secteur_id=? AND compte_num='606000'",
+                         (annee, sid)).fetchone()
+    assert row['valeur_def'] == 700.0
+    assert row['valeur_temp'] == 999            # la correction manuelle reste
+    assert row['commentaire'].startswith('Fiche : réel à fin mars')
+
+    # La fiche est persistée et rechargeable.
+    r = admin_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
+                         f'&annee={annee}&secteur_id={sid}&type_budget=actualise')
+    d = r.get_json()
+    assert d['found'] is True
+    assert d['donnees']['methode'] == 'manuel'
+    assert d['total'] == 700.0
+
+
+def test_fiche_travail_reservee_actualise(app, db, admin_client):
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    r = admin_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
+                         f'&annee={annee}&secteur_id={sid}&type_budget=initial')
+    assert r.status_code == 400
+    r = admin_client.post('/api/budget-previsionnel/fiche-travail', json={
+        'compte_num': '606000', 'annee': annee, 'secteur_id': sid,
+        'type_budget': 'initial', 'donnees': {'methode': 'n1'}})
+    assert r.status_code == 400
+
+
+def test_fiche_travail_responsable_lecture_seule_et_secteur_force(app, db, resp_client, sample_users):
+    """Un responsable consulte la fiche de SON secteur uniquement (le secteur
+    demandé est ignoré) et ne peut pas enregistrer."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)   # secteur étranger au responsable
+    r = resp_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
+                        f'&annee={annee}&secteur_id={sid}&type_budget=actualise')
+    assert r.status_code == 200
+    # Forcé sur son secteur (sans données) : aucun réel du secteur « Fiche test ».
+    assert r.get_json()['contexte']['last_month'] == 0
+    r = resp_client.post('/api/budget-previsionnel/fiche-travail', json={
+        'compte_num': '606000', 'annee': annee, 'secteur_id': sid,
+        'type_budget': 'actualise', 'donnees': {'methode': 'n1'}})
+    assert r.status_code == 403
+
+
+def test_api_budget_previsionnel_actualise_inclut_budget_initial(app, db, admin_client):
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    r = admin_client.get(f'/api/budget-previsionnel/donnees?type_budget=actualise&annee={annee}&secteur_id={sid}')
+    row = next(x for x in r.get_json()['rows'] if x['compte_num'] == '606000')
+    assert row['initial'] == 1500.0
+    # En budget initial, la colonne n'existe pas.
+    r2 = admin_client.get(f'/api/budget-previsionnel/donnees?type_budget=initial&annee={annee}&secteur_id={sid}')
+    row2 = next(x for x in r2.get_json()['rows'] if x['compte_num'] == '606000')
+    assert 'initial' not in row2
