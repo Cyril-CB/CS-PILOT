@@ -6,6 +6,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from utils import slot_horaire
+
 
 MIN_BREAK_MINUTES = 20
 BUSINESS_DAYS_PER_WEEK = 5
@@ -142,6 +144,10 @@ def day_segments_from_row(row) -> list[tuple[str, str]]:
         segments.append((row["heure_debut_matin"], row["heure_fin_matin"]))
     if row["heure_debut_aprem"] and row["heure_fin_aprem"]:
         segments.append((row["heure_debut_aprem"], row["heure_fin_aprem"]))
+    soir_debut = slot_horaire(row, "heure_debut_soir")
+    soir_fin = slot_horaire(row, "heure_fin_soir")
+    if soir_debut and soir_fin:
+        segments.append((soir_debut, soir_fin))
     return segments
 
 
@@ -155,11 +161,15 @@ def day_segments_from_planning(planning, date_obj) -> list[tuple[str, str]]:
     matin_fin = planning[f"{jour_nom}_matin_fin"]
     aprem_debut = planning[f"{jour_nom}_aprem_debut"]
     aprem_fin = planning[f"{jour_nom}_aprem_fin"]
+    soir_debut = slot_horaire(planning, f"{jour_nom}_soir_debut")
+    soir_fin = slot_horaire(planning, f"{jour_nom}_soir_fin")
 
     if matin_debut and matin_fin:
         segments.append((matin_debut, matin_fin))
     if aprem_debut and aprem_fin:
         segments.append((aprem_debut, aprem_fin))
+    if soir_debut and soir_fin:
+        segments.append((soir_debut, soir_fin))
     return segments
 
 

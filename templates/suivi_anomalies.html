@@ -133,6 +133,9 @@
                                         {% if anom.ancienne_valeur_obj.heure_debut_aprem %}
                                         <li><strong>Après-midi :</strong> {{ anom.ancienne_valeur_obj.heure_debut_aprem }} - {{ anom.ancienne_valeur_obj.heure_fin_aprem }}</li>
                                         {% endif %}
+                                        {% if anom.ancienne_valeur_obj.heure_debut_soir %}
+                                        <li><strong>Soir :</strong> {{ anom.ancienne_valeur_obj.heure_debut_soir }} - {{ anom.ancienne_valeur_obj.heure_fin_soir }}</li>
+                                        {% endif %}
                                         {% if anom.ancienne_valeur_obj.commentaire %}
                                         <li><strong>Commentaire :</strong> {{ anom.ancienne_valeur_obj.commentaire }}</li>
                                         {% endif %}
@@ -151,6 +154,9 @@
                                         {% endif %}
                                         {% if anom.nouvelle_valeur_obj.heure_debut_aprem %}
                                         <li><strong>Après-midi :</strong> {{ anom.nouvelle_valeur_obj.heure_debut_aprem }} - {{ anom.nouvelle_valeur_obj.heure_fin_aprem }}</li>
+                                        {% endif %}
+                                        {% if anom.nouvelle_valeur_obj.heure_debut_soir %}
+                                        <li><strong>Soir :</strong> {{ anom.nouvelle_valeur_obj.heure_debut_soir }} - {{ anom.nouvelle_valeur_obj.heure_fin_soir }}</li>
                                         {% endif %}
                                         {% if anom.nouvelle_valeur_obj.commentaire %}
                                         <li><strong>Commentaire :</strong> {{ anom.nouvelle_valeur_obj.commentaire }}</li>

@@ -73,7 +73,8 @@ def compute_prevention_messages(conn, user_id: int, today=None) -> list[Preventi
 
     rows = conn.execute(
         """
-        SELECT date, heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem, declaration_conforme
+        SELECT date, heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir, declaration_conforme
         FROM heures_reelles
         WHERE user_id = ? AND date >= ? AND date <= ?
         ORDER BY date

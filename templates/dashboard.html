@@ -114,6 +114,9 @@
                         {% else %}
                         -
                         {% endif %}
+                        {% if h.heure_debut_soir %}
+                        <br><span style="color: var(--gray-500);">🌙 {{ h.heure_debut_soir }} - {{ h.heure_fin_soir }}</span>
+                        {% endif %}
                     </td>
                     <td data-label="Total jour"><strong>{{ "%.2f"|format(h.total_reel) }}h</strong></td>
                     <td data-label="Écart">

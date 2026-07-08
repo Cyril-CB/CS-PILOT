@@ -6,6 +6,7 @@ from datetime import datetime
 from database import get_db
 from blueprints.prevention_sante import compute_prevention_messages
 from utils import (login_required, get_user_info, calculer_heures,
+                   calculer_heures_reelles_jour,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_solde_recup)
 
@@ -38,6 +39,7 @@ def dashboard():
         heures = conn.execute('''
             SELECT date, heure_debut_matin, heure_fin_matin,
                    heure_debut_aprem, heure_fin_aprem,
+                   heure_debut_soir, heure_fin_soir,
                    commentaire, type_saisie, declaration_conforme
             FROM heures_reelles
             WHERE user_id = ?
@@ -65,9 +67,7 @@ def dashboard():
             if h['declaration_conforme']:
                 total_reel = total_theorique
             else:
-                heures_matin = calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
-                heures_aprem = calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
-                total_reel = heures_matin + heures_aprem
+                total_reel = calculer_heures_reelles_jour(h)
 
             ecart = total_reel - total_theorique
 
@@ -77,6 +77,8 @@ def dashboard():
                 'heure_fin_matin': h['heure_fin_matin'],
                 'heure_debut_aprem': h['heure_debut_aprem'],
                 'heure_fin_aprem': h['heure_fin_aprem'],
+                'heure_debut_soir': h['heure_debut_soir'],
+                'heure_fin_soir': h['heure_fin_soir'],
                 'commentaire': h['commentaire'],
                 'total_reel': total_reel,
                 'total_theorique': total_theorique,

@@ -103,7 +103,7 @@ def _horaires_par_date(conn, user_id, debut, fin):
     09:00-12:30 / 13:30-17:30 en general, et 09:00-12:30 / 14:00-18:00 pour la
     direction (au forfait jours, sans horaires precis).
     """
-    from utils import get_planning_valide_a_date, get_type_periode
+    from utils import get_planning_valide_a_date, get_type_periode, slot_horaire
 
     a_un_planning = conn.execute(
         'SELECT 1 FROM planning_theorique WHERE user_id = ? LIMIT 1', (user_id,)
@@ -126,8 +126,9 @@ def _horaires_par_date(conn, user_id, debut, fin):
                     jn = JOURS_NOMS_PLANNING[d.weekday()]
                     intervalles = []
                     for col_d, col_f in ((f'{jn}_matin_debut', f'{jn}_matin_fin'),
-                                         (f'{jn}_aprem_debut', f'{jn}_aprem_fin')):
-                        dm, fm = moteur._to_min(planning[col_d]), moteur._to_min(planning[col_f])
+                                         (f'{jn}_aprem_debut', f'{jn}_aprem_fin'),
+                                         (f'{jn}_soir_debut', f'{jn}_soir_fin')):
+                        dm, fm = moteur._to_min(slot_horaire(planning, col_d)), moteur._to_min(slot_horaire(planning, col_f))
                         if dm is not None and fm is not None and fm > dm:
                             intervalles.append((dm, fm))
                     if intervalles:

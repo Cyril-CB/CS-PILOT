@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from app_options import get_option_bool
 from database import get_db
 from utils import (login_required, get_type_periode, get_planning_valide_a_date,
-                   calculer_heures)
+                   calculer_heures, slot_horaire)
 
 mon_equipe_bp = Blueprint('mon_equipe_bp', __name__)
 
@@ -103,6 +103,14 @@ def _calculer_presences_horaires(grille):
                     ))
                 except (ValueError, IndexError):
                     pass
+            if jour.get('soir') and jour['soir'][0] and jour['soir'][1]:
+                try:
+                    plages.append((
+                        _hhmm_to_minutes(jour['soir'][0]),
+                        _hhmm_to_minutes(jour['soir'][1]),
+                    ))
+                except (ValueError, IndexError):
+                    pass
 
             if not plages:
                 continue
@@ -159,6 +167,14 @@ def _calculer_presences_creche(grille):
                     ))
                 except (ValueError, IndexError):
                     pass
+            if jour.get('soir') and jour['soir'][0] and jour['soir'][1]:
+                try:
+                    plages.append((
+                        _hhmm_to_minutes(jour['soir'][0]),
+                        _hhmm_to_minutes(jour['soir'][1]),
+                    ))
+                except (ValueError, IndexError):
+                    pass
 
             if not plages:
                 continue
@@ -205,6 +221,14 @@ def _calculer_presence_responsable(grille):
                     plages.append((
                         _hhmm_to_minutes(jour['aprem'][0]),
                         _hhmm_to_minutes(jour['aprem'][1]),
+                    ))
+                except (ValueError, IndexError):
+                    pass
+            if jour.get('soir') and jour['soir'][0] and jour['soir'][1]:
+                try:
+                    plages.append((
+                        _hhmm_to_minutes(jour['soir'][0]),
+                        _hhmm_to_minutes(jour['soir'][1]),
                     ))
                 except (ValueError, IndexError):
                     pass
@@ -350,6 +374,7 @@ def _construire_grille(conn, membres, lundi):
     heures_rows = conn.execute(f'''
         SELECT user_id, date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
+               heure_debut_soir, heure_fin_soir,
                type_saisie, declaration_conforme, commentaire
         FROM heures_reelles
         WHERE user_id IN ({placeholders})
@@ -393,6 +418,7 @@ def _construire_grille(conn, membres, lundi):
                 'absence': None,
                 'matin': None,
                 'aprem': None,
+                'soir': None,
                 'type_saisie': None,
                 'commentaire': None,
             }
@@ -445,6 +471,10 @@ def _construire_grille(conn, membres, lundi):
                             planning[f'{jour_nom}_aprem_debut'],
                             planning[f'{jour_nom}_aprem_fin']
                         )
+                        sd = slot_horaire(planning, f'{jour_nom}_soir_debut')
+                        sf = slot_horaire(planning, f'{jour_nom}_soir_fin')
+                        if sd or sf:
+                            jour_info['soir'] = (sd, sf)
                     jour_info['type_saisie'] = 'conforme'
 
                 else:
@@ -453,6 +483,8 @@ def _construire_grille(conn, membres, lundi):
                         jour_info['matin'] = (hr['heure_debut_matin'], hr['heure_fin_matin'])
                     if hr['heure_debut_aprem'] or hr['heure_fin_aprem']:
                         jour_info['aprem'] = (hr['heure_debut_aprem'], hr['heure_fin_aprem'])
+                    if slot_horaire(hr, 'heure_debut_soir') or slot_horaire(hr, 'heure_fin_soir'):
+                        jour_info['soir'] = (hr['heure_debut_soir'], hr['heure_fin_soir'])
 
             else:
                 # Pas de saisie : afficher le planning theorique en grise
@@ -464,10 +496,14 @@ def _construire_grille(conn, membres, lundi):
                     mf = planning[f'{jour_nom}_matin_fin']
                     ad = planning[f'{jour_nom}_aprem_debut']
                     af = planning[f'{jour_nom}_aprem_fin']
+                    sd = slot_horaire(planning, f'{jour_nom}_soir_debut')
+                    sf = slot_horaire(planning, f'{jour_nom}_soir_fin')
                     if md or mf:
                         jour_info['matin'] = (md, mf)
                     if ad or af:
                         jour_info['aprem'] = (ad, af)
+                    if sd or sf:
+                        jour_info['soir'] = (sd, sf)
                 jour_info['type_saisie'] = 'theorique'
 
             jours.append(jour_info)

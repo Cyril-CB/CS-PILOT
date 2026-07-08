@@ -98,6 +98,7 @@
                             <th>Jour</th>
                             <th>Matin</th>
                             <th>Après-midi</th>
+                            <th>Soir</th>
                             <th>Total</th>
                         </tr>
                     </thead>
@@ -106,11 +107,13 @@
                             <td data-label="Jour"><strong>Lundi</strong></td>
                             <td data-label="Matin">{{ p.lundi_matin_debut or '-' }} - {{ p.lundi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.lundi_aprem_debut or '-' }} - {{ p.lundi_aprem_fin or '-' }}</td>
+                            <td data-label="Soir">{% if p.lundi_soir_debut or p.lundi_soir_fin %}{{ p.lundi_soir_debut or '-' }} - {{ p.lundi_soir_fin or '-' }}{% else %}—{% endif %}</td>
                             <td data-label="Total">
-                                {% if (p.lundi_matin_debut and p.lundi_matin_fin) or (p.lundi_aprem_debut and p.lundi_aprem_fin) %}
+                                {% if (p.lundi_matin_debut and p.lundi_matin_fin) or (p.lundi_aprem_debut and p.lundi_aprem_fin) or (p.lundi_soir_debut and p.lundi_soir_fin) %}
                                 {% set h_matin = (p.lundi_matin_fin.split(':')[0]|int * 60 + p.lundi_matin_fin.split(':')[1]|int - p.lundi_matin_debut.split(':')[0]|int * 60 - p.lundi_matin_debut.split(':')[1]|int) / 60 if p.lundi_matin_debut and p.lundi_matin_fin else 0 %}
                                 {% set h_aprem = (p.lundi_aprem_fin.split(':')[0]|int * 60 + p.lundi_aprem_fin.split(':')[1]|int - p.lundi_aprem_debut.split(':')[0]|int * 60 - p.lundi_aprem_debut.split(':')[1]|int) / 60 if p.lundi_aprem_debut and p.lundi_aprem_fin else 0 %}
-                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% set h_soir = (p.lundi_soir_fin.split(':')[0]|int * 60 + p.lundi_soir_fin.split(':')[1]|int - p.lundi_soir_debut.split(':')[0]|int * 60 - p.lundi_soir_debut.split(':')[1]|int) / 60 if p.lundi_soir_debut and p.lundi_soir_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem + h_soir) }}h
                                 {% else %}
                                 Non travaillé
                                 {% endif %}
@@ -120,11 +123,13 @@
                             <td data-label="Jour"><strong>Mardi</strong></td>
                             <td data-label="Matin">{{ p.mardi_matin_debut or '-' }} - {{ p.mardi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.mardi_aprem_debut or '-' }} - {{ p.mardi_aprem_fin or '-' }}</td>
+                            <td data-label="Soir">{% if p.mardi_soir_debut or p.mardi_soir_fin %}{{ p.mardi_soir_debut or '-' }} - {{ p.mardi_soir_fin or '-' }}{% else %}—{% endif %}</td>
                             <td data-label="Total">
-                                {% if (p.mardi_matin_debut and p.mardi_matin_fin) or (p.mardi_aprem_debut and p.mardi_aprem_fin) %}
+                                {% if (p.mardi_matin_debut and p.mardi_matin_fin) or (p.mardi_aprem_debut and p.mardi_aprem_fin) or (p.mardi_soir_debut and p.mardi_soir_fin) %}
                                 {% set h_matin = (p.mardi_matin_fin.split(':')[0]|int * 60 + p.mardi_matin_fin.split(':')[1]|int - p.mardi_matin_debut.split(':')[0]|int * 60 - p.mardi_matin_debut.split(':')[1]|int) / 60 if p.mardi_matin_debut and p.mardi_matin_fin else 0 %}
                                 {% set h_aprem = (p.mardi_aprem_fin.split(':')[0]|int * 60 + p.mardi_aprem_fin.split(':')[1]|int - p.mardi_aprem_debut.split(':')[0]|int * 60 - p.mardi_aprem_debut.split(':')[1]|int) / 60 if p.mardi_aprem_debut and p.mardi_aprem_fin else 0 %}
-                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% set h_soir = (p.mardi_soir_fin.split(':')[0]|int * 60 + p.mardi_soir_fin.split(':')[1]|int - p.mardi_soir_debut.split(':')[0]|int * 60 - p.mardi_soir_debut.split(':')[1]|int) / 60 if p.mardi_soir_debut and p.mardi_soir_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem + h_soir) }}h
                                 {% else %}
                                 Non travaillé
                                 {% endif %}
@@ -134,11 +139,13 @@
                             <td data-label="Jour"><strong>Mercredi</strong></td>
                             <td data-label="Matin">{{ p.mercredi_matin_debut or '-' }} - {{ p.mercredi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.mercredi_aprem_debut or '-' }} - {{ p.mercredi_aprem_fin or '-' }}</td>
+                            <td data-label="Soir">{% if p.mercredi_soir_debut or p.mercredi_soir_fin %}{{ p.mercredi_soir_debut or '-' }} - {{ p.mercredi_soir_fin or '-' }}{% else %}—{% endif %}</td>
                             <td data-label="Total">
-                                {% if (p.mercredi_matin_debut and p.mercredi_matin_fin) or (p.mercredi_aprem_debut and p.mercredi_aprem_fin) %}
+                                {% if (p.mercredi_matin_debut and p.mercredi_matin_fin) or (p.mercredi_aprem_debut and p.mercredi_aprem_fin) or (p.mercredi_soir_debut and p.mercredi_soir_fin) %}
                                 {% set h_matin = (p.mercredi_matin_fin.split(':')[0]|int * 60 + p.mercredi_matin_fin.split(':')[1]|int - p.mercredi_matin_debut.split(':')[0]|int * 60 - p.mercredi_matin_debut.split(':')[1]|int) / 60 if p.mercredi_matin_debut and p.mercredi_matin_fin else 0 %}
                                 {% set h_aprem = (p.mercredi_aprem_fin.split(':')[0]|int * 60 + p.mercredi_aprem_fin.split(':')[1]|int - p.mercredi_aprem_debut.split(':')[0]|int * 60 - p.mercredi_aprem_debut.split(':')[1]|int) / 60 if p.mercredi_aprem_debut and p.mercredi_aprem_fin else 0 %}
-                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% set h_soir = (p.mercredi_soir_fin.split(':')[0]|int * 60 + p.mercredi_soir_fin.split(':')[1]|int - p.mercredi_soir_debut.split(':')[0]|int * 60 - p.mercredi_soir_debut.split(':')[1]|int) / 60 if p.mercredi_soir_debut and p.mercredi_soir_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem + h_soir) }}h
                                 {% else %}
                                 Non travaillé
                                 {% endif %}
@@ -148,11 +155,13 @@
                             <td data-label="Jour"><strong>Jeudi</strong></td>
                             <td data-label="Matin">{{ p.jeudi_matin_debut or '-' }} - {{ p.jeudi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.jeudi_aprem_debut or '-' }} - {{ p.jeudi_aprem_fin or '-' }}</td>
+                            <td data-label="Soir">{% if p.jeudi_soir_debut or p.jeudi_soir_fin %}{{ p.jeudi_soir_debut or '-' }} - {{ p.jeudi_soir_fin or '-' }}{% else %}—{% endif %}</td>
                             <td data-label="Total">
-                                {% if (p.jeudi_matin_debut and p.jeudi_matin_fin) or (p.jeudi_aprem_debut and p.jeudi_aprem_fin) %}
+                                {% if (p.jeudi_matin_debut and p.jeudi_matin_fin) or (p.jeudi_aprem_debut and p.jeudi_aprem_fin) or (p.jeudi_soir_debut and p.jeudi_soir_fin) %}
                                 {% set h_matin = (p.jeudi_matin_fin.split(':')[0]|int * 60 + p.jeudi_matin_fin.split(':')[1]|int - p.jeudi_matin_debut.split(':')[0]|int * 60 - p.jeudi_matin_debut.split(':')[1]|int) / 60 if p.jeudi_matin_debut and p.jeudi_matin_fin else 0 %}
                                 {% set h_aprem = (p.jeudi_aprem_fin.split(':')[0]|int * 60 + p.jeudi_aprem_fin.split(':')[1]|int - p.jeudi_aprem_debut.split(':')[0]|int * 60 - p.jeudi_aprem_debut.split(':')[1]|int) / 60 if p.jeudi_aprem_debut and p.jeudi_aprem_fin else 0 %}
-                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% set h_soir = (p.jeudi_soir_fin.split(':')[0]|int * 60 + p.jeudi_soir_fin.split(':')[1]|int - p.jeudi_soir_debut.split(':')[0]|int * 60 - p.jeudi_soir_debut.split(':')[1]|int) / 60 if p.jeudi_soir_debut and p.jeudi_soir_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem + h_soir) }}h
                                 {% else %}
                                 Non travaillé
                                 {% endif %}
@@ -162,11 +171,13 @@
                             <td data-label="Jour"><strong>Vendredi</strong></td>
                             <td data-label="Matin">{{ p.vendredi_matin_debut or '-' }} - {{ p.vendredi_matin_fin or '-' }}</td>
                             <td data-label="Après-midi">{{ p.vendredi_aprem_debut or '-' }} - {{ p.vendredi_aprem_fin or '-' }}</td>
+                            <td data-label="Soir">{% if p.vendredi_soir_debut or p.vendredi_soir_fin %}{{ p.vendredi_soir_debut or '-' }} - {{ p.vendredi_soir_fin or '-' }}{% else %}—{% endif %}</td>
                             <td data-label="Total">
-                                {% if (p.vendredi_matin_debut and p.vendredi_matin_fin) or (p.vendredi_aprem_debut and p.vendredi_aprem_fin) %}
+                                {% if (p.vendredi_matin_debut and p.vendredi_matin_fin) or (p.vendredi_aprem_debut and p.vendredi_aprem_fin) or (p.vendredi_soir_debut and p.vendredi_soir_fin) %}
                                 {% set h_matin = (p.vendredi_matin_fin.split(':')[0]|int * 60 + p.vendredi_matin_fin.split(':')[1]|int - p.vendredi_matin_debut.split(':')[0]|int * 60 - p.vendredi_matin_debut.split(':')[1]|int) / 60 if p.vendredi_matin_debut and p.vendredi_matin_fin else 0 %}
                                 {% set h_aprem = (p.vendredi_aprem_fin.split(':')[0]|int * 60 + p.vendredi_aprem_fin.split(':')[1]|int - p.vendredi_aprem_debut.split(':')[0]|int * 60 - p.vendredi_aprem_debut.split(':')[1]|int) / 60 if p.vendredi_aprem_debut and p.vendredi_aprem_fin else 0 %}
-                                {{ "%.1f"|format(h_matin + h_aprem) }}h
+                                {% set h_soir = (p.vendredi_soir_fin.split(':')[0]|int * 60 + p.vendredi_soir_fin.split(':')[1]|int - p.vendredi_soir_debut.split(':')[0]|int * 60 - p.vendredi_soir_debut.split(':')[1]|int) / 60 if p.vendredi_soir_debut and p.vendredi_soir_fin else 0 %}
+                                {{ "%.1f"|format(h_matin + h_aprem + h_soir) }}h
                                 {% else %}
                                 Non travaillé
                                 {% endif %}
@@ -175,7 +186,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colspan="3"><strong>Total hebdomadaire</strong></td>
+                            <td colspan="4"><strong>Total hebdomadaire</strong></td>
                             <td><strong>{{ "%.2f"|format(p.total_hebdo) }}h</strong></td>
                         </tr>
                     </tfoot>
@@ -275,6 +286,17 @@
                             <input type="time" id="lundi_aprem_fin" name="lundi_aprem_fin">
                         </div>
                     </div>
+                    <div class="time-section soir-section" style="display:none;">
+                        <h4>🌙 Soir</h4>
+                        <div class="form-group">
+                            <label for="lundi_soir_debut">Heure d'arrivée</label>
+                            <input type="time" id="lundi_soir_debut" name="lundi_soir_debut" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="lundi_soir_fin">Heure de départ</label>
+                            <input type="time" id="lundi_soir_fin" name="lundi_soir_fin" disabled>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -302,6 +324,17 @@
                         <div class="form-group">
                             <label for="mardi_aprem_fin">Heure de départ</label>
                             <input type="time" id="mardi_aprem_fin" name="mardi_aprem_fin">
+                        </div>
+                    </div>
+                    <div class="time-section soir-section" style="display:none;">
+                        <h4>🌙 Soir</h4>
+                        <div class="form-group">
+                            <label for="mardi_soir_debut">Heure d'arrivée</label>
+                            <input type="time" id="mardi_soir_debut" name="mardi_soir_debut" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="mardi_soir_fin">Heure de départ</label>
+                            <input type="time" id="mardi_soir_fin" name="mardi_soir_fin" disabled>
                         </div>
                     </div>
                 </div>
@@ -333,6 +366,17 @@
                             <input type="time" id="mercredi_aprem_fin" name="mercredi_aprem_fin">
                         </div>
                     </div>
+                    <div class="time-section soir-section" style="display:none;">
+                        <h4>🌙 Soir</h4>
+                        <div class="form-group">
+                            <label for="mercredi_soir_debut">Heure d'arrivée</label>
+                            <input type="time" id="mercredi_soir_debut" name="mercredi_soir_debut" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="mercredi_soir_fin">Heure de départ</label>
+                            <input type="time" id="mercredi_soir_fin" name="mercredi_soir_fin" disabled>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -362,6 +406,17 @@
                             <input type="time" id="jeudi_aprem_fin" name="jeudi_aprem_fin">
                         </div>
                     </div>
+                    <div class="time-section soir-section" style="display:none;">
+                        <h4>🌙 Soir</h4>
+                        <div class="form-group">
+                            <label for="jeudi_soir_debut">Heure d'arrivée</label>
+                            <input type="time" id="jeudi_soir_debut" name="jeudi_soir_debut" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="jeudi_soir_fin">Heure de départ</label>
+                            <input type="time" id="jeudi_soir_fin" name="jeudi_soir_fin" disabled>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -389,6 +444,17 @@
                         <div class="form-group">
                             <label for="vendredi_aprem_fin">Heure de départ</label>
                             <input type="time" id="vendredi_aprem_fin" name="vendredi_aprem_fin">
+                        </div>
+                    </div>
+                    <div class="time-section soir-section" style="display:none;">
+                        <h4>🌙 Soir</h4>
+                        <div class="form-group">
+                            <label for="vendredi_soir_debut">Heure d'arrivée</label>
+                            <input type="time" id="vendredi_soir_debut" name="vendredi_soir_debut" disabled>
+                        </div>
+                        <div class="form-group">
+                            <label for="vendredi_soir_fin">Heure de départ</label>
+                            <input type="time" id="vendredi_soir_fin" name="vendredi_soir_fin" disabled>
                         </div>
                     </div>
                 </div>
@@ -479,6 +545,11 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!useSpecificVacationPlanning && (!typePeriodeSelect.value || typePeriodeSelect.value === 'vacances')) {
             typePeriodeSelect.value = 'periode_scolaire';
         }
+        // Une affectation programmatique de .value ne déclenche pas l'événement
+        // « change » : on re-synchronise le créneau soir à la main, sinon des heures
+        // de soirée saisies en vacances resteraient visibles/actives (et soumises)
+        // après un repli en période scolaire.
+        gererCreneauSoir();
     }
     
     // Gestion affichage date de référence selon type d'alternance
@@ -514,11 +585,27 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Le 3e créneau « soir » n'est proposé qu'en période de vacances : on affiche
+    // les sections soir uniquement quand « Vacances scolaires » est sélectionné,
+    // et on désactive leurs champs sinon (pour ne rien soumettre en scolaire).
+    function gererCreneauSoir() {
+        const estVacances = typePeriodeSelect.value === 'vacances';
+        document.querySelectorAll('form .soir-section').forEach(function(section) {
+            section.style.display = estVacances ? '' : 'none';
+            section.querySelectorAll('input[type="time"]').forEach(function(inp) {
+                inp.disabled = !estVacances;
+                if (!estVacances) inp.value = '';
+            });
+        });
+    }
+
     // Déclencher au chargement et au changement
     vacationPlanningCheckbox.addEventListener('change', gererOptionPlanningVacances);
     typeAlternanceSelect.addEventListener('change', toggleDateReference);
+    typePeriodeSelect.addEventListener('change', gererCreneauSoir);
     gererOptionPlanningVacances();
     toggleDateReference(); // Initial
+    gererCreneauSoir(); // Initial
 });
 </script>
 {% endblock %}

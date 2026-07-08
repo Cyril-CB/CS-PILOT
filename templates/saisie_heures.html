@@ -46,6 +46,15 @@
                 <span style="font-size: 0.9rem; font-weight: 600; color: var(--gray-700);">Horaires réels</span>
                 <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Saisissez vos heures réelles de travail, pas vos heures théoriques. Un écart supérieur à 3 heures par rapport à votre planning déclenchera une anomalie visible par la direction — ce n'est pas bloquant mais sera examiné.</span></span>
             </div>
+            {% if soir_disponible %}
+            <div class="form-group" style="margin-bottom: 0.75rem;">
+                <label style="display: flex; align-items: center; gap: 0.4rem;">
+                    <input type="checkbox" id="toggle_soir" onchange="toggleSoir()" {% if soir_rempli %}checked{% endif %}>
+                    <strong>🌙 Ajouter un créneau du soir</strong>
+                    <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Troisième créneau optionnel — utile notamment au personnel d'entretien en période de vacances. Cochez pour saisir des horaires de soirée en plus du matin et de l'après-midi.</span></span>
+                </label>
+            </div>
+            {% endif %}
             <div class="time-grid">
                 <div class="time-section">
                     <h3>🌅 Matin</h3>
@@ -73,11 +82,29 @@
                     </div>
                     <div class="form-group">
                         <label for="heure_fin_aprem">Heure de départ</label>
-                        <input type="time" id="heure_fin_aprem" name="heure_fin_aprem" 
+                        <input type="time" id="heure_fin_aprem" name="heure_fin_aprem"
                                value="{{ heures_existantes.heure_fin_aprem or '' if heures_existantes else '' }}"
                                {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
                     </div>
                 </div>
+
+                {% if soir_disponible %}
+                <div class="time-section" id="soir-section" {% if not soir_rempli %}style="display:none;"{% endif %}>
+                    <h3>🌙 Soir</h3>
+                    <div class="form-group">
+                        <label for="heure_debut_soir">Heure d'arrivée</label>
+                        <input type="time" id="heure_debut_soir" name="heure_debut_soir"
+                               value="{{ heures_existantes.heure_debut_soir or '' if heures_existantes else '' }}"
+                               {% if (heures_existantes and heures_existantes.type_saisie == 'recup_journee') or not soir_rempli %}disabled{% endif %}>
+                    </div>
+                    <div class="form-group">
+                        <label for="heure_fin_soir">Heure de départ</label>
+                        <input type="time" id="heure_fin_soir" name="heure_fin_soir"
+                               value="{{ heures_existantes.heure_fin_soir or '' if heures_existantes else '' }}"
+                               {% if (heures_existantes and heures_existantes.type_saisie == 'recup_journee') or not soir_rempli %}disabled{% endif %}>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
         
@@ -206,7 +233,22 @@
             });
         }
     }
-    
+
+    // Affiche/masque le 3e créneau optionnel « soir » et active/désactive ses champs.
+    function toggleSoir() {
+        const checkbox = document.getElementById('toggle_soir');
+        const section = document.getElementById('soir-section');
+        if (!checkbox || !section) return;
+        const inputs = section.querySelectorAll('input[type="time"]');
+        if (checkbox.checked) {
+            section.style.display = '';
+            inputs.forEach(i => { i.disabled = false; });
+        } else {
+            section.style.display = 'none';
+            inputs.forEach(i => { i.disabled = true; i.value = ''; });
+        }
+    }
+
     // Recharger la page quand on change la date pour charger les données de cette date
     document.getElementById('date').addEventListener('change', function() {
         const dateSelectionnee = this.value;
