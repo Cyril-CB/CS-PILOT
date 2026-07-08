@@ -111,6 +111,27 @@ def _build_html_email(sujet, contenu_html, destinataire_prenom=''):
     return html
 
 
+def _build_message(config, destinataire, sujet, contenu_html, destinataire_prenom=''):
+    """Construit le message MIME complet (en-tetes + corps HTML encapsule)."""
+    msg = MIMEMultipart('alternative')
+    msg['From'] = f"{config.get('sender_name', 'CS-PILOT')} <{config['sender']}>"
+    msg['To'] = destinataire
+    msg['Subject'] = f"[CS-PILOT] {sujet}"
+    html_body = _build_html_email(sujet, contenu_html, destinataire_prenom)
+    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    return msg
+
+
+def _ouvrir_connexion_smtp(config):
+    """Ouvre une connexion SMTP authentifiee. A fermer par l'appelant (quit)."""
+    server = smtplib.SMTP(config['smtp_server'], int(config['smtp_port']), timeout=15)
+    server.ehlo()
+    server.starttls()
+    server.ehlo()
+    server.login(config['sender'], config['password'])
+    return server
+
+
 def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
     """Envoie un email via SMTP.
 
@@ -134,20 +155,10 @@ def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
     if not config.get('sender') or not config.get('password'):
         return False, "Configuration email incomplete"
 
-    msg = MIMEMultipart('alternative')
-    msg['From'] = f"{config.get('sender_name', 'CS-PILOT')} <{config['sender']}>"
-    msg['To'] = destinataire
-    msg['Subject'] = f"[CS-PILOT] {sujet}"
-
-    html_body = _build_html_email(sujet, contenu_html, destinataire_prenom)
-    msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+    msg = _build_message(config, destinataire, sujet, contenu_html, destinataire_prenom)
 
     try:
-        server = smtplib.SMTP(config['smtp_server'], int(config['smtp_port']), timeout=15)
-        server.ehlo()
-        server.starttls()
-        server.ehlo()
-        server.login(config['sender'], config['password'])
+        server = _ouvrir_connexion_smtp(config)
         server.send_message(msg)
         server.quit()
         logger.info("Email envoye a %s : %s", destinataire, sujet)
@@ -164,12 +175,16 @@ def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
 
 
 def envoyer_email_multiple(destinataires, sujet, contenu_html):
-    """Envoie un meme email a plusieurs destinataires.
+    """Envoie un meme email a plusieurs destinataires sur une seule connexion SMTP.
+
+    Reutiliser la connexion evite d'ouvrir une session (connexion + TLS + login)
+    par destinataire : indispensable pour une diffusion a tout le personnel.
 
     Args:
         destinataires: liste de tuples (email, prenom)
         sujet: sujet de l'email
-        contenu_html: contenu HTML
+        contenu_html: contenu HTML (identique pour tous ; la salutation est
+            personnalisee par destinataire)
 
     Returns:
         (nb_succes: int, nb_echecs: int, erreurs: list)
@@ -178,18 +193,36 @@ def envoyer_email_multiple(destinataires, sujet, contenu_html):
     nb_echecs = 0
     erreurs = []
 
-    for email, prenom in destinataires:
-        if not email:
-            nb_echecs += 1
-            erreurs.append(f"{prenom}: pas d'adresse email")
-            continue
+    config = get_email_config()
+    if config.get('enabled') != 'true' or not config.get('sender') or not config.get('password'):
+        return 0, len(destinataires), ["Configuration email incomplete"]
 
-        ok, msg = envoyer_email(email, sujet, contenu_html, prenom)
-        if ok:
-            nb_succes += 1
-        else:
-            nb_echecs += 1
-            erreurs.append(f"{prenom} ({email}): {msg}")
+    server = None
+    try:
+        server = _ouvrir_connexion_smtp(config)
+        for email, prenom in destinataires:
+            if not email:
+                nb_echecs += 1
+                erreurs.append(f"{prenom}: pas d'adresse email")
+                continue
+            try:
+                server.send_message(_build_message(config, email, sujet, contenu_html, prenom))
+                nb_succes += 1
+                logger.info("Email envoye a %s : %s", email, sujet)
+            except Exception as e:
+                nb_echecs += 1
+                erreurs.append(f"{prenom} ({email}): {e}")
+    except Exception as e:
+        # Connexion / authentification impossible : tous les envois restants echouent.
+        logger.error("Erreur connexion SMTP (envoi multiple) : %s", str(e))
+        nb_echecs = len(destinataires) - nb_succes
+        erreurs.append(f"Connexion SMTP : {e}")
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
 
     return nb_succes, nb_echecs, erreurs
 
@@ -363,3 +396,54 @@ def notifier_subvention_assignee(assignee_email, assignee_prenom, subvention_nom
     <p style="margin-top:16px;">Connectez-vous a CS-PILOT pour consulter le detail.</p>
     """
     return envoyer_email(assignee_email, f"Subvention {subvention_nom} - attribution", contenu, assignee_prenom)
+
+
+def notifier_publication_cse(destinataires, titre, contenu, date_validite=None, auteur_nom=''):
+    """Diffuse par e-mail une nouvelle publication du CSE au personnel.
+
+    Le meme message est envoye a tous les destinataires (la salutation reste
+    personnalisee). Le contenu saisi est du texte brut : il est echappe et ses
+    retours a la ligne sont convertis en <br>.
+
+    Args:
+        destinataires: liste de tuples (email, prenom)
+        titre: titre de la publication (facultatif)
+        contenu: corps du message (texte brut)
+        date_validite: date de fin de validite 'YYYY-MM-DD' (facultatif)
+        auteur_nom: nom de l'auteur de la publication (facultatif)
+
+    Returns:
+        (nb_succes: int, nb_echecs: int, erreurs: list)
+    """
+    _e = html_module.escape
+    titre_html = ''
+    if titre:
+        titre_html = (f'<p style="font-size:15px;font-weight:700;color:#111827;'
+                      f'margin:0 0 8px;">{_e(titre)}</p>')
+    corps_html = _e(contenu or '').replace('\n', '<br>')
+
+    meta_parts = []
+    if date_validite:
+        try:
+            j, m, a = date_validite[8:10], date_validite[5:7], date_validite[0:4]
+            meta_parts.append(f"Valable jusqu'au {j}/{m}/{a}")
+        except (IndexError, TypeError):
+            pass
+    if auteur_nom:
+        meta_parts.append(f"Publie par {_e(auteur_nom)}")
+    meta_html = ''
+    if meta_parts:
+        meta_html = (f'<p style="font-size:12px;color:#9ca3af;margin:16px 0 0;">'
+                     f'{" · ".join(meta_parts)}</p>')
+
+    contenu_html = f"""
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">📢 Nouveau message du CSE</h3>
+    <div style="border-left:4px solid #667eea;background:#f9fafb;padding:12px 16px;border-radius:4px;">
+        {titre_html}
+        <div style="color:#374151;font-size:14px;line-height:1.7;">{corps_html}</div>
+    </div>
+    {meta_html}
+    <p style="margin-top:16px;">Ce message est egalement affiche sur votre tableau de bord CS-PILOT.</p>
+    """
+    sujet = f"Message du CSE : {titre}" if titre else "Nouveau message du CSE"
+    return envoyer_email_multiple(destinataires, sujet, contenu_html)

@@ -56,3 +56,39 @@ def test_email_conge_masque_les_heures_nulles(monkeypatch):
     _, contenu = calls[0]
     assert '0.00h' not in contenu       # pas de « - 0.00h » pour un congé
     assert '3 jour(s)' in contenu
+
+
+def test_publication_cse_construit_le_message(monkeypatch):
+    """La diffusion CSE échappe le texte, préserve les sauts de ligne et diffuse
+    le même message à tous les destinataires sur un seul envoi groupé."""
+    captures = []
+    monkeypatch.setattr(
+        email_service, 'envoyer_email_multiple',
+        lambda dests, sujet, contenu: (
+            captures.append((dests, sujet, contenu)), (len(dests), 0, []))[1]
+    )
+    dests = [('a@b.c', 'Alice'), ('d@e.f', 'Bob')]
+    nb_ok, nb_ko, _ = email_service.notifier_publication_cse(
+        dests, 'Réunion CSE', 'Ligne 1\nLigne 2 <b>', '2026-07-31', 'Marie Dupont')
+
+    assert (nb_ok, nb_ko) == (2, 0)
+    envoyes, sujet, contenu = captures[0]
+    assert envoyes == dests                      # diffusé à tout le monde
+    assert 'Réunion CSE' in sujet
+    assert 'Ligne 1<br>Ligne 2' in contenu       # sauts de ligne convertis
+    assert '&lt;b&gt;' in contenu                 # texte échappé (pas de HTML injecté)
+    assert 'message du cse' in contenu.lower()
+    assert '31/07/2026' in contenu               # date de validité formatée
+    assert 'Marie Dupont' in contenu
+
+
+def test_publication_cse_sans_titre(monkeypatch):
+    captures = []
+    monkeypatch.setattr(
+        email_service, 'envoyer_email_multiple',
+        lambda dests, sujet, contenu: (
+            captures.append((dests, sujet, contenu)), (len(dests), 0, []))[1]
+    )
+    email_service.notifier_publication_cse([('a@b.c', 'Alice')], '', 'Bonjour')
+    _, sujet, _ = captures[0]
+    assert sujet == 'Nouveau message du CSE'

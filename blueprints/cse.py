@@ -186,6 +186,52 @@ def get_message_actif(conn):
     ).fetchone()
 
 
+def _notifier_publication_par_email(conn, titre, contenu, date_validite, auteur_id):
+    """Diffuse la publication du CSE par e-mail au personnel (silencieux).
+
+    Même audience que la bannière du tableau de bord (personnel actif hors
+    prestataires), dans le respect du consentement de chacun (peut_envoyer_email).
+    Une erreur d'envoi ne doit jamais empêcher la publication : tout est encapsulé.
+
+    Returns:
+        nb_succes (int) : nombre de destinataires effectivement notifiés.
+    """
+    try:
+        from email_service import (is_email_configured, peut_envoyer_email,
+                                    notifier_publication_cse)
+        if not is_email_configured():
+            return 0
+
+        candidats = conn.execute(
+            '''
+            SELECT id, prenom FROM users
+            WHERE actif = 1 AND profil != 'prestataire'
+              AND email IS NOT NULL AND TRIM(email) != ''
+            '''
+        ).fetchall()
+
+        destinataires = []
+        for c in candidats:
+            peut, email = peut_envoyer_email(c['id'])
+            if peut and email:
+                destinataires.append((email, c['prenom']))
+
+        if not destinataires:
+            return 0
+
+        auteur = conn.execute(
+            'SELECT prenom, nom FROM users WHERE id = ?', (auteur_id,)
+        ).fetchone()
+        auteur_nom = f"{auteur['prenom']} {auteur['nom']}".strip() if auteur else ''
+
+        nb_succes, _echecs, _erreurs = notifier_publication_cse(
+            destinataires, titre, contenu, date_validite, auteur_nom
+        )
+        return nb_succes
+    except Exception:
+        return 0
+
+
 # ──────────────────────────────────────────────────────────────────────────
 #  Helpers métier : budget
 # ──────────────────────────────────────────────────────────────────────────
@@ -511,7 +557,19 @@ def creer_message():
             (titre or None, contenu, date_validite, session['user_id'])
         )
         conn.commit()
-        flash("Le message a été publié.", "success")
+
+        # Notification e-mail optionnelle (case cochée par défaut) : la publication
+        # reste faite même si l'envoi échoue ou n'est pas configuré.
+        nb_notifies = 0
+        if request.form.get('notifier_email'):
+            nb_notifies = _notifier_publication_par_email(
+                conn, titre, contenu, date_validite, session['user_id']
+            )
+
+        if nb_notifies:
+            flash(f"Le message a été publié et {nb_notifies} personne(s) notifiée(s) par e-mail.", "success")
+        else:
+            flash("Le message a été publié.", "success")
     finally:
         conn.close()
 
