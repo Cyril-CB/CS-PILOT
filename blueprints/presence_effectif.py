@@ -78,18 +78,22 @@ def _construire_matrice(conn, annee, mois, nb_jours):
     debut = _iso(annee, mois, 1)
     fin = _iso(annee, mois, nb_jours)
 
-    # Salariés en contrat sur la période (contrats chevauchant le mois). Les
-    # contrats clos restent visibles même si le compte a été désactivé (départ
-    # en cours d'année) ; un contrat ouvert exige un compte actif.
+    # Salariés en contrat sur la période (contrats chevauchant le mois),
+    # classés par secteur (les sans-secteur en dernier). Les contrats clos
+    # restent visibles même si le compte a été désactivé (départ en cours
+    # d'année) ; un contrat ouvert exige un compte actif.
     rows = conn.execute('''
-        SELECT u.id, u.nom, u.prenom, u.profil, c.date_debut, c.date_fin
+        SELECT u.id, u.nom, u.prenom, u.profil, c.date_debut, c.date_fin,
+               sec.nom AS secteur_nom
         FROM users u
+        LEFT JOIN secteurs sec ON sec.id = u.secteur_id
         JOIN contrats c ON c.user_id = u.id
         WHERE u.profil != 'prestataire'
           AND c.date_debut <= ?
           AND (c.date_fin IS NULL OR c.date_fin >= ?)
           AND (u.actif = 1 OR c.date_fin IS NOT NULL)
-        ORDER BY u.nom COLLATE NOCASE, u.prenom COLLATE NOCASE
+        ORDER BY (sec.nom IS NULL), sec.nom COLLATE NOCASE,
+                 u.nom COLLATE NOCASE, u.prenom COLLATE NOCASE
     ''', (fin, debut)).fetchall()
 
     salaries_map = {}
@@ -98,6 +102,7 @@ def _construire_matrice(conn, annee, mois, nb_jours):
         if r['id'] not in salaries_map:
             salaries_map[r['id']] = {
                 'nom': r['nom'], 'prenom': r['prenom'], 'profil': r['profil'],
+                'secteur': r['secteur_nom'] or 'Sans secteur',
                 'fenetres': [],
             }
             ordre.append(r['id'])
@@ -185,7 +190,7 @@ def _construire_matrice(conn, annee, mois, nb_jours):
                     absents_par_jour[j['num'] - 1] += 1
             cells.append({'cat': cat, 'title': f"{jour_iso} — {libelle}"})
         salaries.append({
-            'nom': s['nom'], 'prenom': s['prenom'],
+            'nom': s['nom'], 'prenom': s['prenom'], 'secteur': s['secteur'],
             'cells': cells, 'compteurs': compteurs,
         })
 

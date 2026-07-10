@@ -61,7 +61,15 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% set ns = namespace(secteur=None) %}
                     {% for s in salaries %}
+                    {% if s.secteur != ns.secteur %}
+                    {% set ns.secteur = s.secteur %}
+                    <tr class="pe-secteur">
+                        <td class="pe-nom">🏢 {{ s.secteur }}</td>
+                        <td colspan="{{ jours|length + 1 }}"></td>
+                    </tr>
+                    {% endif %}
                     <tr>
                         <td class="pe-nom"><strong>{{ s.nom }}</strong> {{ s.prenom }}</td>
                         {% for c in s.cells %}
@@ -160,6 +168,14 @@
     color: var(--gray-500, #6b7280);
 }
 .pe-jour-off { background: var(--gray-100, #f3f4f6); }
+.pe-secteur td {
+    background: var(--gray-100, #eef1f4);
+    font-weight: 700;
+    text-align: left;
+    padding: 5px 10px;
+    border-top: 2px solid var(--gray-300, #d1d5db);
+}
+[data-theme="dark"] .pe-secteur td { background: var(--gray-200); }
 .pe-today { outline: 2px solid var(--primary, #667eea); outline-offset: -2px; }
 .pe-cell { font-weight: 700; min-width: 26px; }
 

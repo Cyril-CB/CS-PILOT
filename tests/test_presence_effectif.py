@@ -75,6 +75,28 @@ def test_seuls_les_salaries_en_contrat_apparaissent(app, db, sample_users):
     assert 'Parti' not in noms           # contrat clos avant la période
 
 
+def test_salaries_classes_par_secteur(app, db, sample_users):
+    """Les salariés sont regroupés par secteur (alphabétique), les comptes
+    sans secteur en dernier."""
+    _contrat(db, sample_users['salarie_id'])        # Martin — Secteur Test
+    _contrat(db, sample_users['directeur_id'])      # Admin — sans secteur
+    db.execute("INSERT INTO secteurs (nom) VALUES ('Autre Secteur')")
+    autre_id = db.execute("SELECT id FROM secteurs WHERE nom='Autre Secteur'").fetchone()['id']
+    db.execute("INSERT INTO users (nom, prenom, login, password, profil, actif, secteur_id) "
+               "VALUES ('Zola', 'Emile', 'zola', 'x', 'salarie', 1, ?)", (autre_id,))
+    zola_id = db.execute("SELECT id FROM users WHERE login='zola'").fetchone()['id']
+    _contrat(db, zola_id)
+
+    with app.app_context():
+        _, salaries, _ = _construire_matrice(db, 2026, 3, 31)
+    ordre = [(s['secteur'], s['nom']) for s in salaries]
+    assert ordre == [
+        ('Autre Secteur', 'Zola'),
+        ('Secteur Test', 'Martin'),
+        ('Sans secteur', 'Admin'),
+    ]
+
+
 def test_contrat_clos_reste_visible_le_mois_du_depart(app, db, sample_users):
     db.execute("INSERT INTO users (nom, prenom, login, password, profil, actif) "
                "VALUES ('Sortant', 'Mimois', 'sortant', 'x', 'salarie', 0)")
