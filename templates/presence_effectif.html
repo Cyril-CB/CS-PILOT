@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+
+{% block title %}Présence effectif - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>🗓️ Présence effectif</h1>
+    <p class="subtitle">Salariés en contrat sur {{ mois_nom|lower }} {{ annee }} — statut jour par jour</p>
+
+    {# ── Navigation mois ── #}
+    <div class="section" style="padding:1rem;">
+        <form method="GET" action="{{ url_for('presence_effectif_bp.presence_effectif') }}"
+              style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
+            <a class="btn btn-secondary" style="padding:6px 12px;"
+               href="{{ url_for('presence_effectif_bp.presence_effectif', mois=prec_mois, annee=prec_annee) }}">◀</a>
+            <select name="mois" onchange="this.form.submit()">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == mois %}selected{% endif %}>{{ noms_mois[m] }}</option>
+                {% endfor %}
+            </select>
+            <select name="annee" onchange="this.form.submit()">
+                {% for a in annees %}
+                <option value="{{ a }}" {% if a == annee %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+            <a class="btn btn-secondary" style="padding:6px 12px;"
+               href="{{ url_for('presence_effectif_bp.presence_effectif', mois=suiv_mois, annee=suiv_annee) }}">▶</a>
+            <span style="margin-left:auto;color:var(--gray-500);font-size:0.85rem;">
+                {{ salaries|length }} salarié(s) en contrat sur la période
+            </span>
+        </form>
+    </div>
+
+    {# ── Légende ── #}
+    <div class="pe-legende">
+        <span class="pe-chip pe-present">P Présent</span>
+        <span class="pe-chip pe-maladie">M Arrêt maladie</span>
+        <span class="pe-chip pe-conges">C Congés</span>
+        <span class="pe-chip pe-recup">R Récupération</span>
+        <span class="pe-chip pe-autre">A Autre absence</span>
+        <span class="pe-chip pe-ferie">F Férié</span>
+        <span class="pe-chip pe-weekend">Week-end</span>
+        <span class="pe-chip pe-hors">Hors contrat</span>
+    </div>
+
+    {# ── Tableau ── #}
+    <div class="section" style="padding:1rem;">
+        {% if salaries %}
+        <div class="pe-scroll">
+            <table class="pe-table">
+                <thead>
+                    <tr>
+                        <th class="pe-nom">Salarié</th>
+                        {% for j in jours %}
+                        <th class="pe-jour {% if j.is_weekend or j.is_ferie %}pe-jour-off{% endif %} {% if j.is_today %}pe-today{% endif %}"
+                            {% if j.is_ferie %}title="{{ j.ferie_libelle }}"{% endif %}>
+                            <span class="pe-jour-lettre">{{ j.lettre }}</span>{{ j.num }}
+                        </th>
+                        {% endfor %}
+                        <th class="pe-total" title="Jours d'absence du mois : Maladie / Congés / Récup / Autre">M / C / R / A</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set ns = namespace(secteur=None) %}
+                    {% for s in salaries %}
+                    {% if s.secteur != ns.secteur %}
+                    {% set ns.secteur = s.secteur %}
+                    <tr class="pe-secteur">
+                        <td class="pe-nom">🏢 {{ s.secteur }}</td>
+                        <td colspan="{{ jours|length + 1 }}"></td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td class="pe-nom"><strong>{{ s.nom }}</strong> {{ s.prenom }}</td>
+                        {% for c in s.cells %}
+                        <td class="pe-cell pe-{{ c.cat }} {% if jours[loop.index0].is_today %}pe-today{% endif %}" title="{{ c.title }}">
+                            {%- if c.cat == 'present' -%}P
+                            {%- elif c.cat == 'maladie' -%}M
+                            {%- elif c.cat == 'conges' -%}C
+                            {%- elif c.cat == 'recup' -%}R
+                            {%- elif c.cat == 'autre' -%}A
+                            {%- elif c.cat == 'ferie' -%}F
+                            {%- endif -%}
+                        </td>
+                        {% endfor %}
+                        <td class="pe-total">
+                            <span class="pe-mini pe-maladie">{{ s.compteurs.maladie }}</span>
+                            <span class="pe-mini pe-conges">{{ s.compteurs.conges }}</span>
+                            <span class="pe-mini pe-recup">{{ s.compteurs.recup }}</span>
+                            <span class="pe-mini pe-autre">{{ s.compteurs.autre }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td class="pe-nom" style="font-weight:600;">Absents</td>
+                        {% for j in jours %}
+                        <td class="pe-cell pe-absents {% if j.is_weekend or j.is_ferie %}pe-jour-off{% endif %}">
+                            {%- if not j.is_weekend and not j.is_ferie and absents_par_jour[loop.index0] -%}
+                            {{ absents_par_jour[loop.index0] }}
+                            {%- endif -%}
+                        </td>
+                        {% endfor %}
+                        <td class="pe-total"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun salarié en contrat sur cette période.</p>
+        {% endif %}
+    </div>
+
+    <div class="help-box">
+        <h4>ℹ️ Lecture du tableau</h4>
+        <ul>
+            <li><strong>Congés</strong> regroupe : congé payé, congé conventionnel et forfait jour (direction).</li>
+            <li><strong>Autre absence</strong> regroupe les motifs restants : congé parental, jour enfant malade,
+                accident du travail, évènement familial, sans solde, mi-temps thérapeutique…
+                Le motif exact s'affiche au survol de la case.</li>
+            <li><strong>Récupération</strong> : journées de récupération validées.</li>
+            <li>La colonne <strong>M / C / R / A</strong> totalise les jours d'absence du mois par catégorie.</li>
+            <li>La ligne <strong>Absents</strong> compte les absents par jour (hors week-ends et fériés).</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+.pe-legende {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 1rem;
+}
+.pe-chip {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.pe-scroll { overflow-x: auto; }
+.pe-table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 0.8rem;
+}
+.pe-table th, .pe-table td {
+    border: 1px solid var(--gray-200, #e5e7eb);
+    text-align: center;
+    padding: 4px 2px;
+}
+.pe-nom {
+    text-align: left !important;
+    white-space: nowrap;
+    padding: 4px 10px !important;
+    position: sticky;
+    left: 0;
+    background: var(--white, #fff);
+    z-index: 2;
+    min-width: 160px;
+}
+.pe-jour { min-width: 26px; font-weight: 600; }
+.pe-jour-lettre {
+    display: block;
+    font-weight: 400;
+    font-size: 0.65rem;
+    color: var(--gray-500, #6b7280);
+}
+.pe-jour-off { background: var(--gray-100, #f3f4f6); }
+.pe-secteur td {
+    background: var(--gray-100, #eef1f4);
+    font-weight: 700;
+    text-align: left;
+    padding: 5px 10px;
+    border-top: 2px solid var(--gray-300, #d1d5db);
+}
+[data-theme="dark"] .pe-secteur td { background: var(--gray-200); }
+.pe-today { outline: 2px solid var(--primary, #667eea); outline-offset: -2px; }
+.pe-cell { font-weight: 700; min-width: 26px; }
+
+/* Code couleur — volontairement contrasté pour une lecture immédiate. */
+.pe-present { background: #d9f2e5; color: #0a7d43; }
+.pe-maladie { background: #dc2626; color: #fff; }
+.pe-conges  { background: #f59e0b; color: #fff; }
+.pe-recup   { background: #2563eb; color: #fff; }
+.pe-autre   { background: #8b5cf6; color: #fff; }
+.pe-ferie   { background: #e5e7eb; color: #6b7280; }
+.pe-weekend { background: #f3f4f6; color: #9ca3af; }
+.pe-hors    {
+    background: repeating-linear-gradient(45deg, #f8f9fa, #f8f9fa 4px, #eceff1 4px, #eceff1 8px);
+    color: transparent;
+}
+.pe-absents { font-weight: 700; color: #b91c1c; background: var(--white, #fff); }
+.pe-total { white-space: nowrap; padding: 4px 6px !important; }
+.pe-mini {
+    display: inline-block;
+    min-width: 20px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin: 0 1px;
+}
+
+/* Thème sombre : on garde les couleurs de statut (absolues), on adapte fonds neutres. */
+[data-theme="dark"] .pe-nom { background: var(--gray-100); }
+[data-theme="dark"] .pe-jour-off { background: var(--gray-200); }
+[data-theme="dark"] .pe-weekend { background: var(--gray-200); color: var(--gray-500); }
+[data-theme="dark"] .pe-ferie { background: var(--gray-300); color: var(--gray-600); }
+[data-theme="dark"] .pe-present { background: #14532d; color: #bbf7d0; }
+[data-theme="dark"] .pe-absents { background: var(--gray-100); }
+[data-theme="dark"] .pe-hors {
+    background: repeating-linear-gradient(45deg, var(--gray-100), var(--gray-100) 4px, var(--gray-200) 4px, var(--gray-200) 8px);
+}
+</style>
+{% endblock %}
