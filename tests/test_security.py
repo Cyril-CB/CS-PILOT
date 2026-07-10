@@ -330,3 +330,43 @@ class TestEnvFileGeneration:
         result = generate_env_file('/invalid/path/that/does/not/exist/.env')
 
         assert result is False
+
+
+class TestExportPdfMensuelAccessControl:
+    """Vérifie que l'export PDF mensuel respecte les droits d'accès RH."""
+
+    def _verrouiller_fiche(self, db, user_id, mois=1, annee=2025):
+        db.execute('''
+            INSERT INTO validations (
+                user_id, mois, annee, bloque,
+                validation_salarie, validation_responsable, validation_directeur,
+                date_salarie, date_responsable, date_directeur
+            ) VALUES (?, ?, ?, 1, 'Salarié', 'Responsable', 'Directeur',
+                      '2025-01-31', '2025-01-31', '2025-01-31')
+        ''', (user_id, mois, annee))
+        db.commit()
+
+    def test_salarie_ne_peut_pas_exporter_pdf_autre_salarie(self, app, db, auth_client, sample_users):
+        with app.app_context():
+            self._verrouiller_fiche(db, sample_users['responsable_id'])
+
+        response = auth_client.get(
+            f"/export_pdf_mensuel?user_id={sample_users['responsable_id']}&mois=1&annee=2025",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert '/vue_mensuelle' in response.headers['Location']
+        assert response.headers.get('Content-Type') != 'application/pdf'
+
+    def test_directeur_peut_exporter_pdf_salarie(self, app, db, admin_client, sample_users):
+        with app.app_context():
+            self._verrouiller_fiche(db, sample_users['salarie_id'])
+
+        response = admin_client.get(
+            f"/export_pdf_mensuel?user_id={sample_users['salarie_id']}&mois=1&annee=2025",
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 200
+        assert response.headers['Content-Type'] == 'application/pdf'

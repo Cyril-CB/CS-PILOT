@@ -12,6 +12,39 @@ from utils import (login_required, get_user_info, calculer_heures,
 exports_bp = Blueprint('exports_bp', __name__)
 
 
+def _peut_exporter_pdf_mensuel(conn, user_id_cible):
+    """Vérifie que l'utilisateur connecté peut exporter la fiche PDF cible.
+
+    Le PDF mensuel contient des informations RH nominatives : il doit suivre
+    le même modèle d'accès que la vue mensuelle.
+    """
+    if user_id_cible == session.get('user_id'):
+        return True
+
+    profil = session.get('profil')
+    if profil in ('directeur', 'comptable'):
+        return conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            (user_id_cible,)
+        ).fetchone() is not None
+
+    if profil == 'responsable':
+        responsable = conn.execute(
+            'SELECT secteur_id FROM users WHERE id = ?',
+            (session['user_id'],)
+        ).fetchone()
+        secteur_id = responsable['secteur_id'] if responsable else None
+        if not secteur_id:
+            return False
+
+        return conn.execute('''
+            SELECT 1 FROM users
+            WHERE id = ? AND actif = 1 AND profil != 'prestataire' AND secteur_id = ?
+        ''', (user_id_cible, secteur_id)).fetchone() is not None
+
+    return False
+
+
 @exports_bp.route('/export_pdf_mensuel')
 @login_required
 def export_pdf_mensuel():
@@ -32,6 +65,11 @@ def export_pdf_mensuel():
         return redirect(url_for('validation_bp.vue_mensuelle'))
     
     conn = get_db()
+
+    if not _peut_exporter_pdf_mensuel(conn, user_id_param):
+        flash('Accès non autorisé à cette fiche', 'error')
+        conn.close()
+        return redirect(url_for('validation_bp.vue_mensuelle'))
     
     # Vérifier que la fiche est verrouillée
     validation = conn.execute('''
