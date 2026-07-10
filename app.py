@@ -246,6 +246,7 @@ from blueprints.bilan_action import bilan_action_bp
 from blueprints.alsh import alsh_bp
 from blueprints.mise_a_jour import mise_a_jour_bp
 from blueprints.rh_statistiques import rh_statistiques_bp
+from blueprints.presence_effectif import presence_effectif_bp
 from blueprints.dashboard_responsable import dashboard_responsable_bp
 from blueprints.dashboard_comptable import dashboard_comptable_bp
 from blueprints.chatbot import chatbot_bp
@@ -303,6 +304,7 @@ app.register_blueprint(bilan_action_bp)
 app.register_blueprint(alsh_bp)
 app.register_blueprint(mise_a_jour_bp)
 app.register_blueprint(rh_statistiques_bp)
+app.register_blueprint(presence_effectif_bp)
 app.register_blueprint(chatbot_bp)
 app.register_blueprint(compte_resultat_bp)
 app.register_blueprint(indicateurs_financiers_bp)
