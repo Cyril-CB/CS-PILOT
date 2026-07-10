@@ -29,12 +29,16 @@ MOTIF_VERS_CATEGORIE = {
 
 # Journées du calendrier forfait jour (direction) → catégorie. La direction
 # peut poser des journées directement dans son calendrier, sans fiche
-# d'absence : on lit donc aussi presence_forfait_jour.
+# d'absence : on lit donc aussi presence_forfait_jour. Le calendrier utilise
+# 'repos_forfait' et 'forfait_jour' comme synonymes (RTT du forfait jours) ;
+# un jour marqué 'ferie' reste neutre (ni présent, ni compté en absence).
 FORFAIT_VERS_CATEGORIE = {
     'conge_paye': 'conges',
     'conge_conv': 'conges',
     'forfait_jour': 'conges',
+    'repos_forfait': 'conges',
     'maladie': 'maladie',
+    'ferie': 'ferie',
 }
 
 # En cas de chevauchement de deux absences sur un même jour, la catégorie la

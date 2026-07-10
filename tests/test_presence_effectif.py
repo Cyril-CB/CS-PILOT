@@ -166,20 +166,27 @@ def test_absence_sur_weekend_reste_weekend(app, db, sample_users):
 
 def test_forfait_jour_direction(app, db, sample_users):
     """Une journée posée directement dans le calendrier forfait jour (sans fiche
-    d'absence) est classée : forfait_jour → congés ; travaille → présent."""
+    d'absence) est classée : forfait_jour / repos_forfait (RTT) → congés ;
+    travaille → présent ; ferie → neutre (non compté en absence)."""
     uid = sample_users['directeur_id']
     _contrat(db, uid)
-    db.execute("INSERT INTO presence_forfait_jour (user_id, date, type_journee) "
-               "VALUES (?, '2026-03-05', 'forfait_jour')", (uid,))
-    db.execute("INSERT INTO presence_forfait_jour (user_id, date, type_journee) "
-               "VALUES (?, '2026-03-06', 'travaille')", (uid,))
+    for jour, type_j in (('2026-03-05', 'forfait_jour'), ('2026-03-06', 'travaille'),
+                         ('2026-03-09', 'repos_forfait'), ('2026-03-10', 'ferie'),
+                         ('2026-03-11', 'sans_solde')):
+        db.execute("INSERT INTO presence_forfait_jour (user_id, date, type_journee) "
+                   "VALUES (?, ?, ?)", (uid, jour, type_j))
     db.commit()
 
     with app.app_context():
-        _, salaries, _ = _construire_matrice(db, 2026, 3, 31)
+        _, salaries, absents = _construire_matrice(db, 2026, 3, 31)
     ligne = _ligne(salaries, 'Admin')
     assert _cat(ligne, 5) == 'conges'
     assert _cat(ligne, 6) == 'present'
+    assert _cat(ligne, 9) == 'conges'     # repos forfait (RTT) = congés
+    assert _cat(ligne, 10) == 'ferie'     # férié posé au calendrier : neutre
+    assert _cat(ligne, 11) == 'autre'     # type non regroupé → autre
+    assert ligne['compteurs'] == {'maladie': 0, 'conges': 2, 'recup': 0, 'autre': 1}
+    assert absents[9] == 0                # le férié du 10 n'est pas compté absent
 
 
 # ──────────────────────────────────────────────────────────────────────────
