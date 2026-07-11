@@ -454,6 +454,11 @@ def analyser_recherche(conn, query, profil, today):
 
 def _intention_facture(conn, terme, mois, annee_eff):
     terme_n = _normaliser(terme)
+    # « facture(s) à valider / à approuver / en attente » → page d'approbation
+    if terme_n in ('a valider', 'valider', 'a approuver', 'approuver',
+                   'approbation', 'en attente', 'attente'):
+        return _redirect(url_for('factures_bp.approbation_factures'),
+                         'Factures à valider')
     # Numéro de facture (ex. « facture 225678 »)
     if re.fullmatch(r'\d{3,}', terme_n):
         factures = _resoudre_facture_numero(conn, terme_n)

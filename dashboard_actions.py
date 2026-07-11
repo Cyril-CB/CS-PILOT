@@ -14,7 +14,7 @@ from datetime import date
 
 from flask import url_for
 
-from utils import aujourd_hui
+from utils import NOMS_MOIS, aujourd_hui
 
 _ORDRE_URGENCE = {'retard': 0, 'urgent': 1, 'normal': 2}
 
@@ -56,15 +56,25 @@ def _urgence_depot(d, today):
     return 'normal'
 
 
-def construire_actions(conn, profil, user_id, secteur_id=None):
+def construire_actions(conn, profil, user_id, secteur_id=None,
+                       etendu=False, seuils=None, surcharges=None):
     """Retourne la liste des actions à faire du tableau de bord d'un profil.
 
     - directeur / comptable : toutes les demandes en attente + toutes les
       échéances de subventions.
     - responsable : demandes de son secteur + subventions dont il est assigné.
+
+    En mode « étendu » (centre de contrôle direction), la liste s'enrichit
+    d'items actionnables en un clic : factures en attente d'approbation,
+    fiches du mois précédent à relancer, salariés en surcharge (liste
+    `surcharges` calculée par l'appelant, filtrée par seuil) et soldes de
+    congés conventionnels au-dessus du seuil. Chaque item porte alors un
+    `id` stable et un `type` ('facture' / 'demande' / 'relance' / 'lien')
+    avec les données nécessaires à l'action.
     """
     actions = []
     today = aujourd_hui()
+    seuils = seuils or {}
 
     # 1. Demandes de récupération / congé à valider.
     if profil == 'responsable':
@@ -76,9 +86,10 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
         scope_clause = ''
         scope_params = ()
 
-    for table, type_lbl in (('demandes_recup', 'récupération'), ('demandes_conges', 'congé')):
+    for table, cle, type_lbl in (('demandes_recup', 'recup', 'récupération'),
+                                 ('demandes_conges', 'conge', 'congé')):
         rows = conn.execute(
-            f"""SELECT d.date_demande, u.nom, u.prenom
+            f"""SELECT d.id, d.date_demande, d.statut, u.nom, u.prenom
                 FROM {table} d JOIN users u ON u.id = d.user_id
                 WHERE {statut_clause} {scope_clause}
                 ORDER BY d.date_demande ASC
@@ -87,11 +98,18 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
         ).fetchall()
         for r in rows:
             depot = _to_date(r['date_demande'])
+            detail = f"déposée le {_fr(depot)}" if depot else "en attente de validation"
+            if r['statut'] == 'en_attente_direction':
+                detail += " — validée responsable, à valider"
             actions.append({
+                'id': f"dem-{cle}-{r['id']}",
                 'categorie': 'validation',
+                'type': 'demande',
+                'demande_id': r['id'],
+                'demande_type': cle,
                 'icone': '📋',
                 'titre': f"Demande de {type_lbl} : {r['prenom']} {r['nom']}",
-                'detail': f"déposée le {_fr(depot)}" if depot else "en attente de validation",
+                'detail': detail,
                 'lien': url_for('recup_bp.validation_demandes_recup'),
                 'lien_texte': 'Valider',
                 'urgence': _urgence_depot(depot, today),
@@ -111,7 +129,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
     # On exclut uniquement les subventions refusées : une subvention acceptée
     # garde des échéances actionnables (bilans qualitatif / financier).
     rows = conn.execute(
-        f"""SELECT se.nom AS etape, se.date_echeance, s.nom AS sub_nom, s.annee_action
+        f"""SELECT se.id, se.nom AS etape, se.date_echeance, s.nom AS sub_nom, s.annee_action
             FROM subventions_sous_elements se
             JOIN subventions s ON s.id = se.subvention_id
             WHERE se.date_echeance IS NOT NULL AND se.date_echeance != ''
@@ -135,7 +153,9 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
         else:
             lien_sub = url_for('subventions_bp.gestion_subventions', annee='toutes')
         actions.append({
+            'id': f"sub-{r['id']}",
             'categorie': 'subvention',
+            'type': 'lien',
             'icone': '💶',
             'titre': f"{r['sub_nom']}{annee} — {r['etape']}",
             'detail': f"échéance le {_fr(ech)}" if ech else '',
@@ -144,6 +164,117 @@ def construire_actions(conn, profil, user_id, secteur_id=None):
             'urgence': _urgence_echeance(ech, today),
         })
 
+    if etendu and profil in ('directeur', 'comptable'):
+        actions.extend(_actions_etendues(conn, today, seuils, surcharges))
+
     # Les plus urgents d'abord, puis par ordre d'insertion (déjà trié par date).
     actions.sort(key=lambda a: _ORDRE_URGENCE.get(a['urgence'], 2))
+    return actions
+
+
+def _actions_etendues(conn, today, seuils, surcharges):
+    """Items supplémentaires du centre de contrôle direction / comptable."""
+    actions = []
+
+    # 3. Factures en attente d'approbation (approbation en un clic).
+    rows = conn.execute('''
+        SELECT f.id, f.numero_facture, f.montant_ttc, f.date_echeance,
+               fr.nom AS fournisseur_nom
+        FROM factures f
+        LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
+        WHERE f.approbation = 'en_attente'
+        ORDER BY f.date_echeance ASC, f.date_facture ASC
+        LIMIT 15
+    ''').fetchall()
+    for r in rows:
+        ech = _to_date(r['date_echeance'])
+        montant = f"{(r['montant_ttc'] or 0):,.2f}".replace(',', ' ').replace('.', ',')
+        if ech:
+            jours = (ech - today).days
+            if jours < 0:
+                detail = f"échéance dépassée de {-jours} jour(s) ({_fr(ech)})"
+            else:
+                detail = f"échéance dans {jours} jour(s) ({_fr(ech)})"
+        else:
+            detail = "en attente d'approbation"
+        actions.append({
+            'id': f"fact-{r['id']}",
+            'categorie': 'facture',
+            'type': 'facture',
+            'facture_id': r['id'],
+            'icone': '🧾',
+            'titre': f"Facture {r['fournisseur_nom'] or r['numero_facture'] or ''} — {montant} €",
+            'detail': detail,
+            'lien': url_for('factures_bp.detail_facture', facture_id=r['id']),
+            'lien_texte': 'Détail',
+            'urgence': _urgence_echeance(ech, today),
+        })
+
+    # 4. Fiches du mois précédent non validées : relance des responsables.
+    mois_prec = today.month - 1 or 12
+    annee_prec = today.year if today.month > 1 else today.year - 1
+    fiches = conn.execute('''
+        SELECT COUNT(*) AS nb FROM users u
+        WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+          AND NOT EXISTS (
+              SELECT 1 FROM validations v
+              WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ? AND v.bloque = 1
+          )
+    ''', (mois_prec, annee_prec)).fetchone()
+    if fiches['nb'] > 0:
+        actions.append({
+            'id': f"relance-{annee_prec}-{mois_prec:02d}",
+            'categorie': 'validation',
+            'type': 'relance',
+            'relance_mois': mois_prec,
+            'relance_annee': annee_prec,
+            'icone': '✅',
+            'titre': f"{fiches['nb']} fiche(s) de {NOMS_MOIS[mois_prec].lower()} non validée(s)",
+            'detail': "responsables à relancer par email",
+            'lien': url_for('validation_bp.vue_ensemble_validation'),
+            'lien_texte': 'Vue ensemble',
+            # Urgent passé le 10 du mois (la paie attend les fiches).
+            'urgence': 'urgent' if today.day > 10 else 'normal',
+        })
+
+    # 5. Salariés en surcharge (score calculé par l'appelant, déjà filtré par seuil).
+    for s in (surcharges or [])[:5]:
+        actions.append({
+            'id': f"surch-{s['user_id']}",
+            'categorie': 'surcharge',
+            'type': 'lien',
+            'icone': '🚨',
+            'titre': f"Surcharge : {s['nom_complet']}",
+            'detail': (f"score {s['score']}/100 ({s['category']['label']}) — "
+                       f"{s['solde_actuel']:.1f} h à récupérer"),
+            'lien': url_for('suivi_bp.alertes_surcharge'),
+            'lien_texte': 'Alertes surcharge',
+            'urgence': 'retard' if s['score'] >= 76 else 'urgent',
+        })
+
+    # 6. Soldes de congés conventionnels au-dessus du seuil : à planifier.
+    seuil_conges = seuils.get('conges')
+    if seuil_conges is not None:
+        rows = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, COALESCE(u.cc_solde, 0) AS cc_solde
+            FROM users u
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+              AND COALESCE(u.cc_solde, 0) >= ?
+            ORDER BY u.cc_solde DESC
+            LIMIT 5
+        ''', (seuil_conges,)).fetchall()
+        for r in rows:
+            solde = f"{r['cc_solde']:g}".replace('.', ',')
+            actions.append({
+                'id': f"conge-{r['id']}",
+                'categorie': 'conges',
+                'type': 'lien',
+                'icone': '🏖️',
+                'titre': f"Solde congés conventionnels élevé : {r['prenom']} {r['nom']}",
+                'detail': f"{solde} j de congés conventionnels à planifier (seuil {seuil_conges:g} j)",
+                'lien': url_for('absences_bp.absences', search_user_id=r['id']),
+                'lien_texte': 'Planifier',
+                'urgence': 'normal',
+            })
+
     return actions
