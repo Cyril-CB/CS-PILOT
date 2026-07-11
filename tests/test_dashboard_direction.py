@@ -9,11 +9,13 @@ suggestions « Aller plus loin ».
 from datetime import datetime
 
 
-def _seed_facture(db, montant=1240.50, fournisseur='EDF'):
+def _seed_facture(db, montant=1240.50, fournisseur='EDF', assignee=True):
     db.execute("INSERT INTO fournisseurs (nom) VALUES (?)", (fournisseur,))
     fid = db.execute("SELECT id FROM fournisseurs WHERE nom=?", (fournisseur,)).fetchone()['id']
-    db.execute("INSERT INTO factures (numero_facture, fournisseur_id, montant_ttc, approbation, date_echeance) "
-               "VALUES ('F-100', ?, ?, 'en_attente', '2026-07-05')", (fid, montant))
+    db.execute("INSERT INTO factures (numero_facture, fournisseur_id, montant_ttc, approbation, "
+               "date_echeance, assigned_direction) "
+               "VALUES ('F-100', ?, ?, 'en_attente', '2026-07-05', ?)",
+               (fid, montant, 1 if assignee else 0))
     db.commit()
     return db.execute("SELECT id FROM factures WHERE numero_facture='F-100'").fetchone()['id']
 
@@ -102,6 +104,27 @@ def test_facture_en_attente_devient_action_un_clic(admin_client, db, sample_user
     # La prochaine action existe (bandeau affiché, rempli côté client).
     assert 'id="ccProchaine"' in html
     assert 'display:none' not in html.split('id="ccProchaine"')[1][:80]
+
+
+def test_facture_hors_circuit_sans_bouton(admin_client, db, sample_users):
+    """Une facture sans secteur ni assignation direction n'est pas encore dans
+    le circuit d'approbation : pas de bouton un clic (même périmètre que la
+    page d'approbation) — revue Codex."""
+    fid = _seed_facture(db, assignee=False)
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert f'data-facture-id="{fid}"' not in html
+
+
+def test_relance_sans_bouton_pour_comptable_sans_delegation(comptable_client, db, sample_users):
+    """L'endpoint de relance refuse un comptable sans délégation : l'item des
+    fiches non validées reste informatif (lien) au lieu d'un bouton voué au
+    403 — revue Codex."""
+    html = comptable_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'non validée(s)' in html          # l'information reste visible
+    # … mais pas de bouton un clic (data-mois n'est rendu qu'avec le bouton ;
+    # la chaîne data-cc-act="relance" existe aussi dans le JS statique).
+    assert 'data-mois=' not in html
+    assert 'Vue ensemble' in html
 
 
 def test_demande_en_attente_valider_refuser(admin_client, db, sample_users):

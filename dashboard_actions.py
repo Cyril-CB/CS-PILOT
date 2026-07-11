@@ -14,6 +14,8 @@ from datetime import date
 
 from flask import url_for
 
+from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
+                                    user_has_delegation)
 from utils import NOMS_MOIS, aujourd_hui
 
 _ORDRE_URGENCE = {'retard': 0, 'urgent': 1, 'normal': 2}
@@ -166,24 +168,28 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
         })
 
     if etendu and profil in ('directeur', 'comptable'):
-        actions.extend(_actions_etendues(conn, today, seuils, surcharges))
+        actions.extend(_actions_etendues(conn, profil, user_id, today, seuils, surcharges))
 
     # Les plus urgents d'abord, puis par ordre d'insertion (déjà trié par date).
     actions.sort(key=lambda a: _ORDRE_URGENCE.get(a['urgence'], 2))
     return actions
 
 
-def _actions_etendues(conn, today, seuils, surcharges):
+def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     """Items supplémentaires du centre de contrôle direction / comptable."""
     actions = []
 
-    # 3. Factures en attente d'approbation (approbation en un clic).
+    # 3. Factures en attente d'approbation (approbation en un clic). Même
+    # périmètre que la page d'approbation : une facture sans secteur ni
+    # assignation direction n'est pas encore entrée dans le circuit et ne doit
+    # pas pouvoir être approuvée depuis le tableau de bord.
     rows = conn.execute('''
         SELECT f.id, f.numero_facture, f.montant_ttc, f.date_echeance,
                fr.nom AS fournisseur_nom
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
         WHERE f.approbation = 'en_attente'
+          AND (f.secteur_id IS NOT NULL OR f.assigned_direction = 1)
         ORDER BY f.date_echeance ASC, f.date_facture ASC
         LIMIT 15
     ''').fetchall()
@@ -223,20 +229,28 @@ def _actions_etendues(conn, today, seuils, surcharges):
           )
     ''', (mois_prec, annee_prec)).fetchone()
     if fiches['nb'] > 0:
-        actions.append({
+        # L'endpoint de relance est réservé à la direction (ou à un délégué) :
+        # pour les autres (comptable sans délégation), l'item reste informatif
+        # avec un lien vers la vue d'ensemble plutôt qu'un bouton voué au 403.
+        peut_relancer = (profil == 'directeur'
+                         or user_has_delegation(user_id, MISSION_SUIVI_VALIDATIONS_RELANCES))
+        item = {
             'id': f"relance-{annee_prec}-{mois_prec:02d}",
             'categorie': 'validation',
-            'type': 'relance',
-            'relance_mois': mois_prec,
-            'relance_annee': annee_prec,
+            'type': 'relance' if peut_relancer else 'lien',
             'icone': '✅',
             'titre': f"{fiches['nb']} fiche(s) de {NOMS_MOIS[mois_prec].lower()} non validée(s)",
-            'detail': "responsables à relancer par email",
+            'detail': "responsables à relancer par email" if peut_relancer
+                      else "en attente de validation",
             'lien': url_for('validation_bp.vue_ensemble_validation'),
             'lien_texte': 'Vue ensemble',
             # Urgent passé le 10 du mois (la paie attend les fiches).
             'urgence': 'urgent' if today.day > 10 else 'normal',
-        })
+        }
+        if peut_relancer:
+            item['relance_mois'] = mois_prec
+            item['relance_annee'] = annee_prec
+        actions.append(item)
 
     # 5. Salariés en surcharge (score calculé par l'appelant, déjà filtré par seuil).
     for s in (surcharges or [])[:5]:
