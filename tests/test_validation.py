@@ -398,6 +398,55 @@ class TestDeverrouillage:
             assert validation['bloque'] == 1
 
 
+class TestVueEnsembleResponsable:
+    """Lignes des responsables : pas d'étape « responsable » (validés par la
+    direction) — croix dans la colonne et statut global adapté."""
+
+    def _ligne(self, html, nom):
+        """Extrait la ligne (tr) du tableau contenant le nom donné."""
+        for tr in html.split('<tr')[1:]:
+            tr = tr.split('</tr>')[0]
+            if nom in tr:
+                return tr
+        raise AssertionError(f"ligne « {nom} » introuvable")
+
+    def test_croix_colonne_responsable(self, admin_client, sample_users):
+        html = admin_client.get('/vue_ensemble_validation').get_data(as_text=True)
+        ligne = self._ligne(html, 'Marie Dupont')     # profil responsable
+        assert '✗' in ligne
+        assert 'Étape sans objet' in ligne
+        # Un salarié classique garde sa case à cocher, pas de croix.
+        ligne_salarie = self._ligne(html, 'Jean Martin')
+        assert '✗' not in ligne_salarie
+
+    def test_statut_global_sans_validation_reste_non_valide(self, admin_client, db, sample_users):
+        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
+        ligne = self._ligne(html, 'Marie Dupont')
+        assert 'Non validé' in ligne
+        assert 'Attente responsable' not in ligne
+
+    def test_statut_global_apres_validation_salarie_attend_directeur(self, admin_client, db, sample_users):
+        """Dès que le responsable a validé SA fiche, le statut passe en
+        « Attente directeur » (jamais « Attente responsable »)."""
+        db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie) "
+                   "VALUES (?, 3, 2026, 'Marie Dupont', '2026-04-02')",
+                   (sample_users['responsable_id'],))
+        db.commit()
+        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
+        ligne = self._ligne(html, 'Marie Dupont')
+        assert 'Attente directeur' in ligne
+        assert 'Attente responsable' not in ligne
+
+    def test_salarie_classique_garde_attente_responsable(self, admin_client, db, sample_users):
+        db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie) "
+                   "VALUES (?, 3, 2026, 'Jean Martin', '2026-04-02')",
+                   (sample_users['salarie_id'],))
+        db.commit()
+        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
+        ligne = self._ligne(html, 'Jean Martin')
+        assert 'Attente responsable' in ligne
+
+
 class TestVueEnsembleAcces:
     """Tests d'accès à la vue d'ensemble des validations."""
 
