@@ -139,17 +139,36 @@
     font-size: 0.8rem;
     font-weight: 700;
 }
-.pe-scroll { overflow-x: auto; }
+.pe-scroll { overflow-x: auto; max-height: calc(100vh - 220px); overflow-y: auto; }
 .pe-table {
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     width: 100%;
     font-size: 0.8rem;
 }
+/* En-tête figé : les jours du mois restent visibles pendant le défilement
+   vertical (border-collapse: separate est requis pour que sticky fonctionne
+   sur thead dans un conteneur défilant). */
+.pe-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--white, #fff);
+    z-index: 3;
+}
+.pe-table thead th.pe-nom { z-index: 4; }
+[data-theme="dark"] .pe-table thead th { background: var(--gray-100); }
 .pe-table th, .pe-table td {
-    border: 1px solid var(--gray-200, #e5e7eb);
+    border-right: 1px solid var(--gray-200, #e5e7eb);
+    border-bottom: 1px solid var(--gray-200, #e5e7eb);
     text-align: center;
     padding: 4px 2px;
 }
+.pe-table thead th { border-top: 1px solid var(--gray-200, #e5e7eb); }
+.pe-table th:first-child, .pe-table td:first-child {
+    border-left: 1px solid var(--gray-200, #e5e7eb);
+}
+.pe-table thead th.pe-jour-off { background: var(--gray-100, #f3f4f6); }
+[data-theme="dark"] .pe-table thead th.pe-jour-off { background: var(--gray-200); }
 .pe-nom {
     text-align: left !important;
     white-space: nowrap;
