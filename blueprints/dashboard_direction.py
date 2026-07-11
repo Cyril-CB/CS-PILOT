@@ -39,6 +39,12 @@ SEUILS_DEFAUT = {
 }
 _SEUILS_SETTING = 'dashboard_direction_seuils'
 
+# Digest quotidien par email : activé par défaut, désactivable dans la
+# fenêtre des seuils. Envoyé au premier accès à l'application après cette
+# heure (aucun planificateur externe requis).
+DIGEST_DEFAUT = True
+DIGEST_HEURE = 8
+
 # Pool de modules mis en avant dans « Aller plus loin » (3 tirés au hasard).
 _SUGGESTIONS_MODULES = [
     {'icone': '📊', 'titre': 'Statistiques RH', 'endpoint': 'rh_statistiques_bp.rh_statistiques',
@@ -76,11 +82,14 @@ _EXEMPLES_RECHERCHE = ['budget prévisionnel', 'CDD en cours',
 def _lire_seuils():
     """Seuils d'alerte : valeurs enregistrées, complétées par les défauts."""
     seuils = dict(SEUILS_DEFAUT)
+    seuils['digest'] = DIGEST_DEFAUT
     brut = get_setting(_SEUILS_SETTING)
     if brut:
         try:
             for cle, val in (json.loads(brut) or {}).items():
-                if cle in seuils:
+                if cle == 'digest':
+                    seuils['digest'] = bool(val)
+                elif cle in SEUILS_DEFAUT:
                     seuils[cle] = float(val)
         except (ValueError, TypeError):
             logger.warning("Seuils dashboard direction illisibles, défauts utilisés")
@@ -137,6 +146,22 @@ def _calculer_surcharges(conn, seuil):
 
 def _fmt_euro(valeur):
     return f"{valeur:,.0f}".replace(',', ' ') + ' €'
+
+
+def _construire_file_actions(conn, profil, user_id, seuils):
+    """File d'actions étendue + liste des surcharges (partagé page / fragment).
+
+    Le calcul de surcharge lit tout l'historique d'heures : en cas d'erreur il
+    est neutralisé plutôt que de faire tomber le tableau de bord.
+    """
+    try:
+        surcharges = _calculer_surcharges(conn, seuils['surcharge'])
+    except Exception:
+        logger.exception("Calcul des surcharges impossible")
+        surcharges = []
+    actions = construire_actions(conn, profil, user_id,
+                                 etendu=True, seuils=seuils, surcharges=surcharges)
+    return actions, surcharges
 
 
 @dashboard_direction_bp.route('/dashboard_direction')
@@ -265,12 +290,9 @@ def dashboard_direction():
             WHERE actif = 1 AND profil NOT IN ('directeur', 'prestataire')
         ''').fetchone()['maxi'] or 0
 
-        # ── Surcharge (réutilise le calcul de la page Alertes surcharge) ──
-        surcharges = _calculer_surcharges(conn, seuils['surcharge'])
-
-        # ── File d'actions (étendue) + prochaine action ──
-        actions = construire_actions(conn, session.get('profil'), session.get('user_id'),
-                                     etendu=True, seuils=seuils, surcharges=surcharges)
+        # ── File d'actions (étendue) + surcharges + prochaine action ──
+        actions, surcharges = _construire_file_actions(
+            conn, session.get('profil'), session.get('user_id'), seuils)
     finally:
         conn.close()
 
@@ -369,5 +391,157 @@ def api_seuils_save():
             if valeur < 0:
                 return jsonify({'error': f"Seuil « {cle} » invalide"}), 400
             seuils[cle] = valeur
+    if 'digest' in data:
+        seuils['digest'] = bool(data['digest'])
     save_setting(_SEUILS_SETTING, json.dumps(seuils))
     return jsonify({'success': True, 'seuils': seuils})
+
+
+@dashboard_direction_bp.route('/api/dashboard-direction/actions-fragment')
+@login_required
+def api_actions_fragment():
+    """Fragment HTML de la file d'actions (rafraîchissement automatique)."""
+    if session.get('profil') not in ('directeur', 'comptable'):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    seuils = _lire_seuils()
+    conn = get_db()
+    try:
+        actions, _ = _construire_file_actions(
+            conn, session.get('profil'), session.get('user_id'), seuils)
+    finally:
+        conn.close()
+    return render_template('_cc_actions_liste.html', actions=actions)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+#  Digest quotidien par email (premier accès après DIGEST_HEURE)
+# ══════════════════════════════════════════════════════════════════════════
+
+# Mémo processus : dernière date pour laquelle le digest a été vérifié — évite
+# une requête en base à chaque hit une fois le digest du jour traité.
+_digest_date_traitee = None
+
+
+def _destinataires_digest(conn, date_str):
+    """Direction et comptabilité, hors personnes en congé ce jour-là.
+
+    Exclut toute personne ayant une absence couvrant la date, ainsi que les
+    journées posées directement au calendrier forfait jour (congé, repos
+    forfait, maladie… — tout sauf « travaille » et « ferie »).
+    """
+    return conn.execute('''
+        SELECT u.id, u.prenom, u.email
+        FROM users u
+        WHERE u.actif = 1 AND u.profil IN ('directeur', 'comptable')
+          AND u.email IS NOT NULL AND TRIM(u.email) != ''
+          AND NOT EXISTS (
+              SELECT 1 FROM absences a
+              WHERE a.user_id = u.id AND a.date_debut <= ? AND a.date_fin >= ?
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM presence_forfait_jour p
+              WHERE p.user_id = u.id AND p.date = ?
+                AND p.type_journee NOT IN ('travaille', 'ferie')
+          )
+        ORDER BY u.nom
+    ''', (date_str, date_str, date_str)).fetchall()
+
+
+def _composer_digest(actions, quand):
+    """(sujet, contenu HTML) du digest à partir de la file d'actions."""
+    import html as html_module
+    _e = html_module.escape
+    nb = len(actions)
+    en_retard = sum(1 for a in actions if a['urgence'] == 'retard')
+    urgents = sum(1 for a in actions if a['urgence'] == 'urgent')
+
+    lignes = ''.join(
+        f'<li style="margin:4px 0;">{a["icone"]} <strong>{_e(a["titre"])}</strong>'
+        f'<br><span style="color:#786b60;font-size:13px;">{_e(a["detail"])}</span></li>'
+        for a in actions[:8]
+    )
+    reste = f'<p style="color:#786b60;">… et {nb - 8} autre(s) action(s).</p>' if nb > 8 else ''
+    lien = url_for('dashboard_direction_bp.dashboard_direction', _external=True)
+
+    contenu = f"""
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Votre journée CS-PILOT</h3>
+    <p><strong>{nb} action(s)</strong> vous attendent ce
+       {JOURS_SEMAINE[quand.weekday()].lower()} {quand.day} {NOMS_MOIS[quand.month].lower()}
+       — dont <strong style="color:#dc2626;">{en_retard} en retard</strong>
+       et <strong style="color:#d97706;">{urgents} urgente(s)</strong>.</p>
+    <ul style="padding-left:18px;">{lignes}</ul>
+    {reste}
+    <p style="margin-top:16px;"><a href="{lien}">Ouvrir le centre de contrôle</a>
+       pour les traiter en un clic.</p>
+    """
+    sujet = f"Votre journée CS-PILOT — {nb} action(s) en attente"
+    return sujet, contenu
+
+
+def _envoyer_digest_du_jour(quand):
+    """Compose et envoie le digest aux destinataires présents. Retourne le
+    nombre d'emails envoyés (0 si rien à faire)."""
+    from email_service import envoyer_email
+
+    conn = get_db()
+    try:
+        date_str = quand.strftime('%Y-%m-%d')
+        destinataires = _destinataires_digest(conn, date_str)
+        if not destinataires:
+            return 0
+        seuils = _lire_seuils()
+        actions, _ = _construire_file_actions(conn, 'directeur', None, seuils)
+        if not actions:
+            return 0
+        sujet, contenu = _composer_digest(actions, quand)
+    finally:
+        conn.close()
+
+    nb_envoyes = 0
+    for dest in destinataires:
+        ok, _msg = envoyer_email(dest['email'], sujet, contenu, dest['prenom'])
+        if ok:
+            nb_envoyes += 1
+    logger.info("Digest direction envoyé à %s destinataire(s)", nb_envoyes)
+    return nb_envoyes
+
+
+@dashboard_direction_bp.before_app_request
+def _digest_tick():
+    """Déclenche le digest au premier accès après DIGEST_HEURE.
+
+    Sans planificateur externe : n'importe quelle requête applicative après
+    l'heure cible déclenche l'envoi, une seule fois par jour (réclamation
+    atomique en base — INSERT OR IGNORE sur une clé datée — pour rester sûr
+    avec plusieurs workers). Ne doit jamais faire échouer la requête en cours.
+    """
+    global _digest_date_traitee
+    try:
+        from utils import maintenant
+        quand = maintenant()
+        date_str = quand.strftime('%Y-%m-%d')
+        if _digest_date_traitee == date_str or quand.hour < DIGEST_HEURE:
+            return
+        if request.endpoint in (None, 'static'):
+            return
+
+        from email_service import is_email_configured
+        if not is_email_configured() or not _lire_seuils().get('digest', DIGEST_DEFAUT):
+            _digest_date_traitee = date_str   # rien à envoyer aujourd'hui
+            return
+
+        # Réclamation atomique : un seul processus/worker envoie le digest.
+        conn = get_db()
+        try:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, 'envoye')",
+                (f'digest_direction_{date_str}',))
+            conn.commit()
+            gagne = cursor.rowcount > 0
+        finally:
+            conn.close()
+        _digest_date_traitee = date_str
+        if gagne:
+            _envoyer_digest_du_jour(quand)
+    except Exception:
+        logger.exception("Digest quotidien : erreur ignorée")

@@ -1,0 +1,55 @@
+{# Liste des actions du centre de contrôle (groupes En retard / Urgent / À
+   planifier). Rendue dans la page ET renvoyée par le fragment de
+   rafraîchissement (/api/dashboard-direction/actions-fragment) : le contenu
+   de #ccActionsZone est remplacé toutes les 10 minutes. #}
+{% set groupes = [('retard', 'En retard', "— à traiter aujourd'hui", '#e2445c'),
+                  ('urgent', 'Urgent', '— sous 7 jours', '#fdab3d'),
+                  ('normal', 'À planifier', '— cette semaine', '#579bfc')] %}
+{% for cle, titre, sous_titre, couleur in groupes %}
+{% set items = actions|selectattr('urgence', 'equalto', cle)|list %}
+<div class="cc-groupe" data-cc-groupe="{{ cle }}" {% if not items %}style="display:none;"{% endif %}>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:0.6rem;">
+        <span style="width:10px;height:10px;border-radius:50%;background:{{ couleur }};display:inline-block;"></span>
+        <span style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--gray-700);">{{ titre }}</span>
+        <span style="font-size:0.8rem;color:var(--gray-500);">{{ sous_titre }}</span>
+    </div>
+    <ul class="cc-liste">
+        {% for a in items %}
+        <li class="cc-item cc-item-{{ a.urgence }}" data-cc-item data-cc-id="{{ a.id }}">
+            <span style="font-size:1.25rem;flex:0 0 auto;">{{ a.icone }}</span>
+            <div style="flex:1 1 auto;min-width:0;">
+                <div style="font-weight:600;color:var(--gray-900);" data-cc-titre>{{ a.titre }}</div>
+                <div style="font-size:0.85rem;color:var(--gray-500);" data-cc-detail>{{ a.detail }}</div>
+            </div>
+            <span style="display:flex;gap:6px;flex:0 0 auto;" data-cc-btns>
+                {% if a.type == 'facture' %}
+                <button type="button" class="btn btn-sm btn-primary" style="white-space:nowrap;"
+                        data-cc-act="facture" data-cc-ref="{{ a.id }}" data-facture-id="{{ a.facture_id }}">✓ Approuver</button>
+                <a href="{{ a.lien }}" class="btn btn-sm btn-secondary" style="white-space:nowrap;">Détail</a>
+                {% elif a.type == 'demande' %}
+                <button type="button" class="btn btn-sm btn-primary" style="white-space:nowrap;"
+                        data-cc-act="valider" data-cc-ref="{{ a.id }}" data-demande-id="{{ a.demande_id }}" data-demande-type="{{ a.demande_type }}">✓ Valider</button>
+                <button type="button" class="btn btn-sm" style="background:#fee2e2;color:#991b1b;white-space:nowrap;"
+                        data-cc-act="refuser" data-cc-ref="{{ a.id }}" data-demande-id="{{ a.demande_id }}" data-demande-type="{{ a.demande_type }}">✕ Refuser</button>
+                {% elif a.type == 'relance' %}
+                <button type="button" class="btn btn-sm btn-primary" style="white-space:nowrap;"
+                        data-cc-act="relance" data-cc-ref="{{ a.id }}" data-mois="{{ a.relance_mois }}" data-annee="{{ a.relance_annee }}">📧 Relancer</button>
+                <a href="{{ a.lien }}" class="btn btn-sm btn-secondary" style="white-space:nowrap;">Voir</a>
+                {% elif a.type == 'subvention' %}
+                <button type="button" class="btn btn-sm btn-primary" style="white-space:nowrap;"
+                        data-cc-act="subvention" data-cc-ref="{{ a.id }}" data-se-id="{{ a.se_id }}"
+                        title="Marquer l'étape comme faite (sans ouvrir la page)">✓ Fait</button>
+                <a href="{{ a.lien }}" class="btn btn-sm btn-secondary" style="white-space:nowrap;">Voir</a>
+                {% else %}
+                <a href="{{ a.lien }}" class="btn btn-sm btn-secondary" style="white-space:nowrap;">{{ a.lien_texte }} →</a>
+                {% endif %}
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endfor %}
+
+<div id="ccToutFait" class="direction-empty direction-empty-ok" style="padding:2.5rem;{% if actions %}display:none;{% endif %}">
+    <p style="font-size:1.05rem;margin:0;">🎉 Toutes les actions sont traitées — belle journée !</p>
+</div>
