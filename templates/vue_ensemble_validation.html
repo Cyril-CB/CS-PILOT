@@ -88,15 +88,19 @@
                         {% endif %}
                     </td>
                     
-                    <!-- Validation responsable -->
+                    <!-- Validation responsable (sans objet pour les responsables :
+                         leur fiche est validée directement par la direction) -->
                     <td style="text-align: center;">
-                        {% if v and v.validation_responsable %}
+                        {% if u.profil == 'responsable' %}
+                        <span style="color: var(--gray-500, #9ca3af);"
+                              title="Étape sans objet : la fiche d'un responsable est validée directement par la direction">✗</span>
+                        {% elif v and v.validation_responsable %}
                         <span title="{{ v.validation_responsable }} - {{ v.date_responsable }}">✅</span>
                         {% else %}
                         <span style="opacity: 0.3;">⬜</span>
                         {% endif %}
                     </td>
-                    
+
                     <!-- Validation directeur -->
                     <td style="text-align: center;">
                         {% if v and v.validation_directeur %}
@@ -105,11 +109,19 @@
                         <span style="opacity: 0.3;">⬜</span>
                         {% endif %}
                     </td>
-                    
+
                     <!-- Statut global -->
                     <td>
                         {% if v and v.bloque %}
                         <span class="badge badge-success">🔒 Verrouillé</span>
+                        {% elif u.profil == 'responsable' %}
+                        {# Pas d'étape responsable : dès que le responsable a validé
+                           sa propre fiche, elle attend la direction. #}
+                        {% if v and (v.validation_salarie or v.validation_responsable) %}
+                        <span class="badge" style="background: #ffc107; color: #000;">⏳ Attente directeur</span>
+                        {% else %}
+                        <span class="badge" style="background: #dc3545; color: white;">❌ Non validé</span>
+                        {% endif %}
                         {% elif v and v.validation_responsable %}
                         <span class="badge" style="background: #ffc107; color: #000;">⏳ Attente directeur</span>
                         {% elif v %}
@@ -153,6 +165,8 @@
             <li><strong>⏳ Attente directeur</strong> : Validé par le responsable, en attente de validation directeur</li>
             <li><strong>⏳ Attente responsable</strong> : Salarié validé (optionnel), en attente du responsable</li>
             <li><strong>❌ Non validé</strong> : Aucune validation effectuée pour ce mois</li>
+            <li><strong>✗</strong> : Étape sans objet — la fiche d'un responsable est validée directement
+                par la direction (dès qu'il a validé sa fiche, elle passe en « Attente directeur »)</li>
         </ul>
         <p><strong>Rappel :</strong> Une fiche est définitivement verrouillée après validation du responsable ET du directeur.</p>
     </div>

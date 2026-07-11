@@ -8,6 +8,14 @@
                placeholder="Rechercher : un fournisseur, « budget clas 2025 », « absence Marie », « facture 225678 »…">
         <button type="button" class="ds-search-btn" onclick="dsSearch()">Rechercher</button>
     </div>
+    {% if ds_exemples %}
+    <div class="ds-search-exemples" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;">
+        <span style="font-size:0.78rem;color:var(--gray-500);">Essayez :</span>
+        {% for ex in ds_exemples %}
+        <button type="button" class="ds-res-chip" data-ds-exemple="{{ ex }}">{{ ex }}</button>
+        {% endfor %}
+    </div>
+    {% endif %}
     <div id="dsSearchResults" class="ds-search-results" style="display:none;"></div>
 </div>
 
@@ -81,6 +89,14 @@
     });
     input.addEventListener('input', function () {
         if (!input.value.trim()) box.style.display = 'none';
+    });
+
+    // Exemples cliquables sous la barre : remplit le champ et lance la recherche.
+    document.querySelectorAll('[data-ds-exemple]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            input.value = b.getAttribute('data-ds-exemple');
+            dsSearch();
+        });
     });
 })();
 </script>

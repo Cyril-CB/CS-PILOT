@@ -52,6 +52,12 @@ class TestMoteurFinance:
         v = _analyse(app, db, 'factures edf')
         assert v['type'] == 'redirect' and '/fournisseurs/' in v['url']
 
+    def test_facture_a_valider_vers_approbation(self, app, db, sample_users):
+        # Exemple affiché sous la barre du centre de contrôle direction.
+        for q in ('facture à valider', 'factures à approuver', 'factures en attente'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/factures/approbation' in v['url'], q
+
     def test_budget_action_construction_bilan_action(self, app, db, sample_users):
         # « budget <action> » → bilan-action (Budget action) ; onglet réalisé pour
         # une année passée récente (dans la fenêtre présélectionnable).
