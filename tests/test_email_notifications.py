@@ -6,6 +6,7 @@ récupérations : le paramètre `type_libelle` doit adapter l'objet et le corps
 pour ne pas parler de « récupération » à propos d'un congé.
 """
 import re
+import smtplib
 
 import email_service
 
@@ -190,3 +191,77 @@ def test_config_email_non_gmail_preserve_les_espaces(admin_client, app):
         'smtp_server': 'smtp.ovh.net', 'smtp_port': '587', 'base_url': ''})
     with app.app_context():
         assert email_service.get_email_config()['password'] == 'mon pass'
+
+
+# ── Diagnostic d'échec d'authentification : remonter la réponse du serveur ──
+
+def test_message_auth_inclut_la_reponse_du_serveur():
+    err = smtplib.SMTPAuthenticationError(
+        535, b'5.7.8 Username and Password not accepted. https://support.google.com/... - gsmtp')
+    msg = email_service._message_auth_refusee(err)
+    assert msg.lower().startswith("echec d'authentification")
+    assert 'Reponse du serveur' in msg
+    assert 'Username and Password not accepted' in msg   # la cause exacte est visible
+
+
+def test_message_auth_sans_reponse_serveur():
+    # Pas de corps de réponse → on garde le message générique, sans « None ».
+    err = smtplib.SMTPAuthenticationError(535, None)
+    msg = email_service._message_auth_refusee(err)
+    assert 'Reponse du serveur' not in msg
+    assert 'None' not in msg
+
+
+def test_envoyer_email_auth_refusee_remonte_la_reponse(app, db, monkeypatch):
+    with app.app_context():
+        email_service.save_email_config('smtp.gmail.com', '587', 'a@b.fr', 'x' * 16, 'CS')
+
+        def _refuser(config):
+            raise smtplib.SMTPAuthenticationError(
+                535, b'5.7.8 Username and Password not accepted')
+
+        monkeypatch.setattr(email_service, '_ouvrir_connexion_smtp', _refuser)
+        ok, msg = email_service.envoyer_email('dest@x.fr', 'Sujet', '<p>x</p>')
+    assert ok is False
+    assert 'Username and Password not accepted' in msg   # remonté à l'utilisateur
+
+
+# ── Avertissement de longueur : 16 caractères attendus pour Gmail ──
+
+def test_config_email_gmail_longueur_incorrecte_avertit(admin_client):
+    # « trop court » → espaces retirés → 9 caractères ≠ 16 → avertissement.
+    r = admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'trop court', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''},
+        follow_redirects=True)
+    assert 'or celui saisi en fait' in r.get_data(as_text=True)
+
+
+def test_config_email_gmail_16_caracteres_pas_d_avertissement(admin_client):
+    r = admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'abcdefghijklmnop', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''},
+        follow_redirects=True)
+    assert 'or celui saisi en fait' not in r.get_data(as_text=True)
+
+
+def test_config_email_champ_vide_pas_d_avertissement(admin_client):
+    # Config initiale valide puis on ne touche qu'au domaine : aucun avertissement
+    # (le mot de passe conservé n'est pas re-jugé).
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'abcdefghijklmnop', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''})
+    r = admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': '', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': 'cs-pilot.fr'},
+        follow_redirects=True)
+    assert 'or celui saisi en fait' not in r.get_data(as_text=True)
+
+
+def test_config_email_non_gmail_pas_d_avertissement_longueur(admin_client):
+    # Serveur non-Gmail : la règle des 16 caractères ne s'applique pas.
+    r = admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'court', 'sender_name': 'CS',
+        'smtp_server': 'smtp.ovh.net', 'smtp_port': '587', 'base_url': ''},
+        follow_redirects=True)
+    assert 'or celui saisi en fait' not in r.get_data(as_text=True)
