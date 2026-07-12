@@ -16,7 +16,7 @@ from flask import url_for
 
 from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
                                     user_has_delegation)
-from utils import NOMS_MOIS, aujourd_hui
+from utils import NOMS_MOIS, aujourd_hui, calculer_solde_recup
 
 _ORDRE_URGENCE = {'retard': 0, 'urgent': 1, 'normal': 2}
 
@@ -34,6 +34,20 @@ def _to_date(valeur):
 def _fr(d):
     """date -> 'JJ/MM/AAAA'."""
     return d.strftime('%d/%m/%Y') if d else ''
+
+
+def _fr_num(x):
+    """Nombre -> notation française compacte ('3', '3,5')."""
+    return f"{x:g}".replace('.', ',')
+
+
+def _periode_demande(r):
+    """« du 20/07/2026 au 24/07/2026 (5 j) » — ou « le 20/07/2026 (1 j) »."""
+    debut, fin = _to_date(r['date_debut']), _to_date(r['date_fin'])
+    if not debut:
+        return ''
+    quand = f"le {_fr(debut)}" if (not fin or fin == debut) else f"du {_fr(debut)} au {_fr(fin)}"
+    return f"{quand} ({_fr_num(r['nb_jours'])} j)"
 
 
 def _urgence_echeance(d, today):
@@ -88,34 +102,87 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
         scope_clause = ''
         scope_params = ()
 
-    for table, cle, type_lbl in (('demandes_recup', 'recup', 'récupération'),
-                                 ('demandes_conges', 'conge', 'congé')):
-        rows = conn.execute(
-            f"""SELECT d.id, d.date_demande, d.statut, u.nom, u.prenom
-                FROM {table} d JOIN users u ON u.id = d.user_id
-                WHERE {statut_clause} {scope_clause}
-                ORDER BY d.date_demande ASC
-                LIMIT 25""",
-            scope_params
-        ).fetchall()
-        for r in rows:
-            depot = _to_date(r['date_demande'])
-            detail = f"déposée le {_fr(depot)}" if depot else "en attente de validation"
-            if r['statut'] == 'en_attente_direction':
-                detail += " — validée responsable, à valider"
-            actions.append({
-                'id': f"dem-{cle}-{r['id']}",
-                'categorie': 'validation',
-                'type': 'demande',
-                'demande_id': r['id'],
-                'demande_type': cle,
-                'icone': '📋',
-                'titre': f"Demande de {type_lbl} : {r['prenom']} {r['nom']}",
-                'detail': detail,
-                'lien': url_for('recup_bp.validation_demandes_recup'),
-                'lien_texte': 'Valider',
-                'urgence': _urgence_depot(depot, today),
-            })
+    # Récupérations : dates de la période + solde de récupération du salarié.
+    rows = conn.execute(
+        f"""SELECT d.id, d.date_demande, d.statut, d.date_debut, d.date_fin,
+                   d.nb_jours, d.nb_heures, u.id AS uid, u.nom, u.prenom
+            FROM demandes_recup d JOIN users u ON u.id = d.user_id
+            WHERE {statut_clause} {scope_clause}
+            ORDER BY d.date_demande ASC
+            LIMIT 25""",
+        scope_params
+    ).fetchall()
+    for r in rows:
+        depot = _to_date(r['date_demande'])
+        parts = [p for p in (_periode_demande(r),
+                             f"déposée le {_fr(depot)}" if depot else '') if p]
+        parts.append('validée responsable, à valider'
+                     if r['statut'] == 'en_attente_direction'
+                     else 'en attente du responsable')
+        try:
+            solde_h = calculer_solde_recup(r['uid'])
+            if r['nb_heures']:
+                parts.append(f"solde récup après validation : "
+                             f"{solde_h - r['nb_heures']:.1f} h".replace('.', ','))
+            else:
+                parts.append(f"solde récup actuel : {solde_h:.1f} h".replace('.', ','))
+        except Exception:
+            pass   # le solde est une aide, jamais bloquant
+        actions.append({
+            'id': f"dem-recup-{r['id']}",
+            'categorie': 'validation',
+            'type': 'demande',
+            'demande_id': r['id'],
+            'demande_type': 'recup',
+            'icone': '📋',
+            'titre': f"Demande de récupération : {r['prenom']} {r['nom']}",
+            'detail': ' — '.join(parts),
+            'lien': url_for('recup_bp.validation_demandes_recup'),
+            'lien_texte': 'Valider',
+            'urgence': _urgence_depot(depot, today),
+        })
+
+    # Congés : dates + solde du compteur concerné APRÈS validation (CP ou
+    # congés conventionnels), pour valider en connaissance de cause.
+    rows = conn.execute(
+        f"""SELECT d.id, d.date_demande, d.statut, d.date_debut, d.date_fin,
+                   d.nb_jours, d.type_conge, u.nom, u.prenom,
+                   COALESCE(u.cp_a_prendre, 0) AS cp_a_prendre,
+                   COALESCE(u.cp_pris, 0) AS cp_pris,
+                   COALESCE(u.cc_solde, 0) AS cc_solde
+            FROM demandes_conges d JOIN users u ON u.id = d.user_id
+            WHERE {statut_clause} {scope_clause}
+            ORDER BY d.date_demande ASC
+            LIMIT 25""",
+        scope_params
+    ).fetchall()
+    for r in rows:
+        depot = _to_date(r['date_demande'])
+        parts = [p for p in (_periode_demande(r),
+                             f"déposée le {_fr(depot)}" if depot else '') if p]
+        parts.append('validée responsable, à valider'
+                     if r['statut'] == 'en_attente_direction'
+                     else 'en attente du responsable')
+        if r['type_conge'] == 'Congé payé':
+            apres = r['cp_a_prendre'] - r['cp_pris'] - r['nb_jours']
+            parts.append(f"solde CP après validation : {_fr_num(apres)} j")
+        elif r['type_conge'] == 'Congé conventionnel':
+            apres = r['cc_solde'] - r['nb_jours']
+            parts.append(f"solde CC après validation : {_fr_num(apres)} j")
+        type_lbl = (r['type_conge'] or 'congé').lower()
+        actions.append({
+            'id': f"dem-conge-{r['id']}",
+            'categorie': 'validation',
+            'type': 'demande',
+            'demande_id': r['id'],
+            'demande_type': 'conge',
+            'icone': '📋',
+            'titre': f"Demande de {type_lbl} : {r['prenom']} {r['nom']}",
+            'detail': ' — '.join(parts),
+            'lien': url_for('recup_bp.validation_demandes_recup'),
+            'lien_texte': 'Valider',
+            'urgence': _urgence_depot(depot, today),
+        })
 
     # 2. Subventions : étapes (sous-éléments) à échéance et non terminées.
     # Le responsable voit les étapes des subventions dont il est assigné (parent)

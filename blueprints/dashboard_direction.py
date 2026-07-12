@@ -322,8 +322,8 @@ def dashboard_direction():
         alertes_seuil.append({
             'etiquette': 'Congés conventionnels à planifier', 'couleur': '#8b5cf6', 'icone': '🏖️',
             'valeur': f"{conges_hauts['nb']} salarié(s)",
-            'detail': f"solde ≥ {seuils['conges']:g} j (max : {maxi} j)".replace('.', ','),
-            'lien': url_for('infos_salaries_bp.infos_salaries'), 'lien_texte': 'Voir les soldes',
+            'detail': f"solde ≥ {seuils['conges']:g} j (salarié max : {maxi} j)".replace('.', ','),
+            'lien': url_for('infos_salaries_bp.soldes_conges'), 'lien_texte': 'Voir les soldes',
         })
     if surcharges:
         alertes_seuil.append({
