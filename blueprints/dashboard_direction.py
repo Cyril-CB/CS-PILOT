@@ -507,6 +507,20 @@ def _envoyer_digest_du_jour(quand):
     return nb_envoyes
 
 
+def _digest_jour_envoi(quand, conn):
+    """Vrai si le digest peut partir ce jour-là : ni week-end, ni jour férié.
+
+    Évite d'accumuler plusieurs emails à traiter en arrivant après une coupure
+    (le lundi ou au retour d'un pont, on ne veut pas deux ou trois digests)."""
+    if quand.weekday() >= 5:   # 5 = samedi, 6 = dimanche
+        return False
+    ferie = conn.execute(
+        'SELECT 1 FROM jours_feries WHERE date = ?',
+        (quand.strftime('%Y-%m-%d'),)
+    ).fetchone()
+    return ferie is None
+
+
 @dashboard_direction_bp.before_app_request
 def _digest_tick():
     """Déclenche le digest au premier accès après DIGEST_HEURE.
@@ -514,7 +528,8 @@ def _digest_tick():
     Sans planificateur externe : n'importe quelle requête applicative après
     l'heure cible déclenche l'envoi, une seule fois par jour (réclamation
     atomique en base — INSERT OR IGNORE sur une clé datée — pour rester sûr
-    avec plusieurs workers). Ne doit jamais faire échouer la requête en cours.
+    avec plusieurs workers). Pas d'envoi le week-end ni les jours fériés. Ne
+    doit jamais faire échouer la requête en cours.
     """
     global _digest_date_traitee
     try:
@@ -534,6 +549,9 @@ def _digest_tick():
         # Réclamation atomique : un seul processus/worker envoie le digest.
         conn = get_db()
         try:
+            if not _digest_jour_envoi(quand, conn):
+                _digest_date_traitee = date_str   # week-end / férié : rien aujourd'hui
+                return
             cursor = conn.execute(
                 "INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, 'envoye')",
                 (f'digest_direction_{date_str}',))

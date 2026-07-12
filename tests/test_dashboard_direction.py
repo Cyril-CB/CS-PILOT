@@ -272,8 +272,11 @@ def test_fragment_refuse_salarie(auth_client):
 #  Digest quotidien par email
 # ──────────────────────────────────────────────────────────────────────────
 
-def _preparer_digest(db, sample_users, monkeypatch, heure=9):
-    """Emails direction/comptable + horloge fixée + envois capturés."""
+def _preparer_digest(db, sample_users, monkeypatch, heure=9, jour=15):
+    """Emails direction/comptable + horloge fixée + envois capturés.
+
+    jour : quantième de juillet 2026 (15 = mercredi ouvré ; 18 = samedi ;
+    19 = dimanche)."""
     from datetime import datetime as dt
     import blueprints.dashboard_direction as dd
     import email_service
@@ -282,7 +285,7 @@ def _preparer_digest(db, sample_users, monkeypatch, heure=9):
     db.execute("UPDATE users SET email = 'compta@ex.fr' WHERE id = ?", (sample_users['comptable_id'],))
     db.commit()
 
-    quand = dt(2026, 7, 15, heure, 0, 0)
+    quand = dt(2026, 7, jour, heure, 0, 0)
     monkeypatch.setattr('utils.maintenant', lambda: quand)
     monkeypatch.setattr(dd, '_digest_date_traitee', None)
     monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
@@ -327,6 +330,25 @@ def test_digest_lien_utilise_le_nom_de_domaine(admin_client, db, sample_users, m
 def test_digest_pas_avant_huit_heures(admin_client, db, sample_users, monkeypatch):
     envois = _preparer_digest(db, sample_users, monkeypatch, heure=7)
     _seed_facture(db)
+    admin_client.get('/dashboard_direction')
+    assert envois == []
+
+
+def test_digest_pas_le_weekend(admin_client, db, sample_users, monkeypatch):
+    # Samedi 18 puis dimanche 19 juillet 2026 : aucun envoi.
+    for jour in (18, 19):
+        envois = _preparer_digest(db, sample_users, monkeypatch, jour=jour)
+        _seed_facture(db, fournisseur=f'F{jour}')
+        admin_client.get('/dashboard_direction')
+        assert envois == [], jour
+
+
+def test_digest_pas_les_jours_feries(admin_client, db, sample_users, monkeypatch):
+    # Mercredi 15 juillet 2026 déclaré férié → pas d'envoi.
+    envois = _preparer_digest(db, sample_users, monkeypatch, jour=15)
+    _seed_facture(db)
+    db.execute("INSERT INTO jours_feries (annee, date, libelle) VALUES (2026, '2026-07-15', 'Férié test')")
+    db.commit()
     admin_client.get('/dashboard_direction')
     assert envois == []
 
