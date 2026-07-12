@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Soldes de congés - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="form-container">
+    <h1>🏖️ Soldes de congés</h1>
+    <p class="subtitle">Vue d'ensemble des soldes de l'effectif — triés du plus gros solde restant au plus petit</p>
+
+    <div class="section" style="padding:1rem;">
+        {% if salaries %}
+        <div style="overflow-x:auto;">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Salarié</th>
+                        <th>Secteur</th>
+                        <th style="text-align:right;">CP à prendre</th>
+                        <th style="text-align:right;">CP pris</th>
+                        <th style="text-align:right;">Solde CP</th>
+                        <th style="text-align:right;" title="Seuil d'alerte du centre de contrôle : {{ '%g'|format(seuil_conges) }} j">Congés conv.</th>
+                        <th style="text-align:right;">Total restant</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in salaries %}
+                    <tr>
+                        <td><strong>{{ s.nom }}</strong> {{ s.prenom }}</td>
+                        <td>{{ s.secteur }}</td>
+                        <td style="text-align:right;">{{ '%g'|format(s.cp_a_prendre)|replace('.', ',') }}</td>
+                        <td style="text-align:right;">{{ '%g'|format(s.cp_pris)|replace('.', ',') }}</td>
+                        <td style="text-align:right;font-weight:600;">{{ '%g'|format(s.solde_cp)|replace('.', ',') }}</td>
+                        <td style="text-align:right;font-weight:600;">
+                            {% if s.cc_au_dessus_seuil %}
+                            <span class="badge" style="background:#8b5cf6;color:#fff;"
+                                  title="Au-dessus du seuil d'alerte ({{ '%g'|format(seuil_conges) }} j) — à planifier">
+                                {{ '%g'|format(s.cc_solde)|replace('.', ',') }}</span>
+                            {% else %}
+                            {{ '%g'|format(s.cc_solde)|replace('.', ',') }}
+                            {% endif %}
+                        </td>
+                        <td style="text-align:right;font-weight:700;">{{ '%g'|format(s.total)|replace('.', ',') }}</td>
+                        <td>
+                            <a class="btn btn-sm btn-secondary" style="white-space:nowrap;"
+                               href="{{ url_for('absences_bp.absences', search_user_id=s.id) }}"
+                               title="Poser / planifier une absence pour ce salarié">Planifier</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="no-data">Aucun salarié actif.</p>
+        {% endif %}
+    </div>
+
+    <div class="help-box">
+        <h4>ℹ️ Lecture</h4>
+        <ul>
+            <li><strong>Solde CP</strong> = congés payés à prendre − congés payés pris.</li>
+            <li><strong>Congés conv.</strong> : solde de congés conventionnels — surligné
+                lorsqu'il atteint le seuil d'alerte du centre de contrôle
+                ({{ '%g'|format(seuil_conges) }} j), signe qu'il est temps de les planifier.</li>
+            <li><strong>Planifier</strong> ouvre la page Absences pré-filtrée sur le salarié.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

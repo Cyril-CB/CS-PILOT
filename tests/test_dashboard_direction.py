@@ -134,9 +134,33 @@ def test_demande_en_attente_valider_refuser(admin_client, db, sample_users):
     db.commit()
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     assert 'Demande de récupération : Jean Martin' in html
-    assert 'validée responsable, à valider' in html
+    assert 'le 20/07/2026 (1 j)' in html                  # dates de la période
+    assert 'validée responsable, à valider' in html       # étape responsable faite
+    assert 'solde récup après validation' in html         # aide à la décision
     assert 'data-cc-act="valider"' in html
     assert 'data-cc-act="refuser"' in html
+
+
+def test_demande_conge_affiche_dates_et_solde_apres(admin_client, db, sample_users):
+    """Le détail d'une demande de congé donne la période et le solde du
+    compteur concerné après validation."""
+    db.execute("UPDATE users SET cp_a_prendre = 10, cp_pris = 2, cc_solde = 8 WHERE id = ?",
+               (sample_users['salarie_id'],))
+    db.execute("INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, nb_jours, statut) "
+               "VALUES (?, 'Congé payé', '2026-07-20', '2026-07-22', 3, 'en_attente_direction')",
+               (sample_users['salarie_id'],))
+    db.execute("INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, nb_jours, statut) "
+               "VALUES (?, 'Congé conventionnel', '2026-08-03', '2026-08-04', 2, 'en_attente_responsable')",
+               (sample_users['salarie_id'],))
+    db.commit()
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'Demande de congé payé : Jean Martin' in html
+    assert 'du 20/07/2026 au 22/07/2026 (3 j)' in html
+    assert 'solde CP après validation : 5 j' in html          # 10 − 2 − 3
+    assert 'Demande de congé conventionnel : Jean Martin' in html
+    assert 'du 03/08/2026 au 04/08/2026 (2 j)' in html
+    assert 'solde CC après validation : 6 j' in html          # 8 − 2
+    assert 'en attente du responsable' in html                # étape non faite
 
 
 def test_fiches_mois_precedent_a_relancer(admin_client, db, sample_users):
@@ -152,8 +176,18 @@ def test_conges_conventionnels_au_dessus_du_seuil(admin_client, db, sample_users
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     # KPI par exception + action de planification.
     assert 'Congés conventionnels à planifier' in html
+    assert 'salarié max : 12 j' in html                 # libellé sans ambiguïté
+    assert '/soldes_conges' in html                      # lien vers la page des soldes
     assert 'Solde congés conventionnels élevé : Jean Martin' in html
     assert '12 j de congés conventionnels à planifier' in html
+
+
+def test_fenetre_seuils_utilise_les_classes_modales_globales(admin_client):
+    """La fenêtre des seuils doit être une vraie modale (classes globales de
+    style.css), pas un bloc rendu en bas de page."""
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'id="ccSeuilsModal" class="modal-overlay" style="display:none;"' in html
+    assert 'ps-modal-overlay' not in html   # classes locales à la page budget
 
 
 def test_conges_sous_le_seuil_dans_la_normale(admin_client, db, sample_users):
@@ -312,3 +346,34 @@ def test_alerte_budget_presque_epuise(admin_client, db, sample_users):
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     assert 'Budget presque épuisé' in html
     assert '93' in html                 # 46 500 / 50 000 = 93 %
+
+
+# ──────────────────────────────────────────────────────────────────────────
+#  Page « Soldes de congés »
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_soldes_conges_acces(admin_client, comptable_client=None):
+    assert admin_client.get('/soldes_conges').status_code == 200
+
+
+def test_soldes_conges_refuse_salarie(auth_client):
+    resp = auth_client.get('/soldes_conges', follow_redirects=True)
+    assert 'non autoris' in resp.get_data(as_text=True).lower()
+
+
+def test_soldes_conges_contenu(admin_client, db, sample_users):
+    db.execute("UPDATE users SET cp_a_prendre = 25, cp_pris = 10, cc_solde = 8 WHERE id = ?",
+               (sample_users['salarie_id'],))
+    db.execute("UPDATE users SET cp_a_prendre = 5, cp_pris = 1, cc_solde = 2 WHERE id = ?",
+               (sample_users['responsable_id'],))
+    db.commit()
+    html = admin_client.get('/soldes_conges').get_data(as_text=True)
+    assert 'Soldes de congés' in html
+    assert 'Martin' in html and 'Dupont' in html
+    # Martin : solde CP 15, CC 8 (au-dessus du seuil 5 → badge), total 23.
+    assert '>15<' in html and '>23<' in html
+    assert 'Au-dessus du seuil' in html
+    # Tri : Martin (23) avant Dupont (6).
+    assert html.index('Martin') < html.index('Dupont')
+    # Lien planifier vers la page absences pré-filtrée.
+    assert f"search_user_id={sample_users['salarie_id']}" in html

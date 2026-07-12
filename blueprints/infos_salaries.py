@@ -711,3 +711,53 @@ def supprimer_contrat(contrat_id):
 
     flash("Contrat supprime.", 'success')
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+
+@infos_salaries_bp.route('/soldes_conges')
+@login_required
+def soldes_conges():
+    """Soldes de congés de l'ensemble des salariés (direction / comptable).
+
+    Vue synthétique : congés payés (à prendre, pris, solde), congés
+    conventionnels et total restant, triés du plus gros solde au plus petit.
+    Les congés conventionnels au-dessus du seuil du centre de contrôle sont
+    mis en évidence.
+    """
+    if session.get('profil') not in ('directeur', 'comptable'):
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    from blueprints.dashboard_direction import _lire_seuils
+    seuil_conges = _lire_seuils()['conges']
+
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT u.id, u.nom, u.prenom,
+                   COALESCE(s.nom, 'Sans secteur') AS secteur_nom,
+                   COALESCE(u.cp_a_prendre, 0) AS cp_a_prendre,
+                   COALESCE(u.cp_pris, 0) AS cp_pris,
+                   COALESCE(u.cc_solde, 0) AS cc_solde
+            FROM users u
+            LEFT JOIN secteurs s ON s.id = u.secteur_id
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+            ORDER BY u.nom COLLATE NOCASE, u.prenom COLLATE NOCASE
+        ''').fetchall()
+    finally:
+        conn.close()
+
+    salaries = []
+    for r in rows:
+        solde_cp = r['cp_a_prendre'] - r['cp_pris']
+        salaries.append({
+            'id': r['id'], 'nom': r['nom'], 'prenom': r['prenom'],
+            'secteur': r['secteur_nom'],
+            'cp_a_prendre': r['cp_a_prendre'], 'cp_pris': r['cp_pris'],
+            'solde_cp': solde_cp, 'cc_solde': r['cc_solde'],
+            'total': solde_cp + r['cc_solde'],
+            'cc_au_dessus_seuil': r['cc_solde'] >= seuil_conges,
+        })
+    salaries.sort(key=lambda s: -s['total'])
+
+    return render_template('soldes_conges.html', salaries=salaries,
+                           seuil_conges=seuil_conges)
