@@ -34,6 +34,16 @@ def configuration_email():
         sender_name = request.form.get('sender_name', 'CS-PILOT').strip()
         base_url = request.form.get('base_url', '').strip()
 
+        # Mot de passe conservé si le champ est laissé vide : on peut modifier
+        # un autre réglage (domaine, expéditeur…) sans avoir à ressaisir le mot
+        # de passe d'application — évite les erreurs de re-saisie / l'autofill.
+        if not password:
+            password = (get_email_config().get('password') or '').strip()
+        elif 'gmail' in smtp_server.lower():
+            # Les mots de passe d'application Google se collent souvent avec les
+            # espaces d'affichage (« xxxx xxxx xxxx xxxx »), ce que Gmail refuse.
+            password = password.replace(' ', '')
+
         if not sender or not password:
             flash('L\'adresse email et le mot de passe sont obligatoires', 'error')
             return redirect(url_for('notifications_bp.configuration_email'))

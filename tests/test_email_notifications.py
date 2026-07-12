@@ -135,3 +135,58 @@ def test_config_email_enregistre_base_url(admin_client, app):
     m = re.search(r'name="base_url"[^>]*value="([^"]*)"', html)
     assert m is not None, 'champ base_url absent du formulaire'
     assert m.group(1) == 'https://cs-pilot.mon-centre.fr'
+
+
+# ── Mot de passe conservé si le champ est laissé vide (édition d'un réglage) ──
+
+def test_config_email_conserve_mot_de_passe_si_vide(admin_client, app):
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'secret-initial', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''})
+    # On ne change QUE le domaine, mot de passe laissé vide → il doit être conservé.
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': '', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': 'cs-pilot.fr'})
+    with app.app_context():
+        assert email_service.get_email_config()['password'] == 'secret-initial'
+        assert email_service.get_base_url() == 'https://cs-pilot.fr'
+
+
+def test_config_email_nouveau_mot_de_passe_remplace(admin_client, app):
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'ancien', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''})
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'nouveau', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''})
+    with app.app_context():
+        assert email_service.get_email_config()['password'] == 'nouveau'
+
+
+def test_config_email_premiere_config_exige_mot_de_passe(admin_client, app):
+    # Aucun mot de passe existant + champ vide → refus (rien enregistré).
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': '', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''},
+        follow_redirects=True)
+    with app.app_context():
+        assert not email_service.get_email_config().get('password')
+
+
+def test_config_email_gmail_retire_les_espaces(admin_client, app):
+    # Mot de passe d'application collé avec les espaces d'affichage → nettoyé
+    # pour Gmail (Gmail refuse les espaces).
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'abcd efgh ijkl mnop', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587', 'base_url': ''})
+    with app.app_context():
+        assert email_service.get_email_config()['password'] == 'abcdefghijklmnop'
+
+
+def test_config_email_non_gmail_preserve_les_espaces(admin_client, app):
+    # Autre serveur SMTP : un mot de passe avec espaces est conservé tel quel.
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'mon pass', 'sender_name': 'CS',
+        'smtp_server': 'smtp.ovh.net', 'smtp_port': '587', 'base_url': ''})
+    with app.app_context():
+        assert email_service.get_email_config()['password'] == 'mon pass'
