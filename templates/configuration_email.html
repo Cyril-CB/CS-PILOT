@@ -144,9 +144,10 @@
 
             <div class="em-form-group">
                 <label>Mot de passe d'application</label>
-                <input type="password" name="password" class="em-input"
-                       placeholder="{{ config.password_display or 'Mot de passe d\'application Google' }}" required>
-                <div class="em-hint">Mot de passe d'application Google (16 caracteres, sans espaces)</div>
+                <input type="password" name="password" class="em-input" autocomplete="new-password"
+                       placeholder="{% if config.password_display %}Laissez vide pour conserver le mot de passe actuel{% else %}Mot de passe d'application Google{% endif %}">
+                <div class="em-hint">Mot de passe d'application Google (16 caracteres, sans espaces).
+                    {% if config.password_display %}Un mot de passe est deja enregistre : laissez ce champ vide pour le conserver.{% endif %}</div>
             </div>
 
             <div class="em-row">

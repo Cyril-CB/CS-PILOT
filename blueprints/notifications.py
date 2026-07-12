@@ -34,12 +34,35 @@ def configuration_email():
         sender_name = request.form.get('sender_name', 'CS-PILOT').strip()
         base_url = request.form.get('base_url', '').strip()
 
+        # Mot de passe conservé si le champ est laissé vide : on peut modifier
+        # un autre réglage (domaine, expéditeur…) sans avoir à ressaisir le mot
+        # de passe d'application — évite les erreurs de re-saisie / l'autofill.
+        est_gmail = 'gmail' in smtp_server.lower()
+        password_saisi = bool(password)
+        if not password:
+            password = (get_email_config().get('password') or '').strip()
+        elif est_gmail:
+            # Les mots de passe d'application Google se collent souvent avec les
+            # espaces d'affichage (« xxxx xxxx xxxx xxxx »), ce que Gmail refuse.
+            password = password.replace(' ', '')
+
         if not sender or not password:
             flash('L\'adresse email et le mot de passe sont obligatoires', 'error')
             return redirect(url_for('notifications_bp.configuration_email'))
 
         save_email_config(smtp_server, smtp_port, sender, password, sender_name)
         save_base_url(base_url)
+
+        # Un mot de passe d'application Google fait exactement 16 caractères. Une
+        # autre longueur trahit presque toujours la cause d'un échec d'authentif :
+        # espaces oubliés, ou mot de passe habituel saisi/autofillé à la place.
+        if password_saisi and est_gmail and len(password) != 16:
+            flash(
+                f'Attention : un mot de passe d\'application Google fait 16 caracteres, '
+                f'or celui saisi en fait {len(password)}. Verifiez que vous avez colle le '
+                f'mot de passe d\'application (et non votre mot de passe habituel).',
+                'warning',
+            )
         flash('Configuration email enregistree avec succes', 'success')
         return redirect(url_for('notifications_bp.configuration_email'))
 

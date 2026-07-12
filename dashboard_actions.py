@@ -73,7 +73,8 @@ def _urgence_depot(d, today):
 
 
 def construire_actions(conn, profil, user_id, secteur_id=None,
-                       etendu=False, seuils=None, surcharges=None):
+                       etendu=False, seuils=None, surcharges=None,
+                       factures_direction_seulement=False):
     """Retourne la liste des actions à faire du tableau de bord d'un profil.
 
     - directeur / comptable : toutes les demandes en attente + toutes les
@@ -87,6 +88,11 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     congés conventionnels au-dessus du seuil. Chaque item porte alors un
     `id` stable et un `type` ('facture' / 'demande' / 'relance' / 'lien')
     avec les données nécessaires à l'action.
+
+    `factures_direction_seulement` restreint les factures à celles assignées
+    à la direction (`assigned_direction = 1`) — utilisé par le digest matinal
+    pour n'y mettre que ce que la direction doit valider, sans les factures
+    d'un secteur (qui relèvent de son responsable).
     """
     actions = []
     today = aujourd_hui()
@@ -235,14 +241,16 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
         })
 
     if etendu and profil in ('directeur', 'comptable'):
-        actions.extend(_actions_etendues(conn, profil, user_id, today, seuils, surcharges))
+        actions.extend(_actions_etendues(conn, profil, user_id, today, seuils, surcharges,
+                                         factures_direction_seulement))
 
     # Les plus urgents d'abord, puis par ordre d'insertion (déjà trié par date).
     actions.sort(key=lambda a: _ORDRE_URGENCE.get(a['urgence'], 2))
     return actions
 
 
-def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
+def _actions_etendues(conn, profil, user_id, today, seuils, surcharges,
+                      factures_direction_seulement=False):
     """Items supplémentaires du centre de contrôle direction / comptable."""
     actions = []
 
@@ -250,13 +258,17 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     # périmètre que la page d'approbation : une facture sans secteur ni
     # assignation direction n'est pas encore entrée dans le circuit et ne doit
     # pas pouvoir être approuvée depuis le tableau de bord.
-    rows = conn.execute('''
+    # Le digest ne retient que les factures de la direction : celles d'un
+    # secteur sont à valider par son responsable, pas par la direction.
+    scope_factures = ('AND f.assigned_direction = 1' if factures_direction_seulement
+                      else 'AND (f.secteur_id IS NOT NULL OR f.assigned_direction = 1)')
+    rows = conn.execute(f'''
         SELECT f.id, f.numero_facture, f.montant_ttc, f.date_echeance,
                fr.nom AS fournisseur_nom
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
         WHERE f.approbation = 'en_attente'
-          AND (f.secteur_id IS NOT NULL OR f.assigned_direction = 1)
+          {scope_factures}
         ORDER BY f.date_echeance ASC, f.date_facture ASC
         LIMIT 15
     ''').fetchall()

@@ -172,6 +172,24 @@ def _ouvrir_connexion_smtp(config):
     return server
 
 
+def _message_auth_refusee(erreur):
+    """Message d'echec d'authentification incluant la reponse du serveur SMTP.
+
+    La reponse de Google (ex. « 535-5.7.8 Username and Password not accepted »)
+    pointe la cause exacte : mot de passe d'application invalide, validation en
+    deux etapes desactivee, mot de passe habituel saisi a la place… On la
+    remonte a l'utilisateur (le mot de passe n'y figure pas) plutot qu'un
+    message generique qui laisse deviner.
+    """
+    base = ("Echec d'authentification SMTP. Verifiez l'adresse email et le mot de passe "
+            "d'application (16 caracteres Gmail, sans espaces).")
+    reponse = getattr(erreur, 'smtp_error', None)
+    if isinstance(reponse, (bytes, bytearray)):
+        reponse = reponse.decode('utf-8', 'replace')
+    reponse = ' '.join(str(reponse).split()) if reponse else ''
+    return f"{base} Reponse du serveur : {reponse}" if reponse else base
+
+
 def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
     """Envoie un email via SMTP.
 
@@ -203,9 +221,9 @@ def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
         server.quit()
         logger.info("Email envoye a %s : %s", destinataire, sujet)
         return True, "Email envoye avec succes"
-    except smtplib.SMTPAuthenticationError:
-        logger.error("Echec authentification SMTP pour %s", config['sender'])
-        return False, "Echec d'authentification SMTP. Verifiez l'adresse email et le mot de passe d'application."
+    except smtplib.SMTPAuthenticationError as e:
+        logger.error("Echec authentification SMTP pour %s : %s", config['sender'], e)
+        return False, _message_auth_refusee(e)
     except smtplib.SMTPException as e:
         logger.error("Erreur SMTP : %s", str(e))
         return False, f"Erreur SMTP : {str(e)}"
