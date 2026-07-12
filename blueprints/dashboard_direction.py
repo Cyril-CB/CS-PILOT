@@ -461,7 +461,8 @@ def _composer_digest(actions, quand):
         for a in actions[:8]
     )
     reste = f'<p style="color:#786b60;">… et {nb - 8} autre(s) action(s).</p>' if nb > 8 else ''
-    lien = url_for('dashboard_direction_bp.dashboard_direction', _external=True)
+    from email_service import construire_lien
+    lien = construire_lien('dashboard_direction_bp.dashboard_direction')
 
     contenu = f"""
     <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">Votre journée CS-PILOT</h3>

@@ -207,6 +207,20 @@ class TestMoteurRH:
         v = _analyse(app, db, 'heures Fatou')
         assert v['type'] == 'redirect' and '/vue_mensuelle' in v['url'] and 'user_id=' in v['url']
 
+    def test_soldes_conges(self, app, db, sample_users):
+        # « solde(s) congé(s) », « total (des) congé(s) », « congé(s) restant(s) »
+        # → page des soldes de congés.
+        for q in ('solde congés', 'soldes congé', 'total congés', 'total des congés',
+                  'congés restants', 'congé restant'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/soldes_conges' in v['url'], q
+
+    def test_solde_seul_reste_tresorerie(self, app, db, sample_users):
+        # « solde » / « solde banque » (sans « congé ») restent la trésorerie.
+        for q in ('solde', 'solde banque'):
+            v = _analyse(app, db, q)
+            assert v['type'] == 'redirect' and '/tresorerie' in v['url'], q
+
     def test_salarie_et_contrat_ancre(self, app, db, sample_users):
         with app.app_context():
             _seed(db)

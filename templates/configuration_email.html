@@ -127,6 +127,15 @@
             </div>
 
             <div class="em-form-group">
+                <label>Adresse du site (nom de domaine)</label>
+                <input type="text" name="base_url" class="em-input"
+                       value="{{ config.base_url or '' }}"
+                       placeholder="https://cs-pilot.mon-centre.fr">
+                <div class="em-hint">Utilisee pour les liens dans les emails. Sans cela, les liens
+                    reprennent l'adresse interne (IP:port). Laissez vide en environnement local.</div>
+            </div>
+
+            <div class="em-form-group">
                 <label>Adresse email (expediteur)</label>
                 <input type="email" name="sender" class="em-input"
                        value="{{ config.sender or '' }}"

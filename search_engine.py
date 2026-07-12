@@ -325,6 +325,13 @@ _RE_DEMANDE_CONGE = re.compile(
     r'\s+conges?\b'
 )
 
+# Soldes de congés de l'effectif : « solde(s) congé(s) », « total (des) congé(s) »,
+# « congé(s) restant(s) ». À traiter avant le mot-clé « solde » (→ trésorerie).
+_RE_SOLDE_CONGE = re.compile(
+    r'\b(?:solde|soldes|total|totaux)\b(?:\s+(?:de|d|des|du|les|le|la))*\s+conges?\b'
+    r'|\bconges?\b\s+restants?\b'
+)
+
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
 _MOTS_OUTILS = {'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
                 'ouvre', 'ouvrir', 'les', 'la', 'le', 'des', 'du', 'de', 'mes', 'mon', 'ma'}
@@ -364,6 +371,9 @@ def analyser_recherche(conn, query, profil, today):
     # Déposer une demande de congés (direction et comptable y ont accès).
     if _RE_DEMANDE_CONGE.search(norm):
         return _redirect(url_for('recup_bp.demande_conge'), 'Demande de congés')
+    # Soldes de congés de l'effectif (avant le mot-clé « solde » → trésorerie).
+    if _RE_SOLDE_CONGE.search(norm):
+        return _redirect(url_for('infos_salaries_bp.soldes_conges'), 'Soldes de congés')
 
     # Retirer les mots outils en tête (« voir », « liste », « les »…) pour révéler le mot-clé.
     while reste and reste[0] in _MOTS_OUTILS:

@@ -92,3 +92,41 @@ def test_publication_cse_sans_titre(monkeypatch):
     email_service.notifier_publication_cse([('a@b.c', 'Alice')], '', 'Bonjour')
     _, sujet, _ = captures[0]
     assert sujet == 'Nouveau message du CSE'
+
+
+# ── Adresse publique (nom de domaine) pour les liens des emails ──
+
+def test_base_url_normalisation(app, db):
+    with app.app_context():
+        email_service.save_base_url('cs-pilot.exemple.fr/')
+        assert email_service.get_base_url() == 'https://cs-pilot.exemple.fr'   # https ajouté, slash retiré
+        email_service.save_base_url('http://192.168.1.10:5000')
+        assert email_service.get_base_url() == 'http://192.168.1.10:5000'      # schéma explicite conservé
+        email_service.save_base_url('')
+        assert email_service.get_base_url() is None                            # effacement
+
+
+def test_construire_lien_avec_et_sans_base(app, db):
+    with app.test_request_context('/'):
+        # Sans base configurée : URL absolue reposant sur l'environnement (hôte
+        # de la requête en prod ; SERVER_NAME='localhost' dans les tests). On
+        # vérifie juste que c'est une URL absolue vers la bonne route.
+        email_service.save_base_url('')
+        lien = email_service.construire_lien('dashboard_direction_bp.dashboard_direction')
+        assert lien.startswith('http://') and lien.endswith('/dashboard_direction')
+        # Avec base configurée : le nom de domaine prend le dessus.
+        email_service.save_base_url('cs-pilot.mon-centre.fr')
+        lien = email_service.construire_lien('dashboard_direction_bp.dashboard_direction')
+        assert lien == 'https://cs-pilot.mon-centre.fr/dashboard_direction'
+
+
+def test_config_email_enregistre_base_url(admin_client, app):
+    admin_client.post('/configuration_email', data={
+        'sender': 'a@b.fr', 'password': 'secret', 'sender_name': 'CS',
+        'smtp_server': 'smtp.gmail.com', 'smtp_port': '587',
+        'base_url': 'cs-pilot.mon-centre.fr'})
+    with app.app_context():
+        assert email_service.get_base_url() == 'https://cs-pilot.mon-centre.fr'
+    html = admin_client.get('/configuration_email').get_data(as_text=True)
+    assert 'name="base_url"' in html
+    assert 'https://cs-pilot.mon-centre.fr' in html

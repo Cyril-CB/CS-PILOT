@@ -9,6 +9,9 @@ import logging
 import html as html_module
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
+from flask import url_for
+
 from utils import get_setting, save_setting
 from database import get_db
 
@@ -24,11 +27,48 @@ EMAIL_SETTINGS_KEYS = {
     'enabled': 'email_enabled',
 }
 
+# Adresse publique du site (nom de domaine) pour les liens des emails.
+BASE_URL_SETTING = 'app_base_url'
+
 DEFAULTS = {
     'smtp_server': 'smtp.gmail.com',
     'smtp_port': '587',
     'sender_name': 'CS-PILOT',
 }
+
+
+def get_base_url():
+    """Adresse publique configurée (sans slash final), ou None."""
+    val = (get_setting(BASE_URL_SETTING) or '').strip()
+    return val.rstrip('/') or None
+
+
+def save_base_url(base_url):
+    """Enregistre (ou efface) l'adresse publique du site.
+
+    Normalise : ajoute https:// si le schéma manque, retire le slash final.
+    Une valeur vide efface le réglage (retour au comportement par défaut).
+    """
+    val = (base_url or '').strip().rstrip('/')
+    if val and not val.startswith(('http://', 'https://')):
+        val = 'https://' + val
+    save_setting(BASE_URL_SETTING, val)
+
+
+def construire_lien(endpoint, **values):
+    """URL absolue pour un email.
+
+    Utilise l'adresse publique configurée (nom de domaine) si elle existe, pour
+    éviter les liens en IP:port internes. À défaut, retombe sur l'hôte de la
+    requête courante (url_for _external), puis sur le chemin relatif.
+    """
+    base = get_base_url()
+    if base:
+        return base + url_for(endpoint, **values)
+    try:
+        return url_for(endpoint, _external=True, **values)
+    except Exception:
+        return url_for(endpoint, **values)
 
 
 def get_email_config():

@@ -188,6 +188,15 @@ def test_fenetre_seuils_utilise_les_classes_modales_globales(admin_client):
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     assert 'id="ccSeuilsModal" class="modal-overlay" style="display:none;"' in html
     assert 'ps-modal-overlay' not in html   # classes locales à la page budget
+    # En-tête à bord franc + corps padded (convention .modal-content padding:0).
+    assert '<div class="modal-header">' in html
+
+
+def test_indicateurs_normale_sous_les_actions(admin_client):
+    """Le bandeau « indicateurs dans la normale » passe SOUS la file d'actions
+    (information secondaire quand tout est au vert)."""
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert html.index('À faire maintenant') < html.index('indicateurs dans la normale')
 
 
 def test_conges_sous_le_seuil_dans_la_normale(admin_client, db, sample_users):
@@ -278,7 +287,7 @@ def _preparer_digest(db, sample_users, monkeypatch, heure=9):
     monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
     envois = []
     monkeypatch.setattr(email_service, 'envoyer_email',
-                        lambda dest, sujet, contenu, prenom='': (envois.append((dest, sujet)), (True, 'ok'))[1])
+                        lambda dest, sujet, contenu, prenom='': (envois.append((dest, sujet, contenu)), (True, 'ok'))[1])
     return envois
 
 
@@ -296,6 +305,19 @@ def test_digest_envoye_une_seule_fois(admin_client, db, sample_users, monkeypatc
     envois.clear()
     admin_client.get('/dashboard_direction')
     assert envois == []
+
+
+def test_digest_lien_utilise_le_nom_de_domaine(admin_client, db, sample_users, monkeypatch):
+    """Le lien du digest reprend l'adresse publique configurée (nom de domaine)
+    plutôt que l'hôte interne (IP:port)."""
+    import email_service
+    envois = _preparer_digest(db, sample_users, monkeypatch)
+    _seed_facture(db)
+    email_service.save_base_url('cs-pilot.mon-centre.fr')
+    admin_client.get('/dashboard_direction')
+    contenu = envois[0][2]
+    assert 'https://cs-pilot.mon-centre.fr/dashboard_direction' in contenu
+    assert '127.0.0.1' not in contenu and 'localhost' not in contenu
 
 
 def test_digest_pas_avant_huit_heures(admin_client, db, sample_users, monkeypatch):
