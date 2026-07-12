@@ -6,6 +6,7 @@ Couvre : accès, blocs principaux, exemples de recherche, seuils d'alerte
 KPI par exception (trésorerie, budget, congés conventionnels) et
 suggestions « Aller plus loin ».
 """
+import re
 from datetime import datetime
 
 
@@ -316,8 +317,11 @@ def test_digest_lien_utilise_le_nom_de_domaine(admin_client, db, sample_users, m
     email_service.save_base_url('cs-pilot.mon-centre.fr')
     admin_client.get('/dashboard_direction')
     contenu = envois[0][2]
-    assert 'https://cs-pilot.mon-centre.fr/dashboard_direction' in contenu
-    assert '127.0.0.1' not in contenu and 'localhost' not in contenu
+    # Comparaison exacte sur les liens extraits (membership de liste, pas une
+    # sous-chaîne d'URL — motif que CodeQL signale à juste titre ailleurs).
+    hrefs = re.findall(r'href="([^"]*)"', contenu)
+    assert 'https://cs-pilot.mon-centre.fr/dashboard_direction' in hrefs
+    assert not any('127.0.0.1' in h or 'localhost' in h for h in hrefs)
 
 
 def test_digest_pas_avant_huit_heures(admin_client, db, sample_users, monkeypatch):

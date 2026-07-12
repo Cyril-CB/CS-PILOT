@@ -5,6 +5,8 @@ Les demandes de congé réutilisent les mêmes constructeurs que les
 récupérations : le paramètre `type_libelle` doit adapter l'objet et le corps
 pour ne pas parler de « récupération » à propos d'un congé.
 """
+import re
+
 import email_service
 
 
@@ -128,5 +130,8 @@ def test_config_email_enregistre_base_url(admin_client, app):
     with app.app_context():
         assert email_service.get_base_url() == 'https://cs-pilot.mon-centre.fr'
     html = admin_client.get('/configuration_email').get_data(as_text=True)
-    assert 'name="base_url"' in html
-    assert 'https://cs-pilot.mon-centre.fr' in html
+    # Le champ est repris dans le formulaire, pré-rempli avec la valeur normalisée.
+    # (comparaison exacte de l'attribut value, pas une sous-chaîne d'URL)
+    m = re.search(r'name="base_url"[^>]*value="([^"]*)"', html)
+    assert m is not None, 'champ base_url absent du formulaire'
+    assert m.group(1) == 'https://cs-pilot.mon-centre.fr'
