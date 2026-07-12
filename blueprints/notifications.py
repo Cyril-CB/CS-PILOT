@@ -10,6 +10,7 @@ from utils import login_required, get_setting, NOMS_MOIS
 from email_service import (
     get_email_config, save_email_config, set_email_enabled,
     is_email_configured, envoyer_email, notifier_relance_validation,
+    get_base_url, save_base_url,
 )
 
 notifications_bp = Blueprint('notifications_bp', __name__)
@@ -31,16 +32,19 @@ def configuration_email():
         sender = request.form.get('sender', '').strip()
         password = request.form.get('password', '').strip()
         sender_name = request.form.get('sender_name', 'CS-PILOT').strip()
+        base_url = request.form.get('base_url', '').strip()
 
         if not sender or not password:
             flash('L\'adresse email et le mot de passe sont obligatoires', 'error')
             return redirect(url_for('notifications_bp.configuration_email'))
 
         save_email_config(smtp_server, smtp_port, sender, password, sender_name)
+        save_base_url(base_url)
         flash('Configuration email enregistree avec succes', 'success')
         return redirect(url_for('notifications_bp.configuration_email'))
 
     config = get_email_config()
+    config['base_url'] = get_base_url() or ''
     # Masquer le mot de passe
     if config.get('password'):
         config['password_display'] = '*' * 8

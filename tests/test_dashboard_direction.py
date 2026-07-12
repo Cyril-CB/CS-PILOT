@@ -6,6 +6,7 @@ Couvre : accès, blocs principaux, exemples de recherche, seuils d'alerte
 KPI par exception (trésorerie, budget, congés conventionnels) et
 suggestions « Aller plus loin ».
 """
+import re
 from datetime import datetime
 
 
@@ -188,6 +189,15 @@ def test_fenetre_seuils_utilise_les_classes_modales_globales(admin_client):
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     assert 'id="ccSeuilsModal" class="modal-overlay" style="display:none;"' in html
     assert 'ps-modal-overlay' not in html   # classes locales à la page budget
+    # En-tête à bord franc + corps padded (convention .modal-content padding:0).
+    assert '<div class="modal-header">' in html
+
+
+def test_indicateurs_normale_sous_les_actions(admin_client):
+    """Le bandeau « indicateurs dans la normale » passe SOUS la file d'actions
+    (information secondaire quand tout est au vert)."""
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert html.index('À faire maintenant') < html.index('indicateurs dans la normale')
 
 
 def test_conges_sous_le_seuil_dans_la_normale(admin_client, db, sample_users):
@@ -262,8 +272,11 @@ def test_fragment_refuse_salarie(auth_client):
 #  Digest quotidien par email
 # ──────────────────────────────────────────────────────────────────────────
 
-def _preparer_digest(db, sample_users, monkeypatch, heure=9):
-    """Emails direction/comptable + horloge fixée + envois capturés."""
+def _preparer_digest(db, sample_users, monkeypatch, heure=9, jour=15):
+    """Emails direction/comptable + horloge fixée + envois capturés.
+
+    jour : quantième de juillet 2026 (15 = mercredi ouvré ; 18 = samedi ;
+    19 = dimanche)."""
     from datetime import datetime as dt
     import blueprints.dashboard_direction as dd
     import email_service
@@ -272,13 +285,13 @@ def _preparer_digest(db, sample_users, monkeypatch, heure=9):
     db.execute("UPDATE users SET email = 'compta@ex.fr' WHERE id = ?", (sample_users['comptable_id'],))
     db.commit()
 
-    quand = dt(2026, 7, 15, heure, 0, 0)
+    quand = dt(2026, 7, jour, heure, 0, 0)
     monkeypatch.setattr('utils.maintenant', lambda: quand)
     monkeypatch.setattr(dd, '_digest_date_traitee', None)
     monkeypatch.setattr(email_service, 'is_email_configured', lambda: True)
     envois = []
     monkeypatch.setattr(email_service, 'envoyer_email',
-                        lambda dest, sujet, contenu, prenom='': (envois.append((dest, sujet)), (True, 'ok'))[1])
+                        lambda dest, sujet, contenu, prenom='': (envois.append((dest, sujet, contenu)), (True, 'ok'))[1])
     return envois
 
 
@@ -298,9 +311,44 @@ def test_digest_envoye_une_seule_fois(admin_client, db, sample_users, monkeypatc
     assert envois == []
 
 
+def test_digest_lien_utilise_le_nom_de_domaine(admin_client, db, sample_users, monkeypatch):
+    """Le lien du digest reprend l'adresse publique configurée (nom de domaine)
+    plutôt que l'hôte interne (IP:port)."""
+    import email_service
+    envois = _preparer_digest(db, sample_users, monkeypatch)
+    _seed_facture(db)
+    email_service.save_base_url('cs-pilot.mon-centre.fr')
+    admin_client.get('/dashboard_direction')
+    contenu = envois[0][2]
+    # Comparaison exacte sur les liens extraits (membership de liste, pas une
+    # sous-chaîne d'URL — motif que CodeQL signale à juste titre ailleurs).
+    hrefs = re.findall(r'href="([^"]*)"', contenu)
+    assert 'https://cs-pilot.mon-centre.fr/dashboard_direction' in hrefs
+    assert not any('127.0.0.1' in h or 'localhost' in h for h in hrefs)
+
+
 def test_digest_pas_avant_huit_heures(admin_client, db, sample_users, monkeypatch):
     envois = _preparer_digest(db, sample_users, monkeypatch, heure=7)
     _seed_facture(db)
+    admin_client.get('/dashboard_direction')
+    assert envois == []
+
+
+def test_digest_pas_le_weekend(admin_client, db, sample_users, monkeypatch):
+    # Samedi 18 puis dimanche 19 juillet 2026 : aucun envoi.
+    for jour in (18, 19):
+        envois = _preparer_digest(db, sample_users, monkeypatch, jour=jour)
+        _seed_facture(db, fournisseur=f'F{jour}')
+        admin_client.get('/dashboard_direction')
+        assert envois == [], jour
+
+
+def test_digest_pas_les_jours_feries(admin_client, db, sample_users, monkeypatch):
+    # Mercredi 15 juillet 2026 déclaré férié → pas d'envoi.
+    envois = _preparer_digest(db, sample_users, monkeypatch, jour=15)
+    _seed_facture(db)
+    db.execute("INSERT INTO jours_feries (annee, date, libelle) VALUES (2026, '2026-07-15', 'Férié test')")
+    db.commit()
     admin_client.get('/dashboard_direction')
     assert envois == []
 
