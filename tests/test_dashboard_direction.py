@@ -21,6 +21,18 @@ def _seed_facture(db, montant=1240.50, fournisseur='EDF', assignee=True):
     return db.execute("SELECT id FROM factures WHERE numero_facture='F-100'").fetchone()['id']
 
 
+def _seed_facture_secteur(db, secteur_id, fournisseur='FOURN-SECTEUR', numero='F-SEC'):
+    """Facture assignée à un secteur (à valider par son responsable, pas la direction)."""
+    db.execute("INSERT INTO fournisseurs (nom) VALUES (?)", (fournisseur,))
+    fid = db.execute("SELECT id FROM fournisseurs WHERE nom=?", (fournisseur,)).fetchone()['id']
+    db.execute("INSERT INTO factures (numero_facture, fournisseur_id, montant_ttc, approbation, "
+               "date_echeance, secteur_id, assigned_direction) "
+               "VALUES (?, ?, 500, 'en_attente', '2026-07-05', ?, 0)",
+               (numero, fid, secteur_id))
+    db.commit()
+    return db.execute("SELECT id FROM factures WHERE numero_facture=?", (numero,)).fetchone()['id']
+
+
 # ──────────────────────────────────────────────────────────────────────────
 #  Accès et structure
 # ──────────────────────────────────────────────────────────────────────────
@@ -379,6 +391,29 @@ def test_digest_exclut_les_personnes_en_conge(admin_client, db, sample_users, mo
 
     admin_client.get('/dashboard_direction')
     assert envois == []   # les deux destinataires sont en congé
+
+
+def test_digest_factures_limite_a_la_direction(admin_client, db, sample_users, monkeypatch):
+    """Le digest ne liste que les factures à valider par la direction ; celles
+    assignées à un secteur (à valider par son responsable) en sont exclues."""
+    envois = _preparer_digest(db, sample_users, monkeypatch)
+    _seed_facture(db)                                        # EDF → assignée direction
+    _seed_facture_secteur(db, sample_users['secteur_id'])   # FOURN-SECTEUR → secteur
+    admin_client.get('/dashboard_direction')
+    assert envois, 'un digest était attendu'
+    contenu = envois[0][2]
+    assert 'EDF' in contenu                 # facture direction listée
+    assert 'FOURN-SECTEUR' not in contenu   # facture de secteur exclue du digest
+
+
+def test_dashboard_montre_factures_secteur_et_direction(admin_client, db, sample_users):
+    """Le centre de contrôle (vue interactive) garde les deux : la restriction
+    « direction seulement » ne concerne que le digest."""
+    _seed_facture(db)                                        # EDF → direction
+    _seed_facture_secteur(db, sample_users['secteur_id'])   # FOURN-SECTEUR → secteur
+    html = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'Facture EDF' in html
+    assert 'Facture FOURN-SECTEUR' in html
 
 
 def test_alerte_budget_presque_epuise(admin_client, db, sample_users):
