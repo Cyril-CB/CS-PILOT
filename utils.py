@@ -583,6 +583,32 @@ def calculer_stats_forfait_jour(user_id, annee):
     return stats
 
 
+def total_hs_payees(conn, user_id, annee=None, mois=None, avant=False):
+    """Total des heures supplémentaires payées ET marquées « déduites du
+    compteur » (variables_paie.hs_deduites_compteur = 1) pour un salarié.
+
+    - sans filtre : toutes (déduction du solde de récupération global) ;
+    - annee/mois avec avant=True : paies STRICTEMENT antérieures à ce mois
+      (solde antérieur de la fiche mensuelle) ;
+    - annee/mois : la paie de ce mois précis (« dont X h payées ce mois »).
+
+    Les lignes antérieures à la migration 0057 ont hs_deduites_compteur à NULL
+    et ne déduisent rien (pas d'effet rétroactif).
+    """
+    sql = ('SELECT COALESCE(SUM(heures_supps), 0) AS total FROM variables_paie '
+           'WHERE user_id = ? AND hs_deduites_compteur = 1 AND heures_supps IS NOT NULL')
+    params = [user_id]
+    if annee is not None and mois is not None:
+        if avant:
+            sql += ' AND (annee < ? OR (annee = ? AND mois < ?))'
+            params += [annee, annee, mois]
+        else:
+            sql += ' AND annee = ? AND mois = ?'
+            params += [annee, mois]
+    row = conn.execute(sql, params).fetchone()
+    return row['total'] or 0
+
+
 def calculer_solde_recup(user_id):
     """Calcule le solde de récupération total d'un salarié.
     Utilisé par dashboard et demande_recup pour éviter la duplication."""
@@ -626,6 +652,10 @@ def calculer_solde_recup(user_id):
                 total_reel = calculer_heures_reelles_jour(h)
 
             solde += (total_reel - total_theorique)
+
+        # Heures supp payées (variables de paie, marquées « déduites du
+        # compteur ») : payées, donc plus à récupérer.
+        solde -= total_hs_payees(conn, user_id)
 
         return solde
     finally:

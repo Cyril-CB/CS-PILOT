@@ -3,12 +3,11 @@ Blueprint recup_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, make_response
 from datetime import datetime, timedelta
-import sqlite3
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
-                   calculer_heures_reelles_jour,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                   calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle)
+                   calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
+                   NOMS_MOIS)
 from email_service import (
     is_email_configured, peut_envoyer_email, notifier_nouvelle_demande_recup,
     notifier_demande_recup_validee_responsable, notifier_demande_recup_decision,
@@ -253,51 +252,11 @@ def demande_recup():
             flash('Période invalide', 'error')
             return redirect(url_for('recup_bp.demande_recup'))
 
-        # Récupérer le solde de récup disponible
+        # Solde de récup disponible : calcul partagé (utils), net des heures
+        # supp déjà payées via les variables de paie.
+        solde_recup = calculer_solde_recup(session['user_id'])
         conn = get_db()
-        
-        # Calculer le solde (similaire au dashboard)
-        heures = conn.execute('''
-            SELECT date, heure_debut_matin, heure_fin_matin,
-                   heure_debut_aprem, heure_fin_aprem,
-                   heure_debut_soir, heure_fin_soir, declaration_conforme
-            FROM heures_reelles
-            WHERE user_id = ?
-            ORDER BY date
-        ''', (session['user_id'],)).fetchall()
-        
-        # Récupérer le solde initial
-        try:
-            user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-            solde_recup = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
-        except (sqlite3.OperationalError, KeyError, TypeError):
-            solde_recup = 0
-        
-        for h in heures:
-            date_obj = datetime.strptime(h['date'], '%Y-%m-%d')
-            if date_obj.weekday() == 6:  # Dimanche
-                continue
-            
-            type_periode = get_type_periode(h['date'])
-            jour_semaine = date_obj.weekday()
-            
-            # Heures théoriques - UTILISER LE BON PLANNING À CETTE DATE
-            total_theorique = 0
-            if jour_semaine == 5:  # Samedi
-                total_theorique = 0
-            else:
-                planning = get_planning_valide_a_date(session['user_id'], type_periode, h['date'])
-                if planning:
-                    total_theorique = get_heures_theoriques_jour(planning, jour_semaine)
-            
-            # Heures réelles
-            if h['declaration_conforme']:
-                total_reel = total_theorique
-            else:
-                total_reel = calculer_heures_reelles_jour(h)
 
-            solde_recup += (total_reel - total_theorique)
-        
         # Calculer les heures EXACTES pour chaque jour de la période
         nb_heures = 0
         date_actuelle = datetime.strptime(date_debut, '%Y-%m-%d')
@@ -377,53 +336,9 @@ def demande_recup():
         
         return redirect(url_for('recup_bp.mes_demandes_recup'))
     
-    # GET : afficher le formulaire
-    conn = get_db()
-    
-    # Calculer le solde disponible (même logique que ci-dessus)
-    heures = conn.execute('''
-        SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme
-        FROM heures_reelles
-        WHERE user_id = ?
-        ORDER BY date
-    ''', (session['user_id'],)).fetchall()
-    
-    # Récupérer le solde initial
-    try:
-        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-        solde_recup = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
-    except (sqlite3.OperationalError, KeyError, TypeError):
-        solde_recup = 0
-    
-    for h in heures:
-        date_obj = datetime.strptime(h['date'], '%Y-%m-%d')
-        if date_obj.weekday() == 6:  # Dimanche
-            continue
-        
-        type_periode = get_type_periode(h['date'])
-        jour_semaine = date_obj.weekday()
-        
-        # Heures théoriques - UTILISER LE BON PLANNING À CETTE DATE
-        total_theorique = 0
-        if jour_semaine == 5:
-            total_theorique = 0
-        else:
-            planning = get_planning_valide_a_date(session['user_id'], type_periode, h['date'])
-            if planning:
-                total_theorique = get_heures_theoriques_jour(planning, jour_semaine)
-        
-        # Heures réelles
-        if h['declaration_conforme']:
-            total_reel = total_theorique
-        else:
-            total_reel = calculer_heures_reelles_jour(h)
-
-        solde_recup += (total_reel - total_theorique)
-    
-    conn.close()
-    
+    # GET : afficher le formulaire — solde partagé (utils), net des heures
+    # supp déjà payées via les variables de paie.
+    solde_recup = calculer_solde_recup(session['user_id'])
     return render_template('demande_recup.html', solde_recup=solde_recup)
 
 @recup_bp.route('/mes_demandes_recup')
@@ -431,7 +346,7 @@ def demande_recup():
 def mes_demandes_recup():
     """Liste des demandes de récupération du salarié"""
     conn = get_db()
-    
+
     demandes = conn.execute('''
         SELECT d.*,
                u.nom || ' ' || u.prenom as demandeur_nom
@@ -440,10 +355,25 @@ def mes_demandes_recup():
         WHERE d.user_id = ?
         ORDER BY d.date_demande DESC
     ''', (session['user_id'],)).fetchall()
-    
+
+    # Heures supp payées (variables de paie, marquées « déduites du compteur »)
+    # : la trace visible côté salarié de ce qui a été payé plutôt que récupéré.
+    paiements_hs = [
+        {'libelle': f"Paie de {NOMS_MOIS[p['mois']].lower()} {p['annee']}",
+         'heures': p['heures_supps']}
+        for p in conn.execute('''
+            SELECT mois, annee, heures_supps
+            FROM variables_paie
+            WHERE user_id = ? AND hs_deduites_compteur = 1
+              AND heures_supps IS NOT NULL AND heures_supps > 0
+            ORDER BY annee DESC, mois DESC
+        ''', (session['user_id'],)).fetchall()
+    ]
+
     conn.close()
-    
-    return render_template('mes_demandes_recup.html', demandes=demandes)
+
+    return render_template('mes_demandes_recup.html', demandes=demandes,
+                           paiements_hs=paiements_hs)
 
 
 @recup_bp.route('/supprimer_demande_recup', methods=['POST'])
@@ -778,7 +708,7 @@ def historique_demandes_recup():
 
     demandes = list(demandes_recup) + list(demandes_conges)
     demandes.sort(key=lambda d: d['date_demande'], reverse=True)
-    
+
     # Statistiques
     stats = {
         'total': len(demandes),
@@ -787,10 +717,30 @@ def historique_demandes_recup():
         'total_jours_valides': sum(d['nb_jours'] for d in demandes if d['statut'] == 'validee'),
         'total_heures_valides': sum(_safe_nb_heures(d) for d in demandes if d['statut'] == 'validee')
     }
-    
+
+    # Heures supp payées (variables de paie, déduites du compteur de récup) :
+    # trace côté direction de ce qui a été réglé en paie plutôt que récupéré.
+    paiements_hs = [
+        {'salarie_nom': p['salarie_nom'], 'secteur_nom': p['secteur_nom'],
+         'libelle': f"Paie de {NOMS_MOIS[p['mois']].lower()} {p['annee']}",
+         'heures': p['heures_supps']}
+        for p in conn.execute('''
+            SELECT vp.mois, vp.annee, vp.heures_supps,
+                   u.nom || ' ' || u.prenom AS salarie_nom,
+                   s.nom AS secteur_nom
+            FROM variables_paie vp
+            JOIN users u ON vp.user_id = u.id
+            LEFT JOIN secteurs s ON u.secteur_id = s.id
+            WHERE vp.hs_deduites_compteur = 1
+              AND vp.heures_supps IS NOT NULL AND vp.heures_supps > 0
+            ORDER BY vp.annee DESC, vp.mois DESC, salarie_nom
+        ''').fetchall()
+    ]
+
     conn.close()
-    
-    return render_template('historique_demandes_recup.html', demandes=demandes, stats=stats)
+
+    return render_template('historique_demandes_recup.html', demandes=demandes,
+                           stats=stats, paiements_hs=paiements_hs)
 
 
 # ==================== DEMANDES DE CONGES ====================

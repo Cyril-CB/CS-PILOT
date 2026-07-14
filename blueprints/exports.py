@@ -7,7 +7,8 @@ from io import BytesIO
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    calculer_heures_reelles_jour, slot_horaire,
-                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
+                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
+                   total_hs_payees)
 
 exports_bp = Blueprint('exports_bp', __name__)
 
@@ -264,9 +265,14 @@ def export_pdf_mensuel():
             total_reel = calculer_heures_reelles_jour(h)
         
         solde_anterieur += (total_reel - total_theorique)
-    
-    solde_cumule = solde_anterieur + solde_mois
-    
+
+    # Heures supp payées (variables de paie, déduites du compteur) : mêmes
+    # règles que la vue mensuelle pour que le PDF signé colle au dashboard.
+    solde_anterieur -= total_hs_payees(conn, user_id_param,
+                                       annee=annee, mois=mois, avant=True)
+    hs_payees_mois = total_hs_payees(conn, user_id_param, annee=annee, mois=mois)
+    solde_cumule = solde_anterieur + solde_mois - hs_payees_mois
+
     conn.close()
     
     # Générer le PDF en paysage (optimisé pour 2 pages max)
@@ -373,8 +379,10 @@ def export_pdf_mensuel():
     bas_page = []
     
     # Soldes sur une seule ligne pour gagner de la place
-    soldes_text = f"""<b>Solde du mois :</b> {'+' if solde_mois > 0 else ''}{solde_mois:.2f}h  •  
-    <b>Solde antérieur :</b> {'+' if solde_anterieur > 0 else ''}{solde_anterieur:.2f}h  •  
+    hs_payees_txt = (f"  •  <b>H. supp payées ce mois :</b> -{hs_payees_mois:.2f}h"
+                     if hs_payees_mois else "")
+    soldes_text = f"""<b>Solde du mois :</b> {'+' if solde_mois > 0 else ''}{solde_mois:.2f}h  •
+    <b>Solde antérieur :</b> {'+' if solde_anterieur > 0 else ''}{solde_anterieur:.2f}h{hs_payees_txt}  •
     <b>Solde cumulé :</b> {'+' if solde_cumule > 0 else ''}{solde_cumule:.2f}h"""
     bas_page.append(Paragraph(soldes_text, normal_style))
     bas_page.append(Spacer(1, 0.4*cm))

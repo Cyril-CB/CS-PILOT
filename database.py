@@ -640,6 +640,7 @@ def init_db():
             commentaire TEXT,
             heures_reelles REAL,
             heures_supps REAL,
+            hs_deduites_compteur INTEGER,
             saisi_par INTEGER,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -1918,6 +1919,16 @@ def init_db():
     # Fallback indispensable : les bases creees par d'anciennes versions
     # d'init_db ont le schema TEXT alors que 0004 y est marquee appliquee.
     _corriger_types_variables_paie(cursor)
+
+    # Migration 0057 : heures supp payees deduites du compteur de recup.
+    # Nullable : NULL sur les lignes existantes = aucune deduction retroactive.
+    # Place APRES _corriger_types_variables_paie : la reconstruction eventuelle
+    # de la table (affinite TEXT) ne connait pas cette colonne, on la (re)cree
+    # donc systematiquement ensuite.
+    try:
+        cursor.execute("SELECT hs_deduites_compteur FROM variables_paie LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE variables_paie ADD COLUMN hs_deduites_compteur INTEGER")
 
     conn.commit()
     conn.close()

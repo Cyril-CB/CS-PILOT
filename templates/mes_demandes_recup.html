@@ -105,5 +105,30 @@
         <a href="{{ url_for('recup_bp.demande_recup') }}" class="btn btn-primary" style="margin-top: 1rem;">Créer ma première demande</a>
     </div>
     {% endif %}
+
+    {% if paiements_hs %}
+    <div class="section" style="margin-top: 2rem;">
+        <h2 style="font-size: 1.1rem;">💶 Heures supplémentaires payées</h2>
+        <p class="subtitle" style="margin-bottom: 1rem;">Heures réglées sur la paie et déduites de votre compteur de récupération.</p>
+        <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Paie</th>
+                    <th style="text-align: right;">Heures payées</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in paiements_hs %}
+                <tr>
+                    <td>{{ p.libelle }}</td>
+                    <td style="text-align: right;"><strong>− {{ '%.2f'|format(p.heures) }} h</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
