@@ -406,14 +406,16 @@ def test_digest_factures_limite_a_la_direction(admin_client, db, sample_users, m
     assert 'FOURN-SECTEUR' not in contenu   # facture de secteur exclue du digest
 
 
-def test_dashboard_montre_factures_secteur_et_direction(admin_client, db, sample_users):
-    """Le centre de contrôle (vue interactive) garde les deux : la restriction
-    « direction seulement » ne concerne que le digest."""
+def test_dashboard_exclut_les_factures_de_secteur(admin_client, db, sample_users):
+    """Le centre de contrôle direction n'affiche que les factures à valider par
+    la direction ; celles rattachées à un secteur (à valider par son
+    responsable) n'y figurent pas — elles restent sur la page d'approbation."""
     _seed_facture(db)                                        # EDF → direction
-    _seed_facture_secteur(db, sample_users['secteur_id'])   # FOURN-SECTEUR → secteur
+    fid_sec = _seed_facture_secteur(db, sample_users['secteur_id'])  # FOURN-SECTEUR → secteur
     html = admin_client.get('/dashboard_direction').get_data(as_text=True)
     assert 'Facture EDF' in html
-    assert 'Facture FOURN-SECTEUR' in html
+    assert 'Facture FOURN-SECTEUR' not in html
+    assert f'data-facture-id="{fid_sec}"' not in html
 
 
 def test_alerte_budget_presque_epuise(admin_client, db, sample_users):
