@@ -94,7 +94,13 @@ def test_dashboard_redirect_responsable(resp_client):
 
 
 def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, sample_users):
-    """Un responsable sans secteur doit pouvoir rester sur /dashboard sans boucle de redirection."""
+    """Pas de boucle de redirection pour un responsable sans secteur.
+
+    - avec des rattachés directs : /dashboard renvoie vers le tableau
+      responsable, qui s'affiche (une seule redirection) ;
+    - sans secteur NI rattaché : /dashboard s'affiche directement (le tableau
+      responsable renverrait vers /dashboard : c'est le vrai risque de boucle).
+    """
     with app.app_context():
         db.execute(
             "UPDATE users SET secteur_id = NULL WHERE id = ?",
@@ -102,19 +108,43 @@ def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, 
         )
         db.commit()
 
+    # Avec rattaché (Martin) : redirection unique vers le tableau responsable.
+    response = resp_client.get('/dashboard', follow_redirects=True)
+    assert response.status_code == 200
+    assert len(response.history) == 1
+    assert response.request.path == '/dashboard_responsable'
+
+    # Sans rattaché : /dashboard se rend directement, sans redirection.
+    with app.app_context():
+        db.execute("UPDATE users SET responsable_id = NULL WHERE responsable_id = ?",
+                   (sample_users['responsable_id'],))
+        db.commit()
     response = resp_client.get('/dashboard', follow_redirects=False)
     assert response.status_code == 200
 
 
-def test_dashboard_responsable_sans_secteur_redirige_vers_dashboard(resp_client, app, db, sample_users):
-    """Le dashboard responsable redirige vers /dashboard quand le responsable n'a pas de secteur."""
+def test_dashboard_responsable_sans_secteur_ni_rattache_redirige(resp_client, app, db, sample_users):
+    """Sans secteur NI rattaché direct : redirection vers /dashboard."""
     with app.app_context():
-        db.execute(
-            "UPDATE users SET secteur_id = NULL WHERE id = ?",
-            (sample_users['responsable_id'],)
-        )
+        db.execute("UPDATE users SET secteur_id = NULL WHERE id = ?",
+                   (sample_users['responsable_id'],))
+        # Détacher aussi le salarié rattaché (responsable_id) du jeu de données.
+        db.execute("UPDATE users SET responsable_id = NULL WHERE responsable_id = ?",
+                   (sample_users['responsable_id'],))
         db.commit()
 
     response = resp_client.get('/dashboard_responsable', follow_redirects=False)
     assert response.status_code == 302
     assert response.headers.get('Location', '').endswith('/dashboard')
+
+
+def test_dashboard_responsable_sans_secteur_mais_avec_rattache(resp_client, app, db, sample_users):
+    """Sans secteur mais avec un rattaché direct (responsable_id), le tableau
+    reste accessible et montre l'équipe rattachée."""
+    with app.app_context():
+        db.execute("UPDATE users SET secteur_id = NULL WHERE id = ?",
+                   (sample_users['responsable_id'],))
+        db.commit()
+
+    html = resp_client.get('/dashboard_responsable').get_data(as_text=True)
+    assert 'Martin' in html    # le rattaché reste visible

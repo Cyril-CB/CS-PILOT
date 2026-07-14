@@ -94,9 +94,11 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
 
     # 1. Demandes de récupération / congé à valider.
     if profil == 'responsable':
+        # Équipe = secteur + rattachés directs (responsable_id), même d'un
+        # autre secteur analytique.
         statut_clause = "d.statut = 'en_attente_responsable'"
-        scope_clause = 'AND u.secteur_id = ?'
-        scope_params = (secteur_id,)
+        scope_clause = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
+        scope_params = (secteur_id, user_id)
     else:  # directeur / comptable
         statut_clause = "d.statut IN ('en_attente_responsable', 'en_attente_direction')"
         scope_clause = ''

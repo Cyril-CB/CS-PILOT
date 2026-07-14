@@ -9,7 +9,7 @@ from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                    total_hs_payees)
+                    total_hs_payees, est_dans_equipe_responsable)
 from app_options import get_option_bool
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
                         ACTION_DEVERROUILLAGE_MOIS)
@@ -66,31 +66,16 @@ def valider_mois():
             types_validation.append('salarie')
         else:
             # Validation responsable : le valideur est responsable du salarié.
-            # Deux façons d'être responsable d'un salarié :
+            # Deux façons d'être responsable d'un salarié (helper commun
+            # est_dans_equipe_responsable, utilisé par toutes les vues) :
             #  - être responsable de son secteur (même secteur_id) ;
             #  - être son responsable hiérarchique direct (responsable_id).
-            # Le second cas couvre notamment un directeur désigné comme
-            # responsable hiérarchique : le champ « Responsable hiérarchique »
-            # liste aussi les directeurs (cf. admin.py).
+            # Le second cas couvre un salarié rattaché hors de son secteur
+            # analytique (ex. entretien en logistique, encadré par la
+            # responsable crèche) et un directeur désigné comme responsable
+            # hiérarchique (le champ liste aussi les directeurs, cf. admin.py).
             if profil in ('responsable', 'directeur'):
-                user_to_validate = conn.execute(
-                    'SELECT secteur_id, responsable_id FROM users WHERE id = ?', (user_id,)
-                ).fetchone()
-                valideur_secteur = conn.execute(
-                    'SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)
-                ).fetchone()
-
-                meme_secteur = bool(
-                    user_to_validate and valideur_secteur
-                    and valideur_secteur['secteur_id'] is not None
-                    and user_to_validate['secteur_id'] == valideur_secteur['secteur_id']
-                )
-                est_responsable_hierarchique = bool(
-                    user_to_validate
-                    and user_to_validate['responsable_id'] == session['user_id']
-                )
-
-                if meme_secteur or est_responsable_hierarchique:
+                if est_dans_equipe_responsable(conn, session['user_id'], user_id):
                     types_validation.append('responsable')
 
             # Validation directeur : un directeur peut valider toute fiche.
@@ -270,11 +255,11 @@ def vue_ensemble_validation():
         # Récupérer les utilisateurs selon le profil connecté
         if profil == 'responsable' and not acces_delegation:
             responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
+            secteur_resp = responsable_secteur['secteur_id'] if responsable_secteur else None
 
-            if not responsable_secteur or not responsable_secteur['secteur_id']:
-                flash('Vous n\'êtes rattaché à aucun secteur', 'error')
-                return redirect(url_for('dashboard_bp.dashboard'))
-
+            # Équipe = salariés du secteur + rattachés directs (responsable_id),
+            # même d'un autre secteur (ex. entretien en secteur logistique
+            # encadré par la responsable crèche).
             users = conn.execute('''
                 SELECT u.id, u.nom, u.prenom, u.profil,
                        s.nom as secteur_nom,
@@ -282,9 +267,14 @@ def vue_ensemble_validation():
                 FROM users u
                 LEFT JOIN secteurs s ON u.secteur_id = s.id
                 LEFT JOIN users r ON u.responsable_id = r.id
-                WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+                WHERE u.actif = 1 AND u.profil = 'salarie'
+                  AND (u.secteur_id = ? OR u.responsable_id = ?)
                 ORDER BY u.nom, u.prenom
-            ''', (responsable_secteur['secteur_id'],)).fetchall()
+            ''', (secteur_resp, session['user_id'])).fetchall()
+
+            if not users and not secteur_resp:
+                flash('Vous n\'êtes rattaché à aucun secteur', 'error')
+                return redirect(url_for('dashboard_bp.dashboard'))
         else:
             users = conn.execute('''
                 SELECT u.id, u.nom, u.prenom, u.profil,
@@ -377,10 +367,9 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         if session.get('profil') == 'directeur' or session.get('profil') == 'comptable':
             pass
         elif session.get('profil') == 'responsable':
-            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-
-            if not user_to_view or not responsable_secteur or user_to_view['secteur_id'] != responsable_secteur['secteur_id']:
+            # Équipe du responsable : même secteur OU rattachement hiérarchique
+            # direct (salarié d'un autre secteur, ex. entretien en logistique).
+            if not est_dans_equipe_responsable(conn, session['user_id'], user_id_a_afficher):
                 flash('Accès non autorisé à cette fiche', 'error')
                 return None, redirect(url_for(redirect_route))
         else:
@@ -402,12 +391,14 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         ''').fetchall()
     elif session.get('profil') == 'responsable':
         responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-        if responsable_secteur and responsable_secteur['secteur_id']:
-            users_accessibles = conn.execute('''
-                SELECT id, nom, prenom, profil FROM users
-                WHERE actif = 1 AND secteur_id = ?
-                ORDER BY nom, prenom
-            ''', (responsable_secteur['secteur_id'],)).fetchall()
+        secteur_resp = responsable_secteur['secteur_id'] if responsable_secteur else None
+        # Secteur + rattachés directs (un secteur NULL ne matche jamais : seuls
+        # les rattachés restent alors listés).
+        users_accessibles = conn.execute('''
+            SELECT id, nom, prenom, profil FROM users
+            WHERE actif = 1 AND (secteur_id = ? OR responsable_id = ? OR id = ?)
+            ORDER BY nom, prenom
+        ''', (secteur_resp, session['user_id'], session['user_id'])).fetchall()
 
     # Premier et dernier jour du mois
     premier_jour = datetime(annee, mois, 1)
@@ -640,10 +631,9 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         elif session.get('profil') == 'directeur':
             peut_valider_mois = True
         elif session.get('profil') == 'responsable':
-            user_to_validate = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-
-            if user_to_validate and responsable_secteur and user_to_validate['secteur_id'] == responsable_secteur['secteur_id']:
+            # Même règle que l'action de validation : secteur commun OU
+            # rattachement hiérarchique direct.
+            if est_dans_equipe_responsable(conn, session['user_id'], user_id_a_afficher):
                 peut_valider_mois = True
 
     peut_modifier = False
@@ -654,10 +644,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         elif session.get('profil') == 'directeur':
             peut_modifier = True
         elif session.get('profil') == 'responsable':
-            user_to_view = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-            responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-
-            if user_to_view and responsable_secteur and user_to_view['secteur_id'] == responsable_secteur['secteur_id']:
+            if est_dans_equipe_responsable(conn, session['user_id'], user_id_a_afficher):
                 peut_modifier = True
 
     if mois == 1:

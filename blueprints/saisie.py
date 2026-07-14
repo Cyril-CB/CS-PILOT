@@ -8,7 +8,7 @@ from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                    calculer_solde_recup)
+                    calculer_solde_recup, est_dans_equipe_responsable)
 from app_options import get_option_bool
 
 saisie_bp = Blueprint('saisie_bp', __name__)
@@ -36,11 +36,9 @@ def saisie_heures():
         # Directeur peut modifier toutes les fiches
         peut_modifier = True
     elif session.get('profil') == 'responsable':
-        # Responsable peut modifier les fiches de son secteur
-        user_to_modify = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id_cible,)).fetchone()
-        responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-        
-        if user_to_modify and responsable_secteur and user_to_modify['secteur_id'] == responsable_secteur['secteur_id']:
+        # Responsable : fiches de son secteur OU de ses rattachés directs
+        # (salarié d'un autre secteur analytique, ex. entretien en logistique).
+        if est_dans_equipe_responsable(conn, session['user_id'], user_id_cible):
             peut_modifier = True
     
     if not peut_modifier:

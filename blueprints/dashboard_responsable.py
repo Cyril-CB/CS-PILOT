@@ -55,15 +55,24 @@ def dashboard_responsable():
     ).fetchone()
     secteur_id = user_row['secteur_id'] if user_row else None
 
+    # L'équipe du responsable = salariés de son secteur + rattachés directs
+    # (users.responsable_id), même d'un autre secteur analytique (ex. agent
+    # d'entretien en secteur logistique encadré par la responsable crèche).
+    # Un responsable sans secteur mais avec des rattachés garde son tableau.
     if not secteur_id:
-        conn.close()
-        flash('Aucun secteur associe a votre compte', 'error')
-        return redirect(url_for('dashboard_bp.dashboard'))
+        a_rattaches = conn.execute(
+            'SELECT 1 FROM users WHERE responsable_id = ? AND actif = 1 LIMIT 1',
+            (session['user_id'],)
+        ).fetchone()
+        if not a_rattaches:
+            conn.close()
+            flash('Aucun secteur associe a votre compte', 'error')
+            return redirect(url_for('dashboard_bp.dashboard'))
 
     secteur_row = conn.execute(
         'SELECT id, nom FROM secteurs WHERE id = ?', (secteur_id,)
     ).fetchone()
-    secteur_nom = secteur_row['nom'] if secteur_row else 'Mon secteur'
+    secteur_nom = secteur_row['nom'] if secteur_row else 'Mon equipe'
 
     conges_user = conn.execute(
         'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
@@ -89,11 +98,11 @@ def dashboard_responsable():
                 GROUP BY user_id
             ) mc ON mc.user_id = c.user_id AND mc.max_id = c.id
         ) c ON c.user_id = u.id
-        WHERE u.actif = 1 AND u.secteur_id = ?
+        WHERE u.actif = 1 AND (u.secteur_id = ? OR u.responsable_id = ?)
           AND u.profil NOT IN ('directeur', 'prestataire')
           AND u.id != ?
         ORDER BY u.nom, u.prenom
-    ''', (today_str, today_str, secteur_id, session['user_id'])).fetchall()
+    ''', (today_str, today_str, secteur_id, session['user_id'], session['user_id'])).fetchall()
 
     nb_salaries = len(equipe)
 
@@ -119,21 +128,21 @@ def dashboard_responsable():
                u.nom as salarie_nom, u.prenom as salarie_prenom
         FROM absences a
         JOIN users u ON a.user_id = u.id
-        WHERE u.secteur_id = ?
+        WHERE (u.secteur_id = ? OR u.responsable_id = ?)
           AND a.date_debut <= ? AND a.date_fin >= ?
         ORDER BY u.nom, u.prenom
-    ''', (secteur_id, today_str, today_str)).fetchall()
+    ''', (secteur_id, session['user_id'], today_str, today_str)).fetchall()
 
     # Repartition par motif
     repartition_motifs = conn.execute('''
         SELECT a.motif, COUNT(*) as nb
         FROM absences a
         JOIN users u ON a.user_id = u.id
-        WHERE u.secteur_id = ?
+        WHERE (u.secteur_id = ? OR u.responsable_id = ?)
           AND a.date_debut <= ? AND a.date_fin >= ?
         GROUP BY a.motif
         ORDER BY nb DESC
-    ''', (secteur_id, today_str, today_str)).fetchall()
+    ''', (secteur_id, session['user_id'], today_str, today_str)).fetchall()
 
     # Stats absences mois en cours
     premier_jour_mois = today.replace(day=1).strftime('%Y-%m-%d')
@@ -147,9 +156,9 @@ def dashboard_responsable():
         SELECT COUNT(*) as nb, COALESCE(SUM(a.jours_ouvres), 0) as total_jours
         FROM absences a
         JOIN users u ON a.user_id = u.id
-        WHERE u.secteur_id = ?
+        WHERE (u.secteur_id = ? OR u.responsable_id = ?)
           AND a.date_debut <= ? AND a.date_fin >= ?
-    ''', (secteur_id, dernier_jour_mois_str, premier_jour_mois)).fetchone()
+    ''', (secteur_id, session['user_id'], dernier_jour_mois_str, premier_jour_mois)).fetchone()
 
     # ── 3. Validations mensuelles (secteur uniquement) ──
     mois_validation = request.args.get('val_mois', mois, type=int)
@@ -183,16 +192,18 @@ def dashboard_responsable():
     users_a_valider = conn.execute('''
         SELECT u.id, u.nom, u.prenom
         FROM users u
-        WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+        WHERE u.actif = 1 AND u.profil = 'salarie'
+          AND (u.secteur_id = ? OR u.responsable_id = ?)
         ORDER BY u.nom
-    ''', (secteur_id,)).fetchall()
+    ''', (secteur_id, session['user_id'])).fetchall()
 
     validations_map = {}
     validations_rows = conn.execute('''
         SELECT v.* FROM validations v
         JOIN users u ON v.user_id = u.id
-        WHERE v.mois = ? AND v.annee = ? AND u.secteur_id = ?
-    ''', (mois_validation, annee_validation, secteur_id)).fetchall()
+        WHERE v.mois = ? AND v.annee = ?
+          AND (u.secteur_id = ? OR u.responsable_id = ?)
+    ''', (mois_validation, annee_validation, secteur_id, session['user_id'])).fetchall()
     for v in validations_rows:
         validations_map[v['user_id']] = dict(v)
 
@@ -240,10 +251,10 @@ def dashboard_responsable():
                u.nom as demandeur_nom, u.prenom as demandeur_prenom
         FROM demandes_recup d
         JOIN users u ON d.user_id = u.id
-        WHERE u.secteur_id = ?
+        WHERE (u.secteur_id = ? OR u.responsable_id = ?)
           AND d.statut IN ('en_attente_responsable', 'en_attente_direction')
         ORDER BY d.date_demande ASC
-    ''', (secteur_id,)).fetchall()
+    ''', (secteur_id, session['user_id'])).fetchall()
 
     # ── 4b. Demandes de conges du secteur ──
     demandes_conges = conn.execute('''
@@ -252,10 +263,10 @@ def dashboard_responsable():
                u.nom as demandeur_nom, u.prenom as demandeur_prenom
         FROM demandes_conges d
         JOIN users u ON d.user_id = u.id
-        WHERE u.secteur_id = ?
+        WHERE (u.secteur_id = ? OR u.responsable_id = ?)
           AND d.statut IN ('en_attente_responsable', 'en_attente_direction')
         ORDER BY d.date_demande ASC
-    ''', (secteur_id,)).fetchall()
+    ''', (secteur_id, session['user_id'])).fetchall()
 
     # ── 5. Conges de l'equipe ──
     conges_equipe = conn.execute('''
@@ -265,11 +276,11 @@ def dashboard_responsable():
                COALESCE(u.cc_solde, 0) as cc_solde,
                (COALESCE(u.cp_a_prendre, 0) - COALESCE(u.cp_pris, 0) + COALESCE(u.cc_solde, 0)) as total_conges
         FROM users u
-        WHERE u.actif = 1 AND u.secteur_id = ?
+        WHERE u.actif = 1 AND (u.secteur_id = ? OR u.responsable_id = ?)
           AND u.profil NOT IN ('directeur', 'prestataire')
           AND u.id != ?
         ORDER BY total_conges DESC
-    ''', (secteur_id, session['user_id'])).fetchall()
+    ''', (secteur_id, session['user_id'], session['user_id'])).fetchall()
 
     # ── 6. Factures en attente du secteur ──
     factures_en_attente = conn.execute('''

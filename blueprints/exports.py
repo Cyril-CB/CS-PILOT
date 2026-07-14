@@ -8,7 +8,7 @@ from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    calculer_heures_reelles_jour, slot_horaire,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                   total_hs_payees)
+                   total_hs_payees, est_dans_equipe_responsable)
 
 exports_bp = Blueprint('exports_bp', __name__)
 
@@ -30,18 +30,13 @@ def _peut_exporter_pdf_mensuel(conn, user_id_cible):
         ).fetchone() is not None
 
     if profil == 'responsable':
-        responsable = conn.execute(
-            'SELECT secteur_id FROM users WHERE id = ?',
-            (session['user_id'],)
-        ).fetchone()
-        secteur_id = responsable['secteur_id'] if responsable else None
-        if not secteur_id:
-            return False
-
-        return conn.execute('''
-            SELECT 1 FROM users
-            WHERE id = ? AND actif = 1 AND profil != 'prestataire' AND secteur_id = ?
-        ''', (user_id_cible, secteur_id)).fetchone() is not None
+        # Même périmètre que la vue mensuelle : secteur commun OU rattachement
+        # hiérarchique direct (est_dans_equipe_responsable), salarié actif.
+        actif = conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            (user_id_cible,)
+        ).fetchone() is not None
+        return actif and est_dans_equipe_responsable(conn, session['user_id'], user_id_cible)
 
     return False
 
