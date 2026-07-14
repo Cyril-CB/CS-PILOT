@@ -131,14 +131,17 @@ class TestPagePrepaPaie:
 
     def test_variables_vides_sans_contrat_actif_reste_absent(self, comptable_client,
                                                              sample_users, app, db):
-        """Une ligne de variables « vide » (reports persistants type mutuelle
-        uniquement) ne fait pas réapparaître un salarié sans contrat actif :
-        seul un montant/des heures/un commentaire du mois compte."""
+        """Une ligne de variables ne contenant que des reports persistants
+        (mutuelle, nb enfants, saisie sur salaire, prêt/avance — recopiés
+        automatiquement chaque mois) ne fait pas réapparaître un salarié sans
+        contrat actif : seul un montant ponctuel, des heures ou un commentaire
+        du mois compte (revue Codex)."""
         uid = sample_users['salarie_id']
         db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
                    "VALUES (?, 'CDD', '2026-01-01', '2026-06-30')", (uid,))
         db.execute("INSERT INTO variables_paie (user_id, mois, annee, mutuelle, "
-                   "hs_deduites_compteur) VALUES (?, 7, 2026, 1, 1)", (uid,))
+                   "nb_enfants, saisie_salaire, pret_avance, hs_deduites_compteur) "
+                   "VALUES (?, 7, 2026, 1, 2, 150, 80, 1)", (uid,))
         db.commit()
 
         html = comptable_client.get('/prepa_paie?mois=7&annee=2026').get_data(as_text=True)

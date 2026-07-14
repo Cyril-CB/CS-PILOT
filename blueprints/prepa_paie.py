@@ -47,9 +47,11 @@ def _get_salaries_avec_contrat_actif(conn, mois, annee):
       le mois precedent dont on paie le solde d'heures supp sur la paie
       suivante : sans cela, la saisie de variables_paie n'arrive jamais sous
       les yeux du prestataire.
-    Les reports persistants (mutuelle, nb enfants) ne comptent pas comme
-    « renseigne » : seuls des heures, un montant ou un commentaire du mois
-    font apparaitre un salarie sans contrat actif.
+    Les reports persistants (mutuelle, nb enfants, saisie sur salaire,
+    pret/avance — recopies automatiquement chaque mois depuis
+    variables_paie_defauts) ne comptent pas comme « renseigne » : seuls des
+    heures, un montant ponctuel (transport, acompte, regularisation) ou un
+    commentaire du mois font apparaitre un salarie sans contrat actif.
     """
     # Calculer les bornes du mois
     date_debut_mois = f"{annee:04d}-{mois:02d}-01"
@@ -83,8 +85,6 @@ def _get_salaries_avec_contrat_actif(conn, mois, annee):
                        OR vp.heures_supps IS NOT NULL
                        OR COALESCE(vp.transport, 0) <> 0
                        OR COALESCE(vp.acompte, 0) <> 0
-                       OR COALESCE(vp.saisie_salaire, 0) <> 0
-                       OR COALESCE(vp.pret_avance, 0) <> 0
                        OR COALESCE(vp.autres_regularisation, 0) <> 0
                        OR COALESCE(vp.commentaire, '') <> '')
             )
