@@ -109,3 +109,32 @@ def test_fiche_affiche_le_formulaire_date_fin(admin_client, db, sample_users):
     html = admin_client.get(f'/infos_salaries?user_id={uid}').get_data(as_text=True)
     assert f'df-form-{cid}' in html
     assert f'/infos_salaries/contrat/{cid}/date_fin' in html
+
+
+def test_date_fin_mal_formee_refusee(admin_client, db, sample_users):
+    """Une valeur non ISO (ex. « zzz », qui trie après toute date) est refusée
+    avant enregistrement — les fenêtres de contrat comparent des chaînes
+    (revue Codex)."""
+    uid = sample_users['salarie_id']
+    cid = _creer_cdd(db, uid)
+    for mauvaise in ('zzz', '15/09/2026', '2026-13-45'):
+        r = admin_client.post(f'/infos_salaries/contrat/{cid}/date_fin',
+                              data={'date_fin': mauvaise}, follow_redirects=True)
+        assert 'Date de fin invalide' in r.get_data(as_text=True), mauvaise
+    row = db.execute("SELECT date_fin FROM contrats WHERE id = ?", (cid,)).fetchone()
+    assert row['date_fin'] == '2026-06-30'    # inchangée
+
+
+def test_ajout_contrat_dates_mal_formees_refusees(admin_client, db, sample_users):
+    """Même garde sur l'ajout de contrat (dates début/fin)."""
+    uid = sample_users['salarie_id']
+    r = admin_client.post('/infos_salaries/contrat', data={
+        'user_id': uid, 'type_contrat': 'CDD',
+        'date_debut': 'zzz', 'date_fin': ''}, follow_redirects=True)
+    assert 'Date invalide' in r.get_data(as_text=True)
+    r = admin_client.post('/infos_salaries/contrat', data={
+        'user_id': uid, 'type_contrat': 'CDD',
+        'date_debut': '2026-01-01', 'date_fin': '31/12/2026'}, follow_redirects=True)
+    assert 'Date invalide' in r.get_data(as_text=True)
+    nb = db.execute("SELECT COUNT(*) AS nb FROM contrats WHERE user_id = ?", (uid,)).fetchone()
+    assert nb['nb'] == 0    # rien enregistré

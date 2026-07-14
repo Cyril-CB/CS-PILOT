@@ -19,6 +19,21 @@ logger = logging.getLogger(__name__)
 
 infos_salaries_bp = Blueprint('infos_salaries_bp', __name__)
 
+
+def _date_iso_valide(valeur):
+    """Vrai si la valeur est une date ISO (AAAA-MM-JJ) réelle.
+
+    Les dates de contrat sont stockées en TEXT et comparées lexicographiquement
+    partout (fenêtres prépa paie, échéances CDD…) : une valeur mal formée
+    (« zzz » trie après toute date ISO) fausserait silencieusement ces vues.
+    """
+    from datetime import datetime
+    try:
+        datetime.strptime(valeur, '%Y-%m-%d')
+        return True
+    except (ValueError, TypeError):
+        return False
+
 DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')
 
 TYPES_CONTRAT = ['CDI', 'CDD', 'CEE', 'Autre']
@@ -352,6 +367,13 @@ def ajouter_contrat():
 
     if type_contrat not in TYPES_CONTRAT:
         flash("Type de contrat invalide.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    # Dates stockées en TEXT et comparées lexicographiquement partout : refuser
+    # toute valeur non ISO avant enregistrement (même garde que la modification
+    # de date de fin).
+    if not _date_iso_valide(date_debut) or (date_fin and not _date_iso_valide(date_fin)):
+        flash("Date invalide (format attendu : AAAA-MM-JJ).", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     conn = get_db()
@@ -712,6 +734,11 @@ def modifier_date_fin_contrat(contrat_id):
 
     user_id = contrat['user_id']
     date_fin = request.form.get('date_fin', '').strip() or None
+
+    if date_fin and not _date_iso_valide(date_fin):
+        conn.close()
+        flash("Date de fin invalide (format attendu : AAAA-MM-JJ).", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
     if date_fin and date_fin < contrat['date_debut']:
         conn.close()
