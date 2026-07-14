@@ -39,7 +39,18 @@ def _peut_acceder_prepa_paie():
 
 
 def _get_salaries_avec_contrat_actif(conn, mois, annee):
-    """Retourne les salaries ayant (ou ayant eu) un contrat actif durant le mois."""
+    """Retourne les salaries a traiter en prepa paie pour le mois.
+
+    Deux portes d'entree :
+    - un contrat actif durant le mois (fenetre date_debut/date_fin) ;
+    - OU des variables de paie renseignees pour ce mois — cas d'un CDD termine
+      le mois precedent dont on paie le solde d'heures supp sur la paie
+      suivante : sans cela, la saisie de variables_paie n'arrive jamais sous
+      les yeux du prestataire.
+    Les reports persistants (mutuelle, nb enfants) ne comptent pas comme
+    « renseigne » : seuls des heures, un montant ou un commentaire du mois
+    font apparaitre un salarie sans contrat actif.
+    """
     # Calculer les bornes du mois
     date_debut_mois = f"{annee:04d}-{mois:02d}-01"
     if mois == 12:
@@ -56,13 +67,30 @@ def _get_salaries_avec_contrat_actif(conn, mois, annee):
         SELECT DISTINCT u.id, u.nom, u.prenom, u.profil,
                COALESCE(s.nom, '') AS secteur_nom
         FROM users u
-        JOIN contrats c ON c.user_id = u.id
         LEFT JOIN secteurs s ON u.secteur_id = s.id
         WHERE u.profil != 'prestataire'
-        AND c.date_debut <= ?
-        AND (c.date_fin IS NULL OR c.date_fin >= ?)
+        AND (
+            EXISTS (
+                SELECT 1 FROM contrats c
+                WHERE c.user_id = u.id
+                  AND c.date_debut <= ?
+                  AND (c.date_fin IS NULL OR c.date_fin >= ?)
+            )
+            OR EXISTS (
+                SELECT 1 FROM variables_paie vp
+                WHERE vp.user_id = u.id AND vp.mois = ? AND vp.annee = ?
+                  AND (vp.heures_reelles IS NOT NULL
+                       OR vp.heures_supps IS NOT NULL
+                       OR COALESCE(vp.transport, 0) <> 0
+                       OR COALESCE(vp.acompte, 0) <> 0
+                       OR COALESCE(vp.saisie_salaire, 0) <> 0
+                       OR COALESCE(vp.pret_avance, 0) <> 0
+                       OR COALESCE(vp.autres_regularisation, 0) <> 0
+                       OR COALESCE(vp.commentaire, '') <> '')
+            )
+        )
         ORDER BY u.nom, u.prenom
-    ''', (date_fin_mois, date_debut_mois)).fetchall()
+    ''', (date_fin_mois, date_debut_mois, mois, annee)).fetchall()
 
     return salaries, date_debut_mois, date_fin_mois
 
