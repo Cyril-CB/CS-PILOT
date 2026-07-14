@@ -164,7 +164,24 @@
                 <tr>
                     <td><span class="badge badge-info">{{ c.type_contrat }}</span></td>
                     <td>{{ c.date_debut }}</td>
-                    <td>{{ c.date_fin or '-' }}</td>
+                    <td style="white-space: nowrap;">
+                        <span id="df-aff-{{ c.id }}">
+                            {{ c.date_fin or '-' }}
+                            <button type="button" class="btn btn-sm" onclick="dfEditer({{ c.id }})"
+                                    title="Modifier la date de fin (prolonger un CDD, corriger une date) sans supprimer le contrat"
+                                    style="padding: 1px 6px;">✏️</button>
+                        </span>
+                        <form id="df-form-{{ c.id }}" method="POST"
+                              action="{{ url_for('infos_salaries_bp.modifier_date_fin_contrat', contrat_id=c.id) }}"
+                              style="display: none; align-items: center; gap: 0.3rem;">
+                            <input type="date" name="date_fin" value="{{ c.date_fin or '' }}"
+                                   min="{{ c.date_debut }}"
+                                   title="Laissez vide pour un contrat en cours (sans terme)">
+                            <button type="submit" class="btn btn-primary btn-sm" style="padding: 1px 8px;">OK</button>
+                            <button type="button" class="btn btn-sm" onclick="dfAnnuler({{ c.id }})"
+                                    style="padding: 1px 6px;">✕</button>
+                        </form>
+                    </td>
                     <td>{{ (("%.2f"|format(c.temps_hebdo)).rstrip('0').rstrip('.') ~ 'h') if c.temps_hebdo else '-' }}</td>
                     <td>{{ c.forfait or '-' }}</td>
                     <td>{{ c.nbr_jours if c.nbr_jours else '-' }}</td>
@@ -279,6 +296,14 @@
 </div>
 
 <script>
+function dfEditer(id) {
+    document.getElementById('df-aff-' + id).style.display = 'none';
+    document.getElementById('df-form-' + id).style.display = 'inline-flex';
+}
+function dfAnnuler(id) {
+    document.getElementById('df-form-' + id).style.display = 'none';
+    document.getElementById('df-aff-' + id).style.display = '';
+}
 document.addEventListener('DOMContentLoaded', function() {
     var typeSelect = document.getElementById('type_contrat');
     if (typeSelect) {

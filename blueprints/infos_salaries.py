@@ -12,11 +12,27 @@ from flask import (Blueprint, render_template, request, redirect,
 from database import get_db, DATA_DIR
 from utils import login_required
 from access_log import (journaliser_action, ACTION_AJOUT_CONTRAT,
-                        ACTION_AJOUT_PDF_CONTRAT, ACTION_ENREG_DOCUMENT_SALARIE)
+                        ACTION_AJOUT_PDF_CONTRAT, ACTION_ENREG_DOCUMENT_SALARIE,
+                        ACTION_MODIF_DATE_FIN_CONTRAT)
 
 logger = logging.getLogger(__name__)
 
 infos_salaries_bp = Blueprint('infos_salaries_bp', __name__)
+
+
+def _date_iso_valide(valeur):
+    """Vrai si la valeur est une date ISO (AAAA-MM-JJ) réelle.
+
+    Les dates de contrat sont stockées en TEXT et comparées lexicographiquement
+    partout (fenêtres prépa paie, échéances CDD…) : une valeur mal formée
+    (« zzz » trie après toute date ISO) fausserait silencieusement ces vues.
+    """
+    from datetime import datetime
+    try:
+        datetime.strptime(valeur, '%Y-%m-%d')
+        return True
+    except (ValueError, TypeError):
+        return False
 
 DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')
 
@@ -353,6 +369,13 @@ def ajouter_contrat():
         flash("Type de contrat invalide.", 'error')
         return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
+    # Dates stockées en TEXT et comparées lexicographiquement partout : refuser
+    # toute valeur non ISO avant enregistrement (même garde que la modification
+    # de date de fin).
+    if not _date_iso_valide(date_debut) or (date_fin and not _date_iso_valide(date_fin)):
+        flash("Date invalide (format attendu : AAAA-MM-JJ).", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
     conn = get_db()
     if not _est_salarie_visible(conn, user_id):
         conn.close()
@@ -681,6 +704,76 @@ def telecharger_contrat(contrat_id):
 
     return send_file(chemin, as_attachment=True,
                      download_name=contrat['fichier_nom'] or contrat['fichier_path'])
+
+
+@infos_salaries_bp.route('/infos_salaries/contrat/<int:contrat_id>/date_fin', methods=['POST'])
+@login_required
+def modifier_date_fin_contrat(contrat_id):
+    """Modifier la date de fin d'un contrat sans le supprimer/re-saisir.
+
+    Cas d'usage : CDD sans terme précis (remplacement) saisi avec sa durée
+    minimale comme date de fin — à prolonger quand la durée réelle dépasse,
+    sans perdre le PDF ni l'historique du contrat. Une date vide remet le
+    contrat « en cours » (sans terme connu).
+    """
+    if not _peut_gerer():
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    conn = get_db()
+    contrat = conn.execute('SELECT * FROM contrats WHERE id = ?', (contrat_id,)).fetchone()
+    if not contrat:
+        conn.close()
+        flash("Contrat introuvable.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    if not _est_salarie_visible(conn, contrat['user_id']):
+        conn.close()
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    user_id = contrat['user_id']
+    date_fin = request.form.get('date_fin', '').strip() or None
+
+    if date_fin and not _date_iso_valide(date_fin):
+        conn.close()
+        flash("Date de fin invalide (format attendu : AAAA-MM-JJ).", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    if date_fin and date_fin < contrat['date_debut']:
+        conn.close()
+        flash("La date de fin ne peut pas etre anterieure a la date de debut "
+              f"({contrat['date_debut']}).", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    ancienne = contrat['date_fin']
+    try:
+        conn.execute('UPDATE contrats SET date_fin = ? WHERE id = ?',
+                     (date_fin, contrat_id))
+        journaliser_action(
+            conn, ACTION_MODIF_DATE_FIN_CONTRAT,
+            cible_type='user', cible_id=user_id,
+            details=f"type={contrat['type_contrat']}, "
+                    f"{ancienne or 'sans terme'} -> {date_fin or 'sans terme'}",
+        )
+        conn.commit()
+        if date_fin:
+            flash(f"Date de fin du contrat {contrat['type_contrat']} mise a jour : "
+                  f"{date_fin}.", 'success')
+        else:
+            flash(f"Date de fin retiree : le contrat {contrat['type_contrat']} "
+                  "est desormais en cours (sans terme).", 'success')
+    except Exception:
+        conn.rollback()
+        logger.exception(
+            "Echec modification date de fin (contrat_id=%s, par=%s)",
+            contrat_id, session.get('user_id')
+        )
+        flash("Erreur lors de l'enregistrement. L'incident a ete journalise.", 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
 
 @infos_salaries_bp.route('/infos_salaries/supprimer_contrat/<int:contrat_id>', methods=['POST'])
