@@ -166,25 +166,18 @@ def infos_salaries():
     if session.get('profil') == 'responsable':
         user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
         secteur_id = user['secteur_id'] if user else None
-        if secteur_id:
-            salaries = conn.execute('''
-                SELECT u.id, u.nom, u.prenom, u.profil, u.email,
-                       COALESCE(s.nom, '') AS secteur_nom
-                FROM users u
-                LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.actif = 1 AND u.profil != 'prestataire'
-                  AND (u.secteur_id = ? OR u.id = ?)
-                ORDER BY u.nom, u.prenom
-            ''', (secteur_id, session['user_id'])).fetchall()
-        else:
-            salaries = conn.execute('''
-                SELECT u.id, u.nom, u.prenom, u.profil, u.email,
-                       COALESCE(s.nom, '') AS secteur_nom
-                FROM users u
-                LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.id = ? AND u.actif = 1 AND u.profil != 'prestataire'
-                ORDER BY u.nom, u.prenom
-            ''', (session['user_id'],)).fetchall()
+        # Équipe : secteur + rattachés directs (responsable_id) + lui-même —
+        # même périmètre que _est_salarie_visible (un secteur NULL ne matche
+        # jamais : seuls les rattachés et lui-même restent alors listés).
+        salaries = conn.execute('''
+            SELECT u.id, u.nom, u.prenom, u.profil, u.email,
+                   COALESCE(s.nom, '') AS secteur_nom
+            FROM users u
+            LEFT JOIN secteurs s ON u.secteur_id = s.id
+            WHERE u.actif = 1 AND u.profil != 'prestataire'
+              AND (u.secteur_id = ? OR u.responsable_id = ? OR u.id = ?)
+            ORDER BY u.nom, u.prenom
+        ''', (secteur_id, session['user_id'], session['user_id'])).fetchall()
     else:
         salaries = conn.execute('''
             SELECT u.id, u.nom, u.prenom, u.profil, u.email,

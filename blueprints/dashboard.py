@@ -26,6 +26,17 @@ def dashboard():
         user = get_user_info(session['user_id'])
         if user and user['secteur_id']:
             return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))
+        # Sans secteur mais avec des rattachés directs (responsable_id), le
+        # tableau de bord responsable reste pertinent : même règle d'équipe.
+        if user:
+            conn = get_db()
+            a_rattaches = conn.execute(
+                'SELECT 1 FROM users WHERE responsable_id = ? AND actif = 1 LIMIT 1',
+                (session['user_id'],)
+            ).fetchone()
+            conn.close()
+            if a_rattaches:
+                return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))
     if profil == 'comptable':
         return redirect(url_for('dashboard_comptable_bp.dashboard_comptable'))
 

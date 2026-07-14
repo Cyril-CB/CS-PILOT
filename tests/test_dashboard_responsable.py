@@ -94,7 +94,13 @@ def test_dashboard_redirect_responsable(resp_client):
 
 
 def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, sample_users):
-    """Un responsable sans secteur doit pouvoir rester sur /dashboard sans boucle de redirection."""
+    """Pas de boucle de redirection pour un responsable sans secteur.
+
+    - avec des rattachés directs : /dashboard renvoie vers le tableau
+      responsable, qui s'affiche (une seule redirection) ;
+    - sans secteur NI rattaché : /dashboard s'affiche directement (le tableau
+      responsable renverrait vers /dashboard : c'est le vrai risque de boucle).
+    """
     with app.app_context():
         db.execute(
             "UPDATE users SET secteur_id = NULL WHERE id = ?",
@@ -102,6 +108,17 @@ def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, 
         )
         db.commit()
 
+    # Avec rattaché (Martin) : redirection unique vers le tableau responsable.
+    response = resp_client.get('/dashboard', follow_redirects=True)
+    assert response.status_code == 200
+    assert len(response.history) == 1
+    assert response.request.path == '/dashboard_responsable'
+
+    # Sans rattaché : /dashboard se rend directement, sans redirection.
+    with app.app_context():
+        db.execute("UPDATE users SET responsable_id = NULL WHERE responsable_id = ?",
+                   (sample_users['responsable_id'],))
+        db.commit()
     response = resp_client.get('/dashboard', follow_redirects=False)
     assert response.status_code == 200
 

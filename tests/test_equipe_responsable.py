@@ -169,3 +169,23 @@ def test_mon_equipe_inclut_le_rattache(resp_client, db, sample_users):
     agent_id, _ = _creer_agent_transverse(db, sample_users, avec_contrat=True)
     html = resp_client.get('/mon_equipe').get_data(as_text=True)
     assert 'Agent' in html
+
+
+def test_selecteur_infos_salaries_liste_le_rattache(resp_client, db, sample_users):
+    """Le rattaché apparaît dans le sélecteur de la page (pas seulement en
+    accès direct par URL) — revue Codex."""
+    agent_id, _ = _creer_agent_transverse(db, sample_users)
+    html = resp_client.get('/infos_salaries').get_data(as_text=True)
+    assert f'value="{agent_id}"' in html or 'Agent' in html
+
+
+def test_entree_dashboard_redirige_responsable_sans_secteur(resp_client, app, db, sample_users):
+    """/dashboard envoie vers le tableau responsable même sans secteur, dès
+    lors qu'il y a des rattachés directs — revue Codex."""
+    with app.app_context():
+        db.execute("UPDATE users SET secteur_id = NULL WHERE id = ?",
+                   (sample_users['responsable_id'],))
+        db.commit()
+    r = resp_client.get('/dashboard', follow_redirects=False)
+    assert r.status_code == 302
+    assert r.headers.get('Location', '').endswith('/dashboard_responsable')
