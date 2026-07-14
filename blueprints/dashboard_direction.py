@@ -148,15 +148,11 @@ def _fmt_euro(valeur):
     return f"{valeur:,.0f}".replace(',', ' ') + ' €'
 
 
-def _construire_file_actions(conn, profil, user_id, seuils,
-                             factures_direction_seulement=False):
+def _construire_file_actions(conn, profil, user_id, seuils):
     """File d'actions étendue + liste des surcharges (partagé page / fragment).
 
     Le calcul de surcharge lit tout l'historique d'heures : en cas d'erreur il
     est neutralisé plutôt que de faire tomber le tableau de bord.
-
-    `factures_direction_seulement` (digest) : n'inclut que les factures à
-    valider par la direction, pas celles assignées à un secteur.
     """
     try:
         surcharges = _calculer_surcharges(conn, seuils['surcharge'])
@@ -164,8 +160,7 @@ def _construire_file_actions(conn, profil, user_id, seuils,
         logger.exception("Calcul des surcharges impossible")
         surcharges = []
     actions = construire_actions(conn, profil, user_id,
-                                 etendu=True, seuils=seuils, surcharges=surcharges,
-                                 factures_direction_seulement=factures_direction_seulement)
+                                 etendu=True, seuils=seuils, surcharges=surcharges)
     return actions, surcharges
 
 
@@ -496,8 +491,7 @@ def _envoyer_digest_du_jour(quand):
         if not destinataires:
             return 0
         seuils = _lire_seuils()
-        actions, _ = _construire_file_actions(conn, 'directeur', None, seuils,
-                                              factures_direction_seulement=True)
+        actions, _ = _construire_file_actions(conn, 'directeur', None, seuils)
         if not actions:
             return 0
         sujet, contenu = _composer_digest(actions, quand)
