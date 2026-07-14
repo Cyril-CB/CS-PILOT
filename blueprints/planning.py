@@ -4,7 +4,7 @@ Blueprint planning_bp.
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from datetime import datetime
 from database import get_db
-from utils import login_required, calculer_heures, get_semaine_alternance
+from utils import login_required, calculer_heures, get_semaine_alternance, est_dans_equipe_responsable
 
 planning_bp = Blueprint('planning_bp', __name__)
 
@@ -32,16 +32,12 @@ def _salarie_accessible(conn, user_id):
         ).fetchone() is not None
 
     if profil == 'responsable':
-        resp = conn.execute(
-            'SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)
-        ).fetchone()
-        secteur_id = resp['secteur_id'] if resp else None
-        if not secteur_id:
-            return False
-        return conn.execute('''
-            SELECT 1 FROM users
-            WHERE id = ? AND actif = 1 AND profil != 'prestataire' AND secteur_id = ?
-        ''', (user_id, secteur_id)).fetchone() is not None
+        # Équipe : secteur commun OU rattachement direct (responsable_id).
+        actif = conn.execute(
+            "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            (user_id,)
+        ).fetchone() is not None
+        return actif and est_dans_equipe_responsable(conn, session['user_id'], user_id)
 
     return False
 
@@ -63,21 +59,16 @@ def _liste_salaries(conn):
             'SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)
         ).fetchone()
         secteur_id = resp['secteur_id'] if resp else None
-        if secteur_id:
-            return conn.execute('''
-                SELECT u.id, u.nom, u.prenom, COALESCE(s.nom, '') AS secteur_nom
-                FROM users u
-                LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.actif = 1 AND u.profil != 'prestataire'
-                  AND (u.secteur_id = ? OR u.id = ?)
-                ORDER BY u.nom, u.prenom
-            ''', (secteur_id, session['user_id'])).fetchall()
+        # Secteur + rattachés directs + lui-même (un secteur NULL ne matche
+        # jamais : seuls les rattachés et lui-même restent alors listés).
         return conn.execute('''
             SELECT u.id, u.nom, u.prenom, COALESCE(s.nom, '') AS secteur_nom
             FROM users u
             LEFT JOIN secteurs s ON u.secteur_id = s.id
-            WHERE u.id = ?
-        ''', (session['user_id'],)).fetchall()
+            WHERE u.actif = 1 AND u.profil != 'prestataire'
+              AND (u.secteur_id = ? OR u.responsable_id = ? OR u.id = ?)
+            ORDER BY u.nom, u.prenom
+        ''', (secteur_id, session['user_id'], session['user_id'])).fetchall()
 
     return []
 

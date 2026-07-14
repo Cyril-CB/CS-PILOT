@@ -607,34 +607,33 @@ def validation_demandes_recup():
     conn = get_db()
     
     if session.get('profil') == 'responsable':
-        # Responsable : demandes de son secteur en attente_responsable
+        # Responsable : demandes en attente de son équipe — salariés de son
+        # secteur OU rattachés directs (responsable_id), même d'un autre
+        # secteur analytique (ex. entretien en logistique).
         responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
-        
-        if responsable_secteur and responsable_secteur['secteur_id']:
-            sid = responsable_secteur['secteur_id']
-            demandes_recup = conn.execute('''
-                SELECT d.*, 'recup' as demande_type,
-                       u.nom || ' ' || u.prenom as demandeur_nom,
-                       s.nom as secteur_nom
-                FROM demandes_recup d
-                JOIN users u ON d.user_id = u.id
-                LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'
-                ORDER BY d.date_demande ASC
-            ''', (sid,)).fetchall()
-            demandes_conges = conn.execute('''
-                SELECT d.*, 'conge' as demande_type,
-                       u.nom || ' ' || u.prenom as demandeur_nom,
-                       s.nom as secteur_nom
-                FROM demandes_conges d
-                JOIN users u ON d.user_id = u.id
-                LEFT JOIN secteurs s ON u.secteur_id = s.id
-                WHERE u.secteur_id = ? AND d.statut = 'en_attente_responsable'
-                ORDER BY d.date_demande ASC
-            ''', (sid,)).fetchall()
-        else:
-            demandes_recup = []
-            demandes_conges = []
+        sid = responsable_secteur['secteur_id'] if responsable_secteur else None
+        demandes_recup = conn.execute('''
+            SELECT d.*, 'recup' as demande_type,
+                   u.nom || ' ' || u.prenom as demandeur_nom,
+                   s.nom as secteur_nom
+            FROM demandes_recup d
+            JOIN users u ON d.user_id = u.id
+            LEFT JOIN secteurs s ON u.secteur_id = s.id
+            WHERE (u.secteur_id = ? OR u.responsable_id = ?)
+              AND d.statut = 'en_attente_responsable'
+            ORDER BY d.date_demande ASC
+        ''', (sid, session['user_id'])).fetchall()
+        demandes_conges = conn.execute('''
+            SELECT d.*, 'conge' as demande_type,
+                   u.nom || ' ' || u.prenom as demandeur_nom,
+                   s.nom as secteur_nom
+            FROM demandes_conges d
+            JOIN users u ON d.user_id = u.id
+            LEFT JOIN secteurs s ON u.secteur_id = s.id
+            WHERE (u.secteur_id = ? OR u.responsable_id = ?)
+              AND d.statut = 'en_attente_responsable'
+            ORDER BY d.date_demande ASC
+        ''', (sid, session['user_id'])).fetchall()
     
     elif session.get('profil') in ['directeur', 'comptable']:
         # Direction : toutes les demandes en attente

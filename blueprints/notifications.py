@@ -153,15 +153,17 @@ def relance_validation():
     erreurs = []
 
     for resp in responsables:
-        # Compter les fiches non validees par ce responsable dans son secteur
+        # Compter les fiches non validees par ce responsable dans son equipe
+        # (secteur + rattaches directs, meme d'un autre secteur analytique)
         fiches_en_attente = conn.execute('''
             SELECT COUNT(*) as nb FROM users u
-            WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+            WHERE u.actif = 1 AND u.profil = 'salarie'
+            AND (u.secteur_id = ? OR u.responsable_id = ?)
             AND u.id NOT IN (
                 SELECT v.user_id FROM validations v
                 WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
             )
-        ''', (resp['secteur_id'], mois, annee)).fetchone()
+        ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
 
         nb_fiches = fiches_en_attente['nb'] if fiches_en_attente else 0
 
@@ -228,15 +230,16 @@ def relance_responsable_unique():
         conn.close()
         return jsonify({'error': f"{resp['prenom']} {resp['nom']} n'a pas d'adresse email configuree"}), 400
 
-    # Compter les fiches en attente
+    # Compter les fiches en attente (equipe : secteur + rattaches directs)
     fiches_en_attente = conn.execute('''
         SELECT COUNT(*) as nb FROM users u
-        WHERE u.actif = 1 AND u.profil = 'salarie' AND u.secteur_id = ?
+        WHERE u.actif = 1 AND u.profil = 'salarie'
+        AND (u.secteur_id = ? OR u.responsable_id = ?)
         AND u.id NOT IN (
             SELECT v.user_id FROM validations v
             WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
         )
-    ''', (resp['secteur_id'], mois, annee)).fetchone()
+    ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
 
     nb_fiches = fiches_en_attente['nb'] if fiches_en_attente else 0
 

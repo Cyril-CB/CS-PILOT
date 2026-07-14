@@ -583,6 +583,27 @@ def calculer_stats_forfait_jour(user_id, annee):
     return stats
 
 
+def est_dans_equipe_responsable(conn, responsable_id, salarie_id):
+    """Vrai si le salarié fait partie de l'équipe suivie par ce responsable.
+
+    Deux liens équivalents (mêmes règles que la validation des fiches) :
+    - même secteur que le responsable ;
+    - rattachement hiérarchique direct (users.responsable_id), qui peut
+      traverser les secteurs : un agent d'entretien est rangé en secteur
+      « logistique » pour l'analytique comptable mais encadré par la
+      responsable de la crèche où il intervient.
+    """
+    row = conn.execute('''
+        SELECT 1
+        FROM users s
+        JOIN users r ON r.id = ?
+        WHERE s.id = ?
+          AND (s.responsable_id = r.id
+               OR (r.secteur_id IS NOT NULL AND s.secteur_id = r.secteur_id))
+    ''', (responsable_id, salarie_id)).fetchone()
+    return row is not None
+
+
 def total_hs_payees(conn, user_id, annee=None, mois=None, avant=False):
     """Total des heures supplémentaires payées ET marquées « déduites du
     compteur » (variables_paie.hs_deduites_compteur = 1) pour un salarié.

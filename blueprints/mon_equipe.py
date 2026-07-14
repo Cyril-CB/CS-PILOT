@@ -278,7 +278,12 @@ def _doit_masquer_motifs_absence():
 
 def _get_equipe(conn, user_id):
     """Retourne les membres de l'equipe ayant un contrat en cours :
-    meme secteur + responsable du secteur."""
+    meme secteur + rattaches directs (responsable_id) + responsable du secteur.
+
+    Le lien direct couvre un salarie range dans un autre secteur analytique
+    (ex. entretien en logistique) mais encadre par ce responsable : il
+    apparait dans l'equipe de son responsable. Pour un non-responsable, la
+    condition responsable_id ne matche personne (aucun cout)."""
     today_str = datetime.now().strftime('%Y-%m-%d')
 
     user = conn.execute(
@@ -286,24 +291,28 @@ def _get_equipe(conn, user_id):
     ).fetchone()
 
     if not user or not user['secteur_id']:
-        # Pas de secteur : retourner juste l'utilisateur lui-meme
+        # Pas de secteur : l'utilisateur lui-meme + ses rattaches directs
         return conn.execute('''
             SELECT u.id, u.nom, u.prenom, u.profil,
                    COALESCE(s.nom, '') AS secteur_nom
             FROM users u
             LEFT JOIN secteurs s ON u.secteur_id = s.id
-            WHERE u.id = ? AND u.actif = 1
+            WHERE (u.id = ? OR u.responsable_id = ?) AND u.actif = 1
+              AND u.profil != 'prestataire'
               AND EXISTS (
                   SELECT 1 FROM contrats c
                   WHERE c.user_id = u.id
                     AND c.date_debut <= ?
                     AND (c.date_fin IS NULL OR c.date_fin >= ?)
               )
-        ''', (user_id, today_str, today_str)).fetchall()
+            ORDER BY
+                CASE u.profil WHEN 'responsable' THEN 0 ELSE 1 END,
+                u.nom, u.prenom
+        ''', (user_id, user_id, today_str, today_str)).fetchall()
 
     secteur_id = user['secteur_id']
 
-    # Salaries du meme secteur avec un contrat en cours
+    # Salaries du meme secteur (ou rattaches directs) avec un contrat en cours
     membres = conn.execute('''
         SELECT u.id, u.nom, u.prenom, u.profil,
                COALESCE(s.nom, '') AS secteur_nom
@@ -311,7 +320,7 @@ def _get_equipe(conn, user_id):
         LEFT JOIN secteurs s ON u.secteur_id = s.id
         WHERE u.actif = 1
         AND u.profil != 'prestataire'
-        AND u.secteur_id = ?
+        AND (u.secteur_id = ? OR u.responsable_id = ?)
         AND EXISTS (
             SELECT 1 FROM contrats c
             WHERE c.user_id = u.id
@@ -321,7 +330,7 @@ def _get_equipe(conn, user_id):
         ORDER BY
             CASE u.profil WHEN 'responsable' THEN 0 ELSE 1 END,
             u.nom, u.prenom
-    ''', (secteur_id, today_str, today_str)).fetchall()
+    ''', (secteur_id, user_id, today_str, today_str)).fetchall()
 
     # Ajouter le responsable du pole s'il n'est pas dans le meme secteur
     # (certains responsables sont dans un autre secteur mais gèrent celui-ci)

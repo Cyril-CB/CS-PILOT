@@ -31,7 +31,8 @@ PAGE_PROMPTS = {
         "en précisant qu'il y trouvera une aide plus détaillée via l'assistant contextuel de cette page."
     ),
     'dashboard_responsable': (
-        "L'utilisateur est sur le tableau de bord Responsable. Cette page est scopée au secteur du responsable : "
+        "L'utilisateur est sur le tableau de bord Responsable. Cette page est scopée à son équipe "
+        "(salariés de son secteur + salariés qui lui sont directement rattachés, même d'un autre secteur) : "
         "équipe et ETP, absences, factures en attente d'approbation, récupérations, budget et subventions, "
         "validations à effectuer, et accès rapides. "
         "Aide l'utilisateur à comprendre ses indicateurs et à naviguer vers les bonnes pages."

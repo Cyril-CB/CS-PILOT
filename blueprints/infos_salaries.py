@@ -75,18 +75,17 @@ def _est_salarie_visible(conn, user_id):
     if profil != 'responsable':
         return False
 
+    # Équipe du responsable : son secteur + rattachés directs (responsable_id),
+    # même d'un autre secteur analytique — et lui-même.
     user = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
     secteur_id = user['secteur_id'] if user else None
 
-    if secteur_id:
-        row = conn.execute('''
-            SELECT 1 FROM users
-            WHERE id = ? AND actif = 1 AND profil != 'prestataire'
-              AND (secteur_id = ? OR id = ?)
-        ''', (user_id, secteur_id, session['user_id'])).fetchone()
-        return row is not None
-
-    return user_id == session['user_id']
+    row = conn.execute('''
+        SELECT 1 FROM users
+        WHERE id = ? AND actif = 1 AND profil != 'prestataire'
+          AND (secteur_id = ? OR responsable_id = ? OR id = ?)
+    ''', (user_id, secteur_id, session['user_id'], session['user_id'])).fetchone()
+    return row is not None
 
 
 def _nettoyer_nom(texte):
