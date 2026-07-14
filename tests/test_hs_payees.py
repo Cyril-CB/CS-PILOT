@@ -177,19 +177,63 @@ def test_vue_mensuelle_deduit_les_hs_payees(auth_client, db, sample_users):
     assert 'payées sur la paie de ce mois (4.00h)' in html
 
 
-def test_export_pdf_avec_hs_payees(admin_client, db, sample_users):
-    """Le PDF de la fiche mensuelle se génère avec un paiement le mois même
-    (ligne « H. supp payées ce mois » du bloc soldes)."""
-    uid = sample_users['salarie_id']
-    _poser_solde_initial(db, uid, 10)
-    _payer_hs_db(db, uid, 4, mois=3, annee=2026)
-    # Le PDF n'est disponible que pour un mois validé/bloqué.
+def _texte_pdf(data):
+    """Concatène les flux décompressés du PDF (le texte y est en clair).
+
+    ReportLab encode ses flux en ASCII85 puis Flate ; on tente les deux
+    décodages (a85 -> zlib, puis zlib direct) et on ignore le reste (polices…).
+    """
+    import base64
+    import re
+    import zlib
+    morceaux = []
+    for m in re.findall(rb'stream\r?\n(.*?)endstream', data, re.S):
+        m = m.strip()
+        for decode in (lambda b: zlib.decompress(base64.a85decode(b, adobe=True)),
+                       zlib.decompress):
+            try:
+                morceaux.append(decode(m))
+                break
+            except Exception:
+                continue
+    return b''.join(morceaux)
+
+
+def _valider_mois(db, uid, mois, annee):
+    """Le PDF n'est disponible que pour un mois validé/bloqué."""
     db.execute('''INSERT INTO validations (user_id, mois, annee, validation_salarie,
                   validation_responsable, validation_directeur, date_salarie,
                   date_responsable, date_directeur, bloque)
-                  VALUES (?, 3, 2026, 'Jean M.', 'Marie D.', 'Dir', '2026-04-01',
-                          '2026-04-02', '2026-04-03', 1)''', (uid,))
+                  VALUES (?, ?, ?, 'Jean M.', 'Marie D.', 'Dir', '2026-04-01',
+                          '2026-04-02', '2026-04-03', 1)''', (uid, mois, annee))
     db.commit()
+
+
+def test_export_pdf_avec_hs_payees(admin_client, db, sample_users):
+    """PDF du mois du paiement : part du solde initial (revue Codex), affiche
+    la ligne « H. supp payées ce mois » et un cumul aligné sur le dashboard."""
+    uid = sample_users['salarie_id']
+    _poser_solde_initial(db, uid, 10)
+    _payer_hs_db(db, uid, 4, mois=3, annee=2026)
+    _valider_mois(db, uid, 3, 2026)
     r = admin_client.get(f'/export_pdf_mensuel?user_id={uid}&mois=3&annee=2026')
     assert r.status_code == 200
     assert r.data[:4] == b'%PDF'
+    texte = _texte_pdf(r.data)
+    assert b'+10.00h' in texte     # solde antérieur = solde initial (pas 0)
+    assert b'-4.00h' in texte      # H. supp payées ce mois
+    assert b'+6.00h' in texte      # cumulé : 10 + 0 - 4, comme le dashboard
+
+
+def test_export_pdf_mois_suivant_deduit_les_paies_anterieures(admin_client, db, sample_users):
+    """PDF d'un mois postérieur au paiement : les heures payées sortent du
+    solde antérieur (10 - 4 = 6), toujours aligné sur le dashboard."""
+    uid = sample_users['salarie_id']
+    _poser_solde_initial(db, uid, 10)
+    _payer_hs_db(db, uid, 4, mois=3, annee=2026)
+    _valider_mois(db, uid, 4, 2026)
+    r = admin_client.get(f'/export_pdf_mensuel?user_id={uid}&mois=4&annee=2026')
+    assert r.status_code == 200
+    texte = _texte_pdf(r.data)
+    assert b'+6.00h' in texte      # solde antérieur net des 4 h payées en mars
+    assert b'-4.00h' not in texte  # pas de ligne « payées ce mois » en avril

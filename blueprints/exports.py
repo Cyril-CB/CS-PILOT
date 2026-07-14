@@ -224,8 +224,14 @@ def export_pdf_mensuel():
     
     solde_mois = total_heures_reelles - total_heures_theoriques
     
-    # Calculer solde antérieur
-    solde_anterieur = 0
+    # Calculer solde antérieur — comme la vue mensuelle, on part du solde
+    # initial du salarié (le PDF signé doit coller au dashboard ; revue Codex :
+    # sans cette base, la déduction des heures payées rendrait le solde
+    # antérieur négatif à tort).
+    try:
+        solde_anterieur = user['solde_initial'] or 0
+    except (IndexError, KeyError, TypeError):
+        solde_anterieur = 0
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
