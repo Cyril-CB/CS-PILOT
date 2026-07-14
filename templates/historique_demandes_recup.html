@@ -148,5 +148,34 @@
         <p>Aucune demande dans l'historique</p>
     </div>
     {% endif %}
+
+    {% if paiements_hs %}
+    <div class="section" style="margin-top: 2rem;">
+        <h2 style="font-size: 1.1rem;">💶 Heures supplémentaires payées (déduites des compteurs)</h2>
+        <p class="subtitle" style="margin-bottom: 1rem;">Saisies dans les variables de paie avec déduction du compteur de récupération.</p>
+        <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Salarié</th>
+                    <th>Secteur</th>
+                    <th>Paie</th>
+                    <th style="text-align: right;">Heures payées</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in paiements_hs %}
+                <tr>
+                    <td>{{ p.salarie_nom }}</td>
+                    <td>{{ p.secteur_nom or '-' }}</td>
+                    <td>{{ p.libelle }}</td>
+                    <td style="text-align: right;"><strong>− {{ '%.2f'|format(p.heures) }} h</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

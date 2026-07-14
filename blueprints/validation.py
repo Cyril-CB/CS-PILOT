@@ -8,7 +8,8 @@ from database import get_db
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
-                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS)
+                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
+                    total_hs_payees)
 from app_options import get_option_bool
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
                         ACTION_DEVERROUILLAGE_MOIS)
@@ -609,7 +610,13 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
         solde_anterieur += (total_reel - total_theorique)
 
-    solde_cumule = solde_anterieur + solde_mois
+    # Heures supp payées (variables de paie, déduites du compteur) : les paies
+    # antérieures au mois affiché sortent du solde antérieur, celle du mois
+    # affiché sort du cumul — la fiche reste alignée sur le solde du dashboard.
+    solde_anterieur -= total_hs_payees(conn, user_id_a_afficher,
+                                       annee=annee, mois=mois, avant=True)
+    hs_payees_mois = total_hs_payees(conn, user_id_a_afficher, annee=annee, mois=mois)
+    solde_cumule = solde_anterieur + solde_mois - hs_payees_mois
 
     nb_jours_non_declares = sum(1 for j in journees if j.get('non_declare', False))
 
@@ -680,6 +687,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         solde_mois=solde_mois,
         solde_anterieur=solde_anterieur,
         solde_cumule=solde_cumule,
+        hs_payees_mois=hs_payees_mois,
         mois_precedent=mois_precedent,
         annee_precedente=annee_precedente,
         mois_suivant=mois_suivant,

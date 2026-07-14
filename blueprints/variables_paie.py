@@ -11,7 +11,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash)
 from datetime import datetime, date
 from database import get_db
-from utils import login_required, NOMS_MOIS
+from utils import login_required, NOMS_MOIS, calculer_solde_recup
 from access_log import (journaliser_action, ACTION_ENREG_VARIABLES_PAIE,
                         ACTION_CLOTURE_CONGES)
 
@@ -120,6 +120,9 @@ def variables_paie():
                 'nb_enfants': df.get('nb_enfants', 0),
                 'heures_reelles': None,
                 'heures_supps': None,
+                # Nouvelle saisie : les heures supp payees sont deduites du
+                # compteur de recup par defaut (decochable au cas par cas).
+                'hs_deduites_compteur': 1,
                 'transport': 0,
                 'acompte': 0,
                 'saisie_salaire': df.get('saisie_salaire', 0),
@@ -131,12 +134,24 @@ def variables_paie():
         # 0038, la colonne TEXT renvoie '0'/'1' et '0' serait considere
         # comme coche par le template.
         d['mutuelle'] = int(d.get('mutuelle') or 0)
+        # Lignes enregistrees avant la migration 0057 : NULL = non deduit.
+        d['hs_deduites_compteur'] = int(d.get('hs_deduites_compteur') or 0)
+        # Solde de recuperation actuel : aide a decider combien payer (et a
+        # solder pile un CDD qui part). Sans objet pour le directeur (forfait
+        # jours, pas de compteur d'heures).
+        solde_recup = None
+        if sal['profil'] != 'directeur':
+            try:
+                solde_recup = calculer_solde_recup(uid)
+            except Exception:
+                logger.exception("Solde recup indisponible pour user %s", uid)
         grille.append({
             'user_id': uid,
             'nom': sal['nom'],
             'prenom': sal['prenom'],
             'secteur': sal['secteur_nom'],
             'data': d,
+            'solde_recup': solde_recup,
             'saved': uid in donnees_mois,
         })
 
@@ -195,6 +210,9 @@ def enregistrer_variables_paie():
             heures_reelles = float(heures_reelles_str) if heures_reelles_str else None
             heures_supps_str = request.form.get(f'heures_supps_{uid}', '').strip()
             heures_supps = float(heures_supps_str) if heures_supps_str else None
+            # Heures supp payees deduites du compteur de recup (case a cocher,
+            # cochee par defaut pour une nouvelle saisie).
+            hs_deduites = 1 if request.form.get(f'hs_deduit_{uid}') else 0
             transport = request.form.get(f'transport_{uid}', 0, type=float)
             acompte = request.form.get(f'acompte_{uid}', 0, type=float)
             saisie_salaire = request.form.get(f'saisie_salaire_{uid}', 0, type=float)
@@ -229,23 +247,24 @@ def enregistrer_variables_paie():
                 conn.execute('''
                     UPDATE variables_paie
                     SET mutuelle = ?, nb_enfants = ?, heures_reelles = ?, heures_supps = ?,
+                        hs_deduites_compteur = ?,
                         transport = ?, acompte = ?,
                         saisie_salaire = ?, pret_avance = ?, autres_regularisation = ?,
                         commentaire = ?, saisi_par = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                 ''', (mutuelle, nb_enfants, heures_reelles, heures_supps,
-                      transport, acompte,
+                      hs_deduites, transport, acompte,
                       saisie_salaire, pret_avance, autres_reg,
                       commentaire, session['user_id'], existing['id']))
             else:
                 conn.execute('''
                     INSERT INTO variables_paie
                     (user_id, mois, annee, mutuelle, nb_enfants, heures_reelles, heures_supps,
-                     transport, acompte,
+                     hs_deduites_compteur, transport, acompte,
                      saisie_salaire, pret_avance, autres_regularisation, commentaire, saisi_par)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (uid, mois, annee, mutuelle, nb_enfants, heures_reelles, heures_supps,
-                      transport, acompte,
+                      hs_deduites, transport, acompte,
                       saisie_salaire, pret_avance, autres_reg, commentaire, session['user_id']))
 
             # Mettre a jour les valeurs persistantes

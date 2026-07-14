@@ -561,7 +561,7 @@
             <li><strong style="background: #dc2626; color: white; padding: 2px 6px; border-radius: 3px;">⚠️ Non déclaré</strong> : Jour passé qui doit être {% if declaration_conforme_active %}saisi ou déclaré{% else %}saisi{% endif %} (empêche la validation)</li>
             <li><strong style="background: #fff3cd; padding: 2px 6px;">Samedi</strong> : N'apparaît que s'il y a une saisie. 0h théorique = tout en heures supplémentaires</li>
         </ul>
-        <p><strong>Solde cumulé :</strong> Inclut les mois précédents ({{ "%.2f"|format(solde_anterieur) }}h) + ce mois ({{ "%.2f"|format(solde_mois) }}h)</p>
+        <p><strong>Solde cumulé :</strong> Inclut les mois précédents ({{ "%.2f"|format(solde_anterieur) }}h) + ce mois ({{ "%.2f"|format(solde_mois) }}h){% if hs_payees_mois %} − heures supp payées sur la paie de ce mois ({{ "%.2f"|format(hs_payees_mois) }}h){% endif %}. Les heures supp déjà payées sont déduites.</p>
         <p>
             <strong>Important :</strong>
             {% if declaration_conforme_active %}
