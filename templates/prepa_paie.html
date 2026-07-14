@@ -69,6 +69,10 @@
                                 <span class="badge badge-info">{{ c.type_contrat }}</span>
                                 {{ c.date_debut }} &rarr; {{ c.date_fin or 'En cours' }}{% if c.type_contrat == 'CDD' and c.temps_hebdo %} ({{ "%.1f"|format(c.temps_hebdo) }}h){% endif %}
                             </div>
+                            {% else %}
+                            <span style="color: var(--gray-500); font-size: 0.82rem; font-style: italic;"
+                                  title="Present car des variables de paie sont renseignees ce mois (ex. solde d'heures supp d'un CDD termine).">
+                                Aucun contrat actif ce mois</span>
                             {% endfor %}
                         </td>
                         <td style="text-align: center;">

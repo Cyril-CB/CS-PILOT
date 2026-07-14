@@ -111,3 +111,56 @@ class TestPagePrepaPaie:
         # La valeur du CDD figure sur la ligne du salarie (ligne 2)
         col = headers.index('Temps Hebdo (h)') + 1
         assert ws.cell(row=2, column=col).value == 28.0
+
+    def test_variables_du_mois_sans_contrat_actif_apparait(self, comptable_client,
+                                                           sample_users, app, db):
+        """CDD terminé le mois précédent, solde d'heures supp payé sur la paie
+        du mois suivant : la salariée doit apparaître en prépa paie (sinon le
+        prestataire ne voit jamais ces heures), même sans contrat actif."""
+        uid = sample_users['salarie_id']
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                   "VALUES (?, 'CDD', '2026-01-01', '2026-06-30')", (uid,))
+        db.execute("INSERT INTO variables_paie (user_id, mois, annee, heures_supps, "
+                   "hs_deduites_compteur) VALUES (?, 7, 2026, 6, 1)", (uid,))
+        db.commit()
+
+        html = comptable_client.get('/prepa_paie?mois=7&annee=2026').get_data(as_text=True)
+        assert f"traite_{uid}" in html          # présente malgré le contrat terminé
+        assert '6' in html                      # ses heures supp sont visibles
+        assert 'Aucun contrat actif ce mois' in html   # mention explicite
+
+    def test_variables_vides_sans_contrat_actif_reste_absent(self, comptable_client,
+                                                             sample_users, app, db):
+        """Une ligne de variables ne contenant que des reports persistants
+        (mutuelle, nb enfants, saisie sur salaire, prêt/avance — recopiés
+        automatiquement chaque mois) ne fait pas réapparaître un salarié sans
+        contrat actif : seul un montant ponctuel, des heures ou un commentaire
+        du mois compte (revue Codex)."""
+        uid = sample_users['salarie_id']
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                   "VALUES (?, 'CDD', '2026-01-01', '2026-06-30')", (uid,))
+        db.execute("INSERT INTO variables_paie (user_id, mois, annee, mutuelle, "
+                   "nb_enfants, saisie_salaire, pret_avance, hs_deduites_compteur) "
+                   "VALUES (?, 7, 2026, 1, 2, 150, 80, 1)", (uid,))
+        db.commit()
+
+        html = comptable_client.get('/prepa_paie?mois=7&annee=2026').get_data(as_text=True)
+        assert f"traite_{uid}" not in html
+
+    def test_export_excel_inclut_variables_sans_contrat(self, comptable_client,
+                                                        sample_users, app, db):
+        """L'export Excel suit la même règle que la page."""
+        from io import BytesIO
+        from openpyxl import load_workbook
+        uid = sample_users['salarie_id']
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                   "VALUES (?, 'CDD', '2026-01-01', '2026-06-30')", (uid,))
+        db.execute("INSERT INTO variables_paie (user_id, mois, annee, heures_supps, "
+                   "hs_deduites_compteur) VALUES (?, 7, 2026, 6, 1)", (uid,))
+        db.commit()
+
+        resp = comptable_client.get('/prepa_paie/export_excel?mois=7&annee=2026')
+        assert resp.status_code == 200
+        ws = load_workbook(BytesIO(resp.data)).active
+        noms = [ws.cell(row=r, column=2).value for r in range(2, ws.max_row + 1)]
+        assert any(n and 'Martin' in n for n in noms)
