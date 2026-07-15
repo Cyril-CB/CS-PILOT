@@ -62,11 +62,9 @@ def delegations():
     conn = get_db()
     try:
         if request.method == 'POST':
-            if session.get('profil') != 'directeur':
-                flash('Seule la direction peut modifier les délégations.', 'error')
-                return redirect(url_for('admin_bp.delegations'))
-
             # Délégation des réservations de salle récurrentes (multi-salariés).
+            # Modifiable par la direction ET le comptable (gestion des salles) ;
+            # les autres missions restent réservées à la direction.
             if request.form.get('form_type') == 'salle_recurrence':
                 selected = [int(x) for x in request.form.getlist('salle_recurrence_users') if x.isdigit()]
                 valides = []
@@ -81,6 +79,10 @@ def delegations():
                     valides = [r['id'] for r in rows]
                 save_salle_recurrence_delegations(valides, session['user_id'])
                 flash('Les autorisations de réservation récurrente ont été enregistrées.', 'success')
+                return redirect(url_for('admin_bp.delegations'))
+
+            if session.get('profil') != 'directeur':
+                flash('Seule la direction peut modifier les délégations.', 'error')
                 return redirect(url_for('admin_bp.delegations'))
 
             mission_key = request.form.get('mission_key')
@@ -150,6 +152,9 @@ def delegations():
         salaries=salaries,
         salle_recurrence_user_ids=get_salle_recurrence_user_ids(),
         peut_modifier=session.get('profil') == 'directeur',
+        # Les réservations de salle récurrentes relèvent de la gestion des
+        # salles : le comptable peut aussi définir qui y a droit.
+        peut_modifier_salles=session.get('profil') in ('directeur', 'comptable'),
     )
 
 @admin_bp.route('/creer_user', methods=['GET', 'POST'])

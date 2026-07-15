@@ -93,7 +93,7 @@
                         <label class="recurrence-user">
                             <input type="checkbox" name="salle_recurrence_users" value="{{ user.id }}"
                                    {% if user.id in salle_recurrence_user_ids %}checked{% endif %}
-                                   {% if not peut_modifier %}disabled{% endif %}>
+                                   {% if not peut_modifier_salles %}disabled{% endif %}>
                             {{ user.prenom }} {{ user.nom }}{% if user.profil == 'responsable' %} — Responsable{% endif %}
                         </label>
                         {% endfor %}
@@ -105,7 +105,7 @@
 
                 <div class="form-actions">
                     <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
-                    {% if peut_modifier %}
+                    {% if peut_modifier_salles %}
                     <button type="submit" class="btn btn-primary">Enregistrer les autorisations</button>
                     {% endif %}
                 </div>
