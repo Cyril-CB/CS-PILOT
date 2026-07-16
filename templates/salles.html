@@ -63,19 +63,49 @@
     </div>
     {% endif %}
 
-    {# ══════ SECTION : Reservations du jour ══════ #}
+    {# ══════ SECTION : Reservations (vue jour / semaine / mois) ══════ #}
     <div class="salles-section">
-        <h2 class="salles-section-title">
-            Reservations du
+        {# Barre de navigation : onglets de vue + fleches + date #}
+        <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;margin-bottom:12px;">
+            <div style="display:inline-flex;border:1px solid var(--gray-300);border-radius:8px;overflow:hidden;">
+                {% for v, libelle in [('jour', 'Jour'), ('semaine', 'Semaine'), ('mois', 'Mois')] %}
+                <a href="{{ url_for('salles_bp.salles', date=date_sel, vue=v) }}"
+                   style="padding:6px 14px;text-decoration:none;font-weight:600;font-size:0.9rem;
+                          {% if vue == v %}background:var(--primary);color:#fff;{% else %}color:var(--gray-600);{% endif %}">
+                    {{ libelle }}</a>
+                {% endfor %}
+            </div>
+            {% if vue == 'jour' %}
+            <a href="{{ url_for('salles_bp.salles', date=date_prec, vue='jour') }}" class="btn btn-sm"
+               title="Jour precedent">&larr;</a>
             <input type="date" id="date-sel" value="{{ date_sel }}"
-                   onchange="window.location='{{ url_for('salles_bp.salles') }}?date='+this.value"
+                   onchange="window.location='{{ url_for('salles_bp.salles') }}?date='+this.value+'&vue=jour'"
                    style="font-size:16px;padding:4px 8px;border-radius:6px;border:1px solid var(--gray-300);">
-            {% set ds = date_sel.split('-') %}
-            {% set jj = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'] %}
-        </h2>
+            <a href="{{ url_for('salles_bp.salles', date=date_suiv, vue='jour') }}" class="btn btn-sm"
+               title="Jour suivant">&rarr;</a>
+            {% elif vue == 'semaine' %}
+            <a href="{{ url_for('salles_bp.salles', date=semaine.date_prec, vue='semaine') }}" class="btn btn-sm"
+               title="Semaine precedente">&larr;</a>
+            <strong>Semaine du {{ semaine.jours[0].numero }} au {{ semaine.jours[6].numero }}</strong>
+            <a href="{{ url_for('salles_bp.salles', date=semaine.date_suiv, vue='semaine') }}" class="btn btn-sm"
+               title="Semaine suivante">&rarr;</a>
+            {% elif vue == 'mois' %}
+            <a href="{{ url_for('salles_bp.salles', date=mois_cal.date_prec, vue='mois') }}" class="btn btn-sm"
+               title="Mois precedent">&larr;</a>
+            <strong>{{ mois_cal.libelle }}</strong>
+            <a href="{{ url_for('salles_bp.salles', date=mois_cal.date_suiv, vue='mois') }}" class="btn btn-sm"
+               title="Mois suivant">&rarr;</a>
+            {% endif %}
+            {% if date_sel != today or vue != 'jour' %}
+            <a href="{{ url_for('salles_bp.salles', date=today, vue=vue) }}" class="btn btn-sm btn-secondary">Aujourd'hui</a>
+            {% endif %}
+        </div>
 
-        {# Grille des creneaux par salle #}
-        {% if salles %}
+        {% if not salles %}
+        <p style="color:var(--gray-500);padding:20px;">Aucune salle configuree. {% if is_admin %}Ajoutez une salle ci-dessus.{% endif %}</p>
+
+        {% elif vue == 'jour' %}
+        {# ── Vue jour : grille des creneaux par salle (salles reservees en tete) ── #}
         <div class="salles-grid-wrapper">
             <div class="salles-timeline">
                 {% for h in range(7, 23) %}
@@ -83,7 +113,7 @@
                 {% endfor %}
             </div>
             <div class="salles-grid">
-                {% for s in salles %}
+                {% for s in salles_jour %}
                 <div class="salles-grid-row">
                     <div class="salles-grid-label">
                         <span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
@@ -113,12 +143,84 @@
                 {% endfor %}
             </div>
         </div>
-        {% else %}
-        <p style="color:var(--gray-500);padding:20px;">Aucune salle configuree. {% if is_admin %}Ajoutez une salle ci-dessus.{% endif %}</p>
+
+        {% elif vue == 'semaine' %}
+        {# ── Vue semaine : salles x 7 jours ── #}
+        <div style="overflow-x:auto;">
+            <table class="salles-table" style="min-width:900px;">
+                <thead>
+                    <tr>
+                        <th style="min-width:130px;">Salle</th>
+                        {% for j in semaine.jours %}
+                        <th style="text-align:center;{% if j.est_aujourdhui %}background:var(--primary);color:#fff;{% endif %}">
+                            <a href="{{ url_for('salles_bp.salles', date=j.date, vue='jour') }}"
+                               style="text-decoration:none;{% if j.est_aujourdhui %}color:#fff;{% endif %}"
+                               title="Voir la journee">{{ j.libelle[:3] }} {{ j.numero }}</a>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in salles %}
+                    <tr>
+                        <td><span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
+                            <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id) }}">{{ s.nom }}</a></td>
+                        {% for j in semaine.jours %}
+                        <td style="vertical-align:top;font-size:0.78rem;">
+                            {% for r in semaine.par_jour_salle.get((j.date, s.id), []) %}
+                            <div style="background:{{ s.couleur }};color:#fff;border-radius:4px;
+                                        padding:1px 5px;margin:2px 0;white-space:nowrap;overflow:hidden;
+                                        text-overflow:ellipsis;max-width:140px;"
+                                 title="{{ r.titre }} ({{ r.heure_debut }}-{{ r.heure_fin }}) — {{ r.prenom }} {{ r.nom_user }}">
+                                {{ r.heure_debut }} {{ r.titre }}
+                            </div>
+                            {% endfor %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% elif vue == 'mois' %}
+        {# ── Vue mois : un marqueur par jour ayant au moins une reservation ── #}
+        <table class="salles-table" style="table-layout:fixed;">
+            <thead>
+                <tr>
+                    {% for j in jours_semaine %}<th style="text-align:center;">{{ j[:3] }}</th>{% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for sem in mois_cal.semaines %}
+                <tr>
+                    {% for case in sem %}
+                    {% if case %}
+                    <td style="text-align:center;height:64px;vertical-align:top;
+                               {% if case.est_aujourdhui %}background:var(--gray-100);{% endif %}">
+                        <a href="{{ url_for('salles_bp.salles', date=case.date, vue='jour') }}"
+                           style="text-decoration:none;display:block;" title="Voir la journee">
+                            <div style="font-weight:600;">{{ case.numero }}</div>
+                            {% if case.nb > 0 %}
+                            <span class="badge badge-info salles-mois-marque"
+                                  title="{{ case.nb }} reservation(s)">&#9679; {{ case.nb }}</span>
+                            {% endif %}
+                        </a>
+                    </td>
+                    {% else %}
+                    <td style="background:var(--gray-50);"></td>
+                    {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="color:var(--gray-500);font-size:0.85rem;margin-top:6px;">
+            &#9679; = au moins une reservation ce jour. Cliquez sur un jour pour ouvrir la vue quotidienne.</p>
         {% endif %}
 
-        {# Liste detaillee #}
-        {% if reservations %}
+        {# Liste detaillee (vue jour uniquement) #}
+        {% if vue == 'jour' and reservations %}
         <div class="salles-list">
             <table class="salles-table">
                 <thead>
@@ -160,7 +262,7 @@
                 </tbody>
             </table>
         </div>
-        {% elif salles %}
+        {% elif vue == 'jour' and salles %}
         <p style="color:var(--gray-500);padding:10px 0;">Aucune reservation pour cette date.</p>
         {% endif %}
     </div>

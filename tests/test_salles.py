@@ -109,3 +109,73 @@ def test_responsable_peut_creer_recurrence(resp_client, db, sample_users):
     assert recurrence['titre'] == 'Formation equipe'
     assert recurrence['created_by'] == sample_users['responsable_id']
     assert reservations == 5
+
+
+# ── Vues jour / semaine / mois et navigation (retours utilisateurs) ──
+
+def _salle(db, nom, couleur='#2563eb'):
+    cur = db.execute("INSERT INTO salles (nom, couleur, active) VALUES (?, ?, 1)", (nom, couleur))
+    db.commit()
+    return cur.lastrowid
+
+
+def _resa(db, salle_id, date, debut='09:00', fin='10:00', titre='Reunion'):
+    db.execute("INSERT INTO reservations_salles (salle_id, titre, date, heure_debut, heure_fin) "
+               "VALUES (?, ?, ?, ?, ?)", (salle_id, titre, date, debut, fin))
+    db.commit()
+
+
+def test_navigation_jour_precedent_suivant(auth_client, db, sample_users):
+    _salle(db, 'Salle A')
+    html = auth_client.get('/salles?date=2026-07-15').get_data(as_text=True)
+    assert 'date=2026-07-14' in html    # flèche jour précédent
+    assert 'date=2026-07-16' in html    # flèche jour suivant
+    assert 'Semaine' in html and 'Mois' in html   # onglets de vue
+
+
+def test_vue_jour_salles_reservees_en_tete(auth_client, db, sample_users):
+    """La salle réservée passe devant dans la grille quotidienne, même si son
+    nom la classe en dernier alphabétiquement."""
+    _salle(db, 'Alpha')
+    zid = _salle(db, 'Zebre')
+    _resa(db, zid, '2026-07-15')
+    html = auth_client.get('/salles?date=2026-07-15').get_data(as_text=True)
+    assert html.index('Zebre') < html.index('Alpha')
+    # Sans réservation : ordre alphabétique conservé.
+    html = auth_client.get('/salles?date=2026-07-20').get_data(as_text=True)
+    assert html.index('Alpha') < html.index('Zebre')
+
+
+def test_vue_semaine_affiche_les_reservations(auth_client, db, sample_users):
+    sid = _salle(db, 'Salle A')
+    _resa(db, sid, '2026-07-14', titre='Atelier mardi')     # mardi
+    # N'importe quel jour de la même semaine (jeudi 16) montre la semaine du 13 au 19.
+    html = auth_client.get('/salles?date=2026-07-16&vue=semaine').get_data(as_text=True)
+    assert 'Atelier mardi' in html
+    assert 'Semaine du 13 au 19' in html
+    assert 'date=2026-07-09' in html    # semaine précédente
+    assert 'date=2026-07-23' in html    # semaine suivante
+    # Chaque jour est cliquable vers la vue quotidienne.
+    assert 'date=2026-07-14' in html and 'vue=jour' in html
+
+
+def test_vue_mois_marque_les_jours_reserves(auth_client, db, sample_users):
+    sid = _salle(db, 'Salle A')
+    _resa(db, sid, '2026-07-14')
+    _resa(db, sid, '2026-07-14', debut='14:00', fin='15:00')
+    html = auth_client.get('/salles?date=2026-07-01&vue=mois').get_data(as_text=True)
+    assert 'Juillet 2026' in html
+    assert html.count('salles-mois-marque') == 1        # un seul jour marqué
+    assert '2 reservation(s)' in html                    # avec le nombre
+    assert 'date=2026-06-01' in html                     # mois précédent
+    assert 'date=2026-08-01' in html                     # mois suivant
+    # Mois sans réservation : aucune marque.
+    html = auth_client.get('/salles?date=2026-09-01&vue=mois').get_data(as_text=True)
+    assert 'salles-mois-marque' not in html
+
+
+def test_date_ou_vue_invalide_retombe_proprement(auth_client, db, sample_users):
+    _salle(db, 'Salle A')
+    r = auth_client.get('/salles?date=zzz&vue=nimporte')
+    assert r.status_code == 200
+    assert 'salles-grid' in r.get_data(as_text=True)    # vue jour par défaut
