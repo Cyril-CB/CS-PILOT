@@ -6,7 +6,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify)
 from datetime import datetime, timedelta
 from database import get_db
-from utils import login_required, get_user_info
+from utils import login_required, get_user_info, NOMS_MOIS
 
 salles_bp = Blueprint('salles_bp', __name__)
 
@@ -131,15 +131,33 @@ def _verifier_conflit(conn, salle_id, date, heure_debut, heure_fin, exclure_id=N
 @salles_bp.route('/salles')
 @login_required
 def salles():
-    """Page principale : liste des salles et disponibilites."""
+    """Page principale : disponibilites en vue jour, semaine ou mois."""
     conn = get_db()
     try:
         salles_list = conn.execute(
             'SELECT * FROM salles WHERE active = 1 ORDER BY nom'
         ).fetchall()
 
-        # Date selectionnee (par defaut aujourd'hui)
+        # Date selectionnee (par defaut aujourd'hui) — une valeur mal formee
+        # OU hors de la fenetre applicative retombe sur aujourd'hui. La borne
+        # evite l'overflow de l'arithmetique de navigation aux limites de
+        # Python (0001-01-01 - 1 jour, 9999-12-31 + 1 jour) — revue Codex.
         date_sel = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+        try:
+            date_obj = datetime.strptime(date_sel, '%Y-%m-%d')
+            if not (2000 <= date_obj.year <= 2100):
+                raise ValueError(date_sel)
+        except ValueError:
+            date_obj = datetime.now()
+            date_sel = date_obj.strftime('%Y-%m-%d')
+
+        vue = request.args.get('vue', 'jour')
+        if vue not in ('jour', 'semaine', 'mois'):
+            vue = 'jour'
+
+        # Navigation jour precedent / suivant (fleches de la vue quotidienne).
+        date_prec = (date_obj - timedelta(days=1)).strftime('%Y-%m-%d')
+        date_suiv = (date_obj + timedelta(days=1)).strftime('%Y-%m-%d')
 
         # Reservations du jour selectionne
         reservations = conn.execute('''
@@ -151,6 +169,73 @@ def salles():
             WHERE r.date = ?
             ORDER BY r.heure_debut, s.nom
         ''', (date_sel,)).fetchall()
+
+        # Vue jour : les salles ayant au moins une reservation passent en tete
+        # (tri stable : l'ordre alphabetique est conserve dans chaque groupe).
+        salles_reservees = {r['salle_id'] for r in reservations}
+        salles_jour = sorted(salles_list, key=lambda s: s['id'] not in salles_reservees)
+
+        # ── Vue semaine : reservations du lundi au dimanche contenant date_sel ──
+        semaine = None
+        if vue == 'semaine':
+            lundi = date_obj - timedelta(days=date_obj.weekday())
+            jours = [lundi + timedelta(days=i) for i in range(7)]
+            resas_sem = conn.execute('''
+                SELECT r.*, s.nom as salle_nom, s.couleur,
+                       u.prenom, u.nom as nom_user
+                FROM reservations_salles r
+                JOIN salles s ON r.salle_id = s.id
+                LEFT JOIN users u ON r.created_by = u.id
+                WHERE r.date BETWEEN ? AND ?
+                ORDER BY r.date, r.heure_debut, s.nom
+            ''', (jours[0].strftime('%Y-%m-%d'), jours[6].strftime('%Y-%m-%d'))).fetchall()
+            par_jour_salle = {}
+            for r in resas_sem:
+                par_jour_salle.setdefault((r['date'], r['salle_id']), []).append(r)
+            semaine = {
+                'jours': [{'date': j.strftime('%Y-%m-%d'),
+                           'libelle': JOURS_SEMAINE[j.weekday()],
+                           'numero': j.day,
+                           'est_aujourdhui': j.date() == datetime.now().date()}
+                          for j in jours],
+                'par_jour_salle': par_jour_salle,
+                'date_prec': (date_obj - timedelta(days=7)).strftime('%Y-%m-%d'),
+                'date_suiv': (date_obj + timedelta(days=7)).strftime('%Y-%m-%d'),
+            }
+
+        # ── Vue mois : un marqueur par jour ayant au moins une reservation ──
+        mois_cal = None
+        if vue == 'mois':
+            import calendar as _cal
+            annee_m, mois_m = date_obj.year, date_obj.month
+            dernier_jour = _cal.monthrange(annee_m, mois_m)[1]
+            rows = conn.execute('''
+                SELECT date, COUNT(*) AS nb FROM reservations_salles
+                WHERE date BETWEEN ? AND ?
+                GROUP BY date
+            ''', (f'{annee_m:04d}-{mois_m:02d}-01',
+                  f'{annee_m:04d}-{mois_m:02d}-{dernier_jour:02d}')).fetchall()
+            nb_par_jour = {r['date']: r['nb'] for r in rows}
+            semaines = []
+            for sem in _cal.monthcalendar(annee_m, mois_m):
+                ligne = []
+                for jour in sem:
+                    if jour == 0:
+                        ligne.append(None)   # case hors du mois
+                    else:
+                        d = f'{annee_m:04d}-{mois_m:02d}-{jour:02d}'
+                        ligne.append({'date': d, 'numero': jour,
+                                      'nb': nb_par_jour.get(d, 0),
+                                      'est_aujourdhui': d == datetime.now().strftime('%Y-%m-%d')})
+                semaines.append(ligne)
+            mois_prec = (date_obj.replace(day=1) - timedelta(days=1)).replace(day=1)
+            mois_suiv = (date_obj.replace(day=dernier_jour) + timedelta(days=1))
+            mois_cal = {
+                'semaines': semaines,
+                'libelle': f'{NOMS_MOIS[mois_m]} {annee_m}',
+                'date_prec': mois_prec.strftime('%Y-%m-%d'),
+                'date_suiv': mois_suiv.strftime('%Y-%m-%d'),
+            }
 
         # Recurrences actives
         recurrences = conn.execute('''
@@ -169,10 +254,16 @@ def salles():
 
         return render_template('salles.html',
                                salles=salles_list,
+                               salles_jour=salles_jour,
                                reservations=reservations,
                                recurrences=recurrences,
                                users=users,
                                date_sel=date_sel,
+                               vue=vue,
+                               date_prec=date_prec,
+                               date_suiv=date_suiv,
+                               semaine=semaine,
+                               mois_cal=mois_cal,
                                jours_semaine=JOURS_SEMAINE,
                                is_admin=_est_admin(),
                                can_create_recurrence=_peut_creer_recurrence(),
