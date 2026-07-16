@@ -3137,6 +3137,40 @@ a.btn-icon:-webkit-any-link {
 /* ── Liste reservations ── */
 .salles-list { margin-top: 16px; }
 
+/* ── Vue semaine : grille salles x 7 jours ── */
+.salles-semaine-table {
+    width: 100%; table-layout: fixed; border-collapse: collapse;
+    background: var(--white, #fff); font-size: 0.8rem;
+}
+.salles-semaine-table col.salles-semaine-col-salle { width: 150px; }
+.salles-semaine-table th, .salles-semaine-table td {
+    border: 1px solid var(--gray-200); padding: 3px 4px; vertical-align: top;
+}
+.salles-semaine-table thead th {
+    background: var(--gray-100); text-align: center; padding: 7px 4px;
+    font-size: 0.82rem; color: var(--gray-700);
+}
+.salles-semaine-table thead th a { text-decoration: none; color: inherit; display: block; }
+.salles-semaine-table thead th a:hover { text-decoration: underline; }
+.salles-semaine-jour-actif { background: var(--primary) !important; }
+.salles-semaine-jour-actif, .salles-semaine-jour-actif a { color: #fff !important; }
+.salles-semaine-weekend { background: var(--gray-50); }
+.salles-semaine-salle {
+    font-weight: 600; color: var(--gray-700); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; vertical-align: middle !important;
+}
+.salles-semaine-salle a { color: var(--gray-700); text-decoration: none; }
+.salles-semaine-salle a:hover { color: var(--primary); text-decoration: underline; }
+.salles-semaine-table tbody tr:hover td { background: var(--gray-50); }
+.salles-semaine-table tbody tr:hover td.salles-semaine-weekend { background: var(--gray-100); }
+.salles-chip {
+    display: block; color: #fff; border-radius: 4px; padding: 2px 6px;
+    margin: 2px 0; font-size: 0.74rem; line-height: 1.35;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 0.92; cursor: default;
+}
+.salles-chip:hover { opacity: 1; }
+
 /* ── Liens calendrier ── */
 .salles-calendrier-links {
     display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px;
