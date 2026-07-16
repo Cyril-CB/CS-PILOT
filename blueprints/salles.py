@@ -192,13 +192,19 @@ def salles():
             par_jour_salle = {}
             for r in resas_sem:
                 par_jour_salle.setdefault((r['date'], r['salle_id']), []).append(r)
+            # Même principe qu'en vue jour : les salles réservées cette
+            # semaine passent en tête (tri stable, alphabétique dans chaque
+            # groupe).
+            reservees_sem = {r['salle_id'] for r in resas_sem}
             semaine = {
                 'jours': [{'date': j.strftime('%Y-%m-%d'),
                            'libelle': JOURS_SEMAINE[j.weekday()],
                            'numero': j.day,
-                           'est_aujourdhui': j.date() == datetime.now().date()}
+                           'est_aujourdhui': j.date() == datetime.now().date(),
+                           'est_weekend': j.weekday() >= 5}
                           for j in jours],
                 'par_jour_salle': par_jour_salle,
+                'salles': sorted(salles_list, key=lambda s: s['id'] not in reservees_sem),
                 'date_prec': (date_obj - timedelta(days=7)).strftime('%Y-%m-%d'),
                 'date_suiv': (date_obj + timedelta(days=7)).strftime('%Y-%m-%d'),
             }

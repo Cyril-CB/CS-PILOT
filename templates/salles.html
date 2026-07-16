@@ -145,34 +145,38 @@
         </div>
 
         {% elif vue == 'semaine' %}
-        {# ── Vue semaine : salles x 7 jours ── #}
+        {# ── Vue semaine : grille salles x 7 jours (colonnes égales, salles
+             réservées en tête, week-end teinté) ── #}
         <div style="overflow-x:auto;">
-            <table class="salles-table" style="min-width:900px;">
+            <table class="salles-semaine-table" style="min-width:860px;">
+                <colgroup>
+                    <col class="salles-semaine-col-salle">
+                    {% for j in semaine.jours %}<col>{% endfor %}
+                </colgroup>
                 <thead>
                     <tr>
-                        <th style="min-width:130px;">Salle</th>
+                        <th style="text-align:left;">Salle</th>
                         {% for j in semaine.jours %}
-                        <th style="text-align:center;{% if j.est_aujourdhui %}background:var(--primary);color:#fff;{% endif %}">
+                        <th class="{% if j.est_aujourdhui %}salles-semaine-jour-actif{% elif j.est_weekend %}salles-semaine-weekend{% endif %}">
                             <a href="{{ url_for('salles_bp.salles', date=j.date, vue='jour') }}"
-                               style="text-decoration:none;{% if j.est_aujourdhui %}color:#fff;{% endif %}"
                                title="Voir la journee">{{ j.libelle[:3] }} {{ j.numero }}</a>
                         </th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
-                    {% for s in salles %}
+                    {% for s in semaine.salles %}
                     <tr>
-                        <td><span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
-                            <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id) }}">{{ s.nom }}</a></td>
+                        <td class="salles-semaine-salle">
+                            <span class="salles-color-dot" style="background:{{ s.couleur }};"></span>
+                            <a href="{{ url_for('salles_bp.calendrier_salle', salle_id=s.id) }}">{{ s.nom }}</a>
+                        </td>
                         {% for j in semaine.jours %}
-                        <td style="vertical-align:top;font-size:0.78rem;">
+                        <td class="{% if j.est_weekend %}salles-semaine-weekend{% endif %}">
                             {% for r in semaine.par_jour_salle.get((j.date, s.id), []) %}
-                            <div style="background:{{ s.couleur }};color:#fff;border-radius:4px;
-                                        padding:1px 5px;margin:2px 0;white-space:nowrap;overflow:hidden;
-                                        text-overflow:ellipsis;max-width:140px;"
-                                 title="{{ r.titre }} ({{ r.heure_debut }}-{{ r.heure_fin }}) — {{ r.prenom }} {{ r.nom_user }}">
-                                {{ r.heure_debut }} {{ r.titre }}
+                            <div class="salles-chip" style="background:{{ s.couleur }};"
+                                 title="{{ r.titre }} ({{ r.heure_debut }}-{{ r.heure_fin }}) — {{ r.prenom }} {{ r.nom_user }}{% if r.description %}&#10;{{ r.description }}{% endif %}">
+                                <strong>{{ r.heure_debut }}</strong> {{ r.titre }}
                             </div>
                             {% endfor %}
                         </td>

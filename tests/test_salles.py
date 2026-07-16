@@ -185,3 +185,14 @@ def test_date_ou_vue_invalide_retombe_proprement(auth_client, db, sample_users):
     for borne in ('0001-01-01', '9999-12-31', '1970-01-01'):
         r = auth_client.get(f'/salles?date={borne}&vue=semaine')
         assert r.status_code == 200, borne
+
+
+def test_vue_semaine_salles_reservees_en_tete(auth_client, db, sample_users):
+    """Même principe qu'en vue jour : la salle réservée dans la semaine passe
+    en tête du tableau hebdomadaire."""
+    _salle(db, 'Alpha')
+    zid = _salle(db, 'Zebre')
+    _resa(db, zid, '2026-07-14')
+    html = auth_client.get('/salles?date=2026-07-16&vue=semaine').get_data(as_text=True)
+    corps = html.split('salles-semaine-table')[1]
+    assert corps.index('Zebre') < corps.index('Alpha')
