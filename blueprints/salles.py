@@ -139,10 +139,14 @@ def salles():
         ).fetchall()
 
         # Date selectionnee (par defaut aujourd'hui) — une valeur mal formee
-        # retombe sur aujourd'hui plutot que de casser la navigation.
+        # OU hors de la fenetre applicative retombe sur aujourd'hui. La borne
+        # evite l'overflow de l'arithmetique de navigation aux limites de
+        # Python (0001-01-01 - 1 jour, 9999-12-31 + 1 jour) — revue Codex.
         date_sel = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
         try:
             date_obj = datetime.strptime(date_sel, '%Y-%m-%d')
+            if not (2000 <= date_obj.year <= 2100):
+                raise ValueError(date_sel)
         except ValueError:
             date_obj = datetime.now()
             date_sel = date_obj.strftime('%Y-%m-%d')

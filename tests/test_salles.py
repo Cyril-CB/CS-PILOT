@@ -179,3 +179,9 @@ def test_date_ou_vue_invalide_retombe_proprement(auth_client, db, sample_users):
     r = auth_client.get('/salles?date=zzz&vue=nimporte')
     assert r.status_code == 200
     assert 'salles-grid' in r.get_data(as_text=True)    # vue jour par défaut
+    # Dates ISO valides mais aux bornes de Python : l'arithmétique de
+    # navigation (±1 jour, ±7 jours) déborderait → retombée sur aujourd'hui
+    # (revue Codex).
+    for borne in ('0001-01-01', '9999-12-31', '1970-01-01'):
+        r = auth_client.get(f'/salles?date={borne}&vue=semaine')
+        assert r.status_code == 200, borne
