@@ -102,19 +102,78 @@ def test_retrait_delegation(app, sample_users):
     assert _count_recurrences(app) == 0
 
 
-def test_comptable_ne_peut_pas_deleguer(app, sample_users):
-    admin = app.test_client()
+def test_comptable_peut_deleguer_les_salles(app, sample_users):
+    """Le comptable (gestion des salles) peut définir les salariés autorisés
+    aux réservations récurrentes — et le salarié peut ensuite en créer une."""
+    salle_id = _make_salle(app)
     compta = app.test_client()
     _login(compta, 'compta_test', 'compta123')
-    compta.post('/delegations', data={
+    r = compta.post('/delegations', data={
         'form_type': 'salle_recurrence',
         'salle_recurrence_users': [sample_users['salarie_id']],
     }, follow_redirects=True)
+    assert 'ont été enregistrées' in r.get_data(as_text=True)
+    with app.app_context():
+        conn = get_db()
+        n = conn.execute('SELECT COUNT(*) AS n FROM delegations_salles_recurrence').fetchone()['n']
+        conn.close()
+    assert n == 1
+    # Bout en bout : le salarié délégué crée une récurrence.
+    sal = app.test_client()
+    _login(sal, 'salarie_test', 'sal123')
+    sal.post('/salles/recurrence', data=_recurrence_form(salle_id), follow_redirects=True)
+    assert _count_recurrences(app) == 1
+
+
+def test_comptable_peut_retirer_les_delegations_salles(app, sample_users):
+    admin = app.test_client()
+    _login(admin, 'admin', 'Admin1234')
+    admin.post('/delegations', data={
+        'form_type': 'salle_recurrence',
+        'salle_recurrence_users': [sample_users['salarie_id']],
+    }, follow_redirects=True)
+    compta = app.test_client()
+    _login(compta, 'compta_test', 'compta123')
+    compta.post('/delegations', data={'form_type': 'salle_recurrence'},
+                follow_redirects=True)
     with app.app_context():
         conn = get_db()
         n = conn.execute('SELECT COUNT(*) AS n FROM delegations_salles_recurrence').fetchone()['n']
         conn.close()
     assert n == 0
+
+
+def test_comptable_ne_peut_pas_deleguer_les_missions(app, sample_users):
+    """Les missions (fournitures, suivi validations…) restent réservées à la
+    direction : seul le formulaire des salles est ouvert au comptable."""
+    compta = app.test_client()
+    _login(compta, 'compta_test', 'compta123')
+    r = compta.post('/delegations', data={
+        'mission_key': 'suivi_commandes_fournitures',
+        'delegated_user_id': sample_users['salarie_id'],
+    }, follow_redirects=True)
+    assert 'Seule la direction peut modifier les délégations' in r.get_data(as_text=True)
+    with app.app_context():
+        conn = get_db()
+        n = conn.execute('SELECT COUNT(*) AS n FROM delegations_missions').fetchone()['n']
+        conn.close()
+    assert n == 0
+
+
+def test_page_comptable_formulaire_salles_actif(app, sample_users):
+    """Côté page : cases cochables et bouton visible pour le comptable sur la
+    section salles, missions toujours désactivées."""
+    compta = app.test_client()
+    _login(compta, 'compta_test', 'compta123')
+    html = compta.get('/delegations').get_data(as_text=True)
+    # La section salles est active : au moins une case non désactivée.
+    section_salles = html.split('Réservation de salle récurrente')[1]
+    assert 'Enregistrer les autorisations' in section_salles
+    assert 'name="salle_recurrence_users"' in section_salles
+    assert 'disabled' not in section_salles.split('form-actions')[0]
+    # Les missions restent en lecture seule (selects désactivés).
+    section_missions = html.split('Réservation de salle récurrente')[0]
+    assert 'disabled' in section_missions
 
 
 def test_page_delegations_affiche_section_recurrence(app, sample_users):
