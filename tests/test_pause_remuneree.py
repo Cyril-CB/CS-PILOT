@@ -159,3 +159,55 @@ class TestSaisiePauseRemuneree:
         html = auth_client.get('/vue_mensuelle?mois=6&annee=2025').get_data(as_text=True)
         assert 'Pause méridienne rémunérée' in html
         assert '☕' in html
+
+
+def _texte_pdf(data):
+    """Concatène les flux décompressés du PDF (le texte y est en clair).
+
+    ReportLab encode ses flux en ASCII85 puis Flate ; on tente les deux
+    décodages (a85 -> zlib, puis zlib direct) et on ignore le reste (polices…).
+    """
+    import base64
+    import re
+    import zlib
+    morceaux = []
+    for m in re.findall(rb'stream\r?\n(.*?)endstream', data, re.S):
+        m = m.strip()
+        for decode in (lambda b: zlib.decompress(base64.a85decode(b, adobe=True)),
+                       zlib.decompress):
+            try:
+                morceaux.append(decode(m))
+                break
+            except Exception:
+                continue
+    return b''.join(morceaux)
+
+
+class TestExportPdfPauseRemuneree:
+    """Le PDF mensuel signé doit inclure la pause rémunérée dans les totaux,
+    comme la vue mensuelle (revue Codex sur la PR #215)."""
+
+    DATE = '2025-06-16'
+
+    def test_pdf_mensuel_compte_la_pause_remuneree(self, auth_client, app, db, sample_users):
+        uid = sample_users['salarie_id']
+        with app.app_context():
+            db.execute(
+                "INSERT INTO heures_reelles (user_id, date, heure_debut_matin, heure_fin_matin, "
+                "heure_debut_aprem, heure_fin_aprem, type_saisie, declaration_conforme, pause_remuneree) "
+                "VALUES (?, ?, '09:00', '12:40', '13:00', '17:00', 'heures_modifiees', 0, 1)",
+                (uid, self.DATE))
+            # Le PDF n'est disponible que pour un mois validé/bloqué.
+            db.execute('''INSERT INTO validations (user_id, mois, annee, validation_salarie,
+                          validation_responsable, validation_directeur, bloque)
+                          VALUES (?, 6, 2025, 'Jean M.', 'Marie D.', 'Dir', 1)''', (uid,))
+            db.commit()
+
+        r = auth_client.get(f'/export_pdf_mensuel?user_id={uid}&mois=6&annee=2025')
+        assert r.status_code == 200
+        assert r.data[:4] == b'%PDF'
+        texte = _texte_pdf(r.data)
+        assert b'8.00h' in texte        # 3h40 + 4h + pause 20 min, comme la vue mensuelle
+        assert b'7.67' not in texte     # l'ancien total sans la pause ne doit plus apparaître
+        # Marqueur sur la ligne du jour (les parenthèses sont échappées dans le flux PDF).
+        assert b'+ pause' in texte
