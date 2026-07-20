@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from utils import slot_horaire
+from utils import duree_pause_meridienne, slot_horaire
 
 
 MIN_BREAK_MINUTES = 20
@@ -173,7 +173,7 @@ def day_segments_from_planning(planning, date_obj) -> list[tuple[str, str]]:
     return segments
 
 
-def compute_segments_metrics(date_obj, segments: list[tuple[str, str]]):
+def compute_segments_metrics(date_obj, segments: list[tuple[str, str]], pause_remuneree: bool = False):
     metrics = {
         "worked_hours": 0.0,
         "start_at": None,
@@ -199,13 +199,20 @@ def compute_segments_metrics(date_obj, segments: list[tuple[str, str]]):
     if len(dt_segments) >= 2:
         break_seconds = (dt_segments[1][0] - dt_segments[0][1]).total_seconds()
         metrics["break_minutes"] = round(max(0, break_seconds) / 60, 2)
+        if pause_remuneree and break_seconds > 0:
+            # Pause méridienne rémunérée : le salarié est resté à disposition,
+            # ce temps est du travail effectif et compte dans les heures.
+            metrics["worked_hours"] = round(metrics["worked_hours"] + break_seconds / 3600, 2)
 
     longest_seconds = (dt_segments[0][1] - dt_segments[0][0]).total_seconds()
     current_seconds = longest_seconds
     for index in range(1, len(dt_segments)):
         gap_seconds = (dt_segments[index][0] - dt_segments[index - 1][1]).total_seconds()
         segment_seconds = (dt_segments[index][1] - dt_segments[index][0]).total_seconds()
-        if gap_seconds < MIN_BREAK_MINUTES * 60:
+        # La pause méridienne rémunérée a bien été prise (sur place) : elle
+        # coupe le travail consécutif même si elle dure moins de 20 minutes.
+        pause_prise = pause_remuneree and index == 1 and gap_seconds > 0
+        if gap_seconds < MIN_BREAK_MINUTES * 60 and not pause_prise:
             current_seconds += max(gap_seconds, 0) + segment_seconds
         else:
             longest_seconds = max(longest_seconds, current_seconds)
@@ -222,14 +229,23 @@ def compute_day_metrics(conn, user_id: int, row, planning_cache: dict, type_peri
     planned_segments = day_segments_from_planning(planning, date_obj)
     actual_segments = planned_segments if row["declaration_conforme"] else day_segments_from_row(row)
 
+    # Pause méridienne rémunérée : uniquement sur une saisie réelle avec
+    # créneaux matin et après-midi complets séparés par un écart positif.
+    pause_remuneree = (
+        bool(slot_horaire(row, "pause_remuneree"))
+        and not row["declaration_conforme"]
+        and duree_pause_meridienne(row) > 0
+    )
+
     planned_metrics = compute_segments_metrics(date_obj, planned_segments)
-    actual_metrics = compute_segments_metrics(date_obj, actual_segments)
+    actual_metrics = compute_segments_metrics(date_obj, actual_segments, pause_remuneree=pause_remuneree)
 
     theoretical_hours = planned_metrics["worked_hours"] if date_obj.weekday() < BUSINESS_DAYS_PER_WEEK else 0.0
     actual_hours = theoretical_hours if row["declaration_conforme"] else actual_metrics["worked_hours"]
 
     pause_reduced = (
-        planned_metrics["break_minutes"] is not None
+        not pause_remuneree
+        and planned_metrics["break_minutes"] is not None
         and actual_metrics["break_minutes"] is not None
         and actual_metrics["break_minutes"] < planned_metrics["break_minutes"]
     )
@@ -245,6 +261,7 @@ def compute_day_metrics(conn, user_id: int, row, planning_cache: dict, type_peri
         "break_minutes": actual_metrics["break_minutes"],
         "planned_break_minutes": planned_metrics["break_minutes"],
         "pause_reduced": pause_reduced,
+        "pause_remuneree": pause_remuneree,
         "longest_consecutive_hours": actual_metrics["longest_consecutive_hours"],
     }
 

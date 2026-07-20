@@ -211,6 +211,7 @@
                                 {% else %}
                                 {{ "%.1f"|format(j.heures_reelles) }}h
                                 {% endif %}
+                                {% if j.pause_remuneree %}<span title="Pause méridienne rémunérée : prise sur place en restant à disposition, comptée dans les heures travaillées">☕</span>{% endif %}
                             </strong>
                             <span class="month-mobile-hours-gap {% if j.ecart > 0 %}is-positive{% elif j.ecart < 0 %}is-negative{% endif %}">
                                 {% if j.ecart > 0 %}
@@ -407,6 +408,9 @@
                             {{ j.horaires_reels }}
                             {% else %}
                             {{ "%.2f"|format(j.heures_reelles) }}h
+                            {% endif %}
+                            {% if j.pause_remuneree %}
+                            <span title="Pause méridienne rémunérée : prise sur place en restant à disposition, comptée dans les heures travaillées" style="cursor: help;">☕</span>
                             {% endif %}
                         </td>
                         <td data-label="Écart">

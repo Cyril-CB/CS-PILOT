@@ -106,8 +106,19 @@
                 </div>
                 {% endif %}
             </div>
+
+            <div class="form-group" style="margin-top: 0.75rem;">
+                <label style="display: flex; align-items: center; flex-wrap: wrap;">
+                    <input type="checkbox" id="pause_remuneree" name="pause_remuneree" value="1"
+                           onchange="togglePauseRemuneree()"
+                           {% if heures_existantes and heures_existantes.pause_remuneree %}checked{% endif %}
+                           {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                    <strong>☕ Pause rémunérée (pause prise sur place, en restant à disposition)</strong>
+                    <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Réservé aux salariés qui prennent leur pause sans pouvoir s'absenter du poste (accueil de loisirs, crèche…). Le temps entre la fin du matin et le début de l'après-midi est alors compté dans les heures travaillées (temps de travail effectif, art. L3121-2 du Code du travail) et ne déclenche pas d'alerte pause.</span></span>
+                </label>
+            </div>
         </div>
-        
+
         <div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: var(--gray-50); border-radius: 8px; margin-bottom: 1rem;">
             <span style="font-size: 1.2rem;">⏱️</span>
             <span style="font-size: 0.85rem; color: var(--gray-500);">Solde de récupération</span>
@@ -159,6 +170,40 @@
         </ul>
     </div>
 
+    {# ── Modale d'avertissement « pause rémunérée » ── #}
+    <div id="pauseRemunereeModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)fermerAvertissementPause()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>⚠️ Pause rémunérée — à lire attentivement</h3>
+                <button class="modal-close" type="button" onclick="fermerAvertissementPause()" aria-label="Fermer">&times;</button>
+            </div>
+            <div style="padding:0 1.5rem 1.5rem;">
+                <p style="line-height:1.6;color:var(--gray-700);margin:0 0 0.75rem;">
+                    En cochant cette case, vous déclarez que votre pause a <strong>réellement été
+                    prise</strong>, mais sur votre lieu de travail, en restant à la disposition de
+                    l'employeur (accueil de loisirs, crèche…). Ce temps est alors compté dans vos
+                    heures travaillées — temps de travail effectif, article L3121-2 du Code du travail.
+                </p>
+                <p style="line-height:1.6;color:#991b1b;margin:0 0 0.75rem;">
+                    <strong>Cette case ne doit jamais servir à enregistrer une pause fictive.</strong>
+                    Si le planning ne vous a pas permis de prendre votre pause, ne la cochez pas et
+                    signalez-le à votre responsable : au-delà de 6 h de travail, une pause d'au moins
+                    20 minutes consécutives est un droit (article L3121-16 du Code du travail).
+                </p>
+                <p style="line-height:1.6;color:var(--gray-700);margin:0;">
+                    Ne pas prendre de pause, même ponctuellement et plus encore de façon répétée,
+                    présente des <strong>risques réels pour la santé</strong> (source INRS) : baisse de
+                    vigilance et de concentration favorisant erreurs et accidents du travail, fatigue
+                    physique et mentale, troubles musculo-squelettiques (TMS), stress et, à la longue,
+                    épuisement professionnel (burn-out) et troubles cardiovasculaires.
+                </p>
+                <div class="actions" style="margin-top:1.25rem;">
+                    <button type="button" class="btn btn-primary" onclick="fermerAvertissementPause()">J'ai compris</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
     /* Aide contextuelle : toggle au clic, ferme au clic extérieur */
     function toggleCtxHelp(e, el) {
@@ -180,12 +225,13 @@
         const declarationCheckbox = document.getElementById('declaration_conforme');
         const recupCheckbox = document.getElementById('recup_journee');
         const detailHeures = document.getElementById('saisie-heures-detail');
+        const pauseCheckbox = document.getElementById('pause_remuneree');
         const inputs = detailHeures.querySelectorAll('input[type="time"], textarea');
 
         if (!declarationCheckbox) {
             return;
         }
-        
+
         if (declarationCheckbox.checked) {
             // Désactiver la récupération et les champs d'heures
             recupCheckbox.disabled = true;
@@ -195,6 +241,10 @@
                 input.disabled = true;
                 input.value = '';
             });
+            if (pauseCheckbox) {
+                pauseCheckbox.disabled = true;
+                pauseCheckbox.checked = false;
+            }
         } else {
             // Réactiver la récupération et les champs d'heures
             recupCheckbox.disabled = false;
@@ -202,15 +252,19 @@
             inputs.forEach(input => {
                 input.disabled = false;
             });
+            if (pauseCheckbox) {
+                pauseCheckbox.disabled = false;
+            }
         }
     }
-    
+
     function toggleRecupJournee() {
         const checkbox = document.getElementById('recup_journee');
         const declarationCheckbox = document.getElementById('declaration_conforme');
         const detailHeures = document.getElementById('saisie-heures-detail');
+        const pauseCheckbox = document.getElementById('pause_remuneree');
         const inputs = detailHeures.querySelectorAll('input[type="time"]');
-        
+
         if (checkbox.checked) {
             // Désactiver la déclaration conforme et les champs d'heures
             if (declarationCheckbox) {
@@ -222,6 +276,10 @@
                 input.disabled = true;
                 input.value = '';
             });
+            if (pauseCheckbox) {
+                pauseCheckbox.disabled = true;
+                pauseCheckbox.checked = false;
+            }
         } else {
             // Réactiver la déclaration conforme et les champs d'heures
             if (declarationCheckbox) {
@@ -231,8 +289,37 @@
             inputs.forEach(input => {
                 input.disabled = false;
             });
+            if (pauseCheckbox) {
+                pauseCheckbox.disabled = false;
+            }
         }
     }
+
+    // Pause rémunérée : avertissement à chaque coche — la pause doit avoir
+    // réellement eu lieu, jamais une pause fictive.
+    function togglePauseRemuneree() {
+        const checkbox = document.getElementById('pause_remuneree');
+        const modal = document.getElementById('pauseRemunereeModal');
+        if (checkbox && checkbox.checked && modal) {
+            modal.style.display = 'flex';
+        }
+    }
+
+    function fermerAvertissementPause() {
+        const modal = document.getElementById('pauseRemunereeModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // La modale doit être enfant direct de <body> : ses conteneurs (.form-container)
+    // portent une animation dont le transform persistant piégerait le position:fixed.
+    (function () {
+        const modal = document.getElementById('pauseRemunereeModal');
+        if (modal) document.body.appendChild(modal);
+    })();
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') fermerAvertissementPause();
+    });
 
     // Affiche/masque le 3e créneau optionnel « soir » et active/désactive ses champs.
     function toggleSoir() {

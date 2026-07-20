@@ -193,17 +193,44 @@ def slot_horaire(row, key):
         return None
 
 
+def duree_pause_meridienne(row):
+    """Durée (heures) de la pause entre la fin du matin et le début de l'après-midi.
+
+    0 si l'un des deux créneaux est incomplet ou si les horaires sont
+    incohérents (début d'après-midi antérieur ou égal à la fin du matin).
+    """
+    fin_matin = slot_horaire(row, 'heure_fin_matin')
+    debut_aprem = slot_horaire(row, 'heure_debut_aprem')
+    if not (slot_horaire(row, 'heure_debut_matin') and fin_matin
+            and debut_aprem and slot_horaire(row, 'heure_fin_aprem')):
+        return 0
+    try:
+        fmt = '%H:%M'
+        pause = (datetime.strptime(debut_aprem, fmt)
+                 - datetime.strptime(fin_matin, fmt)).total_seconds() / 3600
+    except ValueError:
+        logger.warning("Format d'horaire invalide: %s - %s", fin_matin, debut_aprem)
+        return 0
+    return round(pause, 2) if pause > 0 else 0
+
+
 def calculer_heures_reelles_jour(row):
     """Total d'heures d'une saisie (heures_reelles) : matin + après-midi + soir.
 
     Le créneau « soir » (optionnel, personnel d'entretien en vacances) est
     additionné aux deux créneaux habituels ; absent/vide, il compte pour 0.
+    Si la pause méridienne est rémunérée (salarié resté à disposition sur
+    place, art. L3121-2 : temps de travail effectif), elle est comptée dans
+    le total.
     """
-    return (
+    total = (
         calculer_heures(slot_horaire(row, 'heure_debut_matin'), slot_horaire(row, 'heure_fin_matin'))
         + calculer_heures(slot_horaire(row, 'heure_debut_aprem'), slot_horaire(row, 'heure_fin_aprem'))
         + calculer_heures(slot_horaire(row, 'heure_debut_soir'), slot_horaire(row, 'heure_fin_soir'))
     )
+    if slot_horaire(row, 'pause_remuneree'):
+        total += duree_pause_meridienne(row)
+    return round(total, 2)
 
 
 def get_heures_theoriques_jour(planning, jour_semaine):
@@ -645,7 +672,8 @@ def calculer_solde_recup(user_id):
         heures = conn.execute('''
             SELECT date, heure_debut_matin, heure_fin_matin,
                    heure_debut_aprem, heure_fin_aprem,
-                   heure_debut_soir, heure_fin_soir, declaration_conforme
+                   heure_debut_soir, heure_fin_soir, declaration_conforme,
+                   pause_remuneree
             FROM heures_reelles
             WHERE user_id = ?
             ORDER BY date

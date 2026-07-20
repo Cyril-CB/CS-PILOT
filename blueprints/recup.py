@@ -7,7 +7,7 @@ from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
-                   NOMS_MOIS)
+                   slot_horaire, NOMS_MOIS)
 from email_service import (
     is_email_configured, peut_envoyer_email, notifier_nouvelle_demande_recup,
     notifier_demande_recup_validee_responsable, notifier_demande_recup_decision,
@@ -514,9 +514,11 @@ def validation_demandes_recup():
                         UPDATE {table}
                         SET statut = 'validee',
                             validation_direction = ?,
-                            date_validation_direction = ?
+                            date_validation_direction = ?,
+                            profil_validation_direction = ?
                         WHERE id = ? AND statut IN ('en_attente_direction', 'en_attente_responsable')
-                    ''', (f"{user_info['prenom']} {user_info['nom']}", now, demande_id))
+                    ''', (f"{user_info['prenom']} {user_info['nom']}", now,
+                          session.get('profil'), demande_id))
 
                     # Ne créer les effets de bord que si la mise à jour a effectivement changé le statut
                     if cursor.rowcount > 0:
@@ -826,8 +828,9 @@ def demande_conge():
                                         (session['user_id'],)).fetchone()
                 nom_valideur = f"{valideur['prenom']} {valideur['nom']}" if valideur else ''
                 conn.execute(
-                    'UPDATE demandes_conges SET validation_direction = ?, date_validation_direction = ? WHERE id = ?',
-                    (nom_valideur, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), demande_id))
+                    'UPDATE demandes_conges SET validation_direction = ?, date_validation_direction = ?, '
+                    'profil_validation_direction = ? WHERE id = ?',
+                    (nom_valideur, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'directeur', demande_id))
                 demande = {
                     'user_id': session['user_id'], 'type_conge': type_conge,
                     'date_debut': date_debut, 'date_fin': date_fin, 'nb_jours': nb_jours,
@@ -986,12 +989,15 @@ def demande_conge_pdf(demande_id):
     elements.append(table)
     elements.append(Spacer(1, 1.2 * cm))
 
-    # Signatures : Direction (pré-remplie si validée) + Comité de présidence.
+    # Signatures : Direction ou Comptable selon le valideur (pré-rempli si
+    # validée) + Comité de présidence.
     elements.append(Paragraph('SIGNATURES', heading_style))
     elements.append(Spacer(1, 0.3 * cm))
     nom_direction = demande['validation_direction'] or ''
+    profil_valideur = slot_horaire(demande, 'profil_validation_direction')
+    libelle_valideur = 'Comptable' if profil_valideur == 'comptable' else 'Direction'
     data_sig = [
-        ['Direction', 'Comité de présidence', 'Date'],
+        [libelle_valideur, 'Comité de présidence', 'Date'],
         ['', '', ''],
         [nom_direction, '', ''],
     ]

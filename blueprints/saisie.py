@@ -106,6 +106,7 @@ def saisie_heures():
             if not commentaire:
                 commentaire = 'Déclaration conforme au planning'
             declaration_conforme_val = 1
+            pause_remuneree_val = 0
         # Si récupération journée complète, on met tout à vide
         elif recup_journee == '1':
             heure_debut_matin = None
@@ -118,6 +119,7 @@ def saisie_heures():
             if not commentaire:
                 commentaire = 'Récupération journée complète'
             declaration_conforme_val = 0
+            pause_remuneree_val = 0
         else:
             heure_debut_matin = request.form.get('heure_debut_matin') or None
             heure_fin_matin = request.form.get('heure_fin_matin') or None
@@ -128,6 +130,9 @@ def saisie_heures():
             heure_fin_soir = request.form.get('heure_fin_soir') or None
             type_saisie = 'heures_modifiees'
             declaration_conforme_val = 0
+            # Pause méridienne rémunérée : prise sur place en restant à
+            # disposition (temps de travail effectif, art. L3121-2).
+            pause_remuneree_val = 1 if request.form.get('pause_remuneree') == '1' else 0
         
         try:
             action = 'modification' if anciennes_donnees else 'creation'
@@ -142,7 +147,8 @@ def saisie_heures():
                     'heure_debut_soir': slot_horaire(anciennes_donnees, 'heure_debut_soir'),
                     'heure_fin_soir': slot_horaire(anciennes_donnees, 'heure_fin_soir'),
                     'commentaire': anciennes_donnees['commentaire'],
-                    'type_saisie': anciennes_donnees['type_saisie']
+                    'type_saisie': anciennes_donnees['type_saisie'],
+                    'pause_remuneree': slot_horaire(anciennes_donnees, 'pause_remuneree')
                 })
 
             nouvelles_valeurs = json.dumps({
@@ -153,7 +159,8 @@ def saisie_heures():
                 'heure_debut_soir': heure_debut_soir,
                 'heure_fin_soir': heure_fin_soir,
                 'commentaire': commentaire,
-                'type_saisie': type_saisie
+                'type_saisie': type_saisie,
+                'pause_remuneree': pause_remuneree_val
             })
             
             # DÉTECTION DES ANOMALIES
@@ -180,6 +187,7 @@ def saisie_heures():
                         'heure_debut_matin': heure_debut_matin, 'heure_fin_matin': heure_fin_matin,
                         'heure_debut_aprem': heure_debut_aprem, 'heure_fin_aprem': heure_fin_aprem,
                         'heure_debut_soir': heure_debut_soir, 'heure_fin_soir': heure_fin_soir,
+                        'pause_remuneree': pause_remuneree_val,
                     })
 
                     ecart = abs(heures_apres - heures_avant)
@@ -228,6 +236,7 @@ def saisie_heures():
                         'heure_debut_matin': heure_debut_matin, 'heure_fin_matin': heure_fin_matin,
                         'heure_debut_aprem': heure_debut_aprem, 'heure_fin_aprem': heure_fin_aprem,
                         'heure_debut_soir': heure_debut_soir, 'heure_fin_soir': heure_fin_soir,
+                        'pause_remuneree': pause_remuneree_val,
                     })
 
                     ecart = abs(heures_apres - total_theorique)
@@ -246,11 +255,11 @@ def saisie_heures():
                 INSERT OR REPLACE INTO heures_reelles
                 (user_id, date, heure_debut_matin, heure_fin_matin,
                  heure_debut_aprem, heure_fin_aprem, heure_debut_soir, heure_fin_soir,
-                 commentaire, type_saisie, declaration_conforme)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 commentaire, type_saisie, declaration_conforme, pause_remuneree)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (user_id_cible, date, heure_debut_matin, heure_fin_matin,
                   heure_debut_aprem, heure_fin_aprem, heure_debut_soir, heure_fin_soir,
-                  commentaire, type_saisie, declaration_conforme_val))
+                  commentaire, type_saisie, declaration_conforme_val, pause_remuneree_val))
             
             # Enregistrer dans l'historique
             conn.execute('''

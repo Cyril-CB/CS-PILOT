@@ -230,7 +230,8 @@ def export_pdf_mensuel():
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie
+               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie,
+               pause_remuneree
         FROM heures_reelles
         WHERE user_id = ? AND date < ?
         ORDER BY date
