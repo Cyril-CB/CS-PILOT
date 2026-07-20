@@ -1458,12 +1458,14 @@ def test_compte_ajoute_sans_fec_apparait_dans_le_budget(app, db, admin_client, s
     ).get_json()
     assert any(r['compte_num'] == '606300' for r in data_glob['rows'])
 
-    # Budget actualisé de la même année : le compte budgété à l'initial reste visible
+    # Budget actualisé de la même année : le compte budgété à l'initial reste
+    # visible, mais sans bouton de retrait (aucune ligne « actualisé » à
+    # supprimer) : manuel vaut False (revue Codex).
     data_actu = admin_client.get(
         f'/api/budget-previsionnel/donnees?type_budget=actualise&annee={annee}&secteur_id={secteur_id}'
     ).get_json()
     row_actu = next(r for r in data_actu['rows'] if r['compte_num'] == '606300')
-    assert row_actu['manuel'] is True
+    assert row_actu['manuel'] is False
 
 
 def test_compte_avec_fec_n_est_pas_marque_manuel(app, db, admin_client, sample_users):
@@ -1541,3 +1543,51 @@ def test_budget_previsionnel_bouton_ajout_compte_absent_responsable(resp_client)
     html = resp_client.get('/budget-previsionnel').get_data(as_text=True)
     assert 'Ajouter un compte au budget' not in html
     assert 'id="ajoutCompteModal"' not in html
+
+
+def test_budget_global_consolide_les_valeurs_definitives(app, db, admin_client, sample_users):
+    """La vue globale additionne les valeurs définitives saisies par les
+    secteurs, y compris pour un compte ajouté manuellement (revue Codex)."""
+    secteur1 = sample_users['secteur_id']
+    annee = datetime.now().year
+    with app.app_context():
+        cur = db.execute("INSERT INTO secteurs (nom, description) VALUES ('Secteur Deux', 'Autre secteur')")
+        secteur2 = cur.lastrowid
+        db.commit()
+    for sid, montant in ((secteur1, 450), (secteur2, 100)):
+        admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
+            'type_budget': 'initial', 'annee': annee, 'secteur_id': sid,
+            'compte_num': '606300',
+        })
+        admin_client.post('/api/budget-previsionnel/save-line', json={
+            'type_budget': 'initial', 'annee': annee, 'secteur_id': sid,
+            'compte_num': '606300', 'valeur_def': montant,
+        })
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/donnees?type_budget=initial&annee={annee}&global=1'
+    ).get_json()
+    row = next(r for r in data['rows'] if r['compte_num'] == '606300')
+    assert row['def'] == 550.0
+    assert data['totaux']['charges_def'] == 550.0
+
+
+def test_retrait_expose_uniquement_sur_le_type_courant(app, db, admin_client, sample_users):
+    """Un compte ajouté au budget actualisé y est retirable (manuel=True) ;
+    vu depuis l'initial de la même année, il n'apparaît pas."""
+    secteur_id = sample_users['secteur_id']
+    annee = datetime.now().year
+    admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
+        'type_budget': 'actualise', 'annee': annee, 'secteur_id': secteur_id,
+        'compte_num': '756000',
+    })
+    data_actu = admin_client.get(
+        f'/api/budget-previsionnel/donnees?type_budget=actualise&annee={annee}&secteur_id={secteur_id}'
+    ).get_json()
+    row = next(r for r in data_actu['rows'] if r['compte_num'] == '756000')
+    assert row['manuel'] is True
+
+    data_init = admin_client.get(
+        f'/api/budget-previsionnel/donnees?type_budget=initial&annee={annee}&secteur_id={secteur_id}'
+    ).get_json()
+    assert not any(r['compte_num'] == '756000' for r in data_init['rows'])

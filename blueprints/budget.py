@@ -817,7 +817,23 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         monthly[compte][an][mois] = monthly[compte][an].get(mois, 0) + montant
 
     saisies_map = {}
-    if secteur_id:
+    if global_mode:
+        # Vue globale : consolidation des valeurs définitives saisies par les
+        # secteurs (même logique que la colonne « Initial » en actualisé). Le
+        # temporaire reste calculé depuis le FEC tous secteurs confondus.
+        saved = conn.execute('''
+            SELECT compte_num, SUM(valeur_def) AS total_def
+            FROM budget_prev_saisies
+            WHERE type_budget = ? AND annee = ?
+            GROUP BY compte_num
+        ''', (type_budget, annee)).fetchall()
+        for s in saved:
+            saisies_map[s['compte_num']] = {
+                'valeur_temp': None,
+                'valeur_def': float(s['total_def'] or 0),
+                'commentaire': ''
+            }
+    elif secteur_id:
         saved = conn.execute('''
             SELECT compte_num, valeur_temp, valeur_def, commentaire
             FROM budget_prev_saisies
@@ -923,7 +939,10 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
             'categorie': compte[:2],
             'nature': nature,
             'is_salary': is_salary,
-            'manuel': compte in comptes_manuels,
+            # « manuel » ne vaut True que si une ligne de saisie du type courant
+            # existe : en actualisé, un compte hérité du seul budget initial est
+            # affiché mais sans bouton de retrait (qui n'aurait rien à supprimer).
+            'manuel': compte in comptes_manuels and compte in saisies_map,
             'N-2': n2,
             'N-1': n1,
             'N': round(col_n, 2),
