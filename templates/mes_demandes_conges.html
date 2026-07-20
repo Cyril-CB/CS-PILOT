@@ -73,7 +73,7 @@
                         {% endif %}
                         
                         {% if d.validation_direction %}
-                        <div style="color: var(--success); margin-top: 0.25rem;">✓ {{ d.validation_direction }} <small>(direction)</small></div>
+                        <div style="color: var(--success); margin-top: 0.25rem;">✓ {{ d.validation_direction }} <small>({{ 'comptable' if d.profil_validation_direction == 'comptable' else 'direction' }})</small></div>
                         <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_direction[:10] if d.date_validation_direction else '' }}</div>
                         {% elif d.statut not in ['en_attente_responsable', 'refusee'] %}
                         <div style="color: var(--gray-400); margin-top: 0.25rem;">⏳ Direction</div>

@@ -7,7 +7,7 @@ import json
 from database import get_db
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, calculer_heures,
-                    calculer_heures_reelles_jour, slot_horaire,
+                    calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
                     total_hs_payees, est_dans_equipe_responsable)
 from app_options import get_option_bool
@@ -475,6 +475,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             type_saisie = None
             commentaire = None
             non_declare = False
+            pause_remuneree_jour = False
 
             if date_str in heures_reelles:
                 h = heures_reelles[date_str]
@@ -487,6 +488,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 else:
                     est_saisi = True
                     heures_reelles_jour = calculer_heures_reelles_jour(h)
+                    pause_remuneree_jour = bool(h.get('pause_remuneree')) and duree_pause_meridienne(h) > 0
                     horaires_reels = _formater_horaires(
                         h['heure_debut_matin'],
                         h['heure_fin_matin'],
@@ -559,6 +561,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'type_periode': type_periode,
                 'est_ferie': est_ferie,
                 'libelle_ferie': libelle_ferie,
+                'pause_remuneree': pause_remuneree_jour,
             })
 
         jour_actuel += timedelta(days=1)
@@ -576,7 +579,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme
+               heure_debut_soir, heure_fin_soir, declaration_conforme,
+               pause_remuneree
         FROM heures_reelles
         WHERE user_id = ? AND date < ?
         ORDER BY date

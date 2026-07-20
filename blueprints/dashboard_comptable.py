@@ -39,7 +39,7 @@ def dashboard_comptable():
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
                heure_debut_soir, heure_fin_soir,
-               commentaire, type_saisie, declaration_conforme
+               commentaire, type_saisie, declaration_conforme, pause_remuneree
         FROM heures_reelles
         WHERE user_id = ?
         ORDER BY date DESC

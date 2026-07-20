@@ -73,7 +73,7 @@ def _get_score_category(score):
 def _calculate_surcharge_alert(conn, user, today, feries_set, planning_cache, type_periode_cache):
     rows = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin, heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme
+               heure_debut_soir, heure_fin_soir, declaration_conforme, pause_remuneree
         FROM heures_reelles
         WHERE user_id = ? AND date <= ?
         ORDER BY date

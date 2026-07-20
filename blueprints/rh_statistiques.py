@@ -82,7 +82,7 @@ def rh_statistiques():
                hr.heure_debut_matin, hr.heure_fin_matin,
                hr.heure_debut_aprem, hr.heure_fin_aprem,
                hr.heure_debut_soir, hr.heure_fin_soir,
-               hr.declaration_conforme
+               hr.declaration_conforme, hr.pause_remuneree
         FROM heures_reelles hr
         JOIN users u ON hr.user_id = u.id
         WHERE hr.date >= ?

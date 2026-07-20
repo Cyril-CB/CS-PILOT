@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
-                   calculer_heures_reelles_jour, slot_horaire,
+                   calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
                    total_hs_payees, est_dans_equipe_responsable)
 
@@ -177,20 +177,22 @@ def export_pdf_mensuel():
                     horaires_reels_str = "✓ Conforme"
                     heures_reelles_jour = heures_theo_jour
                 else:
-                    # Horaires saisis manuellement
+                    # Horaires saisis manuellement. Total via le calcul commun,
+                    # qui inclut la pause méridienne rémunérée le cas échéant
+                    # (le PDF signé doit coller à la vue mensuelle).
+                    heures_reelles_jour = calculer_heures_reelles_jour(h)
                     horaires_parts_reelles = []
                     if h['heure_debut_matin'] and h['heure_fin_matin']:
                         horaires_parts_reelles.append(f"{h['heure_debut_matin']}-{h['heure_fin_matin']}")
-                        heures_reelles_jour += calculer_heures(h['heure_debut_matin'], h['heure_fin_matin'])
                     if h['heure_debut_aprem'] and h['heure_fin_aprem']:
                         horaires_parts_reelles.append(f"{h['heure_debut_aprem']}-{h['heure_fin_aprem']}")
-                        heures_reelles_jour += calculer_heures(h['heure_debut_aprem'], h['heure_fin_aprem'])
                     if slot_horaire(h, 'heure_debut_soir') and slot_horaire(h, 'heure_fin_soir'):
                         horaires_parts_reelles.append(f"{h['heure_debut_soir']}-{h['heure_fin_soir']}")
-                        heures_reelles_jour += calculer_heures(h['heure_debut_soir'], h['heure_fin_soir'])
 
                     if horaires_parts_reelles:
                         horaires_reels_str = " / ".join(horaires_parts_reelles)
+                        if h.get('pause_remuneree') and duree_pause_meridienne(h) > 0:
+                            horaires_reels_str += " (+ pause)"
                     else:
                         horaires_reels_str = "Non saisi"
             else:
@@ -230,7 +232,8 @@ def export_pdf_mensuel():
     heures_anterieures = conn.execute('''
         SELECT date, heure_debut_matin, heure_fin_matin,
                heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie
+               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie,
+               pause_remuneree
         FROM heures_reelles
         WHERE user_id = ? AND date < ?
         ORDER BY date

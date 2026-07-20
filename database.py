@@ -341,6 +341,7 @@ def init_db():
             commentaire TEXT,
             type_saisie TEXT DEFAULT 'heures_sup',
             declaration_conforme INTEGER DEFAULT 0,
+            pause_remuneree INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             UNIQUE(user_id, date)
@@ -484,6 +485,7 @@ def init_db():
             date_validation_responsable TEXT,
             validation_direction TEXT,
             date_validation_direction TEXT,
+            profil_validation_direction TEXT,
             motif_refus TEXT,
             refuse_par INTEGER,
             date_refus TEXT,
@@ -508,6 +510,7 @@ def init_db():
             date_validation_responsable TEXT,
             validation_direction TEXT,
             date_validation_direction TEXT,
+            profil_validation_direction TEXT,
             motif_refus TEXT,
             refuse_par INTEGER,
             date_refus TEXT,
@@ -1872,6 +1875,21 @@ def init_db():
                 cursor.execute(f"SELECT {col} FROM planning_theorique LIMIT 1")
             except sqlite3.OperationalError:
                 cursor.execute(f"ALTER TABLE planning_theorique ADD COLUMN {col} TEXT")
+
+    # Migration 0058 : profil du valideur « direction » (directeur ou comptable)
+    # pour afficher le bon libellé à côté du nom. NULL sur l'existant.
+    for _table in ('demandes_conges', 'demandes_recup'):
+        try:
+            cursor.execute(f"SELECT profil_validation_direction FROM {_table} LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(f"ALTER TABLE {_table} ADD COLUMN profil_validation_direction TEXT")
+
+    # Migration 0059 : pause méridienne rémunérée (salarié resté à disposition,
+    # ex. accueil de loisirs) comptée dans les heures travaillées.
+    try:
+        cursor.execute("SELECT pause_remuneree FROM heures_reelles LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE heures_reelles ADD COLUMN pause_remuneree INTEGER DEFAULT 0")
 
     # Migration : ajouter temps_hebdo si n'existe pas dans contrats
     try:
