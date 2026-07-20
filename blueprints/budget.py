@@ -852,6 +852,35 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
             init_rows = []
         initial_map = {r['compte_num']: float(r['total_def'] or 0) for r in init_rows}
 
+    # Comptes ajoutés manuellement au budget : une ligne de saisie existe mais
+    # le compte n'a aucune écriture FEC sur N-2..N (ex. compte tout neuf), donc
+    # il n'entre jamais dans totals. On l'ajoute avec un historique à zéro.
+    # En actualisé, un compte budgété à l'initial de la même année reste visible.
+    if global_mode:
+        lignes_manuelles = conn.execute('''
+            SELECT DISTINCT compte_num FROM budget_prev_saisies
+            WHERE annee = ? AND type_budget IN ('initial', ?)
+        ''', (annee, type_budget)).fetchall()
+    elif secteur_id:
+        lignes_manuelles = conn.execute('''
+            SELECT DISTINCT compte_num FROM budget_prev_saisies
+            WHERE annee = ? AND secteur_id = ? AND type_budget IN ('initial', ?)
+        ''', (annee, secteur_id, type_budget)).fetchall()
+    else:
+        lignes_manuelles = []
+    comptes_manuels = set()
+    for r in lignes_manuelles:
+        compte = (r['compte_num'] or '').strip()
+        if not compte or compte in totals or not compte.startswith(('6', '7')):
+            continue
+        comptes_manuels.add(compte)
+        totals[compte] = {
+            'compte_num': compte,
+            'libelle': pcg.get(compte) or compte,
+            'N-2': 0.0, 'N-1': 0.0, 'N': 0.0
+        }
+        monthly[compte] = {}
+
     accounts = []
     for compte, vals in totals.items():
         n2 = round(vals['N-2'], 2)
@@ -894,6 +923,7 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
             'categorie': compte[:2],
             'nature': nature,
             'is_salary': is_salary,
+            'manuel': compte in comptes_manuels,
             'N-2': n2,
             'N-1': n1,
             'N': round(col_n, 2),
@@ -1200,6 +1230,97 @@ def api_budget_previsionnel_save_line():
                 updated_by = excluded.updated_by,
                 updated_at = CURRENT_TIMESTAMP
         ''', (type_budget, int(annee), int(secteur_id), compte_num, valeur_temp, valeur_def, commentaire, user_id))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/comptes-disponibles')
+@login_required
+def api_budget_prev_comptes_disponibles():
+    """Comptes 6x/7x proposables à l'ajout manuel : plan comptable général,
+    complété des comptes déjà vus dans les écritures FEC."""
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    conn = get_db()
+    try:
+        comptes = {}
+        for r in conn.execute('''
+            SELECT compte_num, libelle FROM plan_comptable_general
+            WHERE compte_num LIKE '6%' OR compte_num LIKE '7%'
+        ''').fetchall():
+            comptes[r['compte_num']] = r['libelle'] or r['compte_num']
+        for r in conn.execute('''
+            SELECT DISTINCT compte_num, libelle FROM bilan_fec_donnees
+            WHERE compte_num LIKE '6%' OR compte_num LIKE '7%'
+        ''').fetchall():
+            comptes.setdefault(r['compte_num'], r['libelle'] or r['compte_num'])
+        liste = [{'compte_num': num, 'libelle': lib} for num, lib in sorted(comptes.items())]
+        return jsonify({'comptes': liste})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/ajouter-compte', methods=['POST'])
+@login_required
+def api_budget_prev_ajouter_compte():
+    """Ajoute manuellement un compte au budget d'un secteur (ligne à zéro).
+
+    Crée la ligne de saisie qui fait apparaître le compte dans le tableau ;
+    une ligne déjà budgétée n'est pas écrasée (INSERT OR IGNORE)."""
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    data = request.get_json() or {}
+    type_budget = data.get('type_budget')
+    annee = data.get('annee')
+    secteur_id = data.get('secteur_id')
+    compte_num = (data.get('compte_num') or '').strip()
+    if type_budget not in ['initial', 'actualise']:
+        return jsonify({'error': 'Type de budget invalide'}), 400
+    if not annee or not secteur_id or not compte_num:
+        return jsonify({'error': 'Champs requis manquants'}), 400
+    if not compte_num.startswith(('6', '7')):
+        return jsonify({'error': 'Seuls les comptes de charges (6x) et de produits (7x) sont budgétables'}), 400
+    conn = get_db()
+    try:
+        cur = conn.execute('''
+            INSERT OR IGNORE INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by, updated_at)
+            VALUES (?, ?, ?, ?, 0, ?, CURRENT_TIMESTAMP)
+        ''', (type_budget, int(annee), int(secteur_id), compte_num, user_id))
+        conn.commit()
+        return jsonify({'success': True, 'deja_present': cur.rowcount == 0})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/retirer-compte', methods=['POST'])
+@login_required
+def api_budget_prev_retirer_compte():
+    """Retire un compte ajouté manuellement : supprime sa ligne de saisie
+    (montants et commentaire compris) pour le type/année/secteur courants."""
+    profil = session.get('profil')
+    if profil not in ['directeur', 'comptable']:
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    data = request.get_json() or {}
+    type_budget = data.get('type_budget')
+    annee = data.get('annee')
+    secteur_id = data.get('secteur_id')
+    compte_num = (data.get('compte_num') or '').strip()
+    if type_budget not in ['initial', 'actualise']:
+        return jsonify({'error': 'Type de budget invalide'}), 400
+    if not annee or not secteur_id or not compte_num:
+        return jsonify({'error': 'Champs requis manquants'}), 400
+    conn = get_db()
+    try:
+        conn.execute('''
+            DELETE FROM budget_prev_saisies
+            WHERE type_budget = ? AND annee = ? AND secteur_id = ? AND compte_num = ?
+        ''', (type_budget, int(annee), int(secteur_id), compte_num))
         conn.commit()
         return jsonify({'success': True})
     finally:

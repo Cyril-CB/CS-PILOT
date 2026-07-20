@@ -239,6 +239,7 @@
     <h2>💶 Budget prévisionnel</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
         {% if profil in ['directeur', 'comptable'] %}
+        <button class="btn btn-secondary" onclick="openAjoutCompte()">➕ Ajouter un compte au budget</button>
         <button class="btn btn-secondary" onclick="openPsConfig()">⚙️ Paramétrer les comptes PS</button>
         {% endif %}
         <button class="btn btn-secondary" onclick="exporterPdf(false)">📄 Export PDF secteur</button>
@@ -326,6 +327,31 @@
                     </select>
                 </div>
                 <button class="btn btn-primary" type="button" onclick="addPsCompte()">➕ Ajouter</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ajout manuel d'un compte au budget (compte absent des écritures FEC) -->
+<div id="ajoutCompteModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)closeAjoutCompte()">
+    <div class="modal-content" style="max-width:560px;">
+        <div class="modal-header">
+            <h3>➕ Ajouter un compte au budget</h3>
+            <button class="modal-close" type="button" onclick="closeAjoutCompte()" aria-label="Fermer">&times;</button>
+        </div>
+        <div style="padding:0 1.5rem 1.5rem;">
+            <p class="help-text" style="margin-top:0;">
+                Pour budgéter un compte absent du tableau (ex. compte tout neuf, jamais
+                mouvementé), choisissez-le dans le plan comptable général — charges (6x)
+                ou produits (7x). Il sera ajouté au budget <strong id="ajoutCompteContexte"></strong>
+                avec un historique à zéro, et apparaîtra aussi dans le budget général.
+            </p>
+            <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="margin:0;flex:1 1 280px;">
+                    <label>Compte (plan comptable général)</label>
+                    <select id="ajoutCompteSelect" class="form-select" style="width:100%;"></select>
+                </div>
+                <button class="btn btn-primary" type="button" onclick="ajouterCompteBudget()">➕ Ajouter</button>
             </div>
         </div>
     </div>
@@ -482,6 +508,11 @@ function bindBudgetInputHandlers(targetId){
             queueSave(this.dataset.bpCommentCompte || '', null, this.value);
         });
     });
+    root.querySelectorAll('button[data-retirer-compte]').forEach((btn) => {
+        btn.addEventListener('click', function(){
+            retirerCompteBudget(this.dataset.retirerCompte || '');
+        });
+    });
 }
 
 function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
@@ -553,7 +584,10 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const ficheBtn = (actualise && !globalMode && !psComptes[r.compte_num] && !r.is_salary)
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements" aria-label="Fiche de travail">📋</button>'
             : '';
-        const boutons = psBtn + paieBtn + ficheBtn;
+        const retirerBtn = (!globalMode && canEditPs && r.manuel)
+            ? '<button type="button" class="btn btn-sm btn-danger bp-ps-btn" data-retirer-compte="' + escapeHtml(r.compte_num) + '" title="Compte ajouté manuellement au budget — le retirer (supprime les montants saisis)" aria-label="Retirer ce compte du budget">🗑</button>'
+            : '';
+        const boutons = psBtn + paieBtn + ficheBtn + retirerBtn;
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td>' +
           '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) + '</span>' +
@@ -843,6 +877,81 @@ function removePsCompte(compte){
             if (!data.success){ alert(data.error || 'Erreur'); return; }
             loadPsComptes().then(function(){ renderPsConfigList(); refreshBudgetButtons(); });
         });
+}
+
+// ---- Ajout manuel d'un compte au budget ----
+function openAjoutCompte(){
+    var modal = document.getElementById('ajoutCompteModal');
+    if (!modal) return;
+    var ctxEl = document.getElementById('ajoutCompteContexte');
+    if (ctxEl){
+        var sel = document.getElementById('secteurBudget');
+        var secteurNom = (sel && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : '';
+        var type = document.getElementById('typeBudget').value === 'actualise' ? 'actualisé' : 'initial';
+        ctxEl.textContent = type + ' ' + document.getElementById('anneeBudget').value +
+            ' du secteur « ' + secteurNom + ' »';
+    }
+    modal.style.display = 'flex';
+    loadAjoutCompteOptions();
+}
+function closeAjoutCompte(){
+    var modal = document.getElementById('ajoutCompteModal');
+    if (modal) modal.style.display = 'none';
+}
+function loadAjoutCompteOptions(){
+    fetch('/api/budget-previsionnel/comptes-disponibles')
+        .then(r => r.json())
+        .then(data => {
+            var sel = document.getElementById('ajoutCompteSelect');
+            if (!sel) return;
+            // Ne proposer que les comptes absents du tableau affiché.
+            var deja = {};
+            currentRows.forEach(function(r){ deja[r.compte_num] = true; });
+            var list = ((data && data.comptes) || []).filter(function(c){ return !deja[c.compte_num]; });
+            if (!list.length){
+                sel.innerHTML = '<option value="">Aucun compte 6x/7x à ajouter (plan comptable vide ou comptes déjà affichés)</option>';
+                return;
+            }
+            sel.innerHTML = list.map(function(c){
+                return '<option value="' + escapeHtml(c.compte_num) + '">' +
+                    escapeHtml(c.compte_num + ' — ' + (c.libelle || '')) + '</option>';
+            }).join('');
+        });
+}
+function ajouterCompteBudget(){
+    var compte = (document.getElementById('ajoutCompteSelect') || {}).value || '';
+    if (!compte){ alert('Sélectionnez un compte.'); return; }
+    var context = getCurrentBudgetContext();
+    fetch('/api/budget-previsionnel/ajouter-compte', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            type_budget: context.type_budget,
+            annee: context.annee,
+            secteur_id: context.secteur_id,
+            compte_num: compte
+        })
+    }).then(r => r.json()).then(data => {
+        if (!data.success){ alert(data.error || 'Erreur'); return; }
+        closeAjoutCompte();
+        chargerBudget();
+    });
+}
+function retirerCompteBudget(compte){
+    if (!confirm('Retirer le compte ' + compte + ' de ce budget ?\n' +
+                 'Les montants et le commentaire saisis sur cette ligne seront supprimés.')) return;
+    var context = getCurrentBudgetContext();
+    fetch('/api/budget-previsionnel/retirer-compte', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+            type_budget: context.type_budget,
+            annee: context.annee,
+            secteur_id: context.secteur_id,
+            compte_num: compte
+        })
+    }).then(r => r.json()).then(data => {
+        if (!data.success){ alert(data.error || 'Erreur'); return; }
+        chargerBudget();
+    });
 }
 
 // ---- Étape 3 : simulateurs ----
@@ -2112,7 +2221,7 @@ function savePaieSimulator(){
 // Déplace les modales au niveau du <body> : le conteneur .container crée un
 // contexte d'empilement (animation) qui les confinerait sinon sous la barre
 // latérale de gauche (menu). Rattachées au body, elles s'affichent par-dessus.
-['psSimulatorModal', 'psConfigModal', 'paieSimulatorModal'].forEach(function(id){
+['psSimulatorModal', 'psConfigModal', 'paieSimulatorModal', 'ajoutCompteModal'].forEach(function(id){
     var el = document.getElementById(id);
     if (el && el.parentNode !== document.body) document.body.appendChild(el);
 });
