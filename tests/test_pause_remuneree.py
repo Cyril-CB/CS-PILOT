@@ -144,9 +144,9 @@ class TestSaisiePauseRemuneree:
         assert 'id="pauseRemunereeModal"' in html
         # Le message d'avertissement : sincérité, cadre légal et risques santé.
         assert 'pause fictive' in html
-        assert 'L3121-16' in html
-        assert 'L3121-2' in html
-        assert 'troubles musculo-squelettiques' in html
+        assert 'L. 3121-16' in html
+        assert 'vingt minutes consécutives' in html
+        assert 'troubles musculosquelettiques' in html
 
     def test_vue_mensuelle_signale_la_pause_remuneree(self, auth_client, app, db, sample_users):
         with app.app_context():
