@@ -727,8 +727,14 @@
       const d=await r.json();
       rendreComparaisons(d.comparaisons||[]);
     }catch(e){
+      // Sans comparaisons, le serveur refusera l'enregistrement dès qu'il
+      // existe des tâches de référence : proposer de réessayer.
       comparaisonsAffichees=[];
-      conteneur.innerHTML='<p class="planif-help" style="margin:0;">Comparaison indisponible (priorité neutre).</p>';
+      conteneur.innerHTML='<p class="planif-help" style="margin:0 0 .35rem;">Comparaisons indisponibles pour le moment.</p>'
+        +'<button type="button" class="btn btn-secondary" id="btnRetryComparaisons">↻ Réessayer</button>';
+      document.getElementById('btnRetryComparaisons').addEventListener('click', function(){
+        chargerComparaisons(excludeId);
+      });
     }
   }
   function lireComparaisons(){

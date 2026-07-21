@@ -105,6 +105,27 @@ class TestCalculPriorite:
         ])
         assert _derniere(db, uid)['priorite_num'] == 5
 
+    def test_creation_refusee_sans_comparaisons_quand_references_existent(self, comptable_client, db, sample_users):
+        """Garde-fou serveur (revue Codex) : dès qu'il existe des tâches de
+        référence, une création sans réponses de comparaison est refusée —
+        sinon une soumission trop rapide créerait des priorités neutres."""
+        uid = sample_users['comptable_id']
+        _inserer(db, uid, 'Référence', 0)
+
+        r = comptable_client.post('/planificateur/api/tache',
+                                  json={'type': 'tache', 'titre': 'Sans comparaison', 'duree_min': 30})
+        assert r.status_code == 400
+
+        # Des réponses invalides ne comptent pas non plus.
+        r = comptable_client.post('/planificateur/api/tache', json={
+            'type': 'tache', 'titre': 'Comparaison invalide', 'duree_min': 30,
+            'comparaisons': [{'tache_id': 'abc', 'reponse': 'peut-être'}],
+        })
+        assert r.status_code == 400
+
+        nb = db.execute("SELECT COUNT(*) FROM planif_taches WHERE user_id = ?", (uid,)).fetchone()[0]
+        assert nb == 1   # seule la référence existe
+
     def test_incoherence_reevalue_la_tache_mal_estimee(self, comptable_client, db, sample_users):
         # Exemple validé : supérieur à la tâche à 5, inférieur à celle à 2 →
         # la nouvelle passe à 6, la 5 ne bouge pas, la 2 remonte à 7.

@@ -627,6 +627,19 @@ def _candidats_comparaison(conn, user_id, exclude_id=None):
     return [plus_urgente, moins_urgente]
 
 
+def _parser_reponses(comparaisons):
+    """Extrait les reponses de comparaison valides : {tache_id: reponse}."""
+    reponses = {}
+    for c in comparaisons or []:
+        try:
+            tid = int(c.get('tache_id'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if c.get('reponse') in ('superieur', 'egal', 'inferieur'):
+            reponses[tid] = c['reponse']
+    return reponses
+
+
 def _calculer_priorite_num(conn, user_id, comparaisons, exclude_id=None):
     """Calcule la priorite relative d'une tache a partir des reponses de
     comparaison. Retourne (priorite_num, id_tache_reevaluee_ou_None).
@@ -642,14 +655,7 @@ def _calculer_priorite_num(conn, user_id, comparaisons, exclude_id=None):
       jugement du moment — la nouvelle passe a H+1 et B, sans doute mal
       estimee au depart, est reevaluee a H+2.
     """
-    reponses = {}
-    for c in comparaisons or []:
-        try:
-            tid = int(c.get('tache_id'))
-        except (TypeError, ValueError, AttributeError):
-            continue
-        if c.get('reponse') in ('superieur', 'egal', 'inferieur'):
-            reponses[tid] = c['reponse']
+    reponses = _parser_reponses(comparaisons)
     if not reponses:
         return 0, None
 
@@ -757,6 +763,15 @@ def api_creer_tache():
             preference = data.get('preference') if data.get('preference') in PREFERENCES_VALIDES else 'aucune'
             secable = 1 if str(data.get('secable')) in ('1', 'true', 'on', 'True') else 0
             duree_min_bloc = _parse_int(data.get('duree_min_bloc'), 30, mini=5, maxi=duree_min)
+            # Les comparaisons sont obligatoires des qu'il existe des taches de
+            # reference : sans cela, une soumission avant la fin du chargement
+            # (ou un client d'API) creerait des priorites neutres silencieuses.
+            if (not _parser_reponses(data.get('comparaisons'))
+                    and _candidats_comparaison(conn, user_id)):
+                return jsonify({
+                    'ok': False,
+                    'erreur': 'Situez la priorité de la tâche par rapport aux tâches présentées.'
+                }), 400
             priorite_num, _reevaluee = _calculer_priorite_num(
                 conn, user_id, data.get('comparaisons'))
             conn.execute(
