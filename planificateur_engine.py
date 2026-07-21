@@ -12,8 +12,9 @@ Principe general (heuristique de placement glouton + equilibrage de charge) :
    des horaires de travail du salarie, desquels on retire les evenements fixes
    (rendez-vous, reunions) et les blocs deja realises ou verrouilles.
 2. On traite les taches par ordre d'urgence : echeance la plus proche d'abord,
-   puis priorite, puis duree. Les taches recurrentes sont placees en dernier,
-   « la ou il reste de la place ».
+   puis priorite (numerique relative, plus grand = plus urgent), puis duree
+   croissante (la plus rapide d'abord), puis la plus recente. Les taches
+   recurrentes sont placees en dernier, « la ou il reste de la place ».
 3. Pour chaque tache, on choisit a chaque etape le jour le moins charge de sa
    fenetre (equilibrage), en respectant la preference matin / apres-midi.
 4. Les longues missions secables sont reparties sur plusieurs jours, avec des
@@ -25,8 +26,25 @@ Principe general (heuristique de placement glouton + equilibrage de charge) :
 from datetime import date, timedelta
 import math
 
-# Poids de tri des priorites (plus petit = traite en premier).
-PRIORITE_POIDS = {'haute': 0, 'normale': 1, 'basse': 2}
+# Conversion de l'ancienne priorite texte vers l'echelle numerique relative
+# (plus grand = plus urgent), utilisee quand priorite_num est absent.
+PRIORITE_TEXTE_NUM = {'haute': 1, 'normale': 0, 'basse': -1}
+
+
+def _priorite_valeur(tache):
+    """Priorite numerique d'une tache (plus grand = plus urgent).
+
+    `priorite_num` — l'echelle relative construite par comparaisons a la
+    saisie — prime ; a defaut (anciennes taches), la priorite texte est
+    convertie via PRIORITE_TEXTE_NUM.
+    """
+    num = tache.get('priorite_num')
+    if num is not None:
+        try:
+            return int(num)
+        except (TypeError, ValueError):
+            pass
+    return PRIORITE_TEXTE_NUM.get(tache.get('priorite', 'normale'), 0)
 
 # Seuil (minutes de travail disponibles dans la journee) au-dela duquel la
 # journee est consideree « chargee » et beneficie de micro-pauses rapprochees.
@@ -236,7 +254,9 @@ def niveau_urgence(deadline, jour_ref, statut='a_faire'):
 
 def _cle_tri_tache(tache, horizon_fin):
     """Cle de tri d'une tache : echeance, puis (a echeance egale) les gros blocs
-    contigus d'abord, puis priorite, puis duree.
+    contigus d'abord, puis priorite, puis duree croissante (la plus rapide
+    d'abord), puis la plus recente (une tache ancienne jamais traitee peut
+    attendre).
 
     Une grosse tache NON secable exige un long creneau contigu : c'est la plus
     difficile a caser. Si on la traitait apres de petites taches flexibles du
@@ -255,8 +275,8 @@ def _cle_tri_tache(tache, horizon_fin):
     duree = int(tache.get('duree_min', 0))
     secable = bool(tache.get('secable', True))
     gros_bloc_contigu = 0 if (not secable and duree > CIBLE_PAR_JOUR) else 1
-    priorite = PRIORITE_POIDS.get(tache.get('priorite', 'normale'), 1)
-    return (sans_echeance, deadline, gros_bloc_contigu, priorite, -duree)
+    return (sans_echeance, deadline, gros_bloc_contigu, -_priorite_valeur(tache),
+            duree, -int(tache.get('id') or 0))
 
 
 def _taille_chunk(duree, min_bloc, nb_jours_dispo, secable):
@@ -284,7 +304,8 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     Args:
         taches: liste de dicts, chacun contenant :
             id, titre, duree_min (int), deadline (date|str|None),
-            priorite ('haute'|'normale'|'basse'),
+            priorite_num (int, optionnel : echelle relative, plus grand = plus
+            urgent ; a defaut priorite texte 'haute'|'normale'|'basse'),
             preference ('matin'|'apres_midi'|'aucune'),
             secable (bool), duree_min_bloc (int),
             est_recurrente (bool, optionnel),

@@ -13,6 +13,8 @@ Acces (phase 1) : reserve au profil comptable, pour la phase de test.
 """
 import calendar
 import logging
+import math
+import random
 from datetime import date, timedelta
 from functools import wraps
 
@@ -191,12 +193,12 @@ def _ensure_occurrence(conn, rec, anchor, fenetre_debut, fenetre_fin, today):
     conn.execute(
         '''INSERT INTO planif_taches
            (user_id, type, titre, description, duree_min, deadline, date_min,
-            priorite, preference, secable, duree_min_bloc, statut,
+            priorite, priorite_num, preference, secable, duree_min_bloc, statut,
             recurrence_id, occurrence_jour)
-           VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire', ?, ?)''',
+           VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire', ?, ?)''',
         (rec['user_id'], rec['titre'], rec['description'], rec['duree_min'],
          fenetre_fin.isoformat(), fenetre_debut.isoformat(), rec['priorite'],
-         rec['preference'], rec['secable'], rec['duree_min_bloc'],
+         rec['priorite_num'], rec['preference'], rec['secable'], rec['duree_min_bloc'],
          rec['id'], anchor)
     )
 
@@ -354,6 +356,7 @@ def _replanifier(conn, user_id, maintenant=None):
         taches.append({
             'id': t['id'], 'titre': t['titre'], 'duree_min': restant,
             'deadline': t['deadline'], 'priorite': t['priorite'],
+            'priorite_num': t['priorite_num'],
             'preference': t['preference'], 'secable': bool(t['secable']),
             'duree_min_bloc': t['duree_min_bloc'],
             'est_recurrente': t['recurrence_id'] is not None,
@@ -571,6 +574,154 @@ def _lire_payload():
     return request.form
 
 
+# ── Priorite relative par comparaisons ─────────────────────────────────────
+#
+# L'echelle fixe haute/normale/basse s'ecrase a l'usage (tout finit en
+# « haute »). A la place, une priorite numerique relative — jamais affichee —
+# est construite en situant chaque nouvelle tache par rapport aux taches en
+# cours : la premiere vaut 0, les suivantes sont comparees (superieur / egal /
+# inferieur) a la plus urgente et a la moins urgente d'ici J+3, presentees en
+# aveugle dans un ordre aleatoire pour eviter tout ancrage.
+
+FENETRE_COMPARAISON_JOURS = 3
+
+
+def _priorite_de(row):
+    """Priorite numerique d'une ligne de tache (repli sur l'ancien texte)."""
+    if row['priorite_num'] is not None:
+        return int(row['priorite_num'])
+    return {'haute': 1, 'basse': -1}.get(row['priorite'], 0)
+
+
+def _arrondi(x):
+    """Arrondi a l'entier le plus proche (0,5 vers le haut, negatifs compris)."""
+    return math.floor(x + 0.5)
+
+
+def _candidats_comparaison(conn, user_id, exclude_id=None):
+    """Les taches de reference pour situer une (nouvelle) tache : la plus
+    urgente et la moins urgente d'ici J+3 ; s'il n'y a pas deux taches dans
+    cette fenetre, on elargit a l'ensemble des taches en cours.
+
+    Retourne 0, 1 ou 2 lignes (2 taches distinctes si possible)."""
+    params = [user_id]
+    exclusion = ''
+    if exclude_id:
+        exclusion = ' AND id != ?'
+        params.append(exclude_id)
+    en_cours = conn.execute(
+        f'''SELECT id, titre, deadline, priorite, priorite_num FROM planif_taches
+            WHERE user_id = ? AND type = 'tache' AND statut = 'a_faire'{exclusion}''',
+        params).fetchall()
+    if not en_cours:
+        return []
+    limite = (aujourd_hui() + timedelta(days=FENETRE_COMPARAISON_JOURS)).isoformat()
+    fenetre = [t for t in en_cours if t['deadline'] and t['deadline'] <= limite]
+    if len(fenetre) < 2:
+        fenetre = en_cours
+    plus_urgente = max(fenetre, key=_priorite_de)
+    autres = [t for t in fenetre if t['id'] != plus_urgente['id']]
+    if not autres:
+        return [plus_urgente]
+    moins_urgente = min(autres, key=_priorite_de)
+    return [plus_urgente, moins_urgente]
+
+
+def _parser_reponses(comparaisons):
+    """Extrait les reponses de comparaison valides : {tache_id: reponse}."""
+    reponses = {}
+    for c in comparaisons or []:
+        try:
+            tid = int(c.get('tache_id'))
+        except (TypeError, ValueError, AttributeError):
+            continue
+        if c.get('reponse') in ('superieur', 'egal', 'inferieur'):
+            reponses[tid] = c['reponse']
+    return reponses
+
+
+def _calculer_priorite_num(conn, user_id, comparaisons, exclude_id=None):
+    """Calcule la priorite relative d'une tache a partir des reponses de
+    comparaison. Retourne (priorite_num, id_tache_reevaluee_ou_None).
+
+    Regles :
+    - aucune reference : 0 (premiere tache) ;
+    - une reference P : superieur -> P+1, egal -> P, inferieur -> P-1 ;
+    - deux references H (plus urgente) et B (moins urgente) :
+      inferieur aux deux -> B-2 ; superieur aux deux -> H+2 ;
+      entre les deux -> arrondi de ((H-1) x 1 + (B+1) x 2) / 3 ;
+      egal a l'une -> sa valeur (egal aux deux -> arrondi de (H+B)/2) ;
+      incoherent (superieur a H ET inferieur a B) : on fait confiance au
+      jugement du moment — la nouvelle passe a H+1 et B, sans doute mal
+      estimee au depart, est reevaluee a H+2.
+    """
+    reponses = _parser_reponses(comparaisons)
+    if not reponses:
+        return 0, None
+
+    marqueurs = ','.join('?' * len(reponses))
+    rows = conn.execute(
+        f'''SELECT id, priorite, priorite_num FROM planif_taches
+            WHERE user_id = ? AND id IN ({marqueurs})''',
+        [user_id, *reponses.keys()]).fetchall()
+    if exclude_id:
+        rows = [r for r in rows if r['id'] != exclude_id]
+    if not rows:
+        return 0, None
+
+    if len(rows) == 1:
+        p = _priorite_de(rows[0])
+        rep = reponses[rows[0]['id']]
+        if rep == 'superieur':
+            return p + 1, None
+        if rep == 'inferieur':
+            return p - 1, None
+        return p, None
+
+    rows = sorted(rows, key=_priorite_de, reverse=True)[:2]
+    haute, basse = rows[0], rows[1]
+    h, b = _priorite_de(haute), _priorite_de(basse)
+    rep_h, rep_b = reponses[haute['id']], reponses[basse['id']]
+
+    if rep_h == 'egal' and rep_b == 'egal':
+        return _arrondi((h + b) / 2), None
+    if rep_h == 'egal':
+        return h, None
+    if rep_b == 'egal':
+        return b, None
+    if rep_h == 'superieur' and rep_b == 'superieur':
+        return h + 2, None
+    if rep_h == 'inferieur' and rep_b == 'inferieur':
+        return b - 2, None
+    if rep_h == 'inferieur' and rep_b == 'superieur':
+        # Entre les deux : moyenne ponderee, coefficient 2 cote « superieur ».
+        return _arrondi(((h - 1) * 1 + (b + 1) * 2) / 3), None
+
+    # Incoherent : superieur a la plus urgente ET inferieur a la moins urgente.
+    conn.execute(
+        'UPDATE planif_taches SET priorite_num = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+        (h + 2, basse['id']))
+    return h + 1, basse['id']
+
+
+@planificateur_bp.route('/planificateur/api/priorite/comparaison')
+@planif_required
+def api_priorite_comparaison():
+    """Taches de reference a presenter pour situer une (nouvelle) tache.
+
+    L'ordre est aleatoire et rien n'indique laquelle est la plus urgente :
+    le jugement se fait en aveugle, sans ancrage."""
+    conn = get_db()
+    try:
+        exclude_id = request.args.get('exclude_id', type=int)
+        candidats = _candidats_comparaison(conn, _uid(), exclude_id)
+        candidats = [{'id': t['id'], 'titre': t['titre']} for t in candidats]
+        random.shuffle(candidats)
+        return jsonify({'comparaisons': candidats})
+    finally:
+        conn.close()
+
+
 @planificateur_bp.route('/planificateur/api/tache', methods=['POST'])
 @planif_required
 def api_creer_tache():
@@ -612,13 +763,24 @@ def api_creer_tache():
             preference = data.get('preference') if data.get('preference') in PREFERENCES_VALIDES else 'aucune'
             secable = 1 if str(data.get('secable')) in ('1', 'true', 'on', 'True') else 0
             duree_min_bloc = _parse_int(data.get('duree_min_bloc'), 30, mini=5, maxi=duree_min)
+            # Les comparaisons sont obligatoires des qu'il existe des taches de
+            # reference : sans cela, une soumission avant la fin du chargement
+            # (ou un client d'API) creerait des priorites neutres silencieuses.
+            if (not _parser_reponses(data.get('comparaisons'))
+                    and _candidats_comparaison(conn, user_id)):
+                return jsonify({
+                    'ok': False,
+                    'erreur': 'Situez la priorité de la tâche par rapport aux tâches présentées.'
+                }), 400
+            priorite_num, _reevaluee = _calculer_priorite_num(
+                conn, user_id, data.get('comparaisons'))
             conn.execute(
                 '''INSERT INTO planif_taches
                    (user_id, type, titre, description, duree_min, deadline,
-                    priorite, preference, secable, duree_min_bloc, statut)
-                   VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire')''',
+                    priorite, priorite_num, preference, secable, duree_min_bloc, statut)
+                   VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire')''',
                 (user_id, titre, description, duree_min, deadline, priorite,
-                 preference, secable, duree_min_bloc)
+                 priorite_num, preference, secable, duree_min_bloc)
             )
             conn.commit()
 
@@ -673,13 +835,20 @@ def api_modifier_tache(tache_id):
             preference = data.get('preference') if data.get('preference') in PREFERENCES_VALIDES else tache['preference']
             secable = 1 if str(data.get('secable')) in ('1', 'true', 'on', 'True') else 0
             duree_min_bloc = _parse_int(data.get('duree_min_bloc'), tache['duree_min_bloc'], mini=5, maxi=duree_min)
+            # Reevaluation manuelle : de nouvelles comparaisons recalculent la
+            # priorite relative ; sinon elle est conservee telle quelle.
+            if data.get('comparaisons'):
+                priorite_num, _reevaluee = _calculer_priorite_num(
+                    conn, user_id, data.get('comparaisons'), exclude_id=tache_id)
+            else:
+                priorite_num = tache['priorite_num']
             conn.execute(
                 '''UPDATE planif_taches SET titre = ?, description = ?, duree_min = ?,
-                   deadline = ?, priorite = ?, preference = ?, secable = ?,
+                   deadline = ?, priorite = ?, priorite_num = ?, preference = ?, secable = ?,
                    duree_min_bloc = ?, updated_at = CURRENT_TIMESTAMP
                    WHERE id = ?''',
-                (titre, description, duree_min, deadline, priorite, preference,
-                 secable, duree_min_bloc, tache_id)
+                (titre, description, duree_min, deadline, priorite, priorite_num,
+                 preference, secable, duree_min_bloc, tache_id)
             )
             conn.commit()
 
@@ -802,11 +971,11 @@ def api_terminer_partiel(tache_id):
             conn.execute(
                 '''INSERT INTO planif_taches
                    (user_id, type, titre, description, duree_min, deadline,
-                    priorite, preference, secable, duree_min_bloc, statut)
-                   VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire')''',
+                    priorite, priorite_num, preference, secable, duree_min_bloc, statut)
+                   VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire')''',
                 (user_id, (tache['titre'] + ' (suite)')[:200], tache['description'],
-                 restant, tache['deadline'], tache['priorite'], tache['preference'],
-                 tache['secable'], tache['duree_min_bloc'])
+                 restant, tache['deadline'], tache['priorite'], tache['priorite_num'],
+                 tache['preference'], tache['secable'], tache['duree_min_bloc'])
             )
         conn.commit()
         non_planifie = _replanifier(conn, user_id)
@@ -1011,9 +1180,10 @@ def api_creer_recurrence():
 
         conn.execute(
             '''INSERT INTO planif_recurrences
-               (user_id, titre, description, duree_min, priorite, preference, secable,
-                duree_min_bloc, frequence, jour_semaine, jour_mois, date_debut, date_fin, active)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)''',
+               (user_id, titre, description, duree_min, priorite, priorite_num, preference,
+                secable, duree_min_bloc, frequence, jour_semaine, jour_mois, date_debut,
+                date_fin, active)
+               VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 1)''',
             (user_id, titre, (data.get('description') or '').strip(), duree_min, priorite,
              preference, secable, duree_min_bloc, frequence, jour_semaine, jour_mois,
              date_debut, date_fin)
