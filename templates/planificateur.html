@@ -98,14 +98,6 @@
           </div>
           <div class="planif-row">
             <div class="form-group">
-              <label for="t_priorite">Priorité</label>
-              <select id="t_priorite">
-                <option value="basse">Basse</option>
-                <option value="normale" selected>Normale</option>
-                <option value="haute">Haute</option>
-              </select>
-            </div>
-            <div class="form-group">
               <label for="t_preference">Préférence</label>
               <select id="t_preference">
                 <option value="aucune" selected>Aucune</option>
@@ -113,6 +105,13 @@
                 <option value="apres_midi">Après-midi</option>
               </select>
             </div>
+          </div>
+          {# Espace priorité : jamais saisie sur une échelle — déduite de
+             comparaisons en aveugle avec les tâches en cours (JS chargerComparaisons). #}
+          <div class="form-group" id="blocPriorite"
+               style="background:var(--gray-50);border:1px solid var(--gray-200);border-left:4px solid #3b82f6;border-radius:8px;padding:.75rem 1rem;">
+            <label style="font-weight:700;">🎯 Priorité</label>
+            <div id="prioriteContenu"></div>
           </div>
           <div class="planif-row">
             <div class="form-group" style="flex:0 0 auto;">
@@ -206,14 +205,6 @@
               <input type="number" id="r_heures" min="0" max="23" value="0"> h
               <input type="number" id="r_minutes" min="0" max="59" step="5" value="30"> min
             </div>
-          </div>
-          <div class="form-group">
-            <label for="r_priorite">Priorité</label>
-            <select id="r_priorite">
-              <option value="basse">Basse</option>
-              <option value="normale" selected>Normale</option>
-              <option value="haute">Haute</option>
-            </select>
           </div>
           <div class="form-group">
             <label for="r_preference">Préférence</label>
@@ -637,13 +628,14 @@
   function ouvrirDetail(b){
     document.getElementById('detailTitre').textContent = b.titre;
     const ech = b.deadline ? ('Échéance : '+fmtFR(b.deadline)) : 'Sans échéance';
-    const prio = {basse:'Basse',normale:'Normale',haute:'Haute'}[b.priorite]||b.priorite;
     let corps='';
     corps+='<div class="planif-detail-line">📅 '+JOURS[weekday(b.date)]+' '+fmtFR(b.date)+' · '+b.heure_debut+'–'+b.heure_fin+' ('+dureeTxt(b.duree_min)+')</div>';
     if(b.type==='evenement'){
       corps+='<div class="planif-detail-line">📌 Événement fixe</div>';
     }else{
-      corps+='<div class="planif-detail-line">⏳ '+esc(ech)+' · 🚩 Priorité '+prio+(b.recurrente?' · 🔁 récurrente':'')+'</div>';
+      // La priorité relative est interne (jamais affichée) : le détail ne
+      // montre que l'échéance et le caractère récurrent.
+      corps+='<div class="planif-detail-line">⏳ '+esc(ech)+(b.recurrente?' · 🔁 récurrente':'')+'</div>';
     }
     if(b.description) corps+='<div class="planif-detail-line">📝 '+esc(b.description)+'</div>';
     if(b.statut==='fait') corps+='<div class="planif-detail-line">✅ Marqué comme effectué</div>';
@@ -696,6 +688,61 @@
     }catch(e){ toast(e.message,'err'); }
   }
 
+  // ── Priorité relative : comparaisons par paires ──
+  // La priorité n'est jamais saisie sur une échelle : la tâche est située par
+  // rapport à la plus urgente et la moins urgente des tâches en cours (d'ici
+  // J+3, sinon toutes), présentées en aveugle dans un ordre aléatoire.
+  let comparaisonsAffichees=[];
+  function rendreComparaisons(liste){
+    const conteneur=document.getElementById('prioriteContenu');
+    comparaisonsAffichees=liste||[];
+    if(!comparaisonsAffichees.length){
+      conteneur.innerHTML='<p class="planif-help" style="margin:0;">Première tâche : elle servira de référence pour situer les suivantes (priorité 0).</p>';
+      return;
+    }
+    let html='<p class="planif-help" style="margin:0 0 .5rem;">Par rapport à '
+      +(comparaisonsAffichees.length>1?'chacune de ces tâches':'cette tâche')
+      +', la nouvelle tâche est :</p>';
+    html+=comparaisonsAffichees.map(function(c){
+      const nom='p_cmp_'+c.id;
+      return '<div style="margin:.35rem 0;padding:.45rem .6rem;background:var(--white);border:1px solid var(--gray-200);border-radius:6px;">'
+        +'<div style="font-weight:600;margin-bottom:.3rem;">« '+esc(c.titre)+' »</div>'
+        +'<div style="display:flex;gap:.9rem;flex-wrap:wrap;">'
+        +'<label class="planif-check"><input type="radio" name="'+nom+'" value="inferieur"> Moins urgente</label>'
+        +'<label class="planif-check"><input type="radio" name="'+nom+'" value="egal"> Aussi urgente</label>'
+        +'<label class="planif-check"><input type="radio" name="'+nom+'" value="superieur"> Plus urgente</label>'
+        +'</div></div>';
+    }).join('');
+    if(comparaisonsAffichees.length>1){
+      html+='<p class="planif-help" style="margin:.5rem 0 0;">Les deux tâches présentées sont susceptibles d\'ajustement de priorité selon vos réponses.</p>';
+    }
+    conteneur.innerHTML=html;
+  }
+  async function chargerComparaisons(excludeId){
+    const conteneur=document.getElementById('prioriteContenu');
+    conteneur.innerHTML='<p class="planif-help" style="margin:0;">Chargement…</p>';
+    try{
+      const url='/planificateur/api/priorite/comparaison'+(excludeId?('?exclude_id='+excludeId):'');
+      const r=await fetch(url,{headers:{'X-Requested-With':'fetch'}});
+      const d=await r.json();
+      rendreComparaisons(d.comparaisons||[]);
+    }catch(e){
+      comparaisonsAffichees=[];
+      conteneur.innerHTML='<p class="planif-help" style="margin:0;">Comparaison indisponible (priorité neutre).</p>';
+    }
+  }
+  function lireComparaisons(){
+    // null = réponses incomplètes ; [] = rien à comparer (première tâche, ou
+    // réévaluation non ouverte en édition : la priorité actuelle est gardée).
+    const reponses=[];
+    for(const c of comparaisonsAffichees){
+      const coche=document.querySelector('input[name="p_cmp_'+c.id+'"]:checked');
+      if(!coche) return null;
+      reponses.push({tache_id:c.id, reponse:coche.value});
+    }
+    return reponses;
+  }
+
   // ── Modale ajouter / modifier ──
   let typeCourant='tache';
   function setType(t){
@@ -713,6 +760,7 @@
     document.getElementById('grpMinBloc').style.display='';
     setType('tache');
     if(state.vue!=='mois'){ document.getElementById('e_date').value=state.date; }
+    chargerComparaisons(null);
     ouvrir('modalAjouter');
   }
   function ouvrirEdition(b){
@@ -733,11 +781,18 @@
       document.getElementById('t_heures').value=Math.floor(duree/60);
       document.getElementById('t_minutes').value=duree%60;
       document.getElementById('t_deadline').value=b.deadline||'';
-      document.getElementById('t_priorite').value=b.priorite||'normale';
       document.getElementById('t_preference').value=b.preference||'aucune';
       document.getElementById('t_secable').checked=!!b.secable;
       document.getElementById('t_min_bloc').value=b.duree_min_bloc||30;
       document.getElementById('grpMinBloc').style.display=b.secable?'':'none';
+      // En édition, la priorité actuelle est conservée sauf réévaluation.
+      comparaisonsAffichees=[];
+      document.getElementById('prioriteContenu').innerHTML=
+        '<p class="planif-help" style="margin:0 0 .35rem;">La priorité actuelle est conservée.</p>'
+        +'<button type="button" class="btn btn-secondary" id="btnReevaluer">🔁 Réévaluer la priorité</button>';
+      document.getElementById('btnReevaluer').addEventListener('click', function(){
+        chargerComparaisons(b.tache_id);
+      });
     }
     ouvrir('modalAjouter');
   }
@@ -755,12 +810,14 @@
     }else{
       const duree=(parseInt(document.getElementById('t_heures').value,10)||0)*60+(parseInt(document.getElementById('t_minutes').value,10)||0);
       if(duree<5){ toast('La durée doit être d\'au moins 5 minutes','err'); return; }
+      const comparaisons=lireComparaisons();
+      if(comparaisons===null){ toast('Merci de situer la priorité par rapport à chaque tâche présentée','err'); return; }
       payload={ type:'tache', titre, description:document.getElementById('t_description').value,
         duree_min:duree, deadline:document.getElementById('t_deadline').value,
-        priorite:document.getElementById('t_priorite').value,
         preference:document.getElementById('t_preference').value,
         secable:document.getElementById('t_secable').checked?1:0,
         duree_min_bloc:parseInt(document.getElementById('t_min_bloc').value,10)||30 };
+      if(comparaisons.length) payload.comparaisons=comparaisons;
     }
     url = id ? ('/planificateur/api/tache/'+id) : '{{ url_for("planificateur_bp.api_creer_tache") }}';
     try{
@@ -799,7 +856,7 @@
     if(duree<5){ toast('La durée doit être d\'au moins 5 minutes','err'); return; }
     const payload={ titre:document.getElementById('r_titre').value.trim(),
       frequence:document.getElementById('r_frequence').value, duree_min:duree,
-      priorite:document.getElementById('r_priorite').value, preference:document.getElementById('r_preference').value,
+      preference:document.getElementById('r_preference').value,
       jour_semaine:document.getElementById('r_jour_sem').value, jour_mois:document.getElementById('r_jour_mois').value,
       date_debut:document.getElementById('r_debut').value, date_fin:document.getElementById('r_fin').value };
     if(!payload.titre){ toast('Le titre est obligatoire','err'); return; }
@@ -859,7 +916,7 @@
   // sans ce panneau, elle serait invisible et impossible à corriger/supprimer.
   function npToBloc(t){
     return { tache_id:t.id, titre:t.titre, description:t.description||'', type:'tache',
-      deadline:t.deadline||'', priorite:t.priorite||'normale', preference:t.preference||'aucune',
+      deadline:t.deadline||'', preference:t.preference||'aucune',
       secable:!!t.secable, duree_min_bloc:t.duree_min_bloc||30, tache_duree_min:t.duree_min };
   }
   async function actionNonPlacee(act, t){
