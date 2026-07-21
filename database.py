@@ -1638,6 +1638,7 @@ def init_db():
             description TEXT DEFAULT '',
             duree_min INTEGER DEFAULT 30,
             priorite TEXT DEFAULT 'normale',
+            priorite_num INTEGER,
             preference TEXT DEFAULT 'aucune',
             secable INTEGER DEFAULT 0,
             duree_min_bloc INTEGER DEFAULT 30,
@@ -1665,6 +1666,7 @@ def init_db():
             deadline TEXT,
             date_min TEXT,
             priorite TEXT DEFAULT 'normale',
+            priorite_num INTEGER,
             preference TEXT DEFAULT 'aucune',
             secable INTEGER DEFAULT 1,
             duree_min_bloc INTEGER DEFAULT 30,
@@ -1890,6 +1892,14 @@ def init_db():
         cursor.execute("SELECT pause_remuneree FROM heures_reelles LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE heures_reelles ADD COLUMN pause_remuneree INTEGER DEFAULT 0")
+
+    # Migration 0060 : priorité numérique relative du planificateur (par
+    # comparaisons). NULL sur l'existant : le moteur retombe sur le texte.
+    for _table in ('planif_taches', 'planif_recurrences'):
+        try:
+            cursor.execute(f"SELECT priorite_num FROM {_table} LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(f"ALTER TABLE {_table} ADD COLUMN priorite_num INTEGER")
 
     # Migration : ajouter temps_hebdo si n'existe pas dans contrats
     try:
