@@ -1591,3 +1591,60 @@ def test_retrait_expose_uniquement_sur_le_type_courant(app, db, admin_client, sa
         f'/api/budget-previsionnel/donnees?type_budget=initial&annee={annee}&secteur_id={secteur_id}'
     ).get_json()
     assert not any(r['compte_num'] == '756000' for r in data_init['rows'])
+
+
+def test_paie_simulation_nouvelle_anciennete_et_competences(app, db, admin_client):
+    """Les colonnes « Nv anc. » et « Nv comp. » prennent le pas sur les valeurs
+    actuelles, comme la nouvelle pesée — sans modifier la fiche du salarié."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 100, 'nouvelle_pesee': '',
+                                       'anciennete': 3, 'nouvelle_anciennete': 10,
+                                       'competence': 5, 'nouvelle_competence': 20}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    data = r.get_json()
+    # 23000 + (100 + 10 + 20) × 55 = 30150 € (annuel, temps plein)
+    assert abs(data['total'] - 30150.0) < 0.01
+    ligne = next(l for l in data['computed']['lignes'] if l['id'] == uid)
+    assert ligne['anciennete'] == 10
+    assert ligne['competence'] == 20
+    # La fiche du salarié garde les valeurs ACTUELLES (les « Nv » sont pure simulation).
+    with app.app_context():
+        u = db.execute("SELECT pesee, competence FROM users WHERE id=?", (uid,)).fetchone()
+    assert u['pesee'] == 100
+    assert u['competence'] == 5
+
+
+def test_paie_simulation_nouvelle_valeur_vide_sans_effet(app, db, admin_client):
+    """Champ « nouvelle » laissé vide : la valeur actuelle reste utilisée."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 100, 'nouvelle_pesee': '',
+                                       'anciennete': 3, 'nouvelle_anciennete': '',
+                                       'competence': 5, 'nouvelle_competence': ''}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    # 23000 + (100 + 3 + 5) × 55 = 28940 €
+    assert abs(r.get_json()['total'] - 28940.0) < 0.01
+
+
+def test_budget_previsionnel_simulateur_paie_colonnes_nouvelles(admin_client):
+    """Le tableau du simulateur expose les colonnes abrégées et les « nouvelles »
+    valeurs pour l'ancienneté et les compétences."""
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert 'h.hebdo' in html
+    assert 'Nv pesée' in html
+    assert 'Nv anc.' in html
+    assert 'Nv comp.' in html
+    assert 'nouvelle_anciennete' in html
+    assert 'nouvelle_competence' in html
