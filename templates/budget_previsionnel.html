@@ -1981,7 +1981,9 @@ function defaultPaieState(ctx){
             pesee: e.pesee != null ? e.pesee : '',
             nouvelle_pesee: '',
             anciennete: e.anciennete != null ? e.anciennete : 0,
+            nouvelle_anciennete: '',
             competence: e.competence != null ? e.competence : '',
+            nouvelle_competence: '',
             maintien: e.maintien != null ? e.maintien : 0,
             temps_hebdo: e.temps_hebdo != null ? e.temps_hebdo : ''
         };
@@ -2029,7 +2031,11 @@ function computePaieJS(st, ctx, typeBudget){
         var ov = st.employes[e.id] || {};
         var pAct = ovNum(ov, 'pesee', e.pesee);
         var pEff = (ov.nouvelle_pesee !== '' && ov.nouvelle_pesee != null) ? psNum(ov.nouvelle_pesee) : pAct;
-        var anc = ovNum(ov, 'anciennete', e.anciennete), comp = ovNum(ov, 'competence', e.competence);
+        // Ancienneté / compétences : la « nouvelle » valeur prend le pas, comme la pesée.
+        var anc = (ov.nouvelle_anciennete !== '' && ov.nouvelle_anciennete != null)
+            ? psNum(ov.nouvelle_anciennete) : ovNum(ov, 'anciennete', e.anciennete);
+        var comp = (ov.nouvelle_competence !== '' && ov.nouvelle_competence != null)
+            ? psNum(ov.nouvelle_competence) : ovNum(ov, 'competence', e.competence);
         var maint = ovNum(ov, 'maintien', e.maintien);
         var ratio = ratioTemps(ovNum(ov, 'temps_hebdo', e.temps_hebdo));
         var mvals = {}, tot = 0;
@@ -2069,7 +2075,7 @@ function renderPaieSimulator(){
         '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
         '<div class="ps-field"><label>Temps plein (h/sem.)</label>' + paieInput('data-paie-top="temps_plein"', st.temps_plein, '0.5') + '</div>' +
         '</div>';
-    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12, au prorata du temps de travail (temps hebdo / temps plein). Colonnes <span class="bp-ps-calc">surlignées</span> = calculées.';
+    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12, au prorata du temps de travail (h.hebdo / temps plein). Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
     if (actualise){
         html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
@@ -2082,7 +2088,15 @@ function renderPaieSimulator(){
         html += '<p class="ps-legend">Aucun salarié actif en CDI/CDD rattaché à ce secteur sur l\'année.</p>';
     } else {
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Salarié</th><th>Type</th><th>Temps hebdo</th><th>Pesée actuelle</th><th>Nouvelle pesée</th><th>Ancienneté</th><th>Compétence</th><th>Maintien €/mois</th>' +
+            '<th>Salarié</th><th>Type</th>' +
+            '<th title="Temps hebdomadaire (h/semaine)">h.hebdo</th>' +
+            '<th title="Pesée actuelle (fiche salarié)">Pesée</th>' +
+            '<th title="Nouvelle pesée simulée — prend le pas sur l\'actuelle, sans modifier la fiche">Nv pesée</th>' +
+            '<th title="Points d\'ancienneté actuels">Anc.</th>' +
+            '<th title="Nouvelle ancienneté simulée — prend le pas sur l\'actuelle, sans modifier la fiche">Nv anc.</th>' +
+            '<th title="Points de compétences actuels (fiche salarié)">Comp.</th>' +
+            '<th title="Nouvelles compétences simulées — prennent le pas sur les actuelles, sans modifier la fiche">Nv comp.</th>' +
+            '<th title="Maintien de salaire (€/mois)">Maint. €</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
         (ctx.employes || []).forEach(function(e){
             var ov = st.employes[e.id] || {};
@@ -2092,7 +2106,9 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="pesee"', ov.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_pesee"', ov.nouvelle_pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="anciennete"', ov.anciennete, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_anciennete"', ov.nouvelle_anciennete, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '0.01') + '</td>' +
+                '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_competence"', ov.nouvelle_competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="maintien"', ov.maintien, '0.01') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-' + m + '"></td>'; }).join('') +
                 '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-tot"></td></tr>';
@@ -2106,7 +2122,14 @@ function renderPaieSimulator(){
         '<button class="btn btn-sm btn-secondary" type="button" onclick="paieAddAjout(\'cdd\')">+ CDD</button></div>';
     if ((st.ajouts || []).length){
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
-            '<th>Type</th><th>Temps hebdo</th><th>Pesée</th><th>Ancienneté</th><th>Maintien €/mois</th><th>Mois début / embauche</th><th>Mois fin (CDD)</th>' +
+            '<th>Type</th>' +
+            '<th title="Temps hebdomadaire (h/semaine)">h.hebdo</th>' +
+            '<th title="Pesée">Pesée</th>' +
+            '<th title="Points d\'ancienneté">Anc.</th>' +
+            '<th title="Points de compétences">Comp.</th>' +
+            '<th title="Maintien de salaire (€/mois)">Maint. €</th>' +
+            '<th title="Mois de début (CDD) ou d\'embauche (CDI)">Début</th>' +
+            '<th title="Mois de fin (CDD)">Fin</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th><th></th></tr></thead><tbody>';
         st.ajouts.forEach(function(a, i){
             var isCdd = (a.type === 'cdd');
@@ -2114,6 +2137,7 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="temps_hebdo"', a.temps_hebdo, '0.5') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="pesee"', a.pesee, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="anciennete"', a.anciennete, '1') + '</td>' +
+                '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="competence"', a.competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="maintien"', a.maintien, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="' + (isCdd ? 'mois_debut' : 'mois_embauche') + '"', isCdd ? a.mois_debut : a.mois_embauche, '1') + '</td>' +
                 '<td>' + (isCdd ? paieInput('data-paie-aj="' + i + '" data-paie-key="mois_fin"', a.mois_fin, '1') : '—') + '</td>' +

@@ -2543,8 +2543,14 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         pesee_act = override_num(ov, 'pesee', e['pesee'])
         nouv = ov.get('nouvelle_pesee')
         pesee_eff = _ps_num(nouv) if nouv not in (None, '') else pesee_act
-        anciennete = override_num(ov, 'anciennete', e['anciennete'])
-        competence = override_num(ov, 'competence', e['competence'])
+        # Ancienneté et compétences : même mécanique « nouvelle valeur » que la
+        # pesée — la valeur simulée prend le pas sans toucher à la fiche.
+        anciennete_act = override_num(ov, 'anciennete', e['anciennete'])
+        nouv_anc = ov.get('nouvelle_anciennete')
+        anciennete = _ps_num(nouv_anc) if nouv_anc not in (None, '') else anciennete_act
+        competence_act = override_num(ov, 'competence', e['competence'])
+        nouv_comp = ov.get('nouvelle_competence')
+        competence = _ps_num(nouv_comp) if nouv_comp not in (None, '') else competence_act
         maintien = override_num(ov, 'maintien', e.get('maintien'))
         ratio = ratio_temps(override_num(ov, 'temps_hebdo', e.get('temps_hebdo')))
         mois_vals, total_e = {}, 0.0
