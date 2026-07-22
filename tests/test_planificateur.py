@@ -277,11 +277,12 @@ def test_engine_repartit_matin_et_apres_midi():
 
 
 def test_engine_utilise_apres_midi_meme_etale_sur_plusieurs_jours():
-    """Des taches etalees a raison d'une par jour (echeances a quelques jours) ne
-    doivent pas atterrir toutes le matin : l'equilibrage matin/apres-midi est
-    global a l'horizon, pas seulement interne a une journee."""
+    """Des taches etalees sur plusieurs jours ne doivent pas atterrir toutes le
+    matin : l'equilibrage matin/apres-midi est global a l'horizon, pas
+    seulement interne a une journee. (Depuis le tri par priorite pure, les
+    echeances ne forcent plus « une tache par jour » : on verifie l'etalement
+    ET le respect des echeances.)"""
     lundi = _lundi_prochain()
-    # 4 taches d'1h, echeances a 1..4 jours -> le moteur les etale (1 par jour).
     taches = [{'id': i, 'titre': f'T{i}', 'duree_min': 60,
                'deadline': (lundi + timedelta(days=i)).isoformat(),
                'priorite': 'normale', 'preference': 'aucune', 'secable': False,
@@ -291,7 +292,11 @@ def test_engine_utilise_apres_midi_meme_etale_sur_plusieurs_jours():
     par_jour = {}
     for b in res['blocs']:
         par_jour.setdefault(b['date'], []).append(b)
-    assert len(par_jour) == 4, "les taches doivent s'etaler sur plusieurs jours"
+    assert len(par_jour) >= 3, "les taches doivent s'etaler sur plusieurs jours"
+    # Chaque tache reste dans les delais.
+    deadlines = {t['id']: t['deadline'] for t in taches}
+    for b in res['blocs']:
+        assert b['date'] <= deadlines[b['tache_id']]
     heures = [moteur._to_min(b['heure_debut']) for b in res['blocs']]
     assert any(h < 720 for h in heures), "au moins une tache le matin"
     assert any(h >= 720 for h in heures), \
@@ -903,3 +908,100 @@ def test_menu_lien_visible_comptable(comptable_client):
 def test_menu_lien_visible_salarie(auth_client):
     html = auth_client.get('/dashboard').get_data(as_text=True)
     assert '/planificateur' in html
+
+
+def test_engine_priorite_prime_sur_une_echeance_lointaine():
+    """Une tache plus prioritaire SANS echeance passe avant une tache moins
+    prioritaire dont l'echeance est lointaine (il reste le temps de la faire)."""
+    lundi = _lundi_prochain()
+    taches = [
+        {'id': 1, 'titre': 'Echeance J+8', 'duree_min': 60,
+         'deadline': (lundi + timedelta(days=8)).isoformat(), 'priorite_num': 0,
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30},
+        {'id': 2, 'titre': 'Prioritaire sans echeance', 'duree_min': 60,
+         'deadline': None, 'priorite_num': 1,
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30},
+    ]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=8))
+
+    premiers = {}
+    for b in res['blocs']:
+        cle = (b['date'], b['heure_debut'])
+        if b['tache_id'] not in premiers or cle < premiers[b['tache_id']]:
+            premiers[b['tache_id']] = cle
+    assert premiers[2] < premiers[1], "la tache prioritaire doit etre placee avant"
+    # Et l'echeance de la moins prioritaire reste respectee.
+    deadline_1 = (lundi + timedelta(days=8)).isoformat()
+    assert all(b['date'] <= deadline_1 for b in res['blocs'] if b['tache_id'] == 1)
+
+
+def test_engine_echeance_rehausse_une_tache_hors_delai():
+    """L'echeance sert d'ajustement : une tache moins prioritaire qui sortirait
+    de son delai est rehaussee au-dessus de la moins urgente planifiee d'ici
+    son echeance, puis replanifiee — et tient alors son echeance."""
+    lundi = _lundi_prochain()
+    # Horizon de 2 jours (450 min/jour, micro-pauses comprises). Le remplissage
+    # prioritaire (720 min) sature lundi : sans rehaussement, la tache
+    # d'echeance lundi partirait a mardi, hors delai.
+    taches = [
+        {'id': 1, 'titre': 'Remplissage prioritaire', 'duree_min': 720,
+         'deadline': None, 'priorite_num': 5,
+         'preference': 'aucune', 'secable': True, 'duree_min_bloc': 30},
+        {'id': 2, 'titre': 'Echeance lundi', 'duree_min': 60,
+         'deadline': lundi.isoformat(), 'priorite_num': 0,
+         'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30},
+    ]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=1))
+
+    blocs_2 = [b for b in res['blocs'] if b['tache_id'] == 2]
+    assert blocs_2, "la tache a echeance doit etre placee"
+    assert all(b['date'] == lundi.isoformat() for b in blocs_2), \
+        "le rehaussement doit la ramener dans sa fenetre d'echeance"
+    # Tout le reste tient aussi sur les deux jours.
+    assert res['non_planifie'] == []
+    # Le rehaussement est ephemere : les priorites stockees n'ont pas bouge.
+    assert taches[0]['priorite_num'] == 5
+    assert taches[1]['priorite_num'] == 0
+
+
+def test_engine_surcapacite_reelle_reste_signalee():
+    """Sans tache a deplacer dans la fenetre, le rehaussement n'insiste pas :
+    la tache impossible reste signalee non planifiable (pas de boucle)."""
+    lundi = _lundi_prochain()
+    taches = [{'id': 1, 'titre': 'Impossible', 'duree_min': 600,
+               'deadline': lundi.isoformat(), 'priorite_num': 0,
+               'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=1))
+    assert res['blocs'] == []
+    assert len(res['non_planifie']) == 1
+    assert res['non_planifie'][0]['tache_id'] == 1
+
+
+def test_engine_rehaussements_multiples_toutes_echeances_tenues():
+    """Plusieurs taches en retard sur la MEME echeance : chacune peut devoir
+    etre rehaussee plusieurs fois (elle depasse d'abord ses semblables avant
+    ses vrais bloqueurs). Toutes les echeances tenables doivent etre tenues
+    (revue Codex : la borne de passes ne doit pas s'epuiser avant)."""
+    lundi = _lundi_prochain()
+    taches = [
+        # 6 taches tres prioritaires sans echeance : elles saturent lundi en
+        # partie et peuvent glisser a mardi sans dommage.
+        *[{'id': 10 + i, 'titre': f'Prioritaire {i}', 'duree_min': 60,
+           'deadline': None, 'priorite_num': 5,
+           'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}
+          for i in range(1, 7)],
+        # 4 taches modestes a echeance lundi : elles doivent toutes y tenir.
+        *[{'id': i, 'titre': f'Echeance lundi {i}', 'duree_min': 60,
+           'deadline': lundi.isoformat(), 'priorite_num': 0,
+           'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}
+          for i in range(1, 5)],
+    ]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=1))
+
+    assert res['non_planifie'] == []
+    for b in res['blocs']:
+        if b['tache_id'] <= 4:
+            assert b['date'] == lundi.isoformat(), \
+                f"echeance manquee pour la tache {b['tache_id']} : {b['date']}"
+    # Les priorites stockees n'ont pas bouge (rehaussement ephemere).
+    assert all(t['priorite_num'] in (0, 5) for t in taches)

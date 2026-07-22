@@ -460,7 +460,10 @@ def _taches_non_placees(conn, user_id):
                  SELECT 1 FROM planif_blocs b
                  WHERE b.tache_id = t.id AND b.date >= ?
              )
-           ORDER BY t.deadline IS NULL, t.deadline''',
+           ORDER BY COALESCE(t.priorite_num,
+                             CASE t.priorite WHEN 'haute' THEN 1
+                                             WHEN 'basse' THEN -1 ELSE 0 END) DESC,
+                    t.duree_min, t.id DESC''',
         (user_id, today)
     ).fetchall()
     return [dict(r) for r in rows]

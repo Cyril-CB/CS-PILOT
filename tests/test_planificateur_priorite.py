@@ -217,8 +217,7 @@ class TestMoteurPriorite:
             'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}
 
     def _ordre(self, taches):
-        horizon = date(2025, 6, 20)
-        return [t['id'] for t in sorted(taches, key=lambda t: moteur._cle_tri_tache(t, horizon))]
+        return [t['id'] for t in sorted(taches, key=moteur._cle_tri_tache)]
 
     def test_priorite_numerique_avant_duree(self):
         t1 = dict(self.BASE, id=1, titre='A', priorite_num=5, duree_min=120)
