@@ -1005,3 +1005,14 @@ def test_engine_rehaussements_multiples_toutes_echeances_tenues():
                 f"echeance manquee pour la tache {b['tache_id']} : {b['date']}"
     # Les priorites stockees n'ont pas bouge (rehaussement ephemere).
     assert all(t['priorite_num'] in (0, 5) for t in taches)
+
+
+def test_page_planificateur_bouton_rendez_vous(comptable_client):
+    """Le bouton dédié « Rendez-vous » ouvre la modale directement sur
+    l'onglet du même nom (créneau verrouillé automatiquement à la création,
+    modifiable au clic ou à la souris comme les autres blocs)."""
+    html = comptable_client.get('/planificateur').get_data(as_text=True)
+    assert 'id="btnRdv"' in html
+    assert 'ouvrirAjoutRdv' in html
+    assert 'Ajouter un rendez-vous' in html
+    assert '📌 Rendez-vous' in html

@@ -22,6 +22,7 @@
     </div>
     <div class="planif-actions">
       <button class="btn btn-primary" id="btnAjouter">➕ Ajouter</button>
+      <button class="btn btn-primary" id="btnRdv">📌 Rendez-vous</button>
       <button class="btn btn-secondary" id="btnReplan">↻ Replanifier</button>
       <button class="btn btn-secondary" id="btnRecur">🔁 Récurrences</button>
     </div>
@@ -71,7 +72,7 @@
     <div style="padding:0 1.5rem 1.5rem;">
       <div class="planif-tabs" id="ajTabs">
         <button type="button" class="active" data-type="tache">📝 Tâche</button>
-        <button type="button" data-type="evenement">📌 Événement fixe</button>
+        <button type="button" data-type="evenement">📌 Rendez-vous</button>
       </div>
 
       <form id="formTache">
@@ -631,7 +632,7 @@
     let corps='';
     corps+='<div class="planif-detail-line">📅 '+JOURS[weekday(b.date)]+' '+fmtFR(b.date)+' · '+b.heure_debut+'–'+b.heure_fin+' ('+dureeTxt(b.duree_min)+')</div>';
     if(b.type==='evenement'){
-      corps+='<div class="planif-detail-line">📌 Événement fixe</div>';
+      corps+='<div class="planif-detail-line">📌 Rendez-vous — créneau verrouillé à cet horaire</div>';
     }else{
       // La priorité relative est interne (jamais affichée) : le détail ne
       // montre que l'échéance et le caractère récurrent.
@@ -659,7 +660,7 @@
       act+='<button class="btn btn-secondary" data-act="bloc_suppr">🗑 Supprimer ce créneau</button>';
       act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer la tâche</button>';
     }else{
-      act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer l\'événement</button>';
+      act+='<button class="btn btn-danger" data-act="tache_suppr">🗑 Supprimer le rendez-vous</button>';
     }
     act+='</div>';
     document.getElementById('detailCorps').innerHTML = corps+act;
@@ -768,6 +769,16 @@
     if(state.vue!=='mois'){ document.getElementById('e_date').value=state.date; }
     chargerComparaisons(null);
     ouvrir('modalAjouter');
+  }
+  // Accès direct « Rendez-vous » : même modale, ouverte sur l'onglet dédié.
+  // Le créneau (date + heures) sera verrouillé automatiquement à la création.
+  function ouvrirAjoutRdv(){
+    ouvrirAjout();
+    setType('evenement');
+    document.getElementById('modalAjouterTitre').textContent='Ajouter un rendez-vous';
+    if(!document.getElementById('e_date').value){
+      document.getElementById('e_date').value=state.date||isoToday();
+    }
   }
   function ouvrirEdition(b){
     document.getElementById('formTache').reset();
@@ -905,6 +916,7 @@
   document.getElementById('navNext').addEventListener('click', ()=>naviguer(1));
   document.getElementById('navToday').addEventListener('click', ()=>{ state.date=isoToday(); charger(); });
   document.getElementById('btnAjouter').addEventListener('click', ouvrirAjout);
+  document.getElementById('btnRdv').addEventListener('click', ouvrirAjoutRdv);
   document.getElementById('btnReplan').addEventListener('click', async ()=>{
     try{ const res=await apiPost('{{ url_for("planificateur_bp.api_replanifier") }}',{}); toast('✓ Planning recalculé','ok'); montrerNonPlanifie(res.non_planifie); await charger(); }
     catch(e){ toast(e.message,'err'); }
