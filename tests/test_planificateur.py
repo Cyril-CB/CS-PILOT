@@ -1016,3 +1016,52 @@ def test_page_planificateur_bouton_rendez_vous(comptable_client):
     assert 'ouvrirAjoutRdv' in html
     assert 'Ajouter un rendez-vous' in html
     assert '📌 Rendez-vous' in html
+
+
+def test_taches_non_placees_pendant_les_conges(comptable_client, db, sample_users):
+    """Aucun bloc de tache sur les jours d'absence (conges enregistres) : ces
+    jours n'offrent aucun creneau, comme un jour ferie."""
+    uid = sample_users['comptable_id']
+    debut_abs = date.today() + timedelta(days=1)
+    fin_abs = date.today() + timedelta(days=3)
+    db.execute(
+        "INSERT INTO absences (user_id, motif, date_debut, date_fin, jours_ouvres, saisi_par) "
+        "VALUES (?, 'Congé payé', ?, ?, 3, ?)",
+        (uid, debut_abs.isoformat(), fin_abs.isoformat(), uid))
+    db.commit()
+
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Pendant les congés ?', 'duree_min': 240,
+        'secable': 1, 'duree_min_bloc': 30,
+    })
+
+    horizon_fin = (date.today() + timedelta(days=13)).isoformat()
+    r = comptable_client.get(
+        f"/planificateur/api/blocs?debut={date.today().isoformat()}&fin={horizon_fin}"
+    ).get_json()
+    jours_absents = {(debut_abs + timedelta(days=i)).isoformat() for i in range(3)}
+    for b in r['blocs']:
+        assert b['date'] not in jours_absents, f"bloc place pendant les conges : {b}"
+    # La grille n'affiche pas non plus de plage de travail ces jours-la.
+    assert not (set(r['horaires']) & jours_absents)
+
+
+def test_taches_non_placees_sur_une_recup_journee(comptable_client, db, sample_users):
+    """Une journee de recuperation complete est un jour off pour le planificateur."""
+    uid = sample_users['comptable_id']
+    j = date.today() + timedelta(days=1)
+    while j.weekday() >= 5:
+        j += timedelta(days=1)
+    db.execute(
+        "INSERT INTO heures_reelles (user_id, date, type_saisie, declaration_conforme) "
+        "VALUES (?, ?, 'recup_journee', 0)", (uid, j.isoformat()))
+    db.commit()
+
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Sur la récup ?', 'duree_min': 120,
+        'secable': 1, 'duree_min_bloc': 30,
+    })
+    r = comptable_client.get(
+        f"/planificateur/api/blocs?debut={j.isoformat()}&fin={j.isoformat()}"
+    ).get_json()
+    assert [b for b in r['blocs'] if b['type'] == 'tache'] == []

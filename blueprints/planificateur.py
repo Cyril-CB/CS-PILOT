@@ -151,6 +151,38 @@ def _jours_feries_set(conn, debut, fin):
         return set()
 
 
+def _jours_absences_set(conn, user_id, debut, fin):
+    """Jours d'absence du salarie ('YYYY-MM-DD') sur l'intervalle : conges et
+    autres absences enregistrees, plus les journees de recuperation completes.
+    Le planificateur n'y place aucune tache (meme effet qu'un jour ferie)."""
+    jours = set()
+    try:
+        rows = conn.execute(
+            '''SELECT date_debut, date_fin FROM absences
+               WHERE user_id = ? AND date_debut <= ? AND date_fin >= ?''',
+            (user_id, fin.isoformat(), debut.isoformat())
+        ).fetchall()
+        for r in rows:
+            try:
+                d = max(date.fromisoformat(r['date_debut']), debut)
+                d_fin = min(date.fromisoformat(r['date_fin']), fin)
+            except (TypeError, ValueError):
+                continue
+            while d <= d_fin:
+                jours.add(d.isoformat())
+                d += timedelta(days=1)
+        recups = conn.execute(
+            '''SELECT date FROM heures_reelles
+               WHERE user_id = ? AND type_saisie = 'recup_journee'
+                 AND date >= ? AND date <= ?''',
+            (user_id, debut.isoformat(), fin.isoformat())
+        ).fetchall()
+        jours.update(r['date'] for r in recups)
+    except Exception:
+        pass
+    return jours
+
+
 # ── Generation des occurrences de taches recurrentes ───────────────────────
 
 def _dernier_jour_mois(annee, mois):
@@ -273,6 +305,11 @@ def _replanifier(conn, user_id, maintenant=None):
     # Horaires de travail repris du planning theorique du salarie.
     horaires = _horaires_par_date(conn, user_id, today, fin)
     feries = _jours_feries_set(conn, today, fin)
+    # Conges et autres absences (et recup journee) : aucun creneau de travail
+    # ces jours-la — le moteur n'y place rien, comme un jour ferie.
+    absents = _jours_absences_set(conn, user_id, today, fin)
+    if absents:
+        horaires = {d: h for d, h in horaires.items() if d not in absents}
 
     # Nettoyer les occurrences recurrentes passees jamais realisees (une reunion
     # quotidienne manquee hier n'est pas reportee a aujourd'hui).
@@ -554,9 +591,15 @@ def api_blocs():
         fin = _valide_date(request.args.get('fin')) or debut
         blocs = _serialiser_blocs(conn, user_id, debut, fin)
         # Horaires de travail (par date) pour afficher les plages travaillees.
+        # Les jours d'absence (conges, recup) n'affichent aucune plage.
         horaires_min = _horaires_par_date(
             conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
         )
+        absents = _jours_absences_set(
+            conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
+        )
+        if absents:
+            horaires_min = {k: v for k, v in horaires_min.items() if k not in absents}
         horaires = {k: [[d, f] for (d, f) in v] for k, v in horaires_min.items()}
         # Taches non placees : renvoyees a chaque rafraichissement pour que le
         # bandeau reste a jour apres une action (creation, suppression...) sans
