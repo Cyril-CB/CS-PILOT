@@ -11,10 +11,14 @@ Principe general (heuristique de placement glouton + equilibrage de charge) :
 1. On reconstruit, pour chaque jour de l'horizon, les creneaux libres a partir
    des horaires de travail du salarie, desquels on retire les evenements fixes
    (rendez-vous, reunions) et les blocs deja realises ou verrouilles.
-2. On traite les taches par ordre d'urgence : echeance la plus proche d'abord,
-   puis priorite (numerique relative, plus grand = plus urgent), puis duree
-   croissante (la plus rapide d'abord), puis la plus recente. Les taches
-   recurrentes sont placees en dernier, « la ou il reste de la place ».
+2. On traite les taches par priorite (numerique relative, plus grand = plus
+   urgent), puis duree croissante (la plus rapide d'abord), puis la plus
+   recente. L'echeance ne participe pas au tri : elle sert d'« ajustement
+   intelligent » — si une tache se retrouve hors delai, sa priorite est
+   rehaussee (le temps du calcul seulement) juste au-dessus de la moins
+   urgente des taches planifiees d'ici son echeance, et on replanifie.
+   Les taches recurrentes sont placees en dernier, « la ou il reste de la
+   place ».
 3. Pour chaque tache, on choisit a chaque etape le jour le moins charge de sa
    fenetre (equilibrage), en respectant la preference matin / apres-midi.
 4. Les longues missions secables sont reparties sur plusieurs jours, avec des
@@ -252,31 +256,35 @@ def niveau_urgence(deadline, jour_ref, statut='a_faire'):
     return 'a_venir'
 
 
-def _cle_tri_tache(tache, horizon_fin):
-    """Cle de tri d'une tache : echeance, puis (a echeance egale) les gros blocs
-    contigus d'abord, puis priorite, puis duree croissante (la plus rapide
-    d'abord), puis la plus recente (une tache ancienne jamais traitee peut
-    attendre).
+def _deadline_date(tache):
+    """Echeance d'une tache sous forme de date, ou None (absente / invalide)."""
+    deadline = tache.get('deadline')
+    if isinstance(deadline, str):
+        try:
+            return date.fromisoformat(deadline)
+        except ValueError:
+            return None
+    return deadline
+
+
+def _cle_tri_tache(tache, prios_effectives=None):
+    """Cle de tri d'une tache : priorite (plus grand = plus urgent), puis — a
+    priorite egale — les gros blocs contigus d'abord, puis duree croissante (la
+    plus rapide d'abord), puis la plus recente (une tache ancienne jamais
+    traitee peut attendre). L'echeance ne participe pas au tri : elle est
+    traitee par le rehaussement des taches hors delai (voir planifier).
 
     Une grosse tache NON secable exige un long creneau contigu : c'est la plus
     difficile a caser. Si on la traitait apres de petites taches flexibles du
     meme jour, celles-ci fragmenteraient les demi-journees et la rendraient
-    improuvable (elle devrait alors etre reportee). On la place donc en premier,
-    quitte a bousculer un peu l'ordre de priorite entre taches de meme echeance.
+    improuvable (elle devrait alors etre reportee). A priorite egale, on la
+    place donc en premier.
     """
-    deadline = tache.get('deadline') or horizon_fin
-    if isinstance(deadline, str):
-        try:
-            deadline = date.fromisoformat(deadline)
-        except ValueError:
-            deadline = horizon_fin
-    # Les taches sans echeance passent apres celles qui en ont une.
-    sans_echeance = 0 if tache.get('deadline') else 1
     duree = int(tache.get('duree_min', 0))
     secable = bool(tache.get('secable', True))
     gros_bloc_contigu = 0 if (not secable and duree > CIBLE_PAR_JOUR) else 1
-    return (sans_echeance, deadline, gros_bloc_contigu, -_priorite_valeur(tache),
-            duree, -int(tache.get('id') or 0))
+    prio = (prios_effectives or {}).get(tache.get('id'), _priorite_valeur(tache))
+    return (-prio, gros_bloc_contigu, duree, -int(tache.get('id') or 0))
 
 
 def _taille_chunk(duree, min_bloc, nb_jours_dispo, secable):
@@ -332,28 +340,33 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     jours_feries = jours_feries or set()
     occupes_par_date = occupes_par_date or {}
 
-    # 1. Construire les journees et leurs creneaux libres.
-    jours = {}
-    d = date_debut
-    while d <= date_fin:
-        date_str = d.isoformat()
-        if date_str not in jours_feries:
-            work = horaires.get(date_str, [])
-            if work:
-                occ = list(occupes_par_date.get(date_str, []))
-                # Le premier jour, on ne planifie pas avant l'heure courante.
-                if d == date_debut and minute_courante > 0:
-                    occ.append((0, minute_courante))
-                libres = _soustraire(work, occ)
-                if libres:
-                    jours[date_str] = _PlanJour(d, libres)
-        d += timedelta(days=1)
+    def _construire_jours():
+        """Journees de l'horizon et leurs creneaux libres (etat d'une passe)."""
+        construits = {}
+        d = date_debut
+        while d <= date_fin:
+            date_str = d.isoformat()
+            if date_str not in jours_feries:
+                work = horaires.get(date_str, [])
+                if work:
+                    occ = list(occupes_par_date.get(date_str, []))
+                    # Le premier jour, on ne planifie pas avant l'heure courante.
+                    if d == date_debut and minute_courante > 0:
+                        occ.append((0, minute_courante))
+                    libres = _soustraire(work, occ)
+                    if libres:
+                        construits[date_str] = _PlanJour(d, libres)
+            d += timedelta(days=1)
+        return construits
 
-    # 2. Trier les taches : prioritaires (par urgence) puis recurrentes.
+    # 2. Separer prioritaires et recurrentes. Le tri, dependant des priorites
+    #    effectives (rehaussements compris), est refait a chaque passe.
     prioritaires = [t for t in taches if not t.get('est_recurrente')]
     recurrentes = [t for t in taches if t.get('est_recurrente')]
-    prioritaires.sort(key=lambda t: _cle_tri_tache(t, date_fin))
 
+    # Etat d'une passe de placement : reinitialise EN PLACE a chaque passe
+    # (les fonctions internes y accedent par fermeture).
+    jours = {}
     blocs_resultat = []
     non_planifie = []
 
@@ -493,10 +506,73 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
                 'raison': 'capacite insuffisante sur l\'horizon',
             })
 
-    for tache in prioritaires:
-        _placer_tache(tache)
-    # Les taches recurrentes remplissent l'espace restant.
-    for tache in recurrentes:
-        _placer_tache(tache)
+    def _prochain_rehaussement(prios_effectives):
+        """Tache hors delai a rehausser : (tache_id, nouvelle_priorite) ou None.
+
+        Hors delai = tache a echeance non entierement placee, ou dont un bloc
+        depasse l'echeance. Traitees par echeance la plus proche. Cible :
+        [moins urgente des taches planifiees d'ici l'echeance] + 2 ; si la
+        tache est deja au-dessus de cette cible et reste en retard, on grimpe
+        juste au-dessus de son plus faible bloqueur. Aucune tache a deplacer
+        dans la fenetre : surcapacite reelle, on n'insiste pas.
+        """
+        blocs_par_tache = {}
+        for b in blocs_resultat:
+            blocs_par_tache.setdefault(b['tache_id'], []).append(b['date'])
+        manquantes = {n['tache_id'] for n in non_planifie
+                      if n.get('minutes_restantes', 0) > 0}
+
+        retardataires = []
+        for t in prioritaires:
+            dl = _deadline_date(t)
+            if not dl:
+                continue
+            dates_t = blocs_par_tache.get(t['id'], [])
+            if t['id'] in manquantes or (dates_t and max(dates_t) > dl.isoformat()):
+                retardataires.append((dl, t))
+        retardataires.sort(key=lambda x: x[0])
+
+        for dl, tache in retardataires:
+            dl_str = dl.isoformat()
+            prios_fenetre = [
+                prios_effectives.get(autre['id'], _priorite_valeur(autre))
+                for autre in prioritaires
+                if autre['id'] != tache['id']
+                and any(dj <= dl_str for dj in blocs_par_tache.get(autre['id'], []))
+            ]
+            if not prios_fenetre:
+                continue
+            courante = prios_effectives.get(tache['id'], _priorite_valeur(tache))
+            cible = min(prios_fenetre) + 2
+            if cible <= courante:
+                bloqueurs = [p for p in prios_fenetre if p >= courante]
+                if not bloqueurs:
+                    continue
+                cible = min(bloqueurs) + 1
+            return tache['id'], cible
+        return None
+
+    # 3. Placement par passes : priorite pure d'abord ; tant qu'une tache a
+    #    echeance ressort hors delai, sa priorite est rehaussee — le temps du
+    #    calcul seulement, la priorite stockee n'est jamais modifiee — puis on
+    #    replanifie. Chaque rehaussement fait strictement monter une tache
+    #    au-dessus d'un bloqueur : la borne de passes reste large.
+    prios_effectives = {}
+    for _passe in range(3 * len(prioritaires) + 3):
+        jours.clear()
+        jours.update(_construire_jours())
+        del blocs_resultat[:]
+        del non_planifie[:]
+        charge_demi['matin'] = 0
+        charge_demi['apres_midi'] = 0
+        for tache in sorted(prioritaires, key=lambda t: _cle_tri_tache(t, prios_effectives)):
+            _placer_tache(tache)
+        # Les taches recurrentes remplissent l'espace restant.
+        for tache in recurrentes:
+            _placer_tache(tache)
+        rehaussement = _prochain_rehaussement(prios_effectives)
+        if rehaussement is None:
+            break
+        prios_effectives[rehaussement[0]] = rehaussement[1]
 
     return {'blocs': blocs_resultat, 'non_planifie': non_planifie}
