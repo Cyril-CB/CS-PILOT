@@ -151,6 +151,38 @@ def _jours_feries_set(conn, debut, fin):
         return set()
 
 
+def _jours_absences_set(conn, user_id, debut, fin):
+    """Jours d'absence du salarie ('YYYY-MM-DD') sur l'intervalle : conges et
+    autres absences enregistrees, plus les journees de recuperation completes.
+    Le planificateur n'y place aucune tache (meme effet qu'un jour ferie)."""
+    jours = set()
+    try:
+        rows = conn.execute(
+            '''SELECT date_debut, date_fin FROM absences
+               WHERE user_id = ? AND date_debut <= ? AND date_fin >= ?''',
+            (user_id, fin.isoformat(), debut.isoformat())
+        ).fetchall()
+        for r in rows:
+            try:
+                d = max(date.fromisoformat(r['date_debut']), debut)
+                d_fin = min(date.fromisoformat(r['date_fin']), fin)
+            except (TypeError, ValueError):
+                continue
+            while d <= d_fin:
+                jours.add(d.isoformat())
+                d += timedelta(days=1)
+        recups = conn.execute(
+            '''SELECT date FROM heures_reelles
+               WHERE user_id = ? AND type_saisie = 'recup_journee'
+                 AND date >= ? AND date <= ?''',
+            (user_id, debut.isoformat(), fin.isoformat())
+        ).fetchall()
+        jours.update(r['date'] for r in recups)
+    except Exception:
+        pass
+    return jours
+
+
 # ── Generation des occurrences de taches recurrentes ───────────────────────
 
 def _dernier_jour_mois(annee, mois):
@@ -273,6 +305,22 @@ def _replanifier(conn, user_id, maintenant=None):
     # Horaires de travail repris du planning theorique du salarie.
     horaires = _horaires_par_date(conn, user_id, today, fin)
     feries = _jours_feries_set(conn, today, fin)
+    # Conges et autres absences (et recup journee) : aucun creneau de travail
+    # ces jours-la — le moteur n'y place rien, comme un jour ferie.
+    absents = _jours_absences_set(conn, user_id, today, fin)
+    if absents:
+        horaires = {d: h for d, h in horaires.items() if d not in absents}
+        # Un bloc de tache verrouille (glisser-depose anterieur a l'absence)
+        # ne doit pas rester sur un jour de conge : on le deverrouille pour que
+        # la replanification le replace ailleurs. Les rendez-vous (evenements)
+        # et le travail deja realise restent en place.
+        placeholders = ','.join('?' for _ in absents)
+        conn.execute(
+            f'''UPDATE planif_blocs SET verrouille = 0
+                WHERE user_id = ? AND date IN ({placeholders})
+                  AND verrouille = 1 AND statut != 'fait'
+                  AND tache_id IN (SELECT id FROM planif_taches WHERE type = 'tache')''',
+            (user_id, *sorted(absents)))
 
     # Nettoyer les occurrences recurrentes passees jamais realisees (une reunion
     # quotidienne manquee hier n'est pas reportee a aujourd'hui).
@@ -554,9 +602,30 @@ def api_blocs():
         fin = _valide_date(request.args.get('fin')) or debut
         blocs = _serialiser_blocs(conn, user_id, debut, fin)
         # Horaires de travail (par date) pour afficher les plages travaillees.
+        # Les jours d'absence (conges, recup) n'affichent aucune plage.
         horaires_min = _horaires_par_date(
             conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
         )
+        absents = _jours_absences_set(
+            conn, user_id, date.fromisoformat(debut), date.fromisoformat(fin)
+        )
+        if absents:
+            horaires_min = {k: v for k, v in horaires_min.items() if k not in absents}
+            # Auto-correction : les chemins de saisie d'une absence (conges,
+            # recup...) ne connaissent pas le planificateur. Si des blocs de
+            # tache subsistent sur un jour d'absence, on replanifie avant de
+            # servir le calendrier (les rendez-vous et le realise restent).
+            placeholders = ','.join('?' for _ in absents)
+            reste = conn.execute(
+                f'''SELECT 1 FROM planif_blocs b
+                    JOIN planif_taches t ON b.tache_id = t.id
+                    WHERE b.user_id = ? AND t.type = 'tache'
+                      AND b.statut != 'fait' AND b.date IN ({placeholders})
+                    LIMIT 1''',
+                (user_id, *sorted(absents))).fetchone()
+            if reste:
+                _replanifier(conn, user_id)
+                blocs = _serialiser_blocs(conn, user_id, debut, fin)
         horaires = {k: [[d, f] for (d, f) in v] for k, v in horaires_min.items()}
         # Taches non placees : renvoyees a chaque rafraichissement pour que le
         # bandeau reste a jour apres une action (creation, suppression...) sans
