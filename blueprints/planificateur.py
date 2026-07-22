@@ -310,6 +310,17 @@ def _replanifier(conn, user_id, maintenant=None):
     absents = _jours_absences_set(conn, user_id, today, fin)
     if absents:
         horaires = {d: h for d, h in horaires.items() if d not in absents}
+        # Un bloc de tache verrouille (glisser-depose anterieur a l'absence)
+        # ne doit pas rester sur un jour de conge : on le deverrouille pour que
+        # la replanification le replace ailleurs. Les rendez-vous (evenements)
+        # et le travail deja realise restent en place.
+        placeholders = ','.join('?' for _ in absents)
+        conn.execute(
+            f'''UPDATE planif_blocs SET verrouille = 0
+                WHERE user_id = ? AND date IN ({placeholders})
+                  AND verrouille = 1 AND statut != 'fait'
+                  AND tache_id IN (SELECT id FROM planif_taches WHERE type = 'tache')''',
+            (user_id, *sorted(absents)))
 
     # Nettoyer les occurrences recurrentes passees jamais realisees (une reunion
     # quotidienne manquee hier n'est pas reportee a aujourd'hui).
@@ -600,6 +611,21 @@ def api_blocs():
         )
         if absents:
             horaires_min = {k: v for k, v in horaires_min.items() if k not in absents}
+            # Auto-correction : les chemins de saisie d'une absence (conges,
+            # recup...) ne connaissent pas le planificateur. Si des blocs de
+            # tache subsistent sur un jour d'absence, on replanifie avant de
+            # servir le calendrier (les rendez-vous et le realise restent).
+            placeholders = ','.join('?' for _ in absents)
+            reste = conn.execute(
+                f'''SELECT 1 FROM planif_blocs b
+                    JOIN planif_taches t ON b.tache_id = t.id
+                    WHERE b.user_id = ? AND t.type = 'tache'
+                      AND b.statut != 'fait' AND b.date IN ({placeholders})
+                    LIMIT 1''',
+                (user_id, *sorted(absents))).fetchone()
+            if reste:
+                _replanifier(conn, user_id)
+                blocs = _serialiser_blocs(conn, user_id, debut, fin)
         horaires = {k: [[d, f] for (d, f) in v] for k, v in horaires_min.items()}
         # Taches non placees : renvoyees a chaque rafraichissement pour que le
         # bandeau reste a jour apres une action (creation, suppression...) sans

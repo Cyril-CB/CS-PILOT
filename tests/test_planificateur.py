@@ -1065,3 +1065,80 @@ def test_taches_non_placees_sur_une_recup_journee(comptable_client, db, sample_u
         f"/planificateur/api/blocs?debut={j.isoformat()}&fin={j.isoformat()}"
     ).get_json()
     assert [b for b in r['blocs'] if b['type'] == 'tache'] == []
+
+
+def test_bloc_verrouille_retire_d_un_jour_devenu_absent(comptable_client, db, sample_users):
+    """Un bloc de tache verrouille par glisser-depose AVANT la pose d'un conge
+    est replace ailleurs a la replanification ; un rendez-vous pose sur le
+    jour d'absence reste en place (revue Codex)."""
+    uid = sample_users['comptable_id']
+    # Prochain jour ouvre a J+2 minimum, pour pouvoir y glisser un bloc.
+    jour_conge = date.today() + timedelta(days=2)
+    while jour_conge.weekday() >= 5:
+        jour_conge += timedelta(days=1)
+
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Deplacee puis conges', 'duree_min': 60,
+        'secable': 0, 'duree_min_bloc': 60,
+    })
+    bloc = db.execute("SELECT id FROM planif_blocs WHERE user_id = ?", (uid,)).fetchone()
+    r = comptable_client.post(f"/planificateur/api/bloc/{bloc['id']}/deplacer", json={
+        'date': jour_conge.isoformat(), 'heure_debut': '10:00',
+    })
+    assert r.status_code == 200
+
+    # Un rendez-vous pose le meme jour : il devra rester.
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'evenement', 'titre': 'RDV pendant conges', 'date_fixe': jour_conge.isoformat(),
+        'heure_debut': '14:00', 'heure_fin': '15:00',
+    })
+
+    db.execute(
+        "INSERT INTO absences (user_id, motif, date_debut, date_fin, jours_ouvres, saisi_par) "
+        "VALUES (?, 'Congé payé', ?, ?, 1, ?)",
+        (uid, jour_conge.isoformat(), jour_conge.isoformat(), uid))
+    db.commit()
+
+    assert comptable_client.post('/planificateur/api/replanifier', json={}).status_code == 200
+
+    horizon_fin = (date.today() + timedelta(days=13)).isoformat()
+    blocs = comptable_client.get(
+        f"/planificateur/api/blocs?debut={date.today().isoformat()}&fin={horizon_fin}"
+    ).get_json()['blocs']
+    ce_jour = [b for b in blocs if b['date'] == jour_conge.isoformat()]
+    assert [b['titre'] for b in ce_jour] == ['RDV pendant conges'], \
+        f"seul le rendez-vous doit rester le jour du conge : {ce_jour}"
+    # La tache deplacee est replacee ailleurs, pas perdue.
+    assert any(b['titre'] == 'Deplacee puis conges' and b['date'] != jour_conge.isoformat()
+               for b in blocs)
+
+
+def test_conge_pose_apres_planification_retire_les_blocs_au_chargement(comptable_client, db, sample_users):
+    """Poser un conge ne previent pas le planificateur : au chargement suivant
+    du calendrier, les blocs de tache du jour d'absence sont replanifies
+    ailleurs, sans autre action (revue Codex)."""
+    uid = sample_users['comptable_id']
+    comptable_client.post('/planificateur/api/tache', json={
+        'type': 'tache', 'titre': 'Avant congés', 'duree_min': 480,
+        'secable': 1, 'duree_min_bloc': 30,
+    })
+    premier = db.execute(
+        "SELECT date FROM planif_blocs WHERE user_id = ? ORDER BY date LIMIT 1",
+        (uid,)).fetchone()
+    assert premier is not None
+    jour = premier['date']
+
+    db.execute(
+        "INSERT INTO absences (user_id, motif, date_debut, date_fin, jours_ouvres, saisi_par) "
+        "VALUES (?, 'Congé payé', ?, ?, 1, ?)", (uid, jour, jour, uid))
+    db.commit()
+
+    # Simple GET du calendrier : auto-correction, aucune mutation prealable.
+    r = comptable_client.get(f"/planificateur/api/blocs?debut={jour}&fin={jour}").get_json()
+    assert [b for b in r['blocs'] if b['type'] == 'tache'] == []
+    # La tache n'est pas perdue : son volume est replace sur d'autres jours.
+    total = db.execute(
+        "SELECT COALESCE(SUM(b.duree_min), 0) AS s FROM planif_blocs b "
+        "JOIN planif_taches t ON b.tache_id = t.id "
+        "WHERE b.user_id = ? AND t.type = 'tache' AND b.date != ?", (uid, jour)).fetchone()['s']
+    assert total == 480
