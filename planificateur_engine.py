@@ -555,10 +555,12 @@ def planifier(taches, occupes_par_date, horaires, date_debut, date_fin,
     # 3. Placement par passes : priorite pure d'abord ; tant qu'une tache a
     #    echeance ressort hors delai, sa priorite est rehaussee — le temps du
     #    calcul seulement, la priorite stockee n'est jamais modifiee — puis on
-    #    replanifie. Chaque rehaussement fait strictement monter une tache
-    #    au-dessus d'un bloqueur : la borne de passes reste large.
+    #    replanifie. L'arret normal vient de _prochain_rehaussement (None) ;
+    #    la borne, quadratique, couvre le cas de plusieurs taches en retard sur
+    #    une meme echeance (chacune peut devoir depasser ses semblables avant
+    #    ses vrais bloqueurs) et ne joue vraiment qu'en surcapacite reelle.
     prios_effectives = {}
-    for _passe in range(3 * len(prioritaires) + 3):
+    for _passe in range(len(prioritaires) * len(prioritaires) + 3):
         jours.clear()
         jours.update(_construire_jours())
         del blocs_resultat[:]

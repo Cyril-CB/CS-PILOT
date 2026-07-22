@@ -975,3 +975,33 @@ def test_engine_surcapacite_reelle_reste_signalee():
     assert res['blocs'] == []
     assert len(res['non_planifie']) == 1
     assert res['non_planifie'][0]['tache_id'] == 1
+
+
+def test_engine_rehaussements_multiples_toutes_echeances_tenues():
+    """Plusieurs taches en retard sur la MEME echeance : chacune peut devoir
+    etre rehaussee plusieurs fois (elle depasse d'abord ses semblables avant
+    ses vrais bloqueurs). Toutes les echeances tenables doivent etre tenues
+    (revue Codex : la borne de passes ne doit pas s'epuiser avant)."""
+    lundi = _lundi_prochain()
+    taches = [
+        # 6 taches tres prioritaires sans echeance : elles saturent lundi en
+        # partie et peuvent glisser a mardi sans dommage.
+        *[{'id': 10 + i, 'titre': f'Prioritaire {i}', 'duree_min': 60,
+           'deadline': None, 'priorite_num': 5,
+           'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}
+          for i in range(1, 7)],
+        # 4 taches modestes a echeance lundi : elles doivent toutes y tenir.
+        *[{'id': i, 'titre': f'Echeance lundi {i}', 'duree_min': 60,
+           'deadline': lundi.isoformat(), 'priorite_num': 0,
+           'preference': 'aucune', 'secable': False, 'duree_min_bloc': 30}
+          for i in range(1, 5)],
+    ]
+    res = moteur.planifier(taches, {}, _horaires_standard(), lundi, lundi + timedelta(days=1))
+
+    assert res['non_planifie'] == []
+    for b in res['blocs']:
+        if b['tache_id'] <= 4:
+            assert b['date'] == lundi.isoformat(), \
+                f"echeance manquee pour la tache {b['tache_id']} : {b['date']}"
+    # Les priorites stockees n'ont pas bouge (rehaussement ephemere).
+    assert all(t['priorite_num'] in (0, 5) for t in taches)
