@@ -146,7 +146,9 @@ function calcSalarie(s, params){
     var tc = num(s.taux_charge, CTX.defaults.taux_charge);
     var tt = num(s.taux_taxe, CTX.defaults.taux_taxe);
     var ratio = tp ? th / tp : 1;
-    var brutm = (socle + (pesee + anc + comp) * point) / 12 * ratio + maint;
+    // Prorata sur le socle et la pesée uniquement ; ancienneté et compétences
+    // restent dues à temps plein (même règle que le simulateur de paie).
+    var brutm = ((socle + pesee * point) * ratio + (anc + comp) * point) / 12 + maint;
     var ha = th * 52;
     var txh = ha ? brutm * 12 / ha : 0;
     var coutb = txh * heures;

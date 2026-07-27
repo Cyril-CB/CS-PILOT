@@ -103,8 +103,10 @@ def _calc_salarie(s, params):
     """Calcule la paie d'un salarié pour l'action à partir de ses paramètres.
 
     Brut mensuel (même formule que le simulateur de paie) :
-        (socle + (pesée + ancienneté + compétence) * point) / 12 * ratio_temps
-        + maintien
+        [(socle + pesée * point) * ratio_temps
+         + (ancienneté + compétence) * point] / 12 + maintien
+    Le prorata ne s'applique qu'au socle et à la pesée : les points
+    d'ancienneté et de compétences sont dus à temps plein.
     Coût brut sur l'action (taux horaire annuel) :
         coût brut = (brut mensuel * 12) / (temps hebdo * 52) * heures sur l'action
     Charges sociales = coût brut * taux chargé (ex. 27 %).
@@ -126,7 +128,8 @@ def _calc_salarie(s, params):
     taux_taxe = _num(s.get('taux_taxe'), TAUX_TAXE_DEFAUT)
 
     ratio = (temps_hebdo / temps_plein) if temps_plein else 1.0
-    brut_mensuel = (socle + (pesee + anciennete + competence) * point) / 12.0 * ratio + maintien
+    brut_mensuel = ((socle + pesee * point) * ratio
+                    + (anciennete + competence) * point) / 12.0 + maintien
     heures_annuelles = temps_hebdo * 52.0
     taux_horaire = (brut_mensuel * 12.0 / heures_annuelles) if heures_annuelles else 0.0
     cout_brut = taux_horaire * heures
