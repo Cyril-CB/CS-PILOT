@@ -2504,9 +2504,11 @@ def _paie_reel_641(conn, secteur_id, compte_num, annee):
 def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_reel):
     """Calcule le brut par salarié et par mois, le coût CEE et le total annuel.
 
-    Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12,
-    proratisé selon le temps de travail (temps_hebdo / temps plein de référence)
-    pour les salariés à temps partiel, puis + maintien (montant fixe non proratisé).
+    Brut mensuel = [(socle + pesée × valeur du point) × prorata
+                    + (ancienneté + compétences) × valeur du point] / 12,
+    puis + maintien (montant fixe non proratisé). Le prorata
+    (temps_hebdo / temps plein de référence) ne s'applique qu'au socle et à la
+    pesée : les points d'ancienneté et de compétences sont dus à temps plein.
     En budget actualisé, seuls les mois > last_real_month sont simulés ; le total
     intègre le réel (FEC) déjà constaté.
     """
@@ -2522,8 +2524,11 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
 
     start_month = (last_real_month or 0) + 1
 
-    def brut_mensuel(pesee, anciennete, competence):
-        return (socle + (pesee + anciennete + competence) * point) / 12.0
+    def brut_mensuel(pesee, anciennete, competence, ratio):
+        # Prorata sur le socle et la pesée uniquement ; les points
+        # d'ancienneté et de compétences restent dus à temps plein.
+        return ((socle + pesee * point) * ratio
+                + (anciennete + competence) * point) / 12.0
 
     def ratio_temps(temps_hebdo):
         # Temps inconnu ou non renseigné => temps plein (ratio 1).
@@ -2555,7 +2560,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         ratio = ratio_temps(override_num(ov, 'temps_hebdo', e.get('temps_hebdo')))
         mois_vals, total_e = {}, 0.0
         for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence) * ratio + maintien
+            val = brut_mensuel(pesee_eff, anciennete, competence, ratio) + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_e += val
@@ -2586,7 +2591,7 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         mf = min(max(mf, 1), 12)
         mois_vals, total_a = {}, 0.0
         for m in range(max(start_month, mb), mf + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence) * ratio + maintien
+            val = brut_mensuel(pesee_eff, anciennete, competence, ratio) + maintien
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_a += val

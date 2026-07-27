@@ -178,3 +178,16 @@ def test_export_pdf(admin_client, app):
     assert r.status_code == 200
     assert r.headers['Content-Type'] == 'application/pdf'
     assert r.get_data()[:4] == b'%PDF'
+
+
+def test_calc_salarie_prorata_seulement_socle_et_pesee():
+    """Mi-temps : le prorata s'applique au socle et à la pesée ; les points
+    d'ancienneté et de compétences restent dus à temps plein (même règle que
+    le simulateur de paie du budget prévisionnel)."""
+    from blueprints.bilan_action import _calc_salarie
+    res = _calc_salarie(
+        {'temps_hebdo': 17.5, 'pesee': 100, 'anciennete': 10, 'competence': 20,
+         'maintien': 0, 'heures_action': 0},
+        {'socle': 23000, 'point': 55, 'temps_plein': 35})
+    # [(23000 + 100×55) × 0,5 + (10 + 20) × 55] / 12 = 15 900 / 12 = 1 325 €/mois
+    assert abs(res['brut_mensuel'] - 1325.0) < 0.01
