@@ -1648,3 +1648,25 @@ def test_budget_previsionnel_simulateur_paie_colonnes_nouvelles(admin_client):
     assert 'Nv comp.' in html
     assert 'nouvelle_anciennete' in html
     assert 'nouvelle_competence' in html
+
+
+def test_paie_simulation_prorata_seulement_socle_et_pesee(app, db, admin_client):
+    """Temps partiel : le prorata s'applique au socle et à la pesée, mais les
+    points d'ancienneté et de compétences restent calculés à temps plein.
+
+    Mi-temps (17,5/35), pesée 100, ancienneté 10, compétences 20 :
+    (23000 + 100×55) × 0,5 + (10 + 20) × 55 = 14 250 + 1 650 = 15 900 €.
+    """
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55, 'temps_plein': 35,
+               'employes': {str(uid): {'pesee': 100, 'nouvelle_pesee': '',
+                                       'anciennete': 10, 'competence': 20,
+                                       'temps_hebdo': 17.5}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 15900.0) < 0.01

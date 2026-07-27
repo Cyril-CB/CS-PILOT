@@ -2020,7 +2020,9 @@ function computePaieJS(st, ctx, typeBudget){
     var lastReal = (typeBudget === 'actualise') ? (ctx.last_real_month || 0) : 0;
     var reel = (typeBudget === 'actualise') ? (ctx.montant_reel || 0) : 0;
     var start = lastReal + 1;
-    function brut(p,a,c){ return (socle + (p+a+c)*point) / 12; }
+    // Prorata sur le socle et la pesée uniquement ; ancienneté et compétences
+    // restent dues à temps plein.
+    function brut(p,a,c,ratio){ return ((socle + p*point)*ratio + (a+c)*point) / 12; }
     // Temps inconnu/0 => temps plein (ratio 1).
     function ratioTemps(th){ return (th && th > 0 && tplein) ? th/tplein : 1; }
     // Champ surchargé présent (même vide) => saisie (vide = 0) ; absent => fiche.
@@ -2039,7 +2041,7 @@ function computePaieJS(st, ctx, typeBudget){
         var maint = ovNum(ov, 'maintien', e.maintien);
         var ratio = ratioTemps(ovNum(ov, 'temps_hebdo', e.temps_hebdo));
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp)*ratio+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp,ratio)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
     });
     var ajouts = {};
@@ -2051,7 +2053,7 @@ function computePaieJS(st, ctx, typeBudget){
         var mf = (typ==='cdd') ? (parseInt(a.mois_fin,10)||12) : 12;
         mb=Math.min(Math.max(mb,1),12); mf=Math.min(Math.max(mf,1),12);
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp)*ratioA+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
+        for (var m=Math.max(start,mb); m<=mf; m++){ var v=brut(pEff,anc,comp,ratioA)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
         ajouts[i] = {mois: mvals, total: tot};
     });
     var ceeJours = paieCeeParMois(ctx, st), ceeCout = {};
@@ -2075,7 +2077,7 @@ function renderPaieSimulator(){
         '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
         '<div class="ps-field"><label>Temps plein (h/sem.)</label>' + paieInput('data-paie-top="temps_plein"', st.temps_plein, '0.5') + '</div>' +
         '</div>';
-    html += '<div class="ps-legend">Brut mensuel = (socle + (pesée + ancienneté + compétence) × valeur du point) / 12, au prorata du temps de travail (h.hebdo / temps plein). Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
+    html += '<div class="ps-legend">Brut mensuel = [(socle + pesée × valeur du point) × prorata + (ancienneté + compétences) × valeur du point] / 12. Le prorata (h.hebdo / temps plein) ne s\'applique qu\'au socle et à la pesée : ancienneté et compétences sont dues à temps plein. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
     if (actualise){
         html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
