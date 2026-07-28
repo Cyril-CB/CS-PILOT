@@ -2041,7 +2041,14 @@ function computePaieJS(st, ctx, typeBudget){
         var maint = ovNum(ov, 'maintien', e.maintien);
         var ratio = ratioTemps(ovNum(ov, 'temps_hebdo', e.temps_hebdo));
         var mvals = {}, tot = 0;
-        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){ var v=brut(pEff,anc,comp,ratio)+maint; mvals[m]=v; monthly[m]+=v; tot+=v; }
+        // Part du mois couverte par le contrat (1 = mois entier) : un CDD d'une
+        // semaine ne pèse pas un mois de salaire complet. Même calcul serveur.
+        var parts = e.mois_ratios;
+        for (var m=Math.max(start, e.mois_debut); m<=e.mois_fin; m++){
+            var part = parts ? (parts[m] || 0) : 1;
+            if (part <= 0) continue;
+            var v=(brut(pEff,anc,comp,ratio)+maint)*part; mvals[m]=v; monthly[m]+=v; tot+=v;
+        }
         lignes[e.id] = {mois: mvals, total: tot, pesee_eff: pEff};
     });
     var ajouts = {};
@@ -2077,7 +2084,7 @@ function renderPaieSimulator(){
         '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
         '<div class="ps-field"><label>Temps plein (h/sem.)</label>' + paieInput('data-paie-top="temps_plein"', st.temps_plein, '0.5') + '</div>' +
         '</div>';
-    html += '<div class="ps-legend">Brut mensuel = [(socle + pesée × valeur du point) × prorata + (ancienneté + compétences) × valeur du point] / 12. Le prorata (h.hebdo / temps plein) ne s\'applique qu\'au socle et à la pesée : ancienneté et compétences sont dues à temps plein. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
+    html += '<div class="ps-legend">Brut mensuel = [(socle + pesée × valeur du point) × prorata + (ancienneté + compétences) × valeur du point] / 12. Le prorata (h.hebdo / temps plein) ne s\'applique qu\'au socle et à la pesée : ancienneté et compétences sont dues à temps plein. Les mois d\'entrée et de sortie sont comptés au prorata des jours du contrat (un CDD d\'une semaine en juillet ne coûte pas un mois entier) : survolez le montant du mois pour voir la part retenue. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
     if (actualise){
         html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
@@ -2212,7 +2219,16 @@ function recomputePaie(){
     var months = paieMonths();
     (paieSim.context.employes || []).forEach(function(e){
         var l = c.lignes[e.id] || {mois:{}, total:0};
-        months.forEach(function(m){ psSet('paie-emp-' + e.id + '-' + m, l.mois[m] ? fmt(l.mois[m]) : ''); });
+        months.forEach(function(m){
+            psSet('paie-emp-' + e.id + '-' + m, l.mois[m] ? fmt(l.mois[m]) : '');
+            // Mois d'entrée ou de sortie : indiquer la part réellement couverte,
+            // sinon le montant réduit paraît inexpliqué.
+            var cell = document.getElementById('paie-emp-' + e.id + '-' + m);
+            if (!cell) return;
+            var part = e.mois_ratios ? (e.mois_ratios[m] || 0) : 1;
+            if (part > 0 && part < 1) cell.title = 'Mois partiel : ' + Math.round(part * 100) + ' % du mois sous contrat';
+            else cell.removeAttribute('title');
+        });
         psSet('paie-emp-' + e.id + '-tot', fmt(l.total));
     });
     (paieSim.state.ajouts || []).forEach(function(a, i){

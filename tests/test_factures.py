@@ -183,6 +183,64 @@ class TestAssignationFacture:
         assert reponse.status_code == 404
         assert _compte(app, db, 'facture_historique', 999999) == 0
 
+    def test_assigner_secteur_inexistant_refuse(self, app, db, comptable_client):
+        """Un secteur inconnu ne doit pas être écrit : la facture deviendrait
+        invisible (aucun secteur ne la reprend) sans que rien ne le signale.
+
+        Les clés étrangères ne sont pas activées sur cette base : c'est à la
+        route de vérifier l'existence du secteur avant l'écriture.
+        """
+        facture_id = _seed_facture(app, db)
+        reponse = comptable_client.post(
+            f'/factures/{facture_id}/assigner', json={'secteur_id': 999999})
+
+        assert reponse.status_code == 404
+        assert reponse.get_json()['error']
+        with app.app_context():
+            assert db.execute(
+                "SELECT secteur_id FROM factures WHERE id=?", (facture_id,)
+            ).fetchone()['secteur_id'] is None
+        assert _compte(app, db, 'facture_historique', facture_id) == 0
+
+    def test_assigner_secteur_inexistant_refuse_en_formulaire(self, app, db, comptable_client):
+        """Même refus hors API : message d'erreur et aucune écriture."""
+        facture_id = _seed_facture(app, db)
+        reponse = comptable_client.post(
+            f'/factures/{facture_id}/assigner', data={'secteur_id': '999999'},
+            follow_redirects=True)
+
+        assert 'Secteur introuvable' in reponse.get_data(as_text=True)
+        with app.app_context():
+            assert db.execute(
+                "SELECT secteur_id FROM factures WHERE id=?", (facture_id,)
+            ).fetchone()['secteur_id'] is None
+        assert _compte(app, db, 'facture_historique', facture_id) == 0
+
+    def test_assigner_secteur_non_numerique_refuse(self, app, db, comptable_client):
+        """Une valeur non numérique ne doit pas non plus être écrite."""
+        facture_id = _seed_facture(app, db)
+        reponse = comptable_client.post(
+            f'/factures/{facture_id}/assigner', json={'secteur_id': 'abc'})
+
+        assert reponse.status_code == 404
+        with app.app_context():
+            assert db.execute(
+                "SELECT secteur_id FROM factures WHERE id=?", (facture_id,)
+            ).fetchone()['secteur_id'] is None
+
+    def test_assigner_direction_reste_possible(self, app, db, comptable_client):
+        """L'assignation à la direction n'est pas concernée par ce contrôle."""
+        facture_id = _seed_facture(app, db)
+        reponse = comptable_client.post(
+            f'/factures/{facture_id}/assigner', json={'direction': True})
+
+        assert reponse.status_code == 200
+        with app.app_context():
+            ligne = db.execute(
+                "SELECT secteur_id, assigned_direction FROM factures WHERE id=?",
+                (facture_id,)).fetchone()
+        assert ligne['assigned_direction'] == 1 and ligne['secteur_id'] is None
+
 
 class TestSuppressionFacture:
     def test_supprimer_facture_supprime_les_ecritures(self, app, db, comptable_client):

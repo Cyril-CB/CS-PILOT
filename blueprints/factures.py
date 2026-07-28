@@ -280,12 +280,21 @@ def assigner_facture(facture_id):
         _add_historique(conn, facture_id, 'Assignation', 'Assignée à la direction')
     elif secteur_id:
         secteur = conn.execute('SELECT nom FROM secteurs WHERE id=?', (secteur_id,)).fetchone()
+        if not secteur:
+            # Les clés étrangères ne sont pas activées sur la base : sans ce
+            # contrôle, la facture serait rattachée à un secteur inexistant et
+            # disparaîtrait des listes filtrées par secteur, sans aucun signal.
+            conn.close()
+            if request.is_json:
+                return jsonify({'error': 'Secteur introuvable'}), 404
+            flash('Secteur introuvable.', 'error')
+            return redirect(url_for('factures_bp.liste_factures'))
         conn.execute(
             'UPDATE factures SET secteur_id=?, assigned_direction=0, updated_at=CURRENT_TIMESTAMP WHERE id=?',
             (secteur_id, facture_id)
         )
         _add_historique(conn, facture_id, 'Assignation',
-                        f'Assignée au secteur {secteur["nom"] if secteur else secteur_id}')
+                        f'Assignée au secteur {secteur["nom"]}')
 
     conn.commit()
     conn.close()

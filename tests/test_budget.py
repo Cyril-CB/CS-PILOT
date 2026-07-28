@@ -1745,6 +1745,149 @@ def test_paie_context_agrege_les_periodes_de_contrats_successifs(app, db, admin_
     assert emp['temps_hebdo'] == 28
 
 
+def _remplacer_contrat(db, uid, type_contrat, date_debut, date_fin, temps_hebdo=35):
+    """Remplace les contrats du salarié par un seul, aux dates données."""
+    db.execute("DELETE FROM contrats WHERE user_id = ?", (uid,))
+    db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+               "VALUES (?, ?, ?, ?, ?)", (uid, type_contrat, date_debut, date_fin, temps_hebdo))
+    db.commit()
+
+
+def _total_paie(admin_client, annee, sid, uid):
+    """Total simulé pour un salarié sans pesée, ancienneté ni compétences."""
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
+                                       'anciennete': 0, 'competence': 0}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    return r.get_json()['total']
+
+
+def test_paie_cdd_une_semaine_ne_compte_pas_le_mois_entier(app, db, admin_client):
+    """CDD du 6 au 12 juillet : sept jours, pas un mois de salaire complet.
+
+    Le budget raisonnait en mois entiers : le seul fait de travailler un jour en
+    juillet faisait compter juillet en totalité. Le coût attendu est celui de
+    sept jours calendaires sur trente et un : (23000 / 12) × 7/31 ≈ 432,80 €.
+    """
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        _remplacer_contrat(db, uid, 'CDD', f'{annee}-07-06', f'{annee}-07-12')
+
+    total = _total_paie(admin_client, annee, sid, uid)
+    mois_entier = 23000 / 12
+    assert abs(total - mois_entier * 7 / 31) < 0.05, \
+        f"un CDD d'une semaine ne doit pas coûter un mois entier (obtenu {total})"
+    assert total < mois_entier / 2
+
+
+def test_paie_context_expose_la_fraction_de_chaque_mois(app, db, admin_client):
+    """Le contexte fournit la part de chaque mois réellement couverte."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        _remplacer_contrat(db, uid, 'CDD', f'{annee}-07-06', f'{annee}-07-12')
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    emp = next(e for e in data['employes'] if e['id'] == uid)
+    assert set(emp['mois_ratios']) == {'7'}, "seul juillet est couvert"
+    assert abs(emp['mois_ratios']['7'] - 7 / 31) < 1e-9
+
+
+def test_paie_mois_charniere_proratise_le_reste_a_taux_plein(app, db, admin_client):
+    """CDD du 15 mars au 30 juin : mars au prorata, avril à juin entiers."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        _remplacer_contrat(db, uid, 'CDD', f'{annee}-03-15', f'{annee}-06-30')
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    ratios = next(e for e in data['employes'] if e['id'] == uid)['mois_ratios']
+    assert set(ratios) == {'3', '4', '5', '6'}
+    assert abs(ratios['3'] - 17 / 31) < 1e-9, "du 15 au 31 mars = 17 jours"
+    assert ratios['4'] == 1.0 and ratios['5'] == 1.0 and ratios['6'] == 1.0
+
+    mois_entier = 23000 / 12
+    total = _total_paie(admin_client, annee, sid, uid)
+    assert abs(total - mois_entier * (17 / 31 + 3)) < 0.05
+
+
+def test_paie_annee_complete_reste_au_taux_plein(app, db, admin_client):
+    """Contrat couvrant toute l'année : aucun mois n'est réduit."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    ratios = next(e for e in data['employes'] if e['id'] == uid)['mois_ratios']
+    assert set(ratios) == {str(m) for m in range(1, 13)}
+    assert all(v == 1.0 for v in ratios.values())
+    assert abs(_total_paie(admin_client, annee, sid, uid) - 23000.0) < 0.01
+
+
+def test_paie_creux_entre_deux_contrats_non_budgete(app, db, admin_client):
+    """Contrat janvier-mars puis septembre-décembre : le creux n'est pas payé.
+
+    Les mois budgétés étaient bornés par le premier début et la dernière fin,
+    ce qui facturait aussi les mois sans aucun contrat.
+    """
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("DELETE FROM contrats WHERE user_id = ?", (uid,))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+                   "VALUES (?, 'CDD', ?, ?, 35)", (uid, f'{annee}-01-01', f'{annee}-03-31'))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+                   "VALUES (?, 'CDD', ?, ?, 35)", (uid, f'{annee}-09-01', f'{annee}-12-31'))
+        db.commit()
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    ratios = next(e for e in data['employes'] if e['id'] == uid)['mois_ratios']
+    assert set(ratios) == {'1', '2', '3', '9', '10', '11', '12'}
+
+    total = _total_paie(admin_client, annee, sid, uid)
+    assert abs(total - (23000 / 12) * 7) < 0.05, "sept mois travaillés, pas douze"
+
+
+def test_paie_contrat_debute_avant_annee_est_entier(app, db, admin_client):
+    """Contrat commencé l'année précédente : janvier compte pour un mois plein."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        _remplacer_contrat(db, uid, 'CDD', f'{annee - 1}-11-20', f'{annee}-02-10')
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    ratios = next(e for e in data['employes'] if e['id'] == uid)['mois_ratios']
+    assert ratios['1'] == 1.0, "janvier est couvert du 1er au 31"
+    assert abs(ratios['2'] - 10 / 28) < 1e-9
+
+
+def test_budget_previsionnel_simulateur_js_applique_la_fraction_de_mois(admin_client):
+    """Le calcul affiché côté navigateur applique la même fraction de mois."""
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    assert 'mois_ratios' in html, \
+        "le calcul JS doit lire la part de mois couverte, comme le serveur"
+
+
 def _texte_pdf_budget(data):
     """Concatène les flux décompressés d'un PDF (le texte y est en clair).
 
