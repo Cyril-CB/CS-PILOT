@@ -141,6 +141,23 @@ def _refus_acces_sous_element(conn, se_id):
     return _refus_acces_subvention(conn, se['subvention_id'])
 
 
+def _peut_telecharger_piece_subvention(conn, sub_id):
+    """Vrai si le profil courant peut telecharger une piece de la subvention.
+
+    Applique exactement le meme perimetre que les routes de modification (en
+    reutilisant `_refus_acces_subvention`, pour que les deux ne divergent
+    jamais). Sans ce controle, un responsable non assigne pourrait recuperer,
+    en devinant l'identifiant, le justificatif d'une subvention d'un autre
+    secteur — alors que la page de consultation ne la lui montre pas.
+    """
+    return _refus_acces_subvention(conn, sub_id) is None
+
+
+def _peut_telecharger_piece_sous_element(conn, se_id):
+    """Meme controle que ci-dessus, a partir d'un sous-element."""
+    return _refus_acces_sous_element(conn, se_id) is None
+
+
 def _get_initiales(prenom, nom):
     p = (prenom or '').strip()
     n = (nom or '').strip()
@@ -860,6 +877,9 @@ def telecharger_se_document(se_id):
 
     conn = get_db()
     try:
+        if not _peut_telecharger_piece_sous_element(conn, se_id):
+            flash("Accès non autorisé.", "error")
+            return redirect(url_for('subventions_bp.gestion_subventions'))
         se = conn.execute(
             'SELECT document_path, document_nom FROM subventions_sous_elements WHERE id = ?',
             (se_id,)
@@ -957,6 +977,9 @@ def telecharger_justificatif(sub_id):
 
     conn = get_db()
     try:
+        if not _peut_telecharger_piece_subvention(conn, sub_id):
+            flash("Accès non autorisé.", "error")
+            return redirect(url_for('subventions_bp.gestion_subventions'))
         sub = conn.execute(
             'SELECT justificatif_path, justificatif_nom FROM subventions WHERE id = ?',
             (sub_id,)

@@ -716,3 +716,86 @@ class TestPerimetreResponsableSubventions:
                     follow_redirects=True)
         assert client.post('/api/subventions/analytiques/ajouter',
                            json={'nom': 'ANALYTIQUE Y'}).status_code == 403
+
+
+class TestTelechargementPiecesSubventions:
+    """Cloisonnement des pièces jointes en LECTURE (découvert par le balayage
+    des routes sensibles).
+
+    Les deux routes de téléchargement ne vérifiaient que le profil : un
+    responsable non assigné pouvait récupérer, en devinant l'identifiant, le
+    justificatif d'une subvention d'un autre secteur — alors que la page de
+    consultation ne la lui montre pas. C'est le pendant, en lecture, du
+    cloisonnement appliqué aux routes de modification.
+    """
+
+    def _seed_avec_pieces(self, app, db, sample_users, tmp_path, monkeypatch):
+        """Une subvention assignée au responsable et une qui ne l'est pas,
+        chacune avec un justificatif et un sous-élément documenté sur disque."""
+        import blueprints.subventions as mod
+        monkeypatch.setattr(mod, 'DOCUMENTS_DIR', str(tmp_path))
+        resp_id = sample_users['responsable_id']
+        ids = {}
+        with app.app_context():
+            for cle, assignee in (('mienne', resp_id), ('autre', None)):
+                fichier = f'justif_{cle}.pdf'
+                (tmp_path / fichier).write_bytes(b'%PDF-1.4\n' + cle.encode() + b'\n')
+                doc = f'doc_{cle}.pdf'
+                (tmp_path / doc).write_bytes(b'%PDF-1.4\n' + cle.encode() + b'\n')
+                sub_id = db.execute(
+                    "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id, "
+                    "justificatif_path, justificatif_nom) VALUES (?, 'en_cours', '2026', ?, ?, ?)",
+                    (cle.capitalize(), assignee, fichier, fichier)
+                ).lastrowid
+                se_id = db.execute(
+                    "INSERT INTO subventions_sous_elements (subvention_id, nom, ordre, "
+                    "document_path, document_nom) VALUES (?, 'Bilan', 0, ?, ?)",
+                    (sub_id, doc, doc)
+                ).lastrowid
+                ids[cle] = sub_id
+                ids['se_' + cle] = se_id
+            db.commit()
+        return ids
+
+    def test_responsable_non_assigne_ne_telecharge_pas_les_pieces(
+            self, app, db, resp_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        for url in (f"/subventions/justificatif/{ids['autre']}",
+                    f"/subventions/sous-element-document/{ids['se_autre']}"):
+            r = resp_client.get(url, follow_redirects=False)
+            assert r.status_code in (301, 302), f"{url} devrait être refusée"
+            assert '/subventions' in r.headers.get('Location', '')
+            assert r.headers.get('Content-Disposition') is None
+            assert not r.get_data().startswith(b'%PDF'), f"pièce servie par {url}"
+
+    def test_responsable_assigne_telecharge_ses_pieces(
+            self, app, db, resp_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        for url in (f"/subventions/justificatif/{ids['mienne']}",
+                    f"/subventions/sous-element-document/{ids['se_mienne']}"):
+            r = resp_client.get(url)
+            assert r.status_code == 200, f"{url} doit rester accessible à l'assigné"
+            assert r.get_data().startswith(b'%PDF')
+
+    def test_comptable_telecharge_toutes_les_pieces(
+            self, app, db, comptable_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        r = comptable_client.get(f"/subventions/justificatif/{ids['autre']}")
+        assert r.status_code == 200 and r.get_data().startswith(b'%PDF')
+
+    def test_salarie_et_anonyme_refuses(
+            self, app, db, client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+        url = f"/subventions/justificatif/{ids['mienne']}"
+
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code in (301, 302) and '/login' in r.headers.get('Location', '')
+
+        client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                    follow_redirects=True)
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code in (301, 302)
+        assert not r.get_data().startswith(b'%PDF')
