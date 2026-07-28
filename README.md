@@ -254,6 +254,7 @@ Le fichier `.env` est genere automatiquement au premier demarrage dans le meme d
 |---|---|---|
 | `SECRET_KEY` | Cle secrete Flask pour les sessions (generee automatiquement) | — |
 | `BEHIND_PROXY` | Mettre `true` si l'application est derriere un proxy/tunnel (ngrok, Cloudflare…) | `false` |
+| `MAX_UPLOAD_MO` | Taille maximale d'un envoi de fichier, **en megaoctets** (justificatifs d'absence, contrats, modeles DOCX, imports comptables, lots de factures). Au-dela, la requete est refusee avec un message « Envoi trop volumineux ». Une valeur absente, non numerique ou inferieure ou egale a 0 est ignoree : l'application journalise l'anomalie et reprend la valeur par defaut. | `256` |
 
 ## Configuration des notifications email (Gmail)
 

@@ -139,18 +139,130 @@ class TestSaisieAnomalies:
             assert anomalie is not None
 
 
+def _creer_salarie_meme_secteur(db, sample_users, login='collegue_test'):
+    """Crée un second salarié dans le secteur du salarié de test."""
+    from werkzeug.security import generate_password_hash
+
+    cur = db.execute(
+        "INSERT INTO users (nom, prenom, login, password, profil, secteur_id, responsable_id) "
+        "VALUES (?, ?, ?, ?, 'salarie', ?, ?)",
+        ('Bernard', 'Paul', login, generate_password_hash('col123'),
+         sample_users['secteur_id'], sample_users['responsable_id']))
+    db.commit()
+    return cur.lastrowid
+
+
+def _creer_salarie_autre_secteur(db, login='hors_secteur_test'):
+    """Crée un salarié dans un autre secteur, hors équipe du responsable de test."""
+    from werkzeug.security import generate_password_hash
+
+    cur = db.execute("INSERT INTO secteurs (nom, description) VALUES (?, ?)",
+                     ('Autre Secteur Saisie', 'Secteur distinct pour les tests'))
+    autre_secteur_id = cur.lastrowid
+    cur = db.execute(
+        "INSERT INTO users (nom, prenom, login, password, profil, secteur_id) "
+        "VALUES (?, ?, ?, ?, 'salarie', ?)",
+        ('Petit', 'Luc', login, generate_password_hash('hors123'), autre_secteur_id))
+    db.commit()
+    return cur.lastrowid
+
+
 class TestSaisieDroits:
     """Tests des contrôles d'accès pour la saisie."""
 
-    def test_directeur_ne_peut_pas_saisir_pour_lui(self, admin_client, app, sample_users):
-        """Le directeur ne peut PAS modifier sa propre fiche via saisie."""
+    def test_directeur_ne_peut_pas_saisir_pour_lui(self, admin_client, app, db, sample_users):
+        """Le directeur ne peut PAS modifier sa propre fiche via saisie.
+
+        Le refus doit être visible (message français) ET sans effet en base :
+        un simple `status_code == 200` après redirection passerait même si la
+        saisie interdite avait été acceptée.
+        """
+        date_test = '2025-01-06'
+
         with app.app_context():
             response = admin_client.post('/saisie_heures', data={
-                'date': '2025-01-06',
+                'date': date_test,
                 'heure_debut_matin': '09:00',
                 'heure_fin_matin': '12:00',
             }, follow_redirects=True)
             assert response.status_code == 200
+            assert 'pas le droit de modifier cette fiche' in response.get_data(as_text=True)
+
+            row = db.execute(
+                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                (sample_users['directeur_id'], date_test)
+            ).fetchone()
+            assert row is None    # rien écrit
+
+    def test_salarie_ne_peut_pas_saisir_pour_autrui(self, auth_client, app, db, sample_users):
+        """Un salarié ne peut PAS saisir les heures d'un collègue, même de son
+        propre secteur : seul le profil (responsable/directeur) ouvre ce droit."""
+        date_test = '2025-01-13'
+
+        with app.app_context():
+            collegue_id = _creer_salarie_meme_secteur(db, sample_users)
+
+            response = auth_client.post('/saisie_heures', data={
+                'user_id': collegue_id,
+                'date': date_test,
+                'heure_debut_matin': '08:00',
+                'heure_fin_matin': '12:00',
+            }, follow_redirects=True)
+            assert response.status_code == 200
+            assert 'pas le droit de modifier cette fiche' in response.get_data(as_text=True)
+
+            row = db.execute(
+                "SELECT * FROM heures_reelles WHERE user_id = ?", (collegue_id,)
+            ).fetchone()
+            assert row is None    # rien écrit
+
+    def test_responsable_ne_peut_pas_saisir_hors_secteur(self, resp_client, app, db, sample_users):
+        """Le responsable ne peut PAS saisir pour un salarié d'un autre secteur
+        qui ne lui est pas non plus rattaché directement."""
+        date_test = '2025-01-14'
+
+        with app.app_context():
+            hors_equipe_id = _creer_salarie_autre_secteur(db)
+
+            response = resp_client.post('/saisie_heures', data={
+                'user_id': hors_equipe_id,
+                'date': date_test,
+                'heure_debut_matin': '08:00',
+                'heure_fin_matin': '12:00',
+            }, follow_redirects=True)
+            assert response.status_code == 200
+            assert 'pas le droit de modifier cette fiche' in response.get_data(as_text=True)
+
+            row = db.execute(
+                "SELECT * FROM heures_reelles WHERE user_id = ?", (hors_equipe_id,)
+            ).fetchone()
+            assert row is None    # rien écrit
+
+    def test_mois_verrouille_refuse_la_modification(self, auth_client, app, db, sample_users):
+        """Une fiche verrouillée (validée par le responsable ET le directeur)
+        refuse toute nouvelle saisie sur le mois concerné."""
+        date_test = '2025-02-03'    # lundi de février 2025
+
+        with app.app_context():
+            db.execute(
+                "INSERT INTO validations (user_id, mois, annee, validation_responsable, "
+                "validation_directeur, bloque) VALUES (?, 2, 2025, ?, ?, 1)",
+                (sample_users['salarie_id'], 'Dupont Marie', 'Admin Systeme'))
+            db.commit()
+
+            response = auth_client.post('/saisie_heures', data={
+                'date': date_test,
+                'heure_debut_matin': '08:00',
+                'heure_fin_matin': '12:00',
+            }, follow_redirects=True)
+            assert response.status_code == 200
+            assert 'la fiche est verrouillée' in response.get_data(as_text=True)
+
+            row = db.execute(
+                "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+                (sample_users['salarie_id'], date_test)
+            ).fetchone()
+            assert row is None    # rien écrit
 
     def test_responsable_peut_saisir_pour_son_secteur(self, resp_client, app, db, sample_users):
         """Le responsable peut saisir pour un salarié de son secteur."""

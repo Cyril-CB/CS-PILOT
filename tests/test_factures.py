@@ -1,6 +1,6 @@
 """
-Tests du blueprint factures_bp : contrôle d'accès et suppression (avec
-nettoyage des écritures liées).
+Tests du blueprint factures_bp : contrôle d'accès (profil et périmètre de
+secteur) et suppression (avec nettoyage des écritures liées).
 """
 
 
@@ -36,6 +36,152 @@ class TestAccesFactures:
         # Les responsables accèdent à la page d'approbation
         resp = resp_client.get('/factures/approbation')
         assert resp.status_code == 200
+
+
+def _seed_secteur_avec_responsable(app, db, nom_secteur, login, mot_de_passe):
+    """Crée un second secteur et son responsable (pour tester le cloisonnement)."""
+    from werkzeug.security import generate_password_hash
+
+    with app.app_context():
+        cur = db.execute("INSERT INTO secteurs (nom) VALUES (?)", (nom_secteur,))
+        secteur_id = cur.lastrowid
+        db.execute(
+            "INSERT INTO users (nom, prenom, login, password, profil, secteur_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            ('Voisin', 'Paul', login, generate_password_hash(mot_de_passe),
+             'responsable', secteur_id),
+        )
+        db.commit()
+        return secteur_id
+
+
+def _compte(app, db, table, facture_id):
+    """Nombre de lignes liées à une facture dans la table indiquée."""
+    with app.app_context():
+        return db.execute(
+            f"SELECT COUNT(*) AS n FROM {table} WHERE facture_id=?", (facture_id,)
+        ).fetchone()['n']
+
+
+def _connexion(client, login, mot_de_passe):
+    return client.post('/login', data={'login': login, 'password': mot_de_passe},
+                       follow_redirects=True)
+
+
+class TestCommentaireFacture:
+    """Ajout d'un commentaire : profil ET périmètre de secteur, comme les
+    routes voisines (détail, téléchargement, approbation)."""
+
+    def test_commenter_controle_acces_et_perimetre(self, app, db, client, sample_users):
+        """Non connecté redirigé, salarié refusé, responsable d'un autre secteur
+        refusé sans écriture en base, responsable du secteur accepté. Les
+        fixtures de clients authentifiés partagent le même client de test : on
+        gère les connexions explicitement pour enchaîner plusieurs profils."""
+        facture_id = _seed_facture(app, db, secteur_id=sample_users['secteur_id'])
+        _seed_secteur_avec_responsable(app, db, 'Secteur Voisin', 'resp_autre', 'autre123')
+        url = f'/factures/{facture_id}/commenter'
+
+        # Non connecté : redirigé vers la connexion, aucun commentaire enregistré.
+        reponse = client.post(url, data={'commentaire': 'Anonyme'}, follow_redirects=False)
+        assert reponse.status_code in (301, 302)
+        assert _compte(app, db, 'facture_commentaires', facture_id) == 0
+
+        # Salarié : profil hors consultation des factures.
+        _connexion(client, 'salarie_test', 'sal123')
+        reponse = client.post(url, data={'commentaire': 'Salarié'}, follow_redirects=False)
+        assert reponse.status_code == 302
+        assert _compte(app, db, 'facture_commentaires', facture_id) == 0
+        client.get('/logout', follow_redirects=True)
+
+        # Responsable d'un autre secteur : refusé, aucune trace en base.
+        _connexion(client, 'resp_autre', 'autre123')
+        reponse = client.post(url, data={'commentaire': 'Hors secteur'}, follow_redirects=False)
+        assert reponse.status_code == 302
+        assert '/factures/approbation' in reponse.headers['Location']
+        assert _compte(app, db, 'facture_commentaires', facture_id) == 0
+        assert _compte(app, db, 'facture_historique', facture_id) == 0
+        client.get('/logout', follow_redirects=True)
+
+        # Responsable du secteur : commentaire vide refusé, puis cas légitime accepté.
+        _connexion(client, 'resp_test', 'resp123')
+        reponse = client.post(url, data={'commentaire': '   '}, follow_redirects=False)
+        assert reponse.status_code == 302
+        assert _compte(app, db, 'facture_commentaires', facture_id) == 0
+
+        reponse = client.post(url, data={'commentaire': 'RAS pour mon secteur'},
+                              follow_redirects=False)
+        assert reponse.status_code == 302
+        assert _compte(app, db, 'facture_commentaires', facture_id) == 1
+        assert _compte(app, db, 'facture_historique', facture_id) == 1
+        client.get('/logout', follow_redirects=True)
+
+    def test_commenter_hors_secteur_invisible_dans_le_detail(self, app, db, client, sample_users):
+        """Le refus doit aussi empêcher l'apparition du texte dans l'historique
+        visible par le responsable légitime."""
+        facture_id = _seed_facture(app, db, secteur_id=sample_users['secteur_id'])
+        _seed_secteur_avec_responsable(app, db, 'Secteur Voisin', 'resp_autre', 'autre123')
+
+        _connexion(client, 'resp_autre', 'autre123')
+        client.post(f'/factures/{facture_id}/commenter',
+                    data={'commentaire': 'Commentaire intrus'}, follow_redirects=False)
+        client.get('/logout', follow_redirects=True)
+
+        _connexion(client, 'compta_test', 'compta123')
+        html = client.get(f'/factures/{facture_id}/detail').get_data(as_text=True)
+        assert 'Commentaire intrus' not in html
+
+    def test_commenter_facture_inexistante_sans_orphelin(self, app, db, comptable_client):
+        """Une facture absente ne doit produire ni commentaire ni historique orphelin."""
+        reponse = comptable_client.post('/factures/999999/commenter',
+                                        data={'commentaire': 'Fantôme'},
+                                        follow_redirects=False)
+        assert reponse.status_code == 302
+        assert _compte(app, db, 'facture_commentaires', 999999) == 0
+        assert _compte(app, db, 'facture_historique', 999999) == 0
+
+
+class TestAssignationFacture:
+    """Assignation d'une facture : réservée à la gestion (directeur/comptable)
+    et refusée sur une facture inexistante."""
+
+    def test_assigner_controle_acces(self, app, db, client, sample_users):
+        facture_id = _seed_facture(app, db)
+        url = f'/factures/{facture_id}/assigner'
+        donnees = {'secteur_id': sample_users['secteur_id']}
+
+        # Non connecté : redirigé vers la connexion.
+        reponse = client.post(url, data=donnees, follow_redirects=False)
+        assert reponse.status_code in (301, 302)
+
+        # Salarié et responsable : profils hors gestion.
+        for login, mot_de_passe in (('salarie_test', 'sal123'), ('resp_test', 'resp123')):
+            _connexion(client, login, mot_de_passe)
+            assert client.post(url, data=donnees).status_code == 403
+            client.get('/logout', follow_redirects=True)
+
+        with app.app_context():
+            assert db.execute(
+                "SELECT secteur_id FROM factures WHERE id=?", (facture_id,)
+            ).fetchone()['secteur_id'] is None
+        assert _compte(app, db, 'facture_historique', facture_id) == 0
+
+        # Comptable : assignation effective et tracée.
+        _connexion(client, 'compta_test', 'compta123')
+        assert client.post(url, data=donnees, follow_redirects=False).status_code == 302
+        with app.app_context():
+            assert db.execute(
+                "SELECT secteur_id FROM factures WHERE id=?", (facture_id,)
+            ).fetchone()['secteur_id'] == sample_users['secteur_id']
+        assert _compte(app, db, 'facture_historique', facture_id) == 1
+
+    def test_assigner_facture_inexistante_sans_orphelin(self, app, db, comptable_client,
+                                                        sample_users):
+        reponse = comptable_client.post(
+            '/factures/999999/assigner',
+            json={'secteur_id': sample_users['secteur_id']},
+        )
+        assert reponse.status_code == 404
+        assert _compte(app, db, 'facture_historique', 999999) == 0
 
 
 class TestSuppressionFacture:

@@ -264,6 +264,14 @@ def assigner_facture(facture_id):
         direction = request.form.get('direction') == '1'
 
     conn = get_db()
+    facture = conn.execute('SELECT id FROM factures WHERE id=?', (facture_id,)).fetchone()
+    if not facture:
+        conn.close()
+        if request.is_json:
+            return jsonify({'error': 'Facture introuvable'}), 404
+        flash('Facture introuvable.', 'error')
+        return redirect(url_for('factures_bp.liste_factures'))
+
     if direction:
         conn.execute(
             'UPDATE factures SET assigned_direction=1, secteur_id=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?',
@@ -348,12 +356,27 @@ def commenter_facture(facture_id):
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
+    conn = get_db()
+    facture = conn.execute('SELECT secteur_id FROM factures WHERE id=?', (facture_id,)).fetchone()
+    if not facture:
+        conn.close()
+        flash('Facture introuvable.', 'error')
+        return redirect(url_for('factures_bp.approbation_factures'))
+
+    # Responsable : vérifier que la facture est de son secteur
+    if session.get('profil') == 'responsable':
+        user = conn.execute('SELECT secteur_id FROM users WHERE id=?', (session['user_id'],)).fetchone()
+        if not user or user['secteur_id'] != facture['secteur_id']:
+            conn.close()
+            flash('Accès non autorisé à cette facture.', 'error')
+            return redirect(url_for('factures_bp.approbation_factures'))
+
     commentaire = request.form.get('commentaire', '').strip()
     if not commentaire:
+        conn.close()
         flash('Le commentaire ne peut pas être vide.', 'error')
         return redirect(url_for('factures_bp.detail_facture', facture_id=facture_id))
 
-    conn = get_db()
     conn.execute(
         'INSERT INTO facture_commentaires (facture_id, user_id, commentaire) VALUES (?, ?, ?)',
         (facture_id, session['user_id'], commentaire)

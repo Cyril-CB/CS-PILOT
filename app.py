@@ -6,7 +6,7 @@ import os
 import sys
 import secrets
 from dotenv import load_dotenv
-from flask import Flask, session, render_template, flash, redirect, url_for, request
+from flask import Flask, session, render_template, flash, redirect, url_for, request, jsonify
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
@@ -190,6 +190,51 @@ if _behind_proxy:
 else:
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['SESSION_COOKIE_SECURE'] = False
+
+# ==================== Taille maximale des envois de fichiers ====================
+# L'application expose de nombreux points d'envoi (justificatifs d'absence,
+# contrats et documents salariés, modèles DOCX de génération de contrats,
+# imports comptables FEC/TXT, plan comptable, lots de factures PDF...). Sans
+# borne, une requête de taille arbitraire peut saturer la mémoire ou le disque
+# du serveur.
+#
+# La limite est volontairement TRÈS LARGE pour ne bloquer aucun usage réel :
+# le flux le plus volumineux est l'import de factures, qui accepte plusieurs
+# PDF dans une seule requête. La restauration d'une sauvegarde ne transite pas
+# par un formulaire d'envoi (le fichier est déjà présent sur le serveur, seul
+# son nom est transmis), elle n'est donc pas concernée par cette limite.
+#
+# Surchargeable par la variable d'environnement MAX_UPLOAD_MO (en méga-octets).
+MAX_UPLOAD_MO_DEFAUT = 256
+
+
+def lire_max_upload_mo():
+    """Retourne la taille maximale d'un envoi HTTP, en méga-octets.
+
+    Lit MAX_UPLOAD_MO dans l'environnement et retombe sur la valeur par défaut
+    si elle est absente, non numérique ou nulle/négative.
+    """
+    valeur = os.environ.get('MAX_UPLOAD_MO', '').strip()
+    if not valeur:
+        return MAX_UPLOAD_MO_DEFAUT
+    try:
+        mo = int(valeur)
+    except ValueError:
+        logger.warning(
+            "MAX_UPLOAD_MO invalide (%r) : limite par défaut de %s Mo appliquée.",
+            valeur, MAX_UPLOAD_MO_DEFAUT,
+        )
+        return MAX_UPLOAD_MO_DEFAUT
+    if mo <= 0:
+        logger.warning(
+            "MAX_UPLOAD_MO doit être un entier positif (%r) : limite par défaut "
+            "de %s Mo appliquée.", valeur, MAX_UPLOAD_MO_DEFAUT,
+        )
+        return MAX_UPLOAD_MO_DEFAUT
+    return mo
+
+
+app.config['MAX_CONTENT_LENGTH'] = lire_max_upload_mo() * 1024 * 1024
 
 # ==================== Initialisation des extensions ====================
 # Le jeton CSRF reste valide tant que la session l'est (pas d'expiration au
@@ -465,6 +510,63 @@ def ratelimit_handler(e):
     """Affiche un message clair quand la limite de tentatives est atteinte."""
     flash('Trop de tentatives. Veuillez patienter avant de réessayer.', 'error')
     return render_template('login.html'), 429
+
+
+def _taille_max_lisible():
+    """Retourne la taille maximale d'envoi formatée pour un message utilisateur."""
+    limite = app.config.get('MAX_CONTENT_LENGTH') or 0
+    mo = limite / (1024 * 1024)
+    if mo >= 1:
+        return f"{mo:.0f} Mo" if mo == int(mo) else f"{mo:.1f} Mo"
+    return f"{limite / 1024:.0f} Ko"
+
+
+def _attend_du_json():
+    """Vrai si le client attend une réponse JSON (route d'API ou appel fetch).
+
+    N'inspecte que le chemin et les en-têtes : lire le corps de la requête
+    relancerait immédiatement l'erreur de dépassement de taille.
+    """
+    return ('/api/' in request.path
+            or request.accept_mimetypes.best == 'application/json'
+            or request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+            or request.is_json)
+
+
+def _url_retour_sure():
+    """Retourne l'URL où renvoyer l'utilisateur après un envoi trop volumineux.
+
+    On ne réutilise JAMAIS l'URL fournie par le navigateur (en-tête Referer) :
+    une valeur contrôlée par le client ne doit pas devenir une cible de
+    redirection (redirection ouverte). Le tableau de bord est la destination de
+    repli utilisée partout ailleurs dans l'application ; le message flash
+    explique ce qui s'est passé.
+    """
+    return url_for('dashboard_bp.dashboard')
+
+
+@app.errorhandler(413)
+def handle_request_entity_too_large(e):
+    """Répond proprement quand l'envoi dépasse la taille maximale autorisée.
+
+    Les routes d'API (ou les appels fetch) reçoivent un JSON en 413 ; les
+    formulaires classiques reçoivent un message flash puis une redirection,
+    conformément au schéma Post/Redirect/Get utilisé dans l'application.
+    """
+    taille_max = _taille_max_lisible()
+    message = (
+        f"Envoi trop volumineux : la taille totale des fichiers ne doit pas "
+        f"dépasser {taille_max}. Compressez le document ou envoyez-le en "
+        f"plusieurs fois."
+    )
+    logger.warning(
+        "Envoi refusé (413) : path=%s method=%s user_id=%s taille_max=%s",
+        request.path, request.method, session.get('user_id'), taille_max,
+    )
+    if _attend_du_json():
+        return jsonify({'ok': False, 'error': message}), 413
+    flash(message, 'error')
+    return redirect(_url_retour_sure())
 
 
 @app.errorhandler(CSRFError)

@@ -195,6 +195,28 @@ def comptable_client(client, sample_users):
 
 
 @pytest.fixture
+def prestataire_client(app, db, client, sample_users):
+    """Client authentifie en tant que prestataire paie (cabinet externe).
+
+    Profil dedie a la preparation de paie : il accede aux justificatifs
+    d'absence et aux contrats, dont il a besoin pour saisir la paie, mais pas
+    au reste de l'application. L'utilisateur est cree a la demande (et non
+    dans `sample_users`) pour ne pas modifier les effectifs attendus par les
+    tests existants.
+    """
+    from werkzeug.security import generate_password_hash
+
+    with app.app_context():
+        db.execute(
+            "INSERT INTO users (nom, prenom, login, password, profil) VALUES (?, ?, ?, ?, ?)",
+            ('Cabinet', 'Paie', 'presta_test', generate_password_hash('presta123'), 'prestataire')
+        )
+        db.commit()
+    _login(client, 'presta_test', 'presta123')
+    return client
+
+
+@pytest.fixture
 def sample_planning(app, db, sample_users):
     """Crée un planning théorique standard (8h/jour, lun-ven) pour le salarié de test.
 

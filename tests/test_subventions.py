@@ -471,3 +471,331 @@ class TestFiltreAnnee:
         # Le filtre par année est utile à tous (contrairement à « Gérer les types »).
         html = resp_client.get('/subventions').get_data(as_text=True)
         assert 'sv-annee-select' in html
+
+
+class TestPerimetreResponsableSubventions:
+    """Cloisonnement des subventions entre responsables (escalade horizontale).
+
+    Un responsable ne doit agir que sur les subventions qui lui sont assignées :
+    exactement le périmètre déjà appliqué par la page de consultation. Sans ce
+    contrôle, il pouvait modifier ou supprimer par ID les subventions d'un autre
+    secteur.
+    """
+
+    def _seed(self, app, db, sample_users):
+        """Crée une subvention assignée au responsable de test et une subvention
+        qui ne le concerne pas, chacune avec un sous-élément."""
+        resp_id = sample_users['responsable_id']
+        with app.app_context():
+            mienne = db.execute(
+                "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id) "
+                "VALUES ('Mienne', 'en_cours', '2026', ?)",
+                (resp_id,)
+            ).lastrowid
+            se_mienne = db.execute(
+                "INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) "
+                "VALUES (?, 'Bilan', 0)",
+                (mienne,)
+            ).lastrowid
+            autre = db.execute(
+                "INSERT INTO subventions (nom, groupe, annee_action) "
+                "VALUES ('AutreSecteur', 'en_cours', '2026')"
+            ).lastrowid
+            se_autre = db.execute(
+                "INSERT INTO subventions_sous_elements (subvention_id, nom, ordre) "
+                "VALUES (?, 'Bilan autre', 0)",
+                (autre,)
+            ).lastrowid
+            db.commit()
+        return {'mienne': mienne, 'se_mienne': se_mienne,
+                'autre': autre, 'se_autre': se_autre}
+
+    def _pdf(self):
+        return {'fichier': (io.BytesIO(b'%PDF-1.4\ntest\n'), 'piece.pdf')}
+
+    def test_responsable_non_assigne_refuse_sur_les_routes_mutantes(
+        self, app, resp_client, db, sample_users, monkeypatch, tmp_path
+    ):
+        from blueprints import subventions as subventions_module
+        # Dossier dédié (tmp_path héberge aussi la base de test).
+        documents_dir = tmp_path / 'documents_subventions'
+        documents_dir.mkdir()
+        monkeypatch.setattr(subventions_module, 'DOCUMENTS_DIR', str(documents_dir))
+        ids = self._seed(app, db, sample_users)
+
+        appels = [
+            resp_client.post(f"/api/subventions/{ids['autre']}/modifier",
+                             json={'field': 'nom', 'value': 'Piratee'}),
+            resp_client.post(f"/api/subventions/{ids['autre']}/sous-elements/ajouter",
+                             json={'nom': 'Etape pirate'}),
+            resp_client.post(f"/api/subventions/sous-elements/{ids['se_autre']}/modifier",
+                             json={'field': 'nom', 'value': 'Etape piratee'}),
+            resp_client.post(f"/api/subventions/sous-elements/{ids['se_autre']}/supprimer"),
+            resp_client.post(f"/api/subventions/{ids['autre']}/justificatif",
+                             data=self._pdf(), content_type='multipart/form-data'),
+            resp_client.post(f"/api/subventions/sous-elements/{ids['se_autre']}/document",
+                             data=self._pdf(), content_type='multipart/form-data'),
+            resp_client.post(f"/api/subventions/{ids['autre']}/supprimer"),
+        ]
+        for reponse in appels:
+            assert reponse.status_code == 403
+            assert reponse.get_json() == {'ok': False, 'error': 'Non autorisé'}
+
+        # Aucun effet en base : la subvention d'autrui est intacte.
+        with app.app_context():
+            sub = db.execute(
+                'SELECT nom, justificatif_path FROM subventions WHERE id = ?',
+                (ids['autre'],)
+            ).fetchone()
+            sous_elements = db.execute(
+                'SELECT nom, document_path FROM subventions_sous_elements '
+                'WHERE subvention_id = ?',
+                (ids['autre'],)
+            ).fetchall()
+        assert sub is not None
+        assert sub['nom'] == 'AutreSecteur'
+        assert sub['justificatif_path'] is None
+        assert len(sous_elements) == 1
+        assert sous_elements[0]['nom'] == 'Bilan autre'
+        assert sous_elements[0]['document_path'] is None
+        # Aucun fichier n'a été écrit malgré les tentatives de téléversement.
+        assert list(documents_dir.iterdir()) == []
+
+    def test_responsable_assigne_peut_toujours_travailler(
+        self, app, resp_client, db, sample_users, monkeypatch, tmp_path
+    ):
+        from blueprints import subventions as subventions_module
+        monkeypatch.setattr(subventions_module, 'DOCUMENTS_DIR', str(tmp_path))
+        ids = self._seed(app, db, sample_users)
+
+        assert resp_client.post(f"/api/subventions/{ids['mienne']}/modifier",
+                                json={'field': 'nom', 'value': 'Mienne suivie'}
+                                ).status_code == 200
+        ajout = resp_client.post(f"/api/subventions/{ids['mienne']}/sous-elements/ajouter",
+                                 json={'nom': 'Envoyer le bilan'})
+        assert ajout.status_code == 200
+        assert resp_client.post(f"/api/subventions/sous-elements/{ids['se_mienne']}/modifier",
+                                json={'field': 'statut', 'value': 'fait'}
+                                ).status_code == 200
+        assert resp_client.post(f"/api/subventions/{ids['mienne']}/justificatif",
+                                data=self._pdf(), content_type='multipart/form-data'
+                                ).status_code == 200
+        assert resp_client.post(f"/api/subventions/sous-elements/{ids['se_mienne']}/document",
+                                data=self._pdf(), content_type='multipart/form-data'
+                                ).status_code == 200
+        assert resp_client.post(
+            f"/api/subventions/sous-elements/{ajout.get_json()['id']}/supprimer"
+        ).status_code == 200
+        assert resp_client.post(f"/api/subventions/{ids['mienne']}/supprimer").status_code == 200
+
+        with app.app_context():
+            assert db.execute('SELECT COUNT(*) AS n FROM subventions WHERE id = ?',
+                              (ids['mienne'],)).fetchone()['n'] == 0
+
+    def test_responsable_assigne_via_sous_element_peut_agir_sur_le_parent(
+        self, app, resp_client, db, sample_users
+    ):
+        # Même périmètre que la consultation : un sous-élément attribué suffit.
+        resp_id = sample_users['responsable_id']
+        with app.app_context():
+            sub_id = db.execute(
+                "INSERT INTO subventions (nom, groupe, annee_action) "
+                "VALUES ('DossierSE', 'en_cours', '2026')"
+            ).lastrowid
+            db.execute(
+                "INSERT INTO subventions_sous_elements (subvention_id, nom, assignee_id, ordre) "
+                "VALUES (?, 'Bilan', ?, 0)",
+                (sub_id, resp_id)
+            )
+            db.commit()
+
+        reponse = resp_client.post(f'/api/subventions/{sub_id}/modifier',
+                                   json={'field': 'montant_demande', 'value': 1500})
+        assert reponse.status_code == 200
+        with app.app_context():
+            assert db.execute('SELECT montant_demande FROM subventions WHERE id = ?',
+                              (sub_id,)).fetchone()['montant_demande'] == 1500
+
+    def test_responsable_peut_toujours_creer_une_subvention(
+        self, app, resp_client, db, sample_users
+    ):
+        # La création ne porte sur aucune subvention existante : aucun périmètre
+        # à vérifier, le parcours du responsable reste ouvert.
+        reponse = resp_client.post('/api/subventions/ajouter',
+                                   json={'nom': 'Nouveau dossier', 'annee_action': '2026'})
+        assert reponse.status_code == 200
+        with app.app_context():
+            assert db.execute('SELECT COUNT(*) AS n FROM subventions WHERE id = ?',
+                              (reponse.get_json()['id'],)).fetchone()['n'] == 1
+
+    def test_salarie_refuse_sur_les_routes_mutantes(
+        self, app, auth_client, db, sample_users, monkeypatch, tmp_path
+    ):
+        from blueprints import subventions as subventions_module
+        monkeypatch.setattr(subventions_module, 'DOCUMENTS_DIR', str(tmp_path))
+        ids = self._seed(app, db, sample_users)
+
+        appels = [
+            auth_client.post(f"/api/subventions/{ids['mienne']}/modifier",
+                             json={'field': 'nom', 'value': 'Piratee'}),
+            auth_client.post(f"/api/subventions/{ids['mienne']}/sous-elements/ajouter",
+                             json={'nom': 'Etape'}),
+            auth_client.post(f"/api/subventions/sous-elements/{ids['se_mienne']}/modifier",
+                             json={'field': 'nom', 'value': 'Etape piratee'}),
+            auth_client.post(f"/api/subventions/sous-elements/{ids['se_mienne']}/supprimer"),
+            auth_client.post(f"/api/subventions/{ids['mienne']}/justificatif",
+                             data=self._pdf(), content_type='multipart/form-data'),
+            auth_client.post(f"/api/subventions/sous-elements/{ids['se_mienne']}/document",
+                             data=self._pdf(), content_type='multipart/form-data'),
+            auth_client.post(f"/api/subventions/{ids['mienne']}/supprimer"),
+        ]
+        for reponse in appels:
+            assert reponse.status_code == 403
+
+        with app.app_context():
+            assert db.execute('SELECT nom FROM subventions WHERE id = ?',
+                              (ids['mienne'],)).fetchone()['nom'] == 'Mienne'
+
+    def test_non_connecte_redirige_vers_la_connexion(self, app, client, db, sample_users):
+        ids = self._seed(app, db, sample_users)
+        routes = [
+            f"/api/subventions/{ids['mienne']}/modifier",
+            f"/api/subventions/{ids['mienne']}/supprimer",
+            f"/api/subventions/{ids['mienne']}/sous-elements/ajouter",
+            f"/api/subventions/sous-elements/{ids['se_mienne']}/modifier",
+            f"/api/subventions/sous-elements/{ids['se_mienne']}/supprimer",
+            f"/api/subventions/{ids['mienne']}/justificatif",
+            f"/api/subventions/sous-elements/{ids['se_mienne']}/document",
+        ]
+        for route in routes:
+            reponse = client.post(route, json={'field': 'nom', 'value': 'X'})
+            assert reponse.status_code == 302
+            assert '/login' in reponse.headers['Location']
+
+        with app.app_context():
+            assert db.execute('SELECT nom FROM subventions WHERE id = ?',
+                              (ids['mienne'],)).fetchone()['nom'] == 'Mienne'
+
+    def test_subvention_ou_sous_element_inexistant_renvoie_404(
+        self, app, admin_client, db, sample_users
+    ):
+        # Une ressource absente se distingue d'un refus de périmètre.
+        r_sub = admin_client.post('/api/subventions/999999/modifier',
+                                  json={'field': 'nom', 'value': 'X'})
+        assert r_sub.status_code == 404
+        assert r_sub.get_json()['error'] == 'Subvention introuvable'
+
+        r_se = admin_client.post('/api/subventions/sous-elements/999999/modifier',
+                                 json={'field': 'nom', 'value': 'X'})
+        assert r_se.status_code == 404
+        assert r_se.get_json()['error'] == 'Sous-élément introuvable'
+
+    def test_analytique_reservee_a_la_direction_et_comptabilite(
+        self, app, client, db, sample_users
+    ):
+        """Le plan analytique est un référentiel global que l'interface n'expose
+        pas aux responsables : sa création suit la règle des types."""
+        client.post('/login', data={'login': 'resp_test', 'password': 'resp123'},
+                    follow_redirects=True)
+        refus = client.post('/api/subventions/analytiques/ajouter', json={'nom': 'ANALYTIQUE X'})
+        assert refus.status_code == 403
+        with app.app_context():
+            assert db.execute(
+                'SELECT COUNT(*) AS n FROM subventions_analytiques WHERE nom = ?',
+                ('ANALYTIQUE X',)
+            ).fetchone()['n'] == 0
+        client.get('/logout', follow_redirects=True)
+
+        client.post('/login', data={'login': 'compta_test', 'password': 'compta123'},
+                    follow_redirects=True)
+        assert client.post('/api/subventions/analytiques/ajouter',
+                           json={'nom': 'ANALYTIQUE X'}).status_code == 200
+        client.get('/logout', follow_redirects=True)
+
+        client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                    follow_redirects=True)
+        assert client.post('/api/subventions/analytiques/ajouter',
+                           json={'nom': 'ANALYTIQUE Y'}).status_code == 403
+
+
+class TestTelechargementPiecesSubventions:
+    """Cloisonnement des pièces jointes en LECTURE (découvert par le balayage
+    des routes sensibles).
+
+    Les deux routes de téléchargement ne vérifiaient que le profil : un
+    responsable non assigné pouvait récupérer, en devinant l'identifiant, le
+    justificatif d'une subvention d'un autre secteur — alors que la page de
+    consultation ne la lui montre pas. C'est le pendant, en lecture, du
+    cloisonnement appliqué aux routes de modification.
+    """
+
+    def _seed_avec_pieces(self, app, db, sample_users, tmp_path, monkeypatch):
+        """Une subvention assignée au responsable et une qui ne l'est pas,
+        chacune avec un justificatif et un sous-élément documenté sur disque."""
+        import blueprints.subventions as mod
+        monkeypatch.setattr(mod, 'DOCUMENTS_DIR', str(tmp_path))
+        resp_id = sample_users['responsable_id']
+        ids = {}
+        with app.app_context():
+            for cle, assignee in (('mienne', resp_id), ('autre', None)):
+                fichier = f'justif_{cle}.pdf'
+                (tmp_path / fichier).write_bytes(b'%PDF-1.4\n' + cle.encode() + b'\n')
+                doc = f'doc_{cle}.pdf'
+                (tmp_path / doc).write_bytes(b'%PDF-1.4\n' + cle.encode() + b'\n')
+                sub_id = db.execute(
+                    "INSERT INTO subventions (nom, groupe, annee_action, assignee_1_id, "
+                    "justificatif_path, justificatif_nom) VALUES (?, 'en_cours', '2026', ?, ?, ?)",
+                    (cle.capitalize(), assignee, fichier, fichier)
+                ).lastrowid
+                se_id = db.execute(
+                    "INSERT INTO subventions_sous_elements (subvention_id, nom, ordre, "
+                    "document_path, document_nom) VALUES (?, 'Bilan', 0, ?, ?)",
+                    (sub_id, doc, doc)
+                ).lastrowid
+                ids[cle] = sub_id
+                ids['se_' + cle] = se_id
+            db.commit()
+        return ids
+
+    def test_responsable_non_assigne_ne_telecharge_pas_les_pieces(
+            self, app, db, resp_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        for url in (f"/subventions/justificatif/{ids['autre']}",
+                    f"/subventions/sous-element-document/{ids['se_autre']}"):
+            r = resp_client.get(url, follow_redirects=False)
+            assert r.status_code in (301, 302), f"{url} devrait être refusée"
+            assert '/subventions' in r.headers.get('Location', '')
+            assert r.headers.get('Content-Disposition') is None
+            assert not r.get_data().startswith(b'%PDF'), f"pièce servie par {url}"
+
+    def test_responsable_assigne_telecharge_ses_pieces(
+            self, app, db, resp_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        for url in (f"/subventions/justificatif/{ids['mienne']}",
+                    f"/subventions/sous-element-document/{ids['se_mienne']}"):
+            r = resp_client.get(url)
+            assert r.status_code == 200, f"{url} doit rester accessible à l'assigné"
+            assert r.get_data().startswith(b'%PDF')
+
+    def test_comptable_telecharge_toutes_les_pieces(
+            self, app, db, comptable_client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+
+        r = comptable_client.get(f"/subventions/justificatif/{ids['autre']}")
+        assert r.status_code == 200 and r.get_data().startswith(b'%PDF')
+
+    def test_salarie_et_anonyme_refuses(
+            self, app, db, client, sample_users, tmp_path, monkeypatch):
+        ids = self._seed_avec_pieces(app, db, sample_users, tmp_path, monkeypatch)
+        url = f"/subventions/justificatif/{ids['mienne']}"
+
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code in (301, 302) and '/login' in r.headers.get('Location', '')
+
+        client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                    follow_redirects=True)
+        r = client.get(url, follow_redirects=False)
+        assert r.status_code in (301, 302)
+        assert not r.get_data().startswith(b'%PDF')

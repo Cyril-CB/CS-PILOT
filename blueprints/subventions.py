@@ -88,6 +88,76 @@ def _peut_gerer_types():
     return session.get('profil') in ('directeur', 'comptable')
 
 
+def _refus_acces_subvention(conn, sub_id):
+    """Controle le perimetre d'une action portant sur la subvention `sub_id`.
+
+    Retourne None quand l'action est autorisee, sinon la reponse JSON a renvoyer
+    telle quelle : 404 si la subvention n'existe pas, 403 si le profil n'a pas le
+    droit d'agir dessus.
+
+    La direction et la comptabilite agissent sur toutes les subventions. Un
+    responsable n'agit que sur celles qui lui sont assignees — exactement le
+    perimetre de la page de consultation : assigne principal ou secondaire de la
+    subvention, ou assigne de l'un de ses sous-elements. Sans ce controle, un
+    responsable pourrait modifier ou supprimer par ID les subventions d'un autre
+    secteur. Les autres profils sont refuses.
+    """
+    profil = session.get('profil')
+    if profil not in ('directeur', 'comptable', 'responsable'):
+        return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
+
+    existe = conn.execute('SELECT 1 FROM subventions WHERE id = ?', (sub_id,)).fetchone()
+    if not existe:
+        return jsonify({'ok': False, 'error': 'Subvention introuvable'}), 404
+
+    if profil in ('directeur', 'comptable'):
+        return None
+
+    user_id = session.get('user_id')
+    assignee = conn.execute(
+        '''SELECT 1 FROM subventions
+           WHERE id = ?
+             AND (assignee_1_id = ? OR assignee_2_id = ?
+                  OR id IN (
+                      SELECT subvention_id FROM subventions_sous_elements
+                      WHERE assignee_id = ?
+                  ))''',
+        (sub_id, user_id, user_id, user_id)
+    ).fetchone()
+    if not assignee:
+        return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
+    return None
+
+
+def _refus_acces_sous_element(conn, se_id):
+    """Meme controle que `_refus_acces_subvention`, a partir d'un sous-element :
+    le droit s'evalue toujours sur la subvention parente. Retourne None si
+    l'action est autorisee, 404 si le sous-element est introuvable."""
+    se = conn.execute(
+        'SELECT subvention_id FROM subventions_sous_elements WHERE id = ?', (se_id,)
+    ).fetchone()
+    if not se:
+        return jsonify({'ok': False, 'error': 'Sous-élément introuvable'}), 404
+    return _refus_acces_subvention(conn, se['subvention_id'])
+
+
+def _peut_telecharger_piece_subvention(conn, sub_id):
+    """Vrai si le profil courant peut telecharger une piece de la subvention.
+
+    Applique exactement le meme perimetre que les routes de modification (en
+    reutilisant `_refus_acces_subvention`, pour que les deux ne divergent
+    jamais). Sans ce controle, un responsable non assigne pourrait recuperer,
+    en devinant l'identifiant, le justificatif d'une subvention d'un autre
+    secteur — alors que la page de consultation ne la lui montre pas.
+    """
+    return _refus_acces_subvention(conn, sub_id) is None
+
+
+def _peut_telecharger_piece_sous_element(conn, se_id):
+    """Meme controle que ci-dessus, a partir d'un sous-element."""
+    return _refus_acces_sous_element(conn, se_id) is None
+
+
 def _get_initiales(prenom, nom):
     p = (prenom or '').strip()
     n = (nom or '').strip()
@@ -406,6 +476,10 @@ def api_modifier_subvention(sub_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_subvention(conn, sub_id)
+        if refus:
+            return refus
+
         # Coherence avec la creation : refuser un type inexistant plutot que de
         # laisser une reference orpheline (les FK ne sont pas activees).
         if field == 'type_id' and value is not None:
@@ -443,6 +517,10 @@ def api_supprimer_subvention(sub_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_subvention(conn, sub_id)
+        if refus:
+            return refus
+
         conn.execute('DELETE FROM subventions_sous_elements WHERE subvention_id = ?', (sub_id,))
         sub = conn.execute('SELECT justificatif_path FROM subventions WHERE id = ?', (sub_id,)).fetchone()
         if sub and sub['justificatif_path']:
@@ -577,6 +655,10 @@ def api_ajouter_sous_element(sub_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_subvention(conn, sub_id)
+        if refus:
+            return refus
+
         max_ordre = conn.execute(
             'SELECT COALESCE(MAX(ordre), -1) as m FROM subventions_sous_elements WHERE subvention_id = ?',
             (sub_id,)
@@ -613,6 +695,10 @@ def api_modifier_sous_element(se_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_sous_element(conn, se_id)
+        if refus:
+            return refus
+
         infos_notif = None
         if field == 'assignee_id' and value:
             avant = conn.execute(
@@ -645,6 +731,10 @@ def api_supprimer_sous_element(se_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_sous_element(conn, se_id)
+        if refus:
+            return refus
+
         se = conn.execute('SELECT document_path FROM subventions_sous_elements WHERE id = ?', (se_id,)).fetchone()
         if se and se['document_path']:
             chemin = os.path.join(DOCUMENTS_DIR, se['document_path'])
@@ -664,7 +754,12 @@ def api_supprimer_sous_element(se_id):
 @subventions_bp.route('/api/subventions/analytiques/ajouter', methods=['POST'])
 @login_required
 def api_ajouter_analytique():
-    if not _peut_modifier():
+    # Le plan analytique est un referentiel GLOBAL, partage par toutes les
+    # subventions et tous les secteurs : sa creation suit la meme regle que la
+    # gestion des types (direction / comptabilite). L'interface ne l'expose a
+    # aucun responsable — la page subventions n'appelle pas cet endpoint —, la
+    # restriction ne casse donc aucun parcours utilisateur.
+    if not _peut_gerer_types():
         return jsonify({'ok': False, 'error': 'Non autorisé'}), 403
 
     data = request.get_json(silent=True) or {}
@@ -726,6 +821,10 @@ def api_upload_se_document(se_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_sous_element(conn, se_id)
+        if refus:
+            return refus
+
         se = conn.execute(
             'SELECT se.*, s.nom as sub_nom, s.annee_action '
             'FROM subventions_sous_elements se '
@@ -778,6 +877,9 @@ def telecharger_se_document(se_id):
 
     conn = get_db()
     try:
+        if not _peut_telecharger_piece_sous_element(conn, se_id):
+            flash("Accès non autorisé.", "error")
+            return redirect(url_for('subventions_bp.gestion_subventions'))
         se = conn.execute(
             'SELECT document_path, document_nom FROM subventions_sous_elements WHERE id = ?',
             (se_id,)
@@ -823,6 +925,10 @@ def api_upload_justificatif(sub_id):
 
     conn = get_db()
     try:
+        refus = _refus_acces_subvention(conn, sub_id)
+        if refus:
+            return refus
+
         sub = conn.execute(
             'SELECT nom, justificatif_path FROM subventions WHERE id = ?', (sub_id,)
         ).fetchone()
@@ -871,6 +977,9 @@ def telecharger_justificatif(sub_id):
 
     conn = get_db()
     try:
+        if not _peut_telecharger_piece_subvention(conn, sub_id):
+            flash("Accès non autorisé.", "error")
+            return redirect(url_for('subventions_bp.gestion_subventions'))
         sub = conn.execute(
             'SELECT justificatif_path, justificatif_nom FROM subventions WHERE id = ?',
             (sub_id,)
