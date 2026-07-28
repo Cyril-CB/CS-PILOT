@@ -1801,3 +1801,43 @@ def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
     texte = _texte_pdf_budget(r.data)
     assert b'Temp.' in texte
     assert b'Initial N' not in texte
+
+
+def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
+    """Export d'un budget (données financières) : refus hors direction /
+    comptabilité et sur paramètres invalides. Les fixtures de clients
+    authentifiés partagent le même client de test : on gère les connexions
+    explicitement pour enchaîner plusieurs profils."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    url = (f'/api/budget-previsionnel/export-pdf?type_budget=actualise'
+           f'&annee={annee}&secteur_id={sid}')
+
+    # Non connecté : redirigé vers la connexion, aucun PDF servi.
+    r = client.get(url, follow_redirects=False)
+    assert r.status_code in (301, 302)
+
+    # Salarié : accès refusé.
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'}, follow_redirects=True)
+    assert client.get(url).status_code == 403
+    client.get('/logout', follow_redirects=True)
+
+    # Responsable : la vue globale (tous secteurs) lui reste interdite, même
+    # si l'option lui ouvre la page de son secteur.
+    client.post('/login', data={'login': 'resp_test', 'password': 'resp123'}, follow_redirects=True)
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&global=1'
+    ).status_code == 403
+    client.get('/logout', follow_redirects=True)
+
+    # Directeur : paramètres invalides refusés (type de budget, année manquante).
+    client.post('/login', data={'login': 'admin', 'password': 'Admin1234'}, follow_redirects=True)
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=inconnu&annee={annee}&secteur_id={sid}'
+    ).status_code == 400
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&secteur_id={sid}'
+    ).status_code == 400
+    # Et l'export légitime reste servi.
+    assert client.get(url).status_code == 200
