@@ -1743,3 +1743,101 @@ def test_paie_context_agrege_les_periodes_de_contrats_successifs(app, db, admin_
     # Caractéristiques affichées : celles du contrat en cours (le plus récent).
     assert emp['type_contrat'] == 'CDI'
     assert emp['temps_hebdo'] == 28
+
+
+def _texte_pdf_budget(data):
+    """Concatène les flux décompressés d'un PDF (le texte y est en clair).
+
+    ReportLab encode ses flux en ASCII85 puis Flate ; on tente les deux
+    décodages et on ignore le reste (polices…).
+    """
+    import base64
+    import re
+    import zlib
+    morceaux = []
+    for m in re.findall(rb'stream\r?\n(.*?)endstream', data, re.S):
+        m = m.strip()
+        for decode in (lambda b: zlib.decompress(base64.a85decode(b, adobe=True)),
+                       zlib.decompress):
+            try:
+                morceaux.append(decode(m))
+                break
+            except Exception:
+                continue
+    return b''.join(morceaux)
+
+
+def test_export_pdf_actualise_colonnes_initial_actualise_ecart(app, db, admin_client):
+    """PDF d'un budget actualisé : N-2, N-1, budget initial, actualisé
+    (définitif) et l'écart entre les deux — la colonne « Temporaire » laisse la
+    place à la comparaison initial / actualisé."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)   # initial définitif = 1 500 €
+        db.execute("INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_def) "
+                   "VALUES ('actualise', ?, ?, '606000', 1800)", (annee, sid))
+        db.commit()
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+    assert r.data[:4] == b'%PDF'
+    texte = _texte_pdf_budget(r.data)
+    # Les accents sont échappés en latin-1 dans les flux PDF (« Écart » →
+    # « \311cart ») : on cherche les fragments non accentués.
+    for attendu in (b'Initial N', b'Actualis', b'cart', b'1500.00', b'1800.00', b'+300.00'):
+        assert attendu in texte, f"{attendu!r} absent du PDF actualisé"
+    assert b'Temp.' not in texte, "la colonne Temporaire ne doit plus figurer en actualisé"
+
+
+def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
+    """PDF d'un budget initial : présentation inchangée (N, Temp., Déf.)."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+    texte = _texte_pdf_budget(r.data)
+    assert b'Temp.' in texte
+    assert b'Initial N' not in texte
+
+
+def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
+    """Export d'un budget (données financières) : refus hors direction /
+    comptabilité et sur paramètres invalides. Les fixtures de clients
+    authentifiés partagent le même client de test : on gère les connexions
+    explicitement pour enchaîner plusieurs profils."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    url = (f'/api/budget-previsionnel/export-pdf?type_budget=actualise'
+           f'&annee={annee}&secteur_id={sid}')
+
+    # Non connecté : redirigé vers la connexion, aucun PDF servi.
+    r = client.get(url, follow_redirects=False)
+    assert r.status_code in (301, 302)
+
+    # Salarié : accès refusé.
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'}, follow_redirects=True)
+    assert client.get(url).status_code == 403
+    client.get('/logout', follow_redirects=True)
+
+    # Responsable : la vue globale (tous secteurs) lui reste interdite, même
+    # si l'option lui ouvre la page de son secteur.
+    client.post('/login', data={'login': 'resp_test', 'password': 'resp123'}, follow_redirects=True)
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&global=1'
+    ).status_code == 403
+    client.get('/logout', follow_redirects=True)
+
+    # Directeur : paramètres invalides refusés (type de budget, année manquante).
+    client.post('/login', data={'login': 'admin', 'password': 'Admin1234'}, follow_redirects=True)
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=inconnu&annee={annee}&secteur_id={sid}'
+    ).status_code == 400
+    assert client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&secteur_id={sid}'
+    ).status_code == 400
+    # Et l'export légitime reste servi.
+    assert client.get(url).status_code == 200

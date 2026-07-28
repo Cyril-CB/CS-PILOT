@@ -1386,11 +1386,13 @@ def api_budget_previsionnel_export_pdf():
         from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet
 
-        titre = f"Budget {'global' if global_mode else 'secteur'} - {type_budget.capitalize()} - {annee}"
+        actualise = (type_budget == 'actualise')
+        libelle_type = 'Actualisé' if actualise else 'Initial'
+        titre = f"Budget {'global' if global_mode else 'secteur'} - {libelle_type} - {annee}"
         if secteur_id and not global_mode:
             secteur = conn.execute('SELECT nom FROM secteurs WHERE id = ?', (secteur_id,)).fetchone()
             if secteur:
-                titre = f"Budget {secteur['nom']} - {type_budget.capitalize()} - {annee}"
+                titre = f"Budget {secteur['nom']} - {libelle_type} - {annee}"
 
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=1 * cm, rightMargin=1 * cm,
@@ -1398,15 +1400,43 @@ def api_budget_previsionnel_export_pdf():
         styles = getSampleStyleSheet()
         elements = [Paragraph(titre, styles['Title']), Spacer(1, 0.3 * cm)]
 
-        headers = ['Compte', 'Libellé', 'N-2', 'N-1', 'N', 'Temp.', 'Déf.']
+        # En budget actualisé, le document sert à comparer l'atterrissage au
+        # budget voté : la colonne « Temporaire » (aide à la saisie) laisse la
+        # place au budget initial et à l'écart.
+        if actualise:
+            # Les trois dernières colonnes portent des en-têtes plus larges :
+            # on puise dans la marge encore disponible sur la page A4 plutôt
+            # que de rogner le libellé du compte.
+            headers = ['Compte', 'Libellé', 'N-2', 'N-1', 'Initial N', 'Actualisé N', 'Écart']
+            largeurs = [2 * cm, 6.3 * cm, 2 * cm, 2 * cm, 2.2 * cm, 2.2 * cm, 2.2 * cm]
+        else:
+            headers = ['Compte', 'Libellé', 'N-2', 'N-1', 'N', 'Temp.', 'Déf.']
+            largeurs = [2 * cm, 6.4 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm]
         table_data = [headers]
+        initial_charges = initial_produits = 0.0
         for r in data['rows']:
-            table_data.append([
-                r['compte_num'], r['libelle'],
-                f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{r['N']:.2f}",
-                f"{r['temp']:.2f}", f"{r['def']:.2f}"
-            ])
-        t = RLTable(table_data, repeatRows=1, colWidths=[2 * cm, 6.4 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm])
+            if actualise:
+                # L'écart se lit directement entre les deux colonnes imprimées :
+                # il porte donc sur la valeur définitive. (À l'écran, où la
+                # colonne « Temporaire » reste visible, il retombe sur celle-ci
+                # tant que le définitif n'est pas saisi.)
+                initial = float(r.get('initial') or 0)
+                if r['nature'] == 'charges':
+                    initial_charges += initial
+                else:
+                    initial_produits += initial
+                table_data.append([
+                    r['compte_num'], r['libelle'],
+                    f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{initial:.2f}",
+                    f"{r['def']:.2f}", f"{r['def'] - initial:+.2f}"
+                ])
+            else:
+                table_data.append([
+                    r['compte_num'], r['libelle'],
+                    f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{r['N']:.2f}",
+                    f"{r['temp']:.2f}", f"{r['def']:.2f}"
+                ])
+        t = RLTable(table_data, repeatRows=1, colWidths=largeurs)
         t.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
             ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
@@ -1416,10 +1446,19 @@ def api_budget_previsionnel_export_pdf():
         elements.append(t)
         elements.append(Spacer(1, 0.4 * cm))
         tot = data['totaux']
-        elements.append(Paragraph(
-            f"Résultat Temp. : {tot['resultat_temp']:.2f} € | Résultat Déf. : {tot['resultat_def']:.2f} €",
-            styles['Heading3']
-        ))
+        if actualise:
+            resultat_initial = initial_produits - initial_charges
+            elements.append(Paragraph(
+                f"Résultat initial : {resultat_initial:.2f} € | "
+                f"Résultat actualisé : {tot['resultat_def']:.2f} € | "
+                f"Écart : {tot['resultat_def'] - resultat_initial:+.2f} €",
+                styles['Heading3']
+            ))
+        else:
+            elements.append(Paragraph(
+                f"Résultat Temp. : {tot['resultat_temp']:.2f} € | Résultat Déf. : {tot['resultat_def']:.2f} €",
+                styles['Heading3']
+            ))
         doc.build(elements)
         pdf = buffer.getvalue()
         buffer.close()
