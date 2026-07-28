@@ -1717,3 +1717,29 @@ def test_paie_simulation_compte_les_autres_contrats(app, db, admin_client):
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 23000.0) < 0.01
+
+
+def test_paie_context_agrege_les_periodes_de_contrats_successifs(app, db, admin_client):
+    """Contrats successifs dans l'année (apprentissage janvier-août puis CDI en
+    septembre) : les douze mois doivent être budgétés. Seul le contrat le plus
+    récent était retenu, la période d'apprentissage disparaissait du budget."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("DELETE FROM contrats WHERE user_id = ?", (uid,))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+                   "VALUES (?, 'Autre', ?, ?, 35)", (uid, f'{annee}-01-01', f'{annee}-08-31'))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo) "
+                   "VALUES (?, 'CDI', ?, 28)", (uid, f'{annee}-09-01'))
+        db.commit()
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    emp = next(e for e in data['employes'] if e['id'] == uid)
+    assert (emp['mois_debut'], emp['mois_fin']) == (1, 12), \
+        "les mois d'apprentissage doivent rester budgétés après l'embauche"
+    # Caractéristiques affichées : celles du contrat en cours (le plus récent).
+    assert emp['type_contrat'] == 'CDI'
+    assert emp['temps_hebdo'] == 28

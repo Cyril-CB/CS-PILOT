@@ -2380,18 +2380,29 @@ def _paie_employes_secteur(conn, secteur_id, annee):
         # 01/01. Sinon un contrat saisi pour l'année suivante serait sélectionné
         # en premier (date_debut la plus récente) puis écarté, faisant
         # disparaître le salarié alors qu'il a un contrat valide sur l'année.
-        contrat = conn.execute('''
+        contrats_annee = conn.execute('''
             SELECT type_contrat, date_debut, date_fin, temps_hebdo FROM contrats
             WHERE user_id = ? AND type_contrat != 'CEE'
               AND date_debut <= ?
               AND (date_fin IS NULL OR date_fin >= ?)
-            ORDER BY date_debut DESC LIMIT 1
-        ''', (u['id'], f'{annee}-12-31', f'{annee}-01-01')).fetchone()
-        if not contrat:
+            ORDER BY date_debut DESC
+        ''', (u['id'], f'{annee}-12-31', f'{annee}-01-01')).fetchall()
+        if not contrats_annee:
             continue
-        mb, mf = _paie_mois_actifs(contrat['date_debut'], contrat['date_fin'], annee)
-        if mb is None:
+        # Contrats successifs dans l'année (apprentissage puis CDI, CDD
+        # enchaînés...) : on budgète l'ensemble des mois couverts, sinon la
+        # période precedant le dernier contrat disparaitrait du budget. Le
+        # salarié reste une seule ligne, portant les caractéristiques du
+        # contrat en cours (le plus récent) — temps hebdo et ancienneté restent
+        # modifiables dans le simulateur si les periodes different.
+        periodes = [_paie_mois_actifs(c['date_debut'], c['date_fin'], annee)
+                    for c in contrats_annee]
+        periodes = [(deb, fin) for deb, fin in periodes if deb is not None]
+        if not periodes:
             continue
+        contrat = contrats_annee[0]
+        mb = min(deb for deb, _ in periodes)
+        mf = max(fin for _, fin in periodes)
         employes.append({
             'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
             'pesee': u['pesee'], 'competence': u['competence'],
