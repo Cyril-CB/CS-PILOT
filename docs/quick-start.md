@@ -109,6 +109,14 @@ BEHIND_PROXY=true
 
 > En développement local, `BEHIND_PROXY` n'est pas nécessaire.
 
+**Option taille des fichiers envoyés** — les envois (justificatifs d'absence, contrats, modèles DOCX, imports comptables, lots de factures) sont limités à **256 Mo** par défaut. Pour changer cette borne, indiquez la valeur **en mégaoctets** :
+
+```
+MAX_UPLOAD_MO=512
+```
+
+> Une valeur absente, non numérique ou inférieure ou égale à 0 est ignorée : l'application le signale dans la console et repart sur 256 Mo. Au-delà de la limite, l'utilisateur reçoit un message « Envoi trop volumineux » au lieu d'une erreur technique.
+
 ---
 
 ## 4. Lancer l'application

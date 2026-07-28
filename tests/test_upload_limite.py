@@ -46,16 +46,34 @@ def _creer_sous_element(app, db, nom_subvention='Subvention test'):
         ).fetchone()['id']
 
 
+def _limite_configuree_octets():
+    """Limite attendue en octets, d'après la configuration de l'exécution.
+
+    La valeur dépend de `MAX_UPLOAD_MO` : on la relit au lieu de coder 256 Mo
+    en dur, afin que les tests restent valides quand un déploiement (ou la CI)
+    surcharge la variable d'environnement.
+    """
+    import app as app_module
+    return app_module.lire_max_upload_mo() * 1024 * 1024
+
+
 class TestConfigurationLimite:
     """La limite doit être définie, large et surchargeable."""
 
-    def test_max_content_length_est_defini_et_large(self, app):
-        """La configuration expose une limite de 256 Mo par défaut."""
+    def test_max_content_length_correspond_a_la_configuration(self, app):
+        """La configuration expose la limite issue de `lire_max_upload_mo()`."""
         limite = app.config.get('MAX_CONTENT_LENGTH')
         assert limite is not None, "MAX_CONTENT_LENGTH doit être défini"
-        assert limite == 256 * 1024 * 1024
-        # Garde-fou : la limite ne doit jamais brider un envoi légitime.
-        assert limite >= 100 * 1024 * 1024
+        assert limite == _limite_configuree_octets()
+
+    def test_valeur_par_defaut_large_sans_surcharge(self, monkeypatch):
+        """Sans `MAX_UPLOAD_MO`, la limite par défaut vaut 256 Mo."""
+        import app as app_module
+
+        monkeypatch.delenv('MAX_UPLOAD_MO', raising=False)
+        assert app_module.MAX_UPLOAD_MO_DEFAUT == 256
+        # Garde-fou : la valeur par défaut ne doit brider aucun envoi légitime.
+        assert app_module.lire_max_upload_mo() * 1024 * 1024 >= 100 * 1024 * 1024
 
     def test_lecture_variable_environnement(self, monkeypatch):
         """MAX_UPLOAD_MO surcharge la valeur par défaut, avec repli sûr."""
@@ -139,8 +157,10 @@ class TestDepassementLimite:
                 "Un formulaire classique doit être redirigé (Post/Redirect/Get) "
                 "et non recevoir une erreur brute"
             )
-            assert response.headers['Location'].endswith('/absences')
-            suite = comptable_client.get('/absences', follow_redirects=True)
+            # La redirection vise le tableau de bord : l'en-tête Referer,
+            # contrôlé par le client, n'est jamais utilisé comme cible.
+            assert response.headers['Location'].endswith('/dashboard')
+            suite = comptable_client.get('/dashboard', follow_redirects=True)
         finally:
             app.config['MAX_CONTENT_LENGTH'] = limite_initiale
 
@@ -227,7 +247,12 @@ class TestControleAccesLimite:
         assert payload['ok'] is False
 
     def test_referer_externe_ignore(self, app, comptable_client, sample_users):
-        """Un Referer externe ne sert jamais de cible de redirection."""
+        """Un Referer externe ne sert jamais de cible de redirection.
+
+        L'en-tête Referer n'est pas exploité du tout : la redirection vise
+        toujours le tableau de bord (protection contre la redirection ouverte,
+        signalée par l'analyse de code).
+        """
         limite_initiale = app.config['MAX_CONTENT_LENGTH']
         app.config['MAX_CONTENT_LENGTH'] = LIMITE_TEST_OCTETS
         try:
@@ -265,7 +290,7 @@ class TestEnvoiNormalToujoursAccepte:
 
         se_id = _creer_sous_element(app, db)
 
-        assert app.config['MAX_CONTENT_LENGTH'] == 256 * 1024 * 1024
+        assert app.config['MAX_CONTENT_LENGTH'] == _limite_configuree_octets()
         response = comptable_client.post(
             f'/api/subventions/sous-elements/{se_id}/document',
             data={'fichier': (io.BytesIO(PDF_NORMAL), 'piece.pdf')},

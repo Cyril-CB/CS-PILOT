@@ -534,10 +534,14 @@ def _attend_du_json():
 
 
 def _url_retour_sure():
-    """Retourne une URL locale sûre où renvoyer l'utilisateur après une erreur."""
-    referrer = request.referrer or ''
-    if referrer.startswith(request.host_url):
-        return referrer
+    """Retourne l'URL où renvoyer l'utilisateur après un envoi trop volumineux.
+
+    On ne réutilise JAMAIS l'URL fournie par le navigateur (en-tête Referer) :
+    une valeur contrôlée par le client ne doit pas devenir une cible de
+    redirection (redirection ouverte). Le tableau de bord est la destination de
+    repli utilisée partout ailleurs dans l'application ; le message flash
+    explique ce qui s'est passé.
+    """
     return url_for('dashboard_bp.dashboard')
 
 
