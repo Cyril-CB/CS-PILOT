@@ -1743,3 +1743,61 @@ def test_paie_context_agrege_les_periodes_de_contrats_successifs(app, db, admin_
     # Caractéristiques affichées : celles du contrat en cours (le plus récent).
     assert emp['type_contrat'] == 'CDI'
     assert emp['temps_hebdo'] == 28
+
+
+def _texte_pdf_budget(data):
+    """Concatène les flux décompressés d'un PDF (le texte y est en clair).
+
+    ReportLab encode ses flux en ASCII85 puis Flate ; on tente les deux
+    décodages et on ignore le reste (polices…).
+    """
+    import base64
+    import re
+    import zlib
+    morceaux = []
+    for m in re.findall(rb'stream\r?\n(.*?)endstream', data, re.S):
+        m = m.strip()
+        for decode in (lambda b: zlib.decompress(base64.a85decode(b, adobe=True)),
+                       zlib.decompress):
+            try:
+                morceaux.append(decode(m))
+                break
+            except Exception:
+                continue
+    return b''.join(morceaux)
+
+
+def test_export_pdf_actualise_colonnes_initial_actualise_ecart(app, db, admin_client):
+    """PDF d'un budget actualisé : N-2, N-1, budget initial, actualisé
+    (définitif) et l'écart entre les deux — la colonne « Temporaire » laisse la
+    place à la comparaison initial / actualisé."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)   # initial définitif = 1 500 €
+        db.execute("INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_def) "
+                   "VALUES ('actualise', ?, ?, '606000', 1800)", (annee, sid))
+        db.commit()
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+    assert r.data[:4] == b'%PDF'
+    texte = _texte_pdf_budget(r.data)
+    # Les accents sont échappés en latin-1 dans les flux PDF (« Écart » →
+    # « \311cart ») : on cherche les fragments non accentués.
+    for attendu in (b'Initial N', b'Actualis', b'cart', b'1500.00', b'1800.00', b'+300.00'):
+        assert attendu in texte, f"{attendu!r} absent du PDF actualisé"
+    assert b'Temp.' not in texte, "la colonne Temporaire ne doit plus figurer en actualisé"
+
+
+def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
+    """PDF d'un budget initial : présentation inchangée (N, Temp., Déf.)."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+    texte = _texte_pdf_budget(r.data)
+    assert b'Temp.' in texte
+    assert b'Initial N' not in texte
