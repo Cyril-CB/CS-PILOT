@@ -2333,7 +2333,11 @@ def _paie_mois_actifs(date_debut, date_fin, annee):
 
 
 def _paie_employes_secteur(conn, secteur_id, annee):
-    """Salariés actifs du secteur avec un contrat CDI/CDD chevauchant l'année.
+    """Salariés actifs du secteur avec un contrat chevauchant l'année.
+
+    Tous les types de contrat sont retenus (CDI, CDD, « Autre » : apprentissage,
+    professionnalisation…) SAUF les CEE, budgétés à part dans le simulateur via
+    le forfait jour et le calendrier d'ouverture.
 
     La direction (profil 'directeur') est comptée dans SON secteur lorsqu'elle en
     a un (utile pour les budgets, ex. « Pilotage » = administratif + direction).
@@ -2371,23 +2375,34 @@ def _paie_employes_secteur(conn, secteur_id, annee):
         ''', (secteur_id,)).fetchall()
     employes = []
     for u in rows:
-        # Ne retenir que les contrats CDI/CDD qui chevauchent l'année de budget :
-        # commencés au plus tard le 31/12 et finissant au plus tôt le 01/01.
-        # Sinon un contrat saisi pour l'année suivante serait sélectionné en
-        # premier (date_debut la plus récente) puis écarté, faisant disparaître
-        # le salarié alors qu'il a un contrat valide sur l'année.
-        contrat = conn.execute('''
+        # Ne retenir que les contrats (hors CEE) qui chevauchent l'année de
+        # budget : commencés au plus tard le 31/12 et finissant au plus tôt le
+        # 01/01. Sinon un contrat saisi pour l'année suivante serait sélectionné
+        # en premier (date_debut la plus récente) puis écarté, faisant
+        # disparaître le salarié alors qu'il a un contrat valide sur l'année.
+        contrats_annee = conn.execute('''
             SELECT type_contrat, date_debut, date_fin, temps_hebdo FROM contrats
-            WHERE user_id = ? AND type_contrat IN ('CDI', 'CDD')
+            WHERE user_id = ? AND type_contrat != 'CEE'
               AND date_debut <= ?
               AND (date_fin IS NULL OR date_fin >= ?)
-            ORDER BY date_debut DESC LIMIT 1
-        ''', (u['id'], f'{annee}-12-31', f'{annee}-01-01')).fetchone()
-        if not contrat:
+            ORDER BY date_debut DESC
+        ''', (u['id'], f'{annee}-12-31', f'{annee}-01-01')).fetchall()
+        if not contrats_annee:
             continue
-        mb, mf = _paie_mois_actifs(contrat['date_debut'], contrat['date_fin'], annee)
-        if mb is None:
+        # Contrats successifs dans l'année (apprentissage puis CDI, CDD
+        # enchaînés...) : on budgète l'ensemble des mois couverts, sinon la
+        # période precedant le dernier contrat disparaitrait du budget. Le
+        # salarié reste une seule ligne, portant les caractéristiques du
+        # contrat en cours (le plus récent) — temps hebdo et ancienneté restent
+        # modifiables dans le simulateur si les periodes different.
+        periodes = [_paie_mois_actifs(c['date_debut'], c['date_fin'], annee)
+                    for c in contrats_annee]
+        periodes = [(deb, fin) for deb, fin in periodes if deb is not None]
+        if not periodes:
             continue
+        contrat = contrats_annee[0]
+        mb = min(deb for deb, _ in periodes)
+        mf = max(fin for _, fin in periodes)
         employes.append({
             'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
             'pesee': u['pesee'], 'competence': u['competence'],
@@ -2397,7 +2412,9 @@ def _paie_employes_secteur(conn, secteur_id, annee):
             'anciennete': _paie_anciennete_annees(contrat['date_debut'], annee),
             'mois_debut': mb, 'mois_fin': mf,
         })
-    employes.sort(key=lambda e: (0 if e['type_contrat'] == 'CDI' else 1, e['nom'], e['prenom']))
+    # Ordre d'affichage : CDI, puis CDD, puis les autres contrats (apprentissage…).
+    ordre_contrat = {'CDI': 0, 'CDD': 1}
+    employes.sort(key=lambda e: (ordre_contrat.get(e['type_contrat'], 2), e['nom'], e['prenom']))
     return employes
 
 

@@ -1670,3 +1670,76 @@ def test_paie_simulation_prorata_seulement_socle_et_pesee(app, db, admin_client)
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 15900.0) < 0.01
+
+
+def test_paie_context_inclut_autres_contrats_hors_cee(app, db, admin_client):
+    """Les contrats « Autre » (apprentissage, professionnalisation…) sont
+    budgétés comme les CDI/CDD ; les CEE restent exclus (traités à part via le
+    forfait jour du simulateur)."""
+    annee = 2026
+    with app.app_context():
+        sid, _uid = _setup_paie_secteur(db, annee)
+        from werkzeug.security import generate_password_hash
+        for login, type_contrat in (('appr', 'Autre'), ('anim', 'CEE')):
+            db.execute(
+                "INSERT INTO users (nom, prenom, login, password, profil, secteur_id, pesee) "
+                "VALUES (?, 'Test', ?, ?, 'salarie', ?, 100)",
+                (login.capitalize(), login, generate_password_hash('x'), sid))
+            uid2 = db.execute("SELECT id FROM users WHERE login = ?", (login,)).fetchone()['id']
+            db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo) "
+                       "VALUES (?, ?, '2025-09-01', 35)", (uid2, type_contrat))
+        db.commit()
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    types = {e['type_contrat'] for e in data['employes']}
+    assert 'Autre' in types, "un contrat « Autre » doit être budgété"
+    assert 'CEE' not in types, "les CEE sont budgétés à part (forfait jour)"
+    # Ordre d'affichage : CDI puis CDD puis les autres contrats.
+    assert data['employes'][-1]['type_contrat'] == 'Autre'
+
+
+def test_paie_simulation_compte_les_autres_contrats(app, db, admin_client):
+    """Un salarié en contrat « Autre » pèse bien dans le total simulé."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("UPDATE contrats SET type_contrat = 'Autre' WHERE user_id = ?", (uid,))
+        db.commit()
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
+                                       'anciennete': 0, 'competence': 0}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    assert abs(r.get_json()['total'] - 23000.0) < 0.01
+
+
+def test_paie_context_agrege_les_periodes_de_contrats_successifs(app, db, admin_client):
+    """Contrats successifs dans l'année (apprentissage janvier-août puis CDI en
+    septembre) : les douze mois doivent être budgétés. Seul le contrat le plus
+    récent était retenu, la période d'apprentissage disparaissait du budget."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+        db.execute("DELETE FROM contrats WHERE user_id = ?", (uid,))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin, temps_hebdo) "
+                   "VALUES (?, 'Autre', ?, ?, 35)", (uid, f'{annee}-01-01', f'{annee}-08-31'))
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, temps_hebdo) "
+                   "VALUES (?, 'CDI', ?, 28)", (uid, f'{annee}-09-01'))
+        db.commit()
+
+    data = admin_client.get(
+        f'/api/budget-previsionnel/paie-context?annee={annee}&secteur_id={sid}'
+        '&compte_num=641000&type_budget=initial'
+    ).get_json()
+    emp = next(e for e in data['employes'] if e['id'] == uid)
+    assert (emp['mois_debut'], emp['mois_fin']) == (1, 12), \
+        "les mois d'apprentissage doivent rester budgétés après l'embauche"
+    # Caractéristiques affichées : celles du contrat en cours (le plus récent).
+    assert emp['type_contrat'] == 'CDI'
+    assert emp['temps_hebdo'] == 28
