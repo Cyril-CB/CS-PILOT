@@ -148,7 +148,11 @@ def _calc_salarie(s, params):
 
 
 def _employes_actifs_annee(conn, annee):
-    """Salariés avec un contrat CDI/CDD valide sur l'année concernée.
+    """Salariés avec un contrat valide sur l'année concernée.
+
+    Tous les types de contrat (CDI, CDD, « Autre » : apprentissage…) SAUF les
+    CEE, budgétés à part — même périmètre que le simulateur de paie du budget
+    prévisionnel, avec lequel ce module partage la formule du brut.
 
     - Année passée ou en cours : tout contrat chevauchant l'année (même terminé).
     - Année à venir (> année courante) : uniquement les contrats actifs aujourd'hui.
@@ -166,7 +170,7 @@ def _employes_actifs_annee(conn, annee):
                c.type_contrat, c.date_debut, c.date_fin, c.temps_hebdo
         FROM users u
         JOIN contrats c ON c.user_id = u.id
-        WHERE c.type_contrat IN ('CDI', 'CDD')
+        WHERE c.type_contrat != 'CEE'
           AND (u.profil IS NULL OR u.profil != 'prestataire')
           AND c.date_debut <= ?
           AND (c.date_fin IS NULL OR c.date_fin >= ?)

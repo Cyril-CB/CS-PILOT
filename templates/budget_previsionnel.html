@@ -2087,7 +2087,7 @@ function renderPaieSimulator(){
     // Salariés en cours de contrat
     html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Salariés en cours de contrat (secteur)</h4>';
     if (!(ctx.employes || []).length){
-        html += '<p class="ps-legend">Aucun salarié actif en CDI/CDD rattaché à ce secteur sur l\'année.</p>';
+        html += '<p class="ps-legend">Aucun salarié actif sous contrat (hors CEE) rattaché à ce secteur sur l\'année.</p>';
     } else {
         html += '<div class="ps-table-scroll"><table class="ps-table"><thead><tr>' +
             '<th>Salarié</th><th>Type</th>' +
