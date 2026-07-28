@@ -10,6 +10,7 @@ Fonctionnalites :
 - Controle des droits : direction/comptable definissent le global,
   responsables ajustent la repartition sans depasser le global
 """
+import calendar
 import io
 import json
 import sqlite3
@@ -2371,6 +2372,59 @@ def _paie_mois_actifs(date_debut, date_fin, annee):
     return mois_debut, mois_fin
 
 
+def _paie_intervalles_annee(contrats, annee):
+    """Périodes [début, fin] des contrats, ramenées à l'année et fusionnées.
+
+    Les contrats qui se chevauchent ou s'enchaînent sont regroupés pour qu'un
+    même jour ne soit jamais compté deux fois.
+    """
+    debut_annee, fin_annee = date(annee, 1, 1), date(annee, 12, 31)
+
+    def _lire(valeur, defaut):
+        if not valeur:
+            return defaut
+        try:
+            return date.fromisoformat(str(valeur)[:10])
+        except (ValueError, TypeError):
+            return defaut
+
+    intervalles = []
+    for c in contrats:
+        dd = max(_lire(c['date_debut'], debut_annee), debut_annee)
+        df = min(_lire(c['date_fin'], fin_annee), fin_annee)
+        if dd <= df:
+            intervalles.append((dd, df))
+    intervalles.sort()
+    fusion = []
+    for dd, df in intervalles:
+        if fusion and dd <= fusion[-1][1] + timedelta(days=1):
+            fusion[-1] = (fusion[-1][0], max(fusion[-1][1], df))
+        else:
+            fusion.append((dd, df))
+    return fusion
+
+
+def _paie_ratios_mois(intervalles, annee):
+    """Part de chaque mois réellement couverte par un contrat : {mois: 0 < r <= 1}.
+
+    Le budget raisonnait en mois entiers : un CDD d'une semaine en juillet
+    coûtait un mois de salaire complet. La part est calculée en jours
+    calendaires (7 jours sur 31 = 0,2258), méthode habituelle pour un mois
+    d'entrée ou de sortie. Un mois entièrement couvert vaut 1, un mois sans
+    aucun jour de contrat est absent du dictionnaire : il n'est pas budgété,
+    ce qui écarte aussi les creux entre deux contrats successifs.
+    """
+    ratios = {}
+    for dd, df in intervalles:
+        for m in range(dd.month, df.month + 1):
+            premier = date(annee, m, 1)
+            dernier = date(annee, m, calendar.monthrange(annee, m)[1])
+            jours = (min(df, dernier) - max(dd, premier)).days + 1
+            if jours > 0:
+                ratios[m] = min(1.0, ratios.get(m, 0.0) + jours / dernier.day)
+    return ratios
+
+
 def _paie_employes_secteur(conn, secteur_id, annee):
     """Salariés actifs du secteur avec un contrat chevauchant l'année.
 
@@ -2442,6 +2496,9 @@ def _paie_employes_secteur(conn, secteur_id, annee):
         contrat = contrats_annee[0]
         mb = min(deb for deb, _ in periodes)
         mf = max(fin for _, fin in periodes)
+        # Part de chaque mois réellement travaillée : un CDD d'une semaine ne
+        # doit pas peser un mois de salaire entier dans le budget.
+        ratios = _paie_ratios_mois(_paie_intervalles_annee(contrats_annee, annee), annee)
         employes.append({
             'id': u['id'], 'nom': u['nom'], 'prenom': u['prenom'],
             'pesee': u['pesee'], 'competence': u['competence'],
@@ -2449,7 +2506,7 @@ def _paie_employes_secteur(conn, secteur_id, annee):
             'temps_hebdo': contrat['temps_hebdo'],
             'type_contrat': contrat['type_contrat'],
             'anciennete': _paie_anciennete_annees(contrat['date_debut'], annee),
-            'mois_debut': mb, 'mois_fin': mf,
+            'mois_debut': mb, 'mois_fin': mf, 'mois_ratios': ratios,
         })
     # Ordre d'affichage : CDI, puis CDD, puis les autres contrats (apprentissage…).
     ordre_contrat = {'CDI': 0, 'CDD': 1}
@@ -2615,8 +2672,13 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         maintien = override_num(ov, 'maintien', e.get('maintien'))
         ratio = ratio_temps(override_num(ov, 'temps_hebdo', e.get('temps_hebdo')))
         mois_vals, total_e = {}, 0.0
+        ratios_mois = e.get('mois_ratios')
         for m in range(max(start_month, e['mois_debut']), e['mois_fin'] + 1):
-            val = brut_mensuel(pesee_eff, anciennete, competence, ratio) + maintien
+            # Part du mois couverte par le contrat (1 pour un mois entier).
+            part = 1.0 if ratios_mois is None else ratios_mois.get(m, 0.0)
+            if part <= 0:
+                continue
+            val = (brut_mensuel(pesee_eff, anciennete, competence, ratio) + maintien) * part
             mois_vals[m] = round(val, 2)
             monthly_totals[m] += val
             total_e += val
