@@ -2742,23 +2742,28 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
 def _paie_report_brut(conn, secteur_id, annee, type_budget, brut_compte, total_brut, user_id):
     """Reporte le brut sur le 641 et répartit 63x/64x (hors 649) au prorata.
 
-    Ratio = compte N-1 / brut N-1 (budget initial) ou réel YTD / brut YTD
-    (budget actualisé). Écrit la valeur définitive dans budget_prev_saisies.
+    Ratio = compte N-1 / brut N-1, en budget initial comme en actualisé : la
+    référence doit porter sur une année COMPLÈTE. L'actualisé se calait
+    auparavant sur le réel de l'année en cours, arrêté au dernier mois connu ;
+    sur quelques mois ce rapport n'est pas représentatif (régularisations
+    annuelles, plafonds de cotisations, versements non mensualisés). C'est
+    aussi le ratio déjà utilisé pour la colonne « Temporaire » du budget
+    (voir _compute_budget_previsionnel) : les deux calculs concordent.
+
+    Écrit la valeur définitive dans budget_prev_saisies.
     """
     data = _compute_budget_previsionnel(
         conn=conn, type_budget=type_budget, annee=annee, secteur_id=secteur_id
     )
     rows = {r['compte_num']: r for r in data['rows']}
-    actualise = (type_budget == 'actualise')
     brut_row = rows.get(brut_compte)
-    brut_prev = (brut_row['N'] if actualise else brut_row['N-1']) if brut_row else 0
+    brut_prev = brut_row['N-1'] if brut_row else 0
 
     reports = {brut_compte: round(total_brut, 2)}
     for compte, r in rows.items():
         if compte == brut_compte or not r.get('is_salary'):
             continue
-        prev = r['N'] if actualise else r['N-1']
-        ratio = (prev / brut_prev) if brut_prev else 0
+        ratio = (r['N-1'] / brut_prev) if brut_prev else 0
         reports[compte] = round(total_brut * ratio, 2)
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

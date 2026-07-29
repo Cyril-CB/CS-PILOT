@@ -2180,6 +2180,10 @@ function renderPaieSimulator(){
     var totalLabel = actualise ? 'Total à reporter (réel + simulé)' : 'Total brut annuel à reporter';
     html += '<div class="ps-total-box"><span>' + totalLabel + ' sur le compte ' + escapeHtml(paieSim.compte) +
         '</span><strong><span id="paie-total">0,00</span> €</strong></div>';
+    // Le report ventile aussi les charges : préciser l'année de référence du
+    // produit en croix, qui porte toujours sur une année complète.
+    html += '<p class="ps-legend">Le report répartit également les comptes 63x/64x (hors 649) au prorata du brut, ' +
+        'd\'après le rapport constaté sur l\'année ' + (paieSim.ctx.annee - 1) + ' complète.</p>';
 
     document.getElementById('paieSimBody').innerHTML = html;
     document.getElementById('paieSimFooter').innerHTML =
