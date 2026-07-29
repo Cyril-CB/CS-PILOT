@@ -605,11 +605,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
     return html;
 }
 
-// Écart d'atterrissage d'une ligne (actualisé) : Définitif si saisi, sinon
-// Temporaire, moins le budget initial du compte.
+// Écart d'atterrissage d'une ligne (actualisé) : colonne Définitif moins
+// colonne Initial, sans repli sur le Temporaire. L'écart se lit ainsi
+// directement entre les deux colonnes affichées, et l'écran donne le même
+// chiffre que le PDF. Un compte dont le définitif n'est pas encore saisi
+// affiche donc l'opposé de son budget initial.
 function ecartValue(r){
-    const retenu = Number(r.def || 0) !== 0 ? Number(r.def) : Number(r.temp || 0);
-    return retenu - Number(r.initial || 0);
+    return Number(r.def || 0) - Number(r.initial || 0);
 }
 function fmtEcart(ecart){
     const signe = ecart > 0 ? '+' : '';

@@ -1933,6 +1933,23 @@ def test_export_pdf_actualise_colonnes_initial_actualise_ecart(app, db, admin_cl
     assert b'Temp.' not in texte, "la colonne Temporaire ne doit plus figurer en actualisé"
 
 
+def test_ecart_ecran_compare_definitif_et_initial(admin_client):
+    """À l'écran, l'écart est Définitif − Initial, sans repli sur Temporaire.
+
+    L'écart retombait sur la colonne « Temporaire » tant que le définitif
+    n'était pas saisi : l'écran et le PDF affichaient alors deux chiffres
+    différents pour la même ligne.
+    """
+    import re
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    corps = re.search(r'function ecartValue\(r\)\{(.*?)\n\}', html, re.S)
+    assert corps, "la fonction ecartValue doit exister"
+    corps = corps.group(1)
+    assert 'r.def' in corps and 'r.initial' in corps
+    assert 'r.temp' not in corps, \
+        "l'écart affiché ne doit plus retomber sur la colonne Temporaire"
+
+
 def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
     """PDF d'un budget initial : présentation inchangée (N, Temp., Déf.)."""
     annee = datetime.now().year
