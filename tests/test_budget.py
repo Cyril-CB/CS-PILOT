@@ -920,6 +920,65 @@ def test_paie_simulation_calcule_et_reporte(app, db, admin_client):
     assert d645 and abs(d645['valeur_def'] - 9200.0) < 0.01
 
 
+def test_paie_report_actualise_utilise_le_ratio_de_n_moins_1(app, db, admin_client):
+    """Budget actualisé : le produit en croix des charges prend N-1 en référence.
+
+    Le ratio se calculait sur le réel de l'année en cours, arrêté au dernier
+    mois connu. Sur quelques mois il n'est pas représentatif (régularisations,
+    plafonds, cotisations annuelles) : la référence doit être une année
+    complète. Ici le réel N donne 20 % et l'année N-1 complète 40 %.
+    """
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)   # N-1 : 641 = 100 000, 645 = 40 000
+        imp = db.execute("SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1").fetchone()['id']
+        for compte, montant in (('641000', 30000), ('645000', 6000)):
+            db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) "
+                       "VALUES (?,?,1,?,?)", (compte, annee, montant, imp))
+        db.commit()
+
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
+                                       'anciennete': 0, 'competence': 0}},
+               'ajouts': [], 'fermetures': []}
+    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'actualise',
+        'compte_num': '641000', 'donnees': donnees})
+    assert r.status_code == 200
+    total = r.get_json()['total']
+
+    with app.app_context():
+        lu = {c: db.execute(
+            "SELECT valeur_def FROM budget_prev_saisies WHERE compte_num=? "
+            "AND annee=? AND secteur_id=? AND type_budget='actualise'",
+            (c, annee, sid)).fetchone() for c in ('641000', '645000')}
+    assert lu['641000'] and abs(lu['641000']['valeur_def'] - total) < 0.01
+    assert lu['645000']
+    assert abs(lu['645000']['valeur_def'] - total * 0.40) < 0.01, \
+        "le ratio doit venir de l'année N-1 complète (40 %)"
+    assert abs(lu['645000']['valeur_def'] - total * 0.20) > 1.0, \
+        "le réel partiel de l'année en cours (20 %) ne doit plus servir de référence"
+
+
+def test_paie_report_initial_inchange(app, db, admin_client):
+    """Budget initial : la référence était déjà N-1, rien ne change."""
+    annee = 2026
+    with app.app_context():
+        sid, uid = _setup_paie_secteur(db, annee)
+    donnees = {'salaire_socle': 23000, 'valeur_point': 55,
+               'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
+                                       'anciennete': 0, 'competence': 0}},
+               'ajouts': [], 'fermetures': []}
+    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+        'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
+        'compte_num': '641000', 'donnees': donnees})
+    with app.app_context():
+        d645 = db.execute("SELECT valeur_def FROM budget_prev_saisies WHERE compte_num='645000' "
+                          "AND annee=? AND secteur_id=? AND type_budget='initial'",
+                          (annee, sid)).fetchone()
+    assert d645 and abs(d645['valeur_def'] - 9200.0) < 0.01   # 23000 × 40 000/100 000
+
+
 def test_paie_simulation_persiste_pesee_competence(app, db, admin_client):
     annee = 2026
     with app.app_context():
@@ -1931,6 +1990,23 @@ def test_export_pdf_actualise_colonnes_initial_actualise_ecart(app, db, admin_cl
     for attendu in (b'Initial N', b'Actualis', b'cart', b'1500.00', b'1800.00', b'+300.00'):
         assert attendu in texte, f"{attendu!r} absent du PDF actualisé"
     assert b'Temp.' not in texte, "la colonne Temporaire ne doit plus figurer en actualisé"
+
+
+def test_ecart_ecran_compare_definitif_et_initial(admin_client):
+    """À l'écran, l'écart est Définitif − Initial, sans repli sur Temporaire.
+
+    L'écart retombait sur la colonne « Temporaire » tant que le définitif
+    n'était pas saisi : l'écran et le PDF affichaient alors deux chiffres
+    différents pour la même ligne.
+    """
+    import re
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
+    corps = re.search(r'function ecartValue\(r\)\{(.*?)\n\}', html, re.S)
+    assert corps, "la fonction ecartValue doit exister"
+    corps = corps.group(1)
+    assert 'r.def' in corps and 'r.initial' in corps
+    assert 'r.temp' not in corps, \
+        "l'écart affiché ne doit plus retomber sur la colonne Temporaire"
 
 
 def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
