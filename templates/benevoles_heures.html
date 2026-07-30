@@ -1,0 +1,336 @@
+{% extends "base.html" %}
+
+{% block title %}Suivi des heures de benevolat - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header">
+        <div>
+            <h1>Suivi des heures de bénévolat</h1>
+            <p class="subtitle">
+                Les heures sont calculées à partir des activités suivies :
+                les jours de CA et les séances des activités régulières.
+            </p>
+        </div>
+        <div class="bh-header-actions">
+            <label for="bhAnnee" class="bh-label">Année</label>
+            <select id="bhAnnee" class="bh-select" onchange="bhChangerAnnee(this.value)">
+                {% for a in range(annee - 3, annee + 2) %}
+                <option value="{{ a }}" {{ 'selected' if a == annee }}>{{ a }}</option>
+                {% endfor %}
+            </select>
+            <a class="btn btn-secondary" href="{{ url_for('benevoles_bp.gestion_benevoles', annee=annee) }}">← Liste des bénévoles</a>
+        </div>
+    </div>
+
+    {# ── Activités suivies ── #}
+    <div class="bh-toolbar">
+        <button class="btn btn-primary" type="button" onclick="bhAjouterActivite()">+ Activité</button>
+        <span class="bh-total-general">Total {{ annee }} : <strong id="bh-total-general">{{ '%g'|format(total_general) }} h</strong></span>
+    </div>
+
+    {% if not activites %}
+    <div class="bh-card bh-vide">
+        <p>Aucune activité suivie pour {{ annee }}.</p>
+        <p class="bh-aide">
+            Créez une activité <strong>à la séance</strong> pour les instances dont on
+            connaît les dates (conseil d'administration : on saisit les jours de CA et
+            leur durée, puis on coche les présents), ou <strong>au forfait annuel</strong>
+            pour une activité régulière budgétée à l'année (café sénior « sur 80 h à
+            l'année ») dont on retranche les absences.
+        </p>
+    </div>
+    {% endif %}
+
+    {% for act in activites %}
+    <div class="bh-card" data-activite="{{ act.id }}">
+        <div class="bh-card-head">
+            <h3 class="bh-titre" onclick="bhRenommer({{ act.id }}, this)" title="Cliquer pour renommer">{{ act.nom }}</h3>
+            <span class="bh-mode">{{ 'À la séance' if act.mode == 'seance' else 'Forfait annuel' }}</span>
+            <span class="bh-total">Total : <strong id="bh-total-act-{{ act.id }}">{{ '%g'|format(act.total) }} h</strong></span>
+            <button class="sv-del-btn" type="button" onclick="bhSupprimerActivite({{ act.id }})" title="Supprimer l'activité">🗑️</button>
+        </div>
+
+        {% if act.mode == 'forfait' %}
+        <div class="bh-params">
+            <label>Volume annuel (h)
+                <input type="number" step="0.5" min="0" value="{{ '%g'|format(act.volume_annuel or 0) }}"
+                       onchange="bhModifierActivite({{ act.id }}, 'volume_annuel', this.value)">
+            </label>
+            <label>Nombre de séances dans l'année
+                <input type="number" step="1" min="0" value="{{ act.nb_seances or 0 }}"
+                       onchange="bhModifierActivite({{ act.id }}, 'nb_seances', this.value)">
+            </label>
+            {% if not act.nb_seances %}
+            <span class="bh-avertissement">
+                Sans nombre de séances, les absences ne peuvent pas être déduites :
+                le volume annuel est retenu en entier.
+            </span>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="bh-params">
+            <label>Durée par défaut d'une séance (h)
+                <input type="number" step="0.5" min="0" value="{{ '%g'|format(act.heures_seance or 0) }}"
+                       onchange="bhModifierActivite({{ act.id }}, 'heures_seance', this.value)">
+            </label>
+            <button class="btn btn-sm btn-secondary" type="button" onclick="bhAjouterSeance({{ act.id }})">+ Date</button>
+        </div>
+        {% endif %}
+
+        <div class="bh-scroll">
+            <table class="bh-table">
+                <thead>
+                    <tr>
+                        <th class="bh-col-nom">Bénévole</th>
+                        {% if act.mode == 'forfait' %}
+                        <th class="bh-col-num">Séances manquées</th>
+                        {% else %}
+                        {% for s in act.seances %}
+                        <th class="bh-col-seance">
+                            <span class="bh-seance-date">{{ s.date[8:10] }}/{{ s.date[5:7] }}</span>
+                            <span class="bh-seance-heures" onclick="bhDureeSeance({{ s.id }}, this)"
+                                  title="Cliquer pour changer la durée de cette séance">{{ '%g'|format(s.heures or 0) }} h</span>
+                            <button class="bh-mini-btn" type="button" onclick="bhSupprimerSeance({{ s.id }})" title="Supprimer cette date">×</button>
+                        </th>
+                        {% endfor %}
+                        {% endif %}
+                        <th class="bh-col-num">Total</th>
+                        <th class="bh-col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for l in act.lignes %}
+                    <tr>
+                        <td class="bh-col-nom">{{ l.nom }}</td>
+                        {% if act.mode == 'forfait' %}
+                        <td class="bh-col-num">
+                            <input type="number" step="1" min="0" value="{{ l.absences }}"
+                                   onchange="bhAbsences({{ l.participation_id }}, this.value)">
+                        </td>
+                        {% else %}
+                        {% for s in act.seances %}
+                        <td class="bh-col-seance">
+                            <input type="checkbox" {{ 'checked' if l.presences[s.id] }}
+                                   onchange="bhPresence({{ s.id }}, {{ l.benevole_id }}, this.checked)">
+                        </td>
+                        {% endfor %}
+                        {% endif %}
+                        <td class="bh-col-num"><strong id="bh-total-{{ act.id }}-{{ l.benevole_id }}">{{ '%g'|format(l.total) }} h</strong></td>
+                        <td class="bh-col-actions">
+                            <button class="sv-del-btn" type="button" onclick="bhRetirerParticipant({{ l.participation_id }})" title="Retirer du suivi">🗑️</button>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not act.lignes %}
+                    <tr><td class="bh-empty" colspan="{{ (act.seances|length if act.mode != 'forfait' else 1) + 3 }}">
+                        Aucun bénévole rattaché à cette activité.
+                    </td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bh-ajout-ligne">
+            <select id="bhBenevole{{ act.id }}" class="bh-select">
+                <option value="">— Ajouter un bénévole —</option>
+                {% for b in benevoles %}
+                <option value="{{ b.id }}">{{ b.nom }}</option>
+                {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-secondary" type="button" onclick="bhAjouterParticipant({{ act.id }})">Ajouter</button>
+        </div>
+    </div>
+    {% endfor %}
+
+    {# ── Heures ponctuelles ── #}
+    <div class="bh-card">
+        <div class="bh-card-head">
+            <h3 class="bh-titre">Heures ponctuelles</h3>
+            <span class="bh-mode">Hors activité suivie</span>
+        </div>
+        <div class="bh-scroll">
+            <table class="bh-table">
+                <thead>
+                    <tr>
+                        <th class="bh-col-nom">Bénévole</th>
+                        <th class="bh-col-date">Date</th>
+                        <th>Activité</th>
+                        <th class="bh-col-num">Heures</th>
+                        <th class="bh-col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for h in autres %}
+                    <tr>
+                        <td class="bh-col-nom">{{ h.benevole_nom }}</td>
+                        <td class="bh-col-date">{% if h.date %}{{ h.date[8:10] }}/{{ h.date[5:7] }}/{{ h.date[0:4] }}{% else %}—{% endif %}</td>
+                        <td>{{ h.libelle or '—' }}</td>
+                        <td class="bh-col-num"><strong>{{ '%g'|format(h.heures or 0) }} h</strong></td>
+                        <td class="bh-col-actions">
+                            <button class="sv-del-btn" type="button" onclick="bhSupprimerAutre({{ h.id }})" title="Supprimer">🗑️</button>
+                        </td>
+                    </tr>
+                {% endfor %}
+                {% if not autres %}
+                    <tr><td class="bh-empty" colspan="5">Aucune heure ponctuelle saisie pour {{ annee }}.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+        <div class="bh-ajout-ligne">
+            <select id="bhAutreBenevole" class="bh-select">
+                <option value="">— Bénévole —</option>
+                {% for b in benevoles %}
+                <option value="{{ b.id }}">{{ b.nom }}</option>
+                {% endfor %}
+            </select>
+            <input type="date" id="bhAutreDate" class="bh-select">
+            <input type="text" id="bhAutreLibelle" class="bh-select" placeholder="Activité (ex. sortie familles)">
+            <input type="number" id="bhAutreHeures" class="bh-select bh-input-court" step="0.5" min="0" placeholder="Heures">
+            <button class="btn btn-sm btn-secondary" type="button" onclick="bhAjouterAutre()">Ajouter</button>
+        </div>
+    </div>
+
+    {# ── Récapitulatif ── #}
+    <div class="bh-card">
+        <div class="bh-card-head">
+            <h3 class="bh-titre">Récapitulatif {{ annee }}</h3>
+            <span class="bh-total">Total : <strong>{{ '%g'|format(total_general) }} h</strong></span>
+        </div>
+        <div class="bh-scroll">
+            <table class="bh-table">
+                <thead><tr><th class="bh-col-nom">Bénévole</th><th class="bh-col-num">Heures</th></tr></thead>
+                <tbody>
+                {% for r in recap %}
+                    <tr><td class="bh-col-nom">{{ r.nom }}</td><td class="bh-col-num"><strong id="bh-recap-{{ r.id }}">{{ '%g'|format(r.total) }} h</strong></td></tr>
+                {% endfor %}
+                {% if not recap %}
+                    <tr><td class="bh-empty" colspan="2">Aucune heure enregistrée pour {{ annee }}.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+var BH_ANNEE = {{ annee }};
+
+function bhApi(url, body) {
+    body = body || {};
+    if (body.annee === undefined) body.annee = BH_ANNEE;
+    return fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body)
+    }).then(function(r) { return r.json(); });
+}
+function bhRecharger(r) {
+    if (r && r.ok) location.reload();
+    else alert((r && r.error) || 'Erreur');
+}
+function bhChangerAnnee(a) {
+    window.location.href = '{{ url_for("benevoles_bp.suivi_heures") }}?annee=' + encodeURIComponent(a);
+}
+
+/* ── Activités ── */
+function bhAjouterActivite() {
+    var nom = prompt("Nom de l'activité (ex. Conseil d'administration, Café sénior) :");
+    if (!nom || !nom.trim()) return;
+    var mode = confirm(
+        "OK  : à la séance — on saisit les dates (jours de CA) et on coche les présents.\n" +
+        "Annuler : au forfait annuel — un volume d'heures à l'année dont on retranche les absences."
+    ) ? 'seance' : 'forfait';
+    bhApi('/api/benevoles/activites/ajouter', {nom: nom.trim(), mode: mode}).then(bhRecharger);
+}
+function bhRenommer(id, el) {
+    var nom = prompt("Nom de l'activité :", el.textContent.trim());
+    if (nom === null || !nom.trim()) return;
+    bhApi('/api/benevoles/activites/' + id + '/modifier',
+          {field: 'nom', value: nom.trim()}).then(bhRecharger);
+}
+function bhModifierActivite(id, field, value) {
+    bhApi('/api/benevoles/activites/' + id + '/modifier',
+          {field: field, value: value}).then(bhRecharger);
+}
+function bhSupprimerActivite(id) {
+    if (!confirm("Supprimer cette activité, ses dates et les présences enregistrées ?")) return;
+    bhApi('/api/benevoles/activites/' + id + '/supprimer').then(bhRecharger);
+}
+
+/* ── Séances ── */
+function bhAjouterSeance(actId) {
+    var date = prompt("Date de la séance (JJ/MM/AAAA) :");
+    if (!date || !date.trim()) return;
+    var p = date.trim().split('/');
+    if (p.length !== 3) { alert('Date attendue au format JJ/MM/AAAA.'); return; }
+    var iso = p[2] + '-' + ('0' + p[1]).slice(-2) + '-' + ('0' + p[0]).slice(-2);
+    bhApi('/api/benevoles/activites/' + actId + '/seances/ajouter', {date: iso}).then(bhRecharger);
+}
+function bhSupprimerSeance(id) {
+    if (!confirm("Supprimer cette date et les présences associées ?")) return;
+    bhApi('/api/benevoles/seances/' + id + '/supprimer').then(bhRecharger);
+}
+
+/* ── Participants et présences ── */
+function bhAjouterParticipant(actId) {
+    var sel = document.getElementById('bhBenevole' + actId);
+    if (!sel.value) return;
+    bhApi('/api/benevoles/activites/' + actId + '/participants/ajouter',
+          {benevole_id: sel.value}).then(bhRecharger);
+}
+function bhRetirerParticipant(partId) {
+    if (!confirm("Retirer ce bénévole de l'activité ? Ses présences seront effacées.")) return;
+    bhApi('/api/benevoles/participations/' + partId + '/supprimer').then(bhRecharger);
+}
+/* Pointer une présence est le geste courant de la page : on met à jour les
+   totaux renvoyés par le serveur au lieu de recharger à chaque clic. */
+function bhFixer(id, heures) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = (Math.round(heures * 100) / 100) + ' h';
+    return !!el;
+}
+function bhPresence(seanceId, benevoleId, present) {
+    bhApi('/api/benevoles/presences',
+          {seance_id: seanceId, benevole_id: benevoleId, present: present}).then(function(r) {
+        if (!r || !r.ok) { alert((r && r.error) || 'Erreur'); location.reload(); return; }
+        bhFixer('bh-total-' + r.activite_id + '-' + benevoleId, r.total_benevole_activite);
+        bhFixer('bh-total-act-' + r.activite_id, r.total_activite);
+        bhFixer('bh-total-general', r.total_annee);
+        // Ligne de récapitulatif absente (bénévole pointé hors des activités
+        // affichées) : on recharge pour ne pas laisser un total périmé.
+        if (!bhFixer('bh-recap-' + benevoleId, r.total_benevole_annee)) location.reload();
+    });
+}
+function bhDureeSeance(seanceId, el) {
+    var actuel = (el.textContent || '').replace('h', '').trim();
+    var valeur = prompt("Durée de cette séance, en heures :", actuel);
+    if (valeur === null || valeur.trim() === '') return;
+    bhApi('/api/benevoles/seances/' + seanceId + '/modifier',
+          {field: 'heures', value: valeur.replace(',', '.')}).then(bhRecharger);
+}
+function bhAbsences(partId, valeur) {
+    bhApi('/api/benevoles/participations/' + partId + '/modifier',
+          {absences: valeur}).then(bhRecharger);
+}
+
+/* ── Heures ponctuelles ── */
+function bhAjouterAutre() {
+    var ben = document.getElementById('bhAutreBenevole').value;
+    var heures = document.getElementById('bhAutreHeures').value;
+    if (!ben) { alert('Choisissez un bénévole.'); return; }
+    if (!heures || Number(heures) <= 0) { alert("Indiquez un nombre d'heures."); return; }
+    bhApi('/api/benevoles/heures-autres/ajouter', {
+        benevole_id: ben,
+        date: document.getElementById('bhAutreDate').value,
+        libelle: document.getElementById('bhAutreLibelle').value,
+        heures: heures
+    }).then(bhRecharger);
+}
+function bhSupprimerAutre(id) {
+    if (!confirm('Supprimer cette ligne ?')) return;
+    bhApi('/api/benevoles/heures-autres/' + id + '/supprimer').then(bhRecharger);
+}
+</script>
+{% endblock %}

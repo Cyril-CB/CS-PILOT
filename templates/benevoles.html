@@ -9,6 +9,13 @@
             <h1>Liste des benevoles</h1>
             <p class="subtitle">Suivi des benevoles par statut</p>
         </div>
+        {% if peut_gerer_heures %}
+        <div>
+            <a class="btn btn-secondary" href="{{ url_for('benevoles_bp.suivi_heures', annee=annee) }}">
+                ⏱️ Suivi des heures {{ annee }}
+            </a>
+        </div>
+        {% endif %}
     </div>
 
     {% for groupe in groupes %}
@@ -29,26 +36,28 @@
                 <table class="sv-board">
                     <thead>
                         <tr>
-                            <th class="sv-col-name">Nom Prenom</th>
+                            <th class="sv-col-name sv-sticky">Nom Prenom</th>
                             <th class="sv-col-person">Responsable</th>
                             <th class="sv-col-status">Statut</th>
+                            <th class="sv-col-type">Type de bénévolat</th>
                             <th class="sv-col-date">Date de debut</th>
+                            <th class="sv-col-date">Date de fin</th>
                             <th class="sv-col-text">Email</th>
                             <th class="sv-col-text">Telephone</th>
                             <th class="sv-col-text">Adresse</th>
                             <th class="sv-col-comment">Competences</th>
                             <th class="sv-col-status">Heures / semaine</th>
+                            <th class="sv-col-date" title="Total calculé sur la page « Suivi des heures »">Heures {{ annee }}</th>
                             {% if not is_responsable %}
                             <th class="sv-col-actions"></th>
                             {% endif %}
-                            <th class="sv-col-name-end">Nom Prenom</th>
                         </tr>
                     </thead>
                     <tbody>
                     {% for ben in groupe.lignes %}
                         <tr class="sv-row" data-id="{{ ben.id }}">
-                            {# ── Nom (sticky) ── #}
-                            <td class="sv-col-name sv-cell-name">
+                            {# ── Nom (colonne figée au défilement) ── #}
+                            <td class="sv-col-name sv-cell-name sv-sticky">
                                 <span class="sv-cell-text" onclick="editText(this, {{ ben.id }}, 'nom')" style="padding-left:8px;">{{ ben.nom }}</span>
                                 <span class="sv-left-color" style="background:{{ groupe.color }};"></span>
                             </td>
@@ -64,9 +73,20 @@
                             <td class="sv-col-status">
                                 <span class="sv-status-pill" style="background:{{ groupe.color }};" onclick="editStatus(this, {{ ben.id }})">{{ groupe.label }}</span>
                             </td>
+                            {# ── Type de bénévolat ── #}
+                            <td class="sv-col-type">
+                                {# Recherche par clé : un {% set %} dans une boucle ne survit
+                                   pas à la boucle, la pastille resterait vide. #}
+                                {% set tc = types_map.get(ben.type_benevolat) %}
+                                <span class="sv-status-pill" style="background:{{ tc.color if tc else '#c4c4c4' }};" data-type="{{ ben.type_benevolat or '' }}" onclick="editType(this, {{ ben.id }})">{{ tc.label if tc else '—' }}</span>
+                            </td>
                             {# ── Date de debut ── #}
                             <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ ben.id }}, 'date_debut')">
                                 {% if ben.date_debut %}{{ ben.date_debut[8:10] }}/{{ ben.date_debut[5:7] }}/{{ ben.date_debut[0:4] }}{% else %}—{% endif %}
+                            </td>
+                            {# ── Date de fin (bénévoles qui ont arrêté) ── #}
+                            <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ ben.id }}, 'date_fin')">
+                                {% if ben.date_fin %}{{ ben.date_fin[8:10] }}/{{ ben.date_fin[5:7] }}/{{ ben.date_fin[0:4] }}{% else %}—{% endif %}
                             </td>
                             {# ── Email ── #}
                             <td class="sv-col-text sv-cell-text-edit" onclick="editText(this, {{ ben.id }}, 'email')">
@@ -86,28 +106,24 @@
                             </td>
                             {# ── Heures par semaine ── #}
                             <td class="sv-col-status">
-                                {% set h_color = '#c4c4c4' %}
-                                {% set h_label = '—' %}
-                                {% for ho in heures_config %}
-                                    {% if ho.key == ben.heures_semaine %}
-                                        {% set h_color = ho.color %}
-                                        {% set h_label = ho.label %}
-                                    {% endif %}
-                                {% endfor %}
-                                <span class="sv-status-pill" style="background:{{ h_color }};" data-heures="{{ ben.heures_semaine or '' }}" onclick="editHeures(this, {{ ben.id }})">{{ h_label }}</span>
+                                {% set ho = heures_map.get(ben.heures_semaine) %}
+                                <span class="sv-status-pill" style="background:{{ ho.color if ho else '#c4c4c4' }};" data-heures="{{ ben.heures_semaine or '' }}" onclick="editHeures(this, {{ ben.id }})">{{ ho.label if ho else '—' }}</span>
+                            </td>
+                            {# ── Heures de bénévolat calculées (lecture seule) ── #}
+                            <td class="sv-col-date sv-heures-total">
+                                {% if heures_totales.get(ben.id) %}{{ '%g'|format(heures_totales[ben.id]) }} h{% else %}—{% endif %}
                             </td>
                             {% if not is_responsable %}
                             <td class="sv-col-actions">
                                 <button class="sv-del-btn" onclick="deleteBen({{ ben.id }})" title="Supprimer">🗑️</button>
                             </td>
                             {% endif %}
-                            <td class="sv-col-name-end">{{ ben.nom }}</td>
                         </tr>
                     {% endfor %}
 
                     {% if not groupe.lignes %}
                         <tr>
-                            <td colspan="{% if not is_responsable %}11{% else %}10{% endif %}" class="sv-empty">
+                            <td colspan="{% if not is_responsable %}13{% else %}12{% endif %}" class="sv-empty">
                                 Aucun benevole dans ce groupe
                             </td>
                         </tr>
@@ -136,6 +152,12 @@ var GROUPES = [
 var HEURES_OPTIONS = [
 {% for h in heures_config %}
     {key: "{{ h.key }}", label: "{{ h.label }}", color: "{{ h.color }}"}{{ ',' if not loop.last else '' }}
+{% endfor %}
+];
+
+var TYPES_BENEVOLAT = [
+{% for t in types_config %}
+    {key: "{{ t.key }}", label: "{{ t.label }}", color: "{{ t.color }}"}{{ ',' if not loop.last else '' }}
 {% endfor %}
 ];
 
@@ -336,6 +358,57 @@ function editStatus(el, id) {
     sel.addEventListener('blur', function() {
         if (!sel._changed) location.reload();
     });
+}
+
+/* ── Edition inline : liste fermee affichee en pastille ──
+   Sert au type de benevolat et aux heures par semaine : meme mecanique,
+   seuls la liste, le champ enregistre et l'attribut porteur changent. */
+function editPastille(el, id, options, field, attr) {
+    if (el.querySelector('select') || el.tagName === 'SELECT') return;
+    var parent = el.parentElement;
+    var currentKey = el.getAttribute(attr) || '';
+    var sel = document.createElement('select');
+    sel.className = 'sv-inline-select';
+    sel.innerHTML = '<option value="">— Aucun —</option>';
+    options.forEach(function(o) {
+        var opt = document.createElement('option');
+        opt.value = o.key;
+        opt.textContent = o.label;
+        if (o.key === currentKey) opt.selected = true;
+        sel.appendChild(opt);
+    });
+    parent.textContent = '';
+    parent.appendChild(sel);
+    sel.focus();
+
+    var done = false;
+    function renderPill(key) {
+        var o = options.find(function(x){ return x.key === key; });
+        parent.textContent = '';
+        var sp = document.createElement('span');
+        sp.className = 'sv-status-pill';
+        sp.style.background = o ? o.color : '#c4c4c4';
+        sp.setAttribute(attr, key);
+        sp.textContent = o ? o.label : '—';
+        sp.onclick = function() { editPastille(sp, id, options, field, attr); };
+        parent.appendChild(sp);
+    }
+    sel.addEventListener('change', function() {
+        if (done) return;
+        done = true;
+        var val = sel.value;
+        apiCall('/api/benevoles/' + id + '/modifier', {field: field, value: val}).then(function(r) {
+            renderPill(r.ok ? val : currentKey);
+        });
+    });
+    sel.addEventListener('blur', function() {
+        if (!done) renderPill(currentKey);
+    });
+}
+
+/* ── Edition inline : type de benevolat ── */
+function editType(el, id) {
+    editPastille(el, id, TYPES_BENEVOLAT, 'type_benevolat', 'data-type');
 }
 
 /* ── Edition inline : heures par semaine ── */
