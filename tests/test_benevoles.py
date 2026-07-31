@@ -250,6 +250,18 @@ class TestHeuresALaSeance:
         assert r.status_code == 200
         assert _total_heures(app, db, ben_id) == 3.5
 
+    def test_les_deux_totaux_annuels_portent_un_identifiant(self, app, db, admin_client):
+        """Le total du bandeau et celui du récapitulatif affichent le même
+        chiffre : les deux doivent être rafraîchis après un pointage, sinon la
+        page montre deux totaux contradictoires jusqu'au rechargement."""
+        _creer_benevole(app, db)
+        _creer_activite(app, db)
+        html = admin_client.get(f'/benevoles/heures?annee={ANNEE}').get_data(as_text=True)
+        assert html.count('id="bh-total-general"') == 1
+        assert html.count('id="bh-total-recap"') == 1
+        assert "bhFixer('bh-total-recap'" in html, \
+            "le total du récapitulatif doit être mis à jour au pointage"
+
     def test_recapitulatif_liste_les_benevoles_sans_heure(self, app, db, admin_client):
         """Un bénévole rattaché mais jamais présent doit figurer au récapitulatif
         (à zéro) : sinon son total ne peut pas s'afficher sans rechargement."""
@@ -506,6 +518,74 @@ class TestReferencesInexistantes:
         with app.app_context():
             assert db.execute("SELECT mode FROM benevoles_activites WHERE id = ?",
                               (act_id,)).fetchone()['mode'] == 'seance'
+
+
+class TestCoherenceDesDates:
+    """La date d'une séance doit tomber dans l'année de l'activité.
+
+    Le total annuel regroupe les séances par l'année de l'ACTIVITÉ : une date
+    hors de cette année serait comptée dans le mauvais exercice.
+    """
+
+    @pytest.mark.parametrize('date_hors_annee', [f'{ANNEE - 1}-12-31', f'{ANNEE + 1}-01-02'])
+    def test_date_hors_annee_refusee(self, app, db, admin_client, date_hors_annee):
+        act_id = _creer_activite(app, db)
+        r = admin_client.post(f'/api/benevoles/activites/{act_id}/seances/ajouter',
+                              json={'date': date_hors_annee})
+        assert r.status_code == 400
+        assert str(ANNEE) in r.get_json()['error']
+        with app.app_context():
+            assert db.execute(
+                "SELECT COUNT(*) AS n FROM benevoles_seances").fetchone()['n'] == 0
+
+    @pytest.mark.parametrize('date_invalide', [f'{ANNEE}-02-31', f'{ANNEE}-13-01',
+                                              '31/01/2026', 'demain', ''])
+    def test_date_invalide_refusee(self, app, db, admin_client, date_invalide):
+        act_id = _creer_activite(app, db)
+        r = admin_client.post(f'/api/benevoles/activites/{act_id}/seances/ajouter',
+                              json={'date': date_invalide})
+        assert r.status_code == 400
+        with app.app_context():
+            assert db.execute(
+                "SELECT COUNT(*) AS n FROM benevoles_seances").fetchone()['n'] == 0
+
+    def test_date_dans_l_annee_acceptee(self, app, db, admin_client):
+        act_id = _creer_activite(app, db)
+        r = admin_client.post(f'/api/benevoles/activites/{act_id}/seances/ajouter',
+                              json={'date': f'{ANNEE}-02-28'})
+        assert r.status_code == 200
+
+    def test_modification_vers_une_date_hors_annee_refusee(self, app, db, admin_client):
+        """Même contrôle à la modification, sinon la correction contourne l'ajout."""
+        act_id = _creer_activite(app, db)
+        with app.app_context():
+            db.execute("INSERT INTO benevoles_seances (activite_id, date, heures) "
+                       "VALUES (?, ?, 2)", (act_id, f'{ANNEE}-01-10'))
+            db.commit()
+            seance_id = db.execute(
+                "SELECT id FROM benevoles_seances ORDER BY id DESC LIMIT 1").fetchone()['id']
+        r = admin_client.post(f'/api/benevoles/seances/{seance_id}/modifier',
+                              json={'field': 'date', 'value': f'{ANNEE - 1}-06-01'})
+        assert r.status_code == 400
+        with app.app_context():
+            assert db.execute("SELECT date FROM benevoles_seances WHERE id = ?",
+                              (seance_id,)).fetchone()['date'] == f'{ANNEE}-01-10'
+
+
+class TestBaseNeuve:
+    """Une installation neuve ne doit pas réclamer une migration déjà incluse."""
+
+    def test_migration_0061_marquee_appliquee(self, app, db):
+        """`init_db()` crée déjà le schéma 0061 : la version doit être
+        enregistrée, sinon l'administrateur d'une base neuve voit une mise à
+        jour en attente qui n'a rien à faire."""
+        import database
+        assert any(v == '0061' for v, _ in database.ALL_MIGRATION_VERSIONS), \
+            "0061 doit figurer dans ALL_MIGRATION_VERSIONS"
+        with app.app_context():
+            ligne = db.execute(
+                "SELECT statut FROM schema_migrations WHERE version = '0061'").fetchone()
+        assert ligne and ligne['statut'] == 'ok'
 
 
 class TestAccesSuiviDesHeures:

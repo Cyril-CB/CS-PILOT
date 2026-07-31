@@ -196,7 +196,10 @@
     <div class="bh-card">
         <div class="bh-card-head">
             <h3 class="bh-titre">Récapitulatif {{ annee }}</h3>
-            <span class="bh-total">Total : <strong>{{ '%g'|format(total_general) }} h</strong></span>
+            {# Même chiffre que le bandeau : les deux sont rafraîchis ensemble
+               après un pointage, sinon la page afficherait deux totaux
+               contradictoires jusqu'au rechargement suivant. #}
+            <span class="bh-total">Total : <strong id="bh-total-recap">{{ '%g'|format(total_general) }} h</strong></span>
         </div>
         <div class="bh-scroll">
             <table class="bh-table">
@@ -261,7 +264,9 @@ function bhSupprimerActivite(id) {
 
 /* ── Séances ── */
 function bhAjouterSeance(actId) {
-    var date = prompt("Date de la séance (JJ/MM/AAAA) :");
+    // L'année est imposée par l'activité : le total annuel regroupe les
+    // séances par l'année de l'activité, pas par la date saisie.
+    var date = prompt("Date de la séance (JJ/MM/AAAA), dans l'année " + BH_ANNEE + " :");
     if (!date || !date.trim()) return;
     var p = date.trim().split('/');
     if (p.length !== 3) { alert('Date attendue au format JJ/MM/AAAA.'); return; }
@@ -298,6 +303,7 @@ function bhPresence(seanceId, benevoleId, present) {
         bhFixer('bh-total-' + r.activite_id + '-' + benevoleId, r.total_benevole_activite);
         bhFixer('bh-total-act-' + r.activite_id, r.total_activite);
         bhFixer('bh-total-general', r.total_annee);
+        bhFixer('bh-total-recap', r.total_annee);
         // Ligne de récapitulatif absente (bénévole pointé hors des activités
         // affichées) : on recharge pour ne pas laisser un total périmé.
         if (!bhFixer('bh-recap-' + benevoleId, r.total_benevole_annee)) location.reload();

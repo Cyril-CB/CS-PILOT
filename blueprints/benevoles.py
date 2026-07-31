@@ -9,7 +9,7 @@ direction et a la comptabilite : le calendrier des activites (jours de CA,
 cafes seniors...) est commun a toute l'association, il n'est pas cloisonne
 par responsable.
 """
-from datetime import datetime
+from datetime import date, datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify)
 from database import get_db
@@ -107,6 +107,26 @@ def _num(valeur, defaut=0.0):
     except (TypeError, ValueError):
         return defaut
     return n if n >= 0 else defaut
+
+
+def _date_de_seance(valeur, annee):
+    """(date ISO, None) si la date est valide et tombe dans l'annee, (None, message).
+
+    Le total annuel regroupe les seances par l'annee de l'ACTIVITE, pas par la
+    date de la seance : une date d'un autre exercice serait comptee dans le
+    mauvais bilan. Le format est verifie au passage, un 31 fevrier etant
+    accepte tel quel par SQLite.
+    """
+    texte = (valeur or '').strip()
+    if not texte:
+        return None, 'Date requise'
+    try:
+        jour = date.fromisoformat(texte[:10])
+    except ValueError:
+        return None, 'Date invalide (format attendu : AAAA-MM-JJ)'
+    if jour.year != int(annee):
+        return None, f"La date doit être dans l'année {annee} de l'activité"
+    return jour.isoformat(), None
 
 
 def _heures_forfait(volume_annuel, nb_seances, absences):
@@ -550,9 +570,6 @@ def api_ajouter_seance(act_id):
         return _refus_heures()
 
     data = request.get_json(silent=True) or {}
-    date_seance = (data.get('date') or '').strip()
-    if not date_seance:
-        return jsonify({'ok': False, 'error': 'Date requise'}), 400
 
     conn = get_db()
     try:
@@ -560,6 +577,9 @@ def api_ajouter_seance(act_id):
                                 (act_id,)).fetchone()
         if not activite:
             return jsonify({'ok': False, 'error': 'Activité introuvable'}), 404
+        date_seance, erreur = _date_de_seance(data.get('date'), activite['annee'])
+        if erreur:
+            return jsonify({'ok': False, 'error': erreur}), 400
         # Duree par defaut : celle de l'activite (2 h pour un CA par exemple).
         heures = data.get('heures')
         heures = _num(heures) if heures not in (None, '') else _num(activite['heures_seance'])
@@ -585,14 +605,21 @@ def api_modifier_seance(seance_id):
         return jsonify({'ok': False, 'error': f'Champ non autorise: {field}'}), 400
     if field == 'heures':
         value = _num(value)
-    elif not (value or '').strip():
-        return jsonify({'ok': False, 'error': 'Date requise'}), 400
 
     conn = get_db()
     try:
-        if not conn.execute('SELECT id FROM benevoles_seances WHERE id = ?',
-                            (seance_id,)).fetchone():
+        seance = conn.execute('''
+            SELECT s.id, a.annee FROM benevoles_seances s
+            JOIN benevoles_activites a ON a.id = s.activite_id WHERE s.id = ?
+        ''', (seance_id,)).fetchone()
+        if not seance:
             return jsonify({'ok': False, 'error': 'Séance introuvable'}), 404
+        if field == 'date':
+            # Meme controle qu'a l'ajout : sinon la correction d'une date
+            # permettrait de sortir la seance de l'annee de l'activite.
+            value, erreur = _date_de_seance(value, seance['annee'])
+            if erreur:
+                return jsonify({'ok': False, 'error': erreur}), 400
         conn.execute(f'UPDATE benevoles_seances SET {field} = ? WHERE id = ?',
                      (value, seance_id))
         conn.commit()

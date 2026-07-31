@@ -78,6 +78,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0038', 'Correctif types variables paie'),
     ('0039', 'Journal des actions metier'),
     ('0040', 'Module CSE'),
+    ('0061', 'Type de benevolat, date de fin et suivi des heures'),
 ]
 
 # Types de subvention par defaut (migration 0052)
