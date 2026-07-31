@@ -71,6 +71,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Gestion des dossiers de subventions organises par type de financeur (SUBV. GLOBAL, CAF PS, CAF, VILLE, METROPOLE, ETAT, AUTRES — types personnalisables : creation / suppression)
 - Statut d'avancement editable par dossier (nouveau projet / en cours / accepte / refuse), conserve pour les tableaux de bord
 - Gestion des benevoles avec suivi des heures assignees
+- Delegation possible de la page benevoles (repertoire complet et suivi des heures) a un ou plusieurs salaries, depuis la page Delegation
 
 ### CSE (Comite Social et Economique)
 - Accessible depuis le menu **RH & Paie**

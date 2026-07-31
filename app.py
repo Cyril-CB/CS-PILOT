@@ -505,6 +505,23 @@ def inject_cse_context():
             conn.close()
 
 
+@app.context_processor
+def inject_delegation_benevoles():
+    """Injecte la délégation « gestion des bénévoles » pour le menu latéral.
+
+    La direction et la comptabilité ont déjà l'entrée de menu par leur profil :
+    la lecture n'est faite que pour les salariés et responsables, seuls
+    concernés par cette délégation.
+    """
+    if 'user_id' not in session or session.get('profil') not in ('salarie', 'responsable'):
+        return {'is_delegue_benevoles': False}
+    try:
+        from blueprints.delegations import user_peut_gerer_benevoles
+        return {'is_delegue_benevoles': user_peut_gerer_benevoles(session.get('user_id'))}
+    except Exception:
+        return {'is_delegue_benevoles': False}
+
+
 @app.errorhandler(429)
 def ratelimit_handler(e):
     """Affiche un message clair quand la limite de tentatives est atteinte."""

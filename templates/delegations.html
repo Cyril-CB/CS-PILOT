@@ -111,6 +111,41 @@
                 </div>
             </form>
         </div>
+
+        <div class="delegation-card">
+            <h2>Gestion des bénévoles</h2>
+            <p class="delegation-meta">
+                Les salariés cochés gèrent l'intégralité de la page Bénévoles : liste complète
+                des bénévoles (ajout, modification, suppression) et suivi des heures.
+            </p>
+
+            <form method="POST" action="{{ url_for('admin_bp.delegations') }}">
+                <input type="hidden" name="form_type" value="benevoles">
+
+                <div class="form-group">
+                    <div class="recurrence-users">
+                        {% for user in salaries %}
+                        <label class="recurrence-user">
+                            <input type="checkbox" name="benevoles_users" value="{{ user.id }}"
+                                   {% if user.id in benevoles_user_ids %}checked{% endif %}
+                                   {% if not peut_modifier_benevoles %}disabled{% endif %}>
+                            {{ user.prenom }} {{ user.nom }}{% if user.profil == 'responsable' %} — Responsable{% endif %}
+                        </label>
+                        {% endfor %}
+                        {% if not salaries %}
+                        <p class="delegation-meta">Aucun salarié disponible.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
+                    {% if peut_modifier_benevoles %}
+                    <button type="submit" class="btn btn-primary">Enregistrer les délégations</button>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 {% endblock %}

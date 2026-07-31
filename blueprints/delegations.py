@@ -114,3 +114,62 @@ def save_salle_recurrence_delegations(user_ids, granted_by):
         conn.commit()
     finally:
         conn.close()
+
+
+# ── Délégation : gestion complète de la page bénévoles ─────────────────────────
+# Par défaut, le répertoire des bénévoles est tenu par la direction et la
+# comptabilité (un responsable ne voit que les bénévoles qui lui sont assignés
+# et le suivi des heures leur est fermé). Cette délégation confie l'intégralité
+# de la page — répertoire ET suivi des heures — à un ou plusieurs salariés.
+
+def get_benevoles_user_ids():
+    """Retourne la liste des IDs des salariés délégués à la gestion des bénévoles."""
+    conn = get_db()
+    try:
+        rows = conn.execute('SELECT user_id FROM delegations_benevoles').fetchall()
+        return [row['user_id'] for row in rows]
+    finally:
+        conn.close()
+
+
+def user_peut_gerer_benevoles(user_id):
+    """Indique si un salarié dispose de la délégation de gestion des bénévoles.
+
+    Le profil et l'activité du compte sont revérifiés à chaque appel : une
+    délégation accordée hier ne doit pas survivre à la désactivation du compte
+    ni à un changement de profil (un prestataire n'a rien à faire dans les
+    coordonnées des bénévoles).
+    """
+    if not user_id:
+        return False
+    conn = get_db()
+    try:
+        row = conn.execute(
+            '''
+            SELECT 1
+            FROM delegations_benevoles d
+            JOIN users u ON u.id = d.user_id
+            WHERE d.user_id = ? AND u.actif = 1
+              AND u.profil IN ('salarie', 'responsable')
+            ''',
+            (user_id,)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def save_benevoles_delegations(user_ids, granted_by):
+    """Remplace l'ensemble des salariés délégués à la gestion des bénévoles."""
+    conn = get_db()
+    try:
+        conn.execute('DELETE FROM delegations_benevoles')
+        for uid in user_ids:
+            conn.execute(
+                'INSERT OR IGNORE INTO delegations_benevoles (user_id, granted_by) '
+                'VALUES (?, ?)',
+                (uid, granted_by)
+            )
+        conn.commit()
+    finally:
+        conn.close()
