@@ -290,7 +290,7 @@ def api_modifier_benevole(ben_id):
     allowed_fields = {
         'nom', 'groupe', 'responsable_id', 'date_debut', 'date_fin',
         'email', 'telephone', 'adresse', 'competences',
-        'heures_semaine', 'type_benevolat',
+        'heures_semaine', 'type_benevolat', 'charte_signee',
     }
 
     if field not in allowed_fields:
@@ -298,6 +298,10 @@ def api_modifier_benevole(ben_id):
 
     if field == 'responsable_id':
         value = int(value) if value else None
+    # Case a cocher : on n'enregistre que 0 ou 1, jamais la valeur brute du
+    # navigateur (une chaine vide ou 'false' vaudrait « vrai » en SQLite).
+    if field == 'charte_signee':
+        value = 1 if value in (True, 1, '1', 'true', 'on') else 0
     # Liste fermee : une valeur inconnue viderait la colonne au lieu de
     # laisser une etiquette qui ne correspond a aucun type.
     if field == 'type_benevolat' and value not in TYPES_BENEVOLAT_MAP:

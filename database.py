@@ -79,6 +79,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0039', 'Journal des actions metier'),
     ('0040', 'Module CSE'),
     ('0061', 'Type de benevolat, date de fin et suivi des heures'),
+    ('0062', 'Charte du benevolat signee'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -910,7 +911,7 @@ def init_db():
         )
     ''')
 
-    # ===== Table benevoles (migration 0017, colonnes 0061) =====
+    # ===== Table benevoles (migration 0017, colonnes 0061 et 0062) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS benevoles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -924,6 +925,7 @@ def init_db():
             adresse TEXT,
             competences TEXT,
             type_benevolat TEXT,
+            charte_signee INTEGER DEFAULT 0,
             heures_semaine TEXT DEFAULT '',
             ordre INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -2037,6 +2039,12 @@ def init_db():
             cursor.execute(f"SELECT {colonne} FROM benevoles LIMIT 1")
         except sqlite3.OperationalError:
             cursor.execute(f"ALTER TABLE benevoles ADD COLUMN {colonne} TEXT")
+
+    # Migration 0062 : charte du benevolat signee (0/1).
+    try:
+        cursor.execute("SELECT charte_signee FROM benevoles LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE benevoles ADD COLUMN charte_signee INTEGER DEFAULT 0")
 
     conn.commit()
     conn.close()

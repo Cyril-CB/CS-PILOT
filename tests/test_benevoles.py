@@ -133,6 +133,95 @@ class TestDateFin:
         assert '31/03/2026' in html
 
 
+def _case_charte(html, ben_id):
+    """Balise <input> de la case « Charte signée » du bénévole, en entier.
+
+    L'attribut `checked` et le `onchange` sont sur deux lignes différentes :
+    on récupère la balise complète plutôt qu'une ligne isolée.
+    """
+    import re
+    balise = re.search(r'<input[^>]*toggleCharte\(' + str(ben_id) + r',[^>]*>', html, re.S)
+    assert balise, f"case « charte signée » absente pour le bénévole {ben_id}"
+    return balise.group(0)
+
+
+class TestCharteSignee:
+    """Case à cocher « Charte signée » sur la liste des bénévoles."""
+
+    def test_colonne_presente_et_decochee_par_defaut(self, app, db, admin_client):
+        """L'information n'est pas connue rétroactivement : case décochée."""
+        ben_id = _creer_benevole(app, db)
+        html = admin_client.get('/benevoles').get_data(as_text=True)
+        assert 'Charte signée' in html
+        assert 'checked' not in _case_charte(html, ben_id)
+        with app.app_context():
+            assert db.execute("SELECT charte_signee FROM benevoles WHERE id = ?",
+                              (ben_id,)).fetchone()['charte_signee'] == 0
+
+    def test_cochee_puis_decochee(self, app, db, admin_client):
+        ben_id = _creer_benevole(app, db)
+        for envoye, attendu in ((True, 1), (False, 0)):
+            r = admin_client.post(f'/api/benevoles/{ben_id}/modifier',
+                                  json={'field': 'charte_signee', 'value': envoye})
+            assert r.status_code == 200
+            with app.app_context():
+                assert db.execute("SELECT charte_signee FROM benevoles WHERE id = ?",
+                                  (ben_id,)).fetchone()['charte_signee'] == attendu
+
+    def test_case_cochee_rendue_dans_la_liste(self, app, db, admin_client):
+        ben_id = _creer_benevole(app, db)
+        admin_client.post(f'/api/benevoles/{ben_id}/modifier',
+                          json={'field': 'charte_signee', 'value': True})
+        html = admin_client.get('/benevoles').get_data(as_text=True)
+        assert 'checked' in _case_charte(html, ben_id)
+
+    @pytest.mark.parametrize('valeur', ['', 'false', 'non', 0, None, [], 'faux'])
+    def test_valeurs_non_vraies_enregistrees_a_zero(self, app, db, admin_client, valeur):
+        """SQLite accepterait n'importe quoi : seule une valeur explicitement
+        vraie doit cocher la case, sinon une chaîne vide passerait pour signée."""
+        ben_id = _creer_benevole(app, db)
+        admin_client.post(f'/api/benevoles/{ben_id}/modifier',
+                          json={'field': 'charte_signee', 'value': True})
+        admin_client.post(f'/api/benevoles/{ben_id}/modifier',
+                          json={'field': 'charte_signee', 'value': valeur})
+        with app.app_context():
+            assert db.execute("SELECT charte_signee FROM benevoles WHERE id = ?",
+                              (ben_id,)).fetchone()['charte_signee'] == 0
+
+    def test_responsable_peut_cocher_pour_ses_benevoles(self, app, db, client, sample_users):
+        """Le suivi de la charte fait partie de l'accompagnement du responsable."""
+        ben_id = _creer_benevole(app, db)
+        with app.app_context():
+            db.execute("UPDATE benevoles SET responsable_id = ? WHERE id = ?",
+                       (sample_users['responsable_id'], ben_id))
+            db.commit()
+        _connexion(client, 'resp_test', 'resp123')
+        r = client.post(f'/api/benevoles/{ben_id}/modifier',
+                        json={'field': 'charte_signee', 'value': True})
+        assert r.status_code == 200
+        with app.app_context():
+            assert db.execute("SELECT charte_signee FROM benevoles WHERE id = ?",
+                              (ben_id,)).fetchone()['charte_signee'] == 1
+
+    def test_salarie_refuse(self, app, db, client, sample_users):
+        ben_id = _creer_benevole(app, db)
+        _connexion(client, 'salarie_test', 'sal123')
+        r = client.post(f'/api/benevoles/{ben_id}/modifier',
+                        json={'field': 'charte_signee', 'value': True})
+        assert r.status_code == 403
+        with app.app_context():
+            assert db.execute("SELECT charte_signee FROM benevoles WHERE id = ?",
+                              (ben_id,)).fetchone()['charte_signee'] == 0
+
+    def test_migration_0062_marquee_appliquee(self, app, db):
+        import database
+        assert any(v == '0062' for v, _ in database.ALL_MIGRATION_VERSIONS)
+        with app.app_context():
+            ligne = db.execute(
+                "SELECT statut FROM schema_migrations WHERE version = '0062'").fetchone()
+        assert ligne and ligne['statut'] == 'ok'
+
+
 class TestPresentationDuBoard:
     """Colonne figée et colonne en double retirée."""
 
