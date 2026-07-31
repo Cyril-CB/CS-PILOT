@@ -330,6 +330,9 @@
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
             <a href="{{ url_for('factures_bp.approbation_factures') }}" class="sidebar-link">🧾 Approbation factures</a>
             <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
+            {% if is_delegue_benevoles %}
+            <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}" class="sidebar-link">🤝 Bénévoles</a>
+            {% endif %}
 
             {% elif session.profil == 'prestataire' %}
             {# ── PRESTATAIRE ── #}
@@ -367,6 +370,9 @@
                 <a href="{{ url_for('cse_bp.cse_accueil') }}" class="sidebar-link">🧑‍⚖️ CSE</a>
                 {% endif %}
                 <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
+                {% if is_delegue_benevoles %}
+                <a href="{{ url_for('benevoles_bp.gestion_benevoles') }}" class="sidebar-link">🤝 Bénévoles</a>
+                {% endif %}
                 {% if can_access_vue_ensemble_validation %}
                 <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble</a>
                 {% endif %}

@@ -5,6 +5,7 @@ Architecture en Blueprints Flask.
 import os
 import sys
 import secrets
+import sqlite3
 from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for, request, jsonify
 from flask_wtf.csrf import CSRFError
@@ -13,7 +14,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 import app_version
 from database import init_db, get_db, DATA_DIR
-from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES
+from blueprints.delegations import (
+    MISSION_SUIVI_VALIDATIONS_RELANCES, user_peut_gerer_benevoles,
+)
 from extensions import csrf, limiter
 
 
@@ -503,6 +506,29 @@ def inject_cse_context():
     finally:
         if conn:
             conn.close()
+
+
+@app.context_processor
+def inject_delegation_benevoles():
+    """Injecte la délégation « gestion des bénévoles » pour le menu latéral.
+
+    La direction et la comptabilité ont déjà l'entrée de menu par leur profil :
+    la lecture n'est faite que pour les salariés et responsables, seuls
+    concernés par cette délégation.
+    """
+    if 'user_id' not in session or session.get('profil') not in ('salarie', 'responsable'):
+        return {'is_delegue_benevoles': False}
+    try:
+        return {'is_delegue_benevoles': user_peut_gerer_benevoles(session.get('user_id'))}
+    except sqlite3.Error:
+        # Defaillance attendue : table absente sur une base dont la mise a
+        # niveau n'est pas encore appliquee (la page qui lance les migrations
+        # doit rester affichable), ou base momentanement verrouillee. Seule
+        # l'entree de menu disparait : les routes gardent leur propre controle.
+        logging.getLogger(__name__).warning(
+            "Delegation benevoles illisible, entree de menu masquee", exc_info=True
+        )
+        return {'is_delegue_benevoles': False}
 
 
 @app.errorhandler(429)

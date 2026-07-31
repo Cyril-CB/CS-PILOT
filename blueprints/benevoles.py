@@ -8,11 +8,16 @@ Le suivi des heures de benevolat (page /benevoles/heures) est reserve a la
 direction et a la comptabilite : le calendrier des activites (jours de CA,
 cafes seniors...) est commun a toute l'association, il n'est pas cloisonne
 par responsable.
+
+La direction (ou la comptabilite) peut confier l'integralite de la page a un
+ou plusieurs salaries depuis la page Delegation : ils disposent alors des
+memes droits que la direction sur cette page, suivi des heures compris.
 """
 from datetime import date, datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, jsonify)
 from database import get_db
+from blueprints.delegations import user_peut_gerer_benevoles
 from utils import login_required
 
 benevoles_bp = Blueprint('benevoles_bp', __name__)
@@ -64,22 +69,33 @@ MODES_ACTIVITE = [
 MODES_ACTIVITE_KEYS = {m['key'] for m in MODES_ACTIVITE}
 
 
+def _est_delegue():
+    """Salarie a qui la gestion complete de la page benevoles a ete confiee.
+
+    Volontairement relu a chaque appel : un droit retire (ou un compte
+    desactive) doit prendre effet immediatement, sans dependre de la duree de
+    vie du contexte applicatif.
+    """
+    return user_peut_gerer_benevoles(session.get('user_id'))
+
+
 def _peut_voir():
-    return session.get('profil') in ('directeur', 'comptable', 'responsable')
+    return session.get('profil') in ('directeur', 'comptable', 'responsable') or _est_delegue()
 
 
 def _peut_modifier():
-    return session.get('profil') in ('directeur', 'comptable', 'responsable')
+    return session.get('profil') in ('directeur', 'comptable', 'responsable') or _est_delegue()
 
 
 def _peut_gerer_heures():
-    """Suivi des heures : direction et comptabilite uniquement.
+    """Suivi des heures : direction, comptabilite et salaries delegues.
 
     Le calendrier des activites est commun a l'association ; le confier aux
     responsables, qui ne voient qu'une partie des benevoles, fausserait les
-    totaux servant au bilan.
+    totaux servant au bilan. Un salarie delegue, lui, gere toute la page : il
+    voit tous les benevoles et tient donc le calendrier sans angle mort.
     """
-    return session.get('profil') in ('directeur', 'comptable')
+    return session.get('profil') in ('directeur', 'comptable') or _est_delegue()
 
 
 def _get_initiales(prenom, nom):
@@ -203,7 +219,10 @@ def gestion_benevoles():
                 'initiales': _get_initiales(u['prenom'], u['nom']),
             }
 
-        is_responsable = session.get('profil') == 'responsable'
+        # `is_responsable` declenche la vue restreinte (ses benevoles seuls,
+        # sans ajout ni suppression). Un responsable delegue gere toute la
+        # page : il retrouve la liste complete comme la direction.
+        is_responsable = session.get('profil') == 'responsable' and not _est_delegue()
         user_id = session.get('user_id')
 
         if is_responsable:

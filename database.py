@@ -80,6 +80,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0040', 'Module CSE'),
     ('0061', 'Type de benevolat, date de fin et suivi des heures'),
     ('0062', 'Charte du benevolat signee'),
+    ('0063', 'Delegation de la gestion des benevoles'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -1039,6 +1040,19 @@ def init_db():
     # récurrentes (par défaut réservé aux responsables / direction).
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS delegations_salles_recurrence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL UNIQUE,
+            granted_by INTEGER,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (granted_by) REFERENCES users(id)
+        )
+    ''')
+
+    # Délégation : salariés à qui la gestion complète de la page bénévoles
+    # (répertoire et suivi des heures) est confiée (migration 0063).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS delegations_benevoles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL UNIQUE,
             granted_by INTEGER,

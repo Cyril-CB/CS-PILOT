@@ -11,6 +11,7 @@ from database import get_db
 from blueprints.delegations import (
     MISSIONS, MISSIONS_MAP, save_delegation,
     get_salle_recurrence_user_ids, save_salle_recurrence_delegations,
+    get_benevoles_user_ids, save_benevoles_delegations,
 )
 from utils import login_required, validate_password_strength
 from access_log import (journaliser_action, ACTION_CREATION_USER,
@@ -51,6 +52,25 @@ def gestion_users():
     return render_template('gestion_users.html', users=users, secteurs=secteurs)
 
 
+def _salaries_delegables(conn, ids_bruts):
+    """IDs réellement délégables parmi ceux reçus du formulaire.
+
+    Le navigateur peut renvoyer n'importe quel identifiant : on ne garde que
+    les comptes actifs de profil salarié ou responsable.
+    """
+    selected = [int(x) for x in ids_bruts if x.isdigit()]
+    if not selected:
+        return []
+    placeholders = ','.join('?' * len(selected))
+    rows = conn.execute(
+        f'''SELECT id FROM users
+            WHERE id IN ({placeholders}) AND actif = 1
+              AND profil IN ('salarie', 'responsable')''',
+        selected
+    ).fetchall()
+    return [r['id'] for r in rows]
+
+
 @admin_bp.route('/delegations', methods=['GET', 'POST'])
 @login_required
 def delegations():
@@ -66,19 +86,20 @@ def delegations():
             # Modifiable par la direction ET le comptable (gestion des salles) ;
             # les autres missions restent réservées à la direction.
             if request.form.get('form_type') == 'salle_recurrence':
-                selected = [int(x) for x in request.form.getlist('salle_recurrence_users') if x.isdigit()]
-                valides = []
-                if selected:
-                    placeholders = ','.join('?' * len(selected))
-                    rows = conn.execute(
-                        f'''SELECT id FROM users
-                            WHERE id IN ({placeholders}) AND actif = 1
-                              AND profil IN ('salarie', 'responsable')''',
-                        selected
-                    ).fetchall()
-                    valides = [r['id'] for r in rows]
+                valides = _salaries_delegables(
+                    conn, request.form.getlist('salle_recurrence_users'))
                 save_salle_recurrence_delegations(valides, session['user_id'])
                 flash('Les autorisations de réservation récurrente ont été enregistrées.', 'success')
+                return redirect(url_for('admin_bp.delegations'))
+
+            # Gestion complète de la page bénévoles. Direction ET comptabilité :
+            # ce sont elles qui tiennent aujourd'hui le répertoire et le suivi
+            # des heures, elles délèguent donc un droit qu'elles détiennent.
+            if request.form.get('form_type') == 'benevoles':
+                valides = _salaries_delegables(
+                    conn, request.form.getlist('benevoles_users'))
+                save_benevoles_delegations(valides, session['user_id'])
+                flash('Les délégations de gestion des bénévoles ont été enregistrées.', 'success')
                 return redirect(url_for('admin_bp.delegations'))
 
             if session.get('profil') != 'directeur':
@@ -151,10 +172,13 @@ def delegations():
         missions=missions,
         salaries=salaries,
         salle_recurrence_user_ids=get_salle_recurrence_user_ids(),
+        benevoles_user_ids=get_benevoles_user_ids(),
         peut_modifier=session.get('profil') == 'directeur',
         # Les réservations de salle récurrentes relèvent de la gestion des
         # salles : le comptable peut aussi définir qui y a droit.
         peut_modifier_salles=session.get('profil') in ('directeur', 'comptable'),
+        # Idem pour les bénévoles, tenus par la direction et la comptabilité.
+        peut_modifier_benevoles=session.get('profil') in ('directeur', 'comptable'),
     )
 
 @admin_bp.route('/creer_user', methods=['GET', 'POST'])
