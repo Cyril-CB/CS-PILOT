@@ -2494,6 +2494,8 @@ a.btn-icon:-webkit-any-link {
 /* Type de bénévolat : les combinaisons (« Gouvernance + Activité ») sont
    longues, la pastille a besoin de plus de place qu'un statut ordinaire. */
 .sv-col-type { width: 250px; min-width: 250px; }
+.sv-col-charte { width: 110px; min-width: 110px; text-align: center; }
+.sv-checkbox { width: 17px; height: 17px; cursor: pointer; accent-color: var(--primary); }
 .sv-heures-total { text-align: right; font-weight: 600; color: var(--gray-700); }
 
 /* ── Suivi des heures de bénévolat ── */

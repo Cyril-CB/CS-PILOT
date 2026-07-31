@@ -40,6 +40,7 @@
                             <th class="sv-col-person">Responsable</th>
                             <th class="sv-col-status">Statut</th>
                             <th class="sv-col-type">Type de bénévolat</th>
+                            <th class="sv-col-charte" title="Charte du bénévolat signée">Charte signée</th>
                             <th class="sv-col-date">Date de debut</th>
                             <th class="sv-col-date">Date de fin</th>
                             <th class="sv-col-text">Email</th>
@@ -79,6 +80,13 @@
                                    pas à la boucle, la pastille resterait vide. #}
                                 {% set tc = types_map.get(ben.type_benevolat) %}
                                 <span class="sv-status-pill" style="background:{{ tc.color if tc else '#c4c4c4' }};" data-type="{{ ben.type_benevolat or '' }}" onclick="editType(this, {{ ben.id }})">{{ tc.label if tc else '—' }}</span>
+                            </td>
+                            {# ── Charte du bénévolat signée ── #}
+                            <td class="sv-col-charte">
+                                <input type="checkbox" class="sv-checkbox"
+                                       {{ 'checked' if ben.charte_signee }}
+                                       onchange="toggleCharte({{ ben.id }}, this)"
+                                       title="Charte du bénévolat signée">
                             </td>
                             {# ── Date de debut ── #}
                             <td class="sv-col-date sv-cell-date" onclick="editDate(this, {{ ben.id }}, 'date_debut')">
@@ -123,7 +131,7 @@
 
                     {% if not groupe.lignes %}
                         <tr>
-                            <td colspan="{% if not is_responsable %}13{% else %}12{% endif %}" class="sv-empty">
+                            <td colspan="{% if not is_responsable %}14{% else %}13{% endif %}" class="sv-empty">
                                 Aucun benevole dans ce groupe
                             </td>
                         </tr>
@@ -403,6 +411,23 @@ function editPastille(el, id, options, field, attr) {
     });
     sel.addEventListener('blur', function() {
         if (!done) renderPill(currentKey);
+    });
+}
+
+/* ── Charte du benevolat signee (case a cocher) ── */
+function toggleCharte(id, input) {
+    var valeur = input.checked;
+    apiCall('/api/benevoles/' + id + '/modifier',
+            {field: 'charte_signee', value: valeur}).then(function(r) {
+        /* Echec d'enregistrement : on remet la case dans son etat precedent
+           plutot que de laisser croire que c'est enregistre. */
+        if (!r || !r.ok) {
+            input.checked = !valeur;
+            alert((r && r.error) || 'Erreur');
+        }
+    }).catch(function() {
+        input.checked = !valeur;
+        alert('Erreur réseau : la modification n\'a pas été enregistrée.');
     });
 }
 
