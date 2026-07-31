@@ -78,6 +78,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0038', 'Correctif types variables paie'),
     ('0039', 'Journal des actions metier'),
     ('0040', 'Module CSE'),
+    ('0061', 'Type de benevolat, date de fin et suivi des heures'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -909,7 +910,7 @@ def init_db():
         )
     ''')
 
-    # ===== Table benevoles (migration 0017) =====
+    # ===== Table benevoles (migration 0017, colonnes 0061) =====
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS benevoles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -917,15 +918,84 @@ def init_db():
             groupe TEXT NOT NULL DEFAULT 'nouveau',
             responsable_id INTEGER,
             date_debut TEXT,
+            date_fin TEXT,
             email TEXT,
             telephone TEXT,
             adresse TEXT,
             competences TEXT,
+            type_benevolat TEXT,
             heures_semaine TEXT DEFAULT '',
             ordre INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (responsable_id) REFERENCES users(id)
+        )
+    ''')
+
+    # ===== Suivi des heures de benevolat (migration 0061) =====
+    # Une activite est definie pour une annee : le volume et le calendrier
+    # changent d'un exercice a l'autre. Deux modes, ceux du classeur tenu
+    # jusqu'ici : « seance » (on liste les dates, ex. les jours de CA, et on
+    # coche les presents) et « forfait » (volume annuel, ex. cafe senior
+    # « sur 80 h a l'annee », dont on retranche les absences au prorata).
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS benevoles_activites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nom TEXT NOT NULL,
+            annee INTEGER NOT NULL,
+            mode TEXT NOT NULL DEFAULT 'seance',
+            heures_seance REAL DEFAULT 0,
+            volume_annuel REAL DEFAULT 0,
+            nb_seances INTEGER DEFAULT 0,
+            ordre INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS benevoles_seances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activite_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            heures REAL NOT NULL DEFAULT 0,
+            FOREIGN KEY (activite_id) REFERENCES benevoles_activites(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS benevoles_participations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activite_id INTEGER NOT NULL,
+            benevole_id INTEGER NOT NULL,
+            absences INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (activite_id, benevole_id),
+            FOREIGN KEY (activite_id) REFERENCES benevoles_activites(id),
+            FOREIGN KEY (benevole_id) REFERENCES benevoles(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS benevoles_presences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seance_id INTEGER NOT NULL,
+            benevole_id INTEGER NOT NULL,
+            present INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (seance_id, benevole_id),
+            FOREIGN KEY (seance_id) REFERENCES benevoles_seances(id),
+            FOREIGN KEY (benevole_id) REFERENCES benevoles(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS benevoles_heures_autres (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            benevole_id INTEGER NOT NULL,
+            annee INTEGER NOT NULL,
+            date TEXT,
+            libelle TEXT,
+            heures REAL NOT NULL DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (benevole_id) REFERENCES benevoles(id)
         )
     ''')
 
@@ -1957,6 +2027,16 @@ def init_db():
         cursor.execute("SELECT hs_deduites_compteur FROM variables_paie LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE variables_paie ADD COLUMN hs_deduites_compteur INTEGER")
+
+    # Migration 0061 : type de benevolat et date de fin sur les fiches
+    # benevoles. Les tables du suivi des heures, elles, sont creees plus haut
+    # par CREATE TABLE IF NOT EXISTS : seules les colonnes ont besoin d'un
+    # rattrapage sur une base preexistante.
+    for colonne in ('type_benevolat', 'date_fin'):
+        try:
+            cursor.execute(f"SELECT {colonne} FROM benevoles LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute(f"ALTER TABLE benevoles ADD COLUMN {colonne} TEXT")
 
     conn.commit()
     conn.close()

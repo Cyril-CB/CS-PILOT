@@ -2491,6 +2491,99 @@ a.btn-icon:-webkit-any-link {
 .sv-col-select { width: 160px; min-width: 160px; }
 .sv-col-text { width: 160px; min-width: 160px; }
 .sv-col-actions { width: 44px; min-width: 44px; text-align: center; }
+/* Type de bénévolat : les combinaisons (« Gouvernance + Activité ») sont
+   longues, la pastille a besoin de plus de place qu'un statut ordinaire. */
+.sv-col-type { width: 250px; min-width: 250px; }
+.sv-heures-total { text-align: right; font-weight: 600; color: var(--gray-700); }
+
+/* ── Suivi des heures de bénévolat ── */
+.bh-header-actions { display: flex; align-items: center; gap: 10px; }
+.bh-label { font-size: 0.8rem; color: var(--gray-500); }
+.bh-select {
+    padding: 6px 10px;
+    border: 1px solid var(--gray-200);
+    border-radius: 6px;
+    background: var(--white);
+    color: var(--gray-900);
+    font-size: 0.85rem;
+}
+.bh-input-court { width: 100px; }
+
+.bh-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 12px 0;
+}
+.bh-total-general { margin-left: auto; font-size: 0.95rem; color: var(--gray-700); }
+
+.bh-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+}
+.bh-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.bh-titre { margin: 0; font-size: 1rem; color: var(--primary); cursor: pointer; }
+.bh-mode {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: var(--gray-500);
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 1px 8px;
+}
+.bh-total { margin-left: auto; font-size: 0.9rem; color: var(--gray-700); }
+
+.bh-params { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+.bh-params label { font-size: 0.8rem; color: var(--gray-600); display: flex; align-items: center; gap: 6px; }
+.bh-params input {
+    width: 90px;
+    padding: 4px 6px;
+    border: 1px solid var(--gray-200);
+    border-radius: 5px;
+    background: var(--white);
+    color: var(--gray-900);
+}
+.bh-avertissement { font-size: 0.78rem; color: #b06000; }
+.bh-aide { font-size: 0.85rem; color: var(--gray-600); max-width: 70ch; }
+.bh-vide { text-align: left; }
+
+.bh-scroll { overflow-x: auto; }
+.bh-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.bh-table th, .bh-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--gray-100);
+    white-space: nowrap;
+    text-align: center;
+}
+.bh-table thead th {
+    background: var(--gray-50);
+    color: var(--gray-500);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.bh-col-nom { text-align: left !important; min-width: 200px; font-weight: 600; color: var(--gray-900); }
+.bh-col-num { text-align: right !important; min-width: 90px; }
+.bh-col-num input { width: 70px; text-align: right; padding: 3px 5px; border: 1px solid var(--gray-200); border-radius: 5px; background: var(--white); color: var(--gray-900); }
+.bh-col-date { min-width: 110px; }
+.bh-col-seance { min-width: 78px; }
+.bh-col-actions { width: 44px; }
+.bh-seance-date { display: block; font-weight: 600; color: var(--gray-700); }
+.bh-seance-heures { display: block; font-size: 0.68rem; color: var(--gray-500); cursor: pointer; }
+.bh-seance-heures:hover { text-decoration: underline; }
+.bh-mini-btn {
+    border: none; background: none; cursor: pointer;
+    color: var(--gray-400); font-size: 0.9rem; line-height: 1; padding: 0;
+}
+.bh-mini-btn:hover { color: var(--danger, #e2445c); }
+.bh-empty { color: var(--gray-500); font-style: italic; padding: 14px !important; }
+.bh-ajout-ligne { display: flex; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+[data-theme="dark"] .bh-table thead th { background: var(--gray-100); }
 
 .sv-tag {
     display: inline-block;
