@@ -21,6 +21,13 @@ réservation de salle** ne compte pas : elle n'ouvre aucune page supplémentaire
 
 La règle est dans `navigation.est_eligible()`.
 
+Un salarié délégué reste cadré sur ce qui le concerne : il ne valide aucune
+demande, donc son fil n'en contient aucune, et l'horizon ne lui montre ni les
+contrats ni les absences de l'effectif. Il ne voit que les étapes de
+subventions qui lui sont assignées et ses propres tâches planifiées. Le cadrage
+est appliqué à la source, dans `dashboard_actions.construire_actions()` et
+`flux_accueil.construire_horizon()`, et vaut donc pour tout appelant.
+
 ## Les trois écrans
 
 ### L'accueil (`/accueil`)
@@ -34,9 +41,17 @@ La règle est dans `navigation.est_eligible()`.
   lignes à défilement horizontal — *RH* (fins de contrat, retours d'absence
   longue) et *Échéances* (étapes de subventions, tâches du planificateur).
 
-Une échéance à 7 jours ou moins appartient au fil ; au-delà, elle passe à
-l'horizon. Le seuil est `flux_accueil.JOURS_IMMEDIAT`, l'horizon s'arrête à
-`JOURS_HORIZON` (120 jours).
+Le fil et l'horizon ne se recouvrent que là où c'est nécessaire. Les **étapes
+de subventions** figurent dans le fil quelle que soit leur date : l'horizon ne
+les reprend qu'au-delà de `flux_accueil.JOURS_IMMEDIAT` (7 jours), pour ne pas
+les afficher deux fois. Les **fins de contrat, retours d'absence et tâches
+planifiées** n'apparaissent que dans l'horizon : il démarre donc à aujourd'hui
+pour elles, sans quoi elles disparaîtraient au moment précis où elles
+deviennent urgentes. L'horizon s'arrête à `JOURS_HORIZON` (120 jours).
+
+Pour la direction et la comptabilité, le fil reprend la file étendue du centre
+de contrôle qu'il remplace : factures assignées à la direction, relance des
+fiches non validées, surcharges, soldes de congés élevés.
 
 ### Le nom et la fonction, en haut à droite
 
@@ -117,7 +132,9 @@ Pour ajouter un flux d'information à une page, écrire un constructeur dans
 ## Revenir en arrière
 
 - **Pour tout le centre** : Administration → Options → décocher « Activer
-  l'interface sans menu ».
+  l'interface sans menu ». `/accueil` et `/mon-espace` redirigent alors vers le
+  tableau de bord, et le bouton « Essayer la nouvelle interface » disparaît du
+  menu latéral.
 - **Pour une personne** : « Mon espace » → « Revenir au menu classique ». Le
   choix est enregistré dans `app_settings` sous la clé
   `interface_sans_menu_user_<id>` et reste réversible.

@@ -17,6 +17,7 @@ from datetime import datetime
 from flask import (Blueprint, jsonify, redirect, render_template, request,
                    session, url_for)
 
+import interface_flux
 import navigation
 from dashboard_actions import construire_actions
 from database import get_db
@@ -72,6 +73,23 @@ def _secteur_de(user_id):
         return None
 
 
+def _fil_du_profil(conn, profil, user_id, secteur_id):
+    """Fil d'actions de l'accueil, à parité avec le tableau de bord remplacé.
+
+    Pour la direction et la comptabilité, l'accueil prend la place du centre de
+    contrôle : il doit donc porter la même file étendue — factures assignées à
+    la direction, relances de fiches, surcharges, soldes de congés élevés — et
+    pas seulement les demandes et les subventions. Sans cela, les factures à
+    approuver disparaîtraient alors que leurs boutons existent dans le gabarit.
+    """
+    if profil in ('directeur', 'comptable'):
+        from blueprints.dashboard_direction import (_construire_file_actions,
+                                                    _lire_seuils)
+        actions, _ = _construire_file_actions(conn, profil, user_id, _lire_seuils())
+        return actions
+    return construire_actions(conn, profil, user_id, secteur_id=secteur_id)
+
+
 @accueil_bp.route('/accueil')
 @login_required
 def accueil():
@@ -79,9 +97,10 @@ def accueil():
     profil = session.get('profil')
     user_id = session.get('user_id')
 
-    # L'accueil sans menu n'a de sens que pour qui y a droit ; les autres
-    # gardent leur tableau de bord et son menu.
-    if not navigation.est_eligible(profil, user_id):
+    # L'accueil sans menu n'a de sens que si l'interface est réellement active :
+    # éligibilité du profil, mais aussi option du centre et choix personnel.
+    # Sinon la page s'afficherait à l'intérieur du gabarit à menu latéral.
+    if not interface_flux.interface_active(profil, user_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     secteur_id = _secteur_de(user_id) if profil == 'responsable' else None
@@ -89,7 +108,7 @@ def accueil():
 
     conn = get_db()
     try:
-        actions = construire_actions(conn, profil, user_id, secteur_id=secteur_id)
+        actions = _fil_du_profil(conn, profil, user_id, secteur_id)
         horizon = construire_horizon(conn, profil, user_id, secteur_id)
     finally:
         conn.close()
@@ -115,6 +134,9 @@ def mon_espace():
     """Le dossier personnel : compteurs, dépôt d'une demande, demandes en cours."""
     user_id = session.get('user_id')
     profil = session.get('profil')
+    if not interface_flux.interface_active(profil, user_id):
+        return redirect(url_for('dashboard_bp.dashboard'))
+
     conn = get_db()
     try:
         user = conn.execute(
@@ -140,6 +162,14 @@ def mon_espace():
                ORDER BY date_demande DESC LIMIT 20''',
             (user_id,)
         ).fetchall()
+
+        # Jours fériés de l'année en cours et de la suivante : le décompte
+        # affiché avant l'envoi doit donner le même résultat que
+        # `utils.calculer_jours_ouvres`, qui les exclut côté serveur.
+        annee = aujourd_hui().year
+        feries = [r['date'] for r in conn.execute(
+            'SELECT date FROM jours_feries WHERE annee IN (?, ?)',
+            (annee, annee + 1)).fetchall()]
     finally:
         conn.close()
 
@@ -209,6 +239,7 @@ def mon_espace():
         solde_cp=solde_cp,
         solde_cc=solde_cc,
         solde_recup=round(solde_recup, 1),
+        feries=feries,
         aujourdhui=aujourd_hui().isoformat(),
     )
 
@@ -219,12 +250,12 @@ def api_flux_fragment():
     """Fragment HTML du fil d'actions (rafraîchissement sans rechargement)."""
     profil = session.get('profil')
     user_id = session.get('user_id')
-    if not navigation.est_eligible(profil, user_id):
+    if not interface_flux.interface_active(profil, user_id):
         return jsonify({'error': 'Accès non autorisé'}), 403
     secteur_id = _secteur_de(user_id) if profil == 'responsable' else None
     conn = get_db()
     try:
-        actions = construire_actions(conn, profil, user_id, secteur_id=secteur_id)
+        actions = _fil_du_profil(conn, profil, user_id, secteur_id)
     finally:
         conn.close()
     return render_template('_flux_actions.html', actions=separer_actions(actions))
@@ -238,13 +269,17 @@ def api_basculer():
     Le choix est personnel : il ne change rien pour les autres utilisateurs, et
     ne peut pas donner accès à l'interface sans menu à qui n'y a pas droit.
     """
-    from interface_flux import definir_preference_utilisateur
     profil = session.get('profil')
     user_id = session.get('user_id')
     if not navigation.est_eligible(profil, user_id):
         return jsonify({'error': 'Accès non autorisé'}), 403
     data = request.get_json(silent=True) or {}
     actif = bool(data.get('actif'))
-    definir_preference_utilisateur(user_id, actif)
-    cible = url_for('accueil_bp.accueil') if actif else url_for('dashboard_bp.dashboard')
-    return jsonify({'success': True, 'actif': actif, 'redirect': cible})
+    interface_flux.definir_preference_utilisateur(user_id, actif)
+    # L'option du centre prime : si elle est décochée, la préférence est bien
+    # enregistrée mais l'accueil sans menu reste fermé. On renvoie alors vers le
+    # tableau de bord plutôt que vers une page qui redirigerait aussitôt.
+    vers_le_flux = actif and interface_flux.interface_active(profil, user_id)
+    cible = (url_for('accueil_bp.accueil') if vers_le_flux
+             else url_for('dashboard_bp.dashboard'))
+    return jsonify({'success': True, 'actif': vers_le_flux, 'redirect': cible})

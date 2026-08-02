@@ -81,6 +81,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0061', 'Type de benevolat, date de fin et suivi des heures'),
     ('0062', 'Charte du benevolat signee'),
     ('0063', 'Delegation de la gestion des benevoles'),
+    ('0064', 'Fonction du salarie'),
 ]
 
 # Types de subvention par defaut (migration 0052)

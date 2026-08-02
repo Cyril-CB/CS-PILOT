@@ -124,12 +124,16 @@ def _retours_absence(conn, today, borne_min, borne_max, scope_sql, scope_params)
 
 
 def _etapes_subventions(conn, today, borne_min, borne_max, profil, user_id):
-    """Étapes de subventions dont l'échéance n'est pas encore imminente."""
-    if profil == 'responsable':
+    """Étapes de subventions dont l'échéance n'est pas encore imminente.
+
+    Même règle que le fil d'actions : la direction et la comptabilité suivent
+    tous les dossiers, les autres seulement ceux qui leur sont confiés.
+    """
+    if profil in ('directeur', 'comptable'):
+        scope, params = '', ()
+    else:
         scope = 'AND (s.assignee_1_id = ? OR s.assignee_2_id = ? OR se.assignee_id = ?)'
         params = (user_id, user_id, user_id)
-    else:
-        scope, params = '', ()
     rows = conn.execute(
         f'''SELECT se.nom AS etape, se.date_echeance, s.nom AS sub_nom, s.annee_action
             FROM subventions_sous_elements se
@@ -202,10 +206,19 @@ def construire_horizon(conn, profil, user_id, secteur_id=None):
     (base non migrée) neutralise seulement la ligne concernée.
     """
     today = aujourd_hui()
-    borne_min = today + timedelta(days=JOURS_IMMEDIAT)
     borne_max = today + timedelta(days=JOURS_HORIZON)
+    # Seules les étapes de subventions remontent aussi dans le fil d'actions :
+    # elles seules démarrent après le délai d'immédiateté, pour ne pas y figurer
+    # deux fois. Les fins de contrat, les retours d'absence et les tâches
+    # planifiées n'apparaissent nulle part ailleurs : les écarter à sept jours
+    # les ferait disparaître au moment précis où elles deviennent urgentes.
+    borne_subventions = today + timedelta(days=JOURS_IMMEDIAT)
+    borne_min = today
 
-    # Un responsable ne voit que son équipe ; direction et comptabilité voient tout.
+    # Direction et comptabilité voient tout l'effectif ; un responsable, son
+    # équipe. Tout autre profil — un salarié délégué, par exemple — n'a pas à
+    # connaître les contrats ni les absences de qui que ce soit.
+    suit_l_effectif = profil in ('directeur', 'comptable', 'responsable')
     if profil == 'responsable':
         scope_sql = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
         scope_params = (secteur_id, user_id)
@@ -215,20 +228,21 @@ def construire_horizon(conn, profil, user_id, secteur_id=None):
     lignes = []
 
     rh = []
-    for lecture, args in ((_fins_de_contrat, (scope_sql, scope_params)),
-                          (_retours_absence, (scope_sql, scope_params))):
-        try:
-            rh.extend(lecture(conn, today, borne_min, borne_max, *args))
-        except Exception:
-            logger.warning("Horizon RH : lecture ignorée", exc_info=True)
+    if suit_l_effectif:
+        for lecture, args in ((_fins_de_contrat, (scope_sql, scope_params)),
+                              (_retours_absence, (scope_sql, scope_params))):
+            try:
+                rh.extend(lecture(conn, today, borne_min, borne_max, *args))
+            except Exception:
+                logger.warning("Horizon RH : lecture ignorée", exc_info=True)
     if rh:
         rh.sort(key=lambda i: i['jours'])
         lignes.append({'titre': 'RH', 'items': rh[:12]})
 
     echeances = []
     try:
-        echeances.extend(_etapes_subventions(conn, today, borne_min, borne_max,
-                                             profil, user_id))
+        echeances.extend(_etapes_subventions(conn, today, borne_subventions,
+                                             borne_max, profil, user_id))
     except Exception:
         logger.warning("Horizon subventions : lecture ignorée", exc_info=True)
     try:

@@ -128,6 +128,16 @@
     };
     var mode = 'conge';
 
+    // Les jours fériés sont exclus, comme le fait utils.calculer_jours_ouvres
+    // côté serveur : sans cela le solde projeté annoncerait un jour de trop.
+    var FERIES = {{ feries|tojson }};
+
+    function iso(d) {
+        return d.getFullYear() + '-' +
+               String(d.getMonth() + 1).padStart(2, '0') + '-' +
+               String(d.getDate()).padStart(2, '0');
+    }
+
     function joursOuvres(a, b) {
         if (!a || !b) return 0;
         var d1 = new Date(a + 'T12:00'), d2 = new Date(b + 'T12:00');
@@ -135,7 +145,7 @@
         var n = 0;
         for (var d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
             var j = d.getDay();
-            if (j !== 0 && j !== 6) n++;
+            if (j !== 0 && j !== 6 && FERIES.indexOf(iso(d)) === -1) n++;
         }
         return n;
     }

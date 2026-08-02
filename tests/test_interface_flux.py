@@ -316,3 +316,123 @@ def test_le_message_du_cse_apparait_sur_le_flux(admin_client, db, sample_users):
     corps = admin_client.get('/accueil').get_data(as_text=True)
     assert 'cse-banner' in corps
     assert 'Message du CSE à lire' in corps
+
+
+# ── Revue Codex #232 : parité, cadrage des données et cohérence ────────────
+
+def test_le_flux_direction_porte_les_factures_et_les_relances(
+        admin_client, db, sample_users):
+    """L'accueil remplace le centre de contrôle : il en garde la file étendue."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    with db:
+        db.execute("INSERT INTO fournisseurs (nom) VALUES ('ALTEO')")
+        f_id = db.execute("SELECT id FROM fournisseurs LIMIT 1").fetchone()['id']
+        db.execute(
+            "INSERT INTO factures (fournisseur_id, numero_facture, montant_ttc, "
+            "date_echeance, approbation, assigned_direction, statut) "
+            "VALUES (?, '225678', 2480.0, ?, 'en_attente', 1, 'a_traiter')",
+            (f_id, (aujourd_hui() + timedelta(days=3)).isoformat()))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'ALTEO' in corps
+    assert 'data-flx-act="facture"' in corps
+    # Les fiches du mois précédent ne sont validées pour personne : la relance
+    # doit être proposée, comme sur le tableau de bord direction.
+    assert 'data-flx-act="relance"' in corps
+
+
+def test_le_salarie_delegue_ne_voit_pas_les_demandes_des_autres(
+        client, app, db, sample_users):
+    """Un délégué « bénévoles » n'a rien à valider : rien ne doit filtrer."""
+    from blueprints.delegations import save_benevoles_delegations
+    with app.app_context():
+        save_benevoles_delegations([sample_users['salarie_id']],
+                                   sample_users['directeur_id'])
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut) VALUES (?, 'Congé payé', '2026-09-01', '2026-09-05', 5, "
+            "'en_attente_direction')", (sample_users['comptable_id'],))
+        db.execute(
+            "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+            "VALUES (?, 'CDD', '2026-01-01', '2026-09-15')",
+            (sample_users['comptable_id'],))
+
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                follow_redirects=True)
+    corps = client.get('/accueil').get_data(as_text=True)
+    assert 'flx-entete' in corps                      # il est bien sur le flux
+    assert 'Durand' not in corps                       # ni la demande du comptable
+    assert 'Fin de CDD' not in corps                   # ni son contrat
+    assert 'data-flx-act="valider"' not in corps       # ni un bouton de validation
+
+
+def test_le_responsable_ne_voit_que_son_equipe(resp_client, db, sample_users):
+    """Le cadrage par secteur vaut aussi pour l'accueil sans menu."""
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut) VALUES (?, 'Congé payé', '2026-09-01', '2026-09-05', 5, "
+            "'en_attente_responsable')", (sample_users['comptable_id'],))
+    corps = resp_client.get('/accueil').get_data(as_text=True)
+    assert 'Sophie Durand' not in corps
+
+
+def test_une_echeance_rh_imminente_reste_visible(admin_client, db, sample_users):
+    """Un CDD qui se termine demain ne doit disparaître de nulle part."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    demain = aujourd_hui() + timedelta(days=1)
+    with db:
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                   "VALUES (?, 'CDD', '2026-01-01', ?)",
+                   (sample_users['salarie_id'], demain.isoformat()))
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'Fin de CDD — Jean Martin' in corps
+
+
+def test_option_globale_desactivee_ferme_aussi_l_accueil(admin_client, app):
+    """Sans l'option du centre, l'accueil ne doit pas s'ouvrir dans le menu."""
+    with app.app_context():
+        from app_options import set_option_bool
+        set_option_bool('interface_sans_menu_active', False)
+
+    for chemin in ('/accueil', '/mon-espace'):
+        reponse = admin_client.get(chemin)
+        assert reponse.status_code == 302, chemin
+        assert '/dashboard' in reponse.headers['Location'], chemin
+
+    assert admin_client.get('/api/accueil/flux-fragment').status_code == 403
+
+    # Le bouton « Essayer la nouvelle interface » disparaît lui aussi.
+    corps = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'Essayer la nouvelle interface' not in corps
+
+
+def test_la_delegation_des_validations_expose_la_vue_d_ensemble(app):
+    """La page accordée par la délégation doit figurer dans la carte."""
+    with app.test_request_context('/'):
+        carte = navigation.carte_navigation({
+            'profil': 'salarie', 'user_id': 1,
+            'can_access_vue_ensemble_validation': True})
+    endpoints = {p['endpoint']
+                 for g in carte['zones'] + carte['directs'] for p in g['pages']}
+    assert 'validation_bp.vue_ensemble_validation' in endpoints
+    # Sans la délégation, elle reste fermée.
+    with app.test_request_context('/'):
+        sans = navigation.carte_navigation({'profil': 'salarie', 'user_id': 1})
+    assert 'validation_bp.vue_ensemble_validation' not in {
+        p['endpoint'] for g in sans['zones'] + sans['directs'] for p in g['pages']}
+
+
+def test_le_calcul_des_jours_ouvres_exclut_les_feries(admin_client, db):
+    """Le décompte affiché doit coïncider avec celui du serveur."""
+    with db:
+        db.execute("INSERT OR IGNORE INTO jours_feries (date, libelle, annee) "
+                   "VALUES ('2026-08-15', 'Assomption', 2026)")
+    corps = admin_client.get('/mon-espace').get_data(as_text=True)
+    assert '2026-08-15' in corps        # la liste est bien transmise au gabarit
+    assert 'FERIES.indexOf' in corps    # …et réellement utilisée dans le calcul

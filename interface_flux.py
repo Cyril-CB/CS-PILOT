@@ -198,9 +198,14 @@ def contexte():
     user_id = session.get('user_id')
 
     if not interface_active(profil, user_id):
+        # « Essayer la nouvelle interface » ne s'affiche que si la bascule peut
+        # réellement aboutir : quand l'option du centre est décochée, le bouton
+        # mènerait à un accueil qui redirige aussitôt.
         donnees = {
             'ui_flux': False,
-            'ui_flux_eligible': bool(user_id) and navigation.est_eligible(profil, user_id),
+            'ui_flux_eligible': (bool(user_id)
+                                 and option_globale_active()
+                                 and navigation.est_eligible(profil, user_id)),
         }
     else:
         drapeaux = _drapeaux(profil, user_id)

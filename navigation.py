@@ -65,7 +65,13 @@ ZONES = [
         'pages': [
             _page('validation_bp.vue_ensemble_validation', "Vue d'ensemble",
                   profils=('directeur', 'comptable', 'responsable'),
-                  condition='can_access_vue_ensemble_validation',
+                  resume="L'état de validation des fiches, mois par mois."),
+            # La délégation « suivi des validations et relances » ouvre cette
+            # page à un salarié — c'est même elle qui le fait basculer sur
+            # l'interface sans menu. Sans cette seconde déclaration, la page
+            # que la délégation accorde disparaîtrait de sa carte.
+            _page('validation_bp.vue_ensemble_validation', "Vue d'ensemble",
+                  profils=(), condition='can_access_vue_ensemble_validation',
                   resume="L'état de validation des fiches, mois par mois."),
             _page('recup_bp.validation_demandes_recup', 'Validation des demandes',
                   profils=('directeur', 'comptable', 'responsable'),

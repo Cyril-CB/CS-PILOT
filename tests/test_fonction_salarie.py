@@ -163,3 +163,9 @@ def test_la_migration_recree_la_liste_et_reste_idempotente(app, db):
     libelles = _fonctions(db)
     assert 'Médiateur' in libelles
     assert len(libelles) == len(FONCTIONS_INITIALES) + 1
+
+
+def test_la_migration_0064_est_declaree_pour_les_bases_neuves(app, db):
+    """Une base fraîche ne doit pas signaler 0064 comme migration en attente."""
+    from database import ALL_MIGRATION_VERSIONS
+    assert '0064' in {version for version, _ in ALL_MIGRATION_VERSIONS}
