@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block title %}Accueil - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="flx-flux-entete">
+    <div>
+        <div class="flx-date">{{ date_texte }}</div>
+        <h1 class="flx-titre">{{ salutation }}</h1>
+        <p class="flx-resume">
+            {% if nb_actions %}
+            {{ nb_actions }} décision{{ 's' if nb_actions > 1 }} vous attend{{ 'ent' if nb_actions > 1 }}.
+            Rien d'autre ne bloque — le reste de l'application viendra à vous quand il le faudra.
+            {% else %}
+            Tout est traité. L'application se tait.
+            {% endif %}
+        </p>
+    </div>
+    <div class="flx-compte">
+        <div class="flx-compte-chiffres">
+            <div class="flx-compte-valeur"><span id="flxFaites">0</span><span>/{{ nb_actions }}</span></div>
+            <div class="flx-compte-label">traitées</div>
+        </div>
+        <div class="flx-anneau" id="flxAnneau"><i>◈</i></div>
+    </div>
+</div>
+
+{# ── Le fil : ce qui attend une décision ── #}
+<div id="flxActions">
+    {% include '_flux_actions.html' %}
+</div>
+
+{# ── À l'horizon : ce qui arrive, sans rien demander aujourd'hui ── #}
+{% if horizon %}
+<div class="flx-section">
+    <div class="flx-section-entete">
+        <span class="flx-etiquette">À l'horizon</span>
+        <span class="flx-section-note">Rien à décider aujourd'hui — mais rien à découvrir en retard non plus.</span>
+    </div>
+    {% for ligne in horizon %}
+    <div class="flx-ligne">
+        <span class="flx-ligne-titre">{{ ligne.titre }}</span>
+        <div class="flx-piste">
+            {% for it in ligne['items'] %}
+            <a href="{{ it.lien }}" class="flx-pastille flx-{{ it.ton }}">
+                <span class="flx-point"></span>
+                <span class="flx-pastille-corps">
+                    <span class="flx-pastille-titre">{{ it.titre }}</span>
+                    <span class="flx-pastille-detail">{{ it.detail }}</span>
+                </span>
+                <span class="flx-pastille-date">{{ it.date }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{# ── Ce que le clavier sait faire ── #}
+<div class="flx-astuces">
+    <div class="flx-astuce"><kbd>A–Z</kbd><span>tapez n'importe où pour chercher ou agir</span></div>
+    <div class="flx-astuce"><kbd>Échap</kbd><span>la vue d'ensemble apparaît, puis s'efface</span></div>
+    <div class="flx-astuce"><kbd>↵</kbd><span>la première proposition est la bonne</span></div>
+    <div class="flx-astuce"><kbd>◉</kbd><span>votre nom, en haut à droite : congés et récupérations</span></div>
+</div>
+
+<script>
+/* Le fil se vide au fur et à mesure : chaque décision prise retire sa carte,
+   l'anneau de progression suit. Les appels reprennent les points d'entrée
+   existants (approbation de facture, validation de demande, relance). */
+(function () {
+    var faites = 0;
+
+    function items() {
+        return Array.prototype.slice.call(document.querySelectorAll('[data-flx-item]'));
+    }
+
+    function majCompteurs() {
+        var restantes = items().length;
+        var total = faites + restantes;
+        document.getElementById('flxFaites').textContent = faites;
+        var anneau = document.getElementById('flxAnneau');
+        if (anneau) {
+            anneau.style.setProperty('--p', (total ? Math.round(faites / total * 100) : 0) + '%');
+        }
+        var vide = document.getElementById('flxToutFait');
+        if (vide) vide.style.display = restantes ? 'none' : '';
+    }
+
+    function retirer(ref, message) {
+        items().filter(function (el) { return el.getAttribute('data-flx-id') === ref; })
+            .forEach(function (el) {
+                el.classList.add('flx-sortie');
+                setTimeout(function () { el.remove(); majCompteurs(); }, 320);
+            });
+        faites += 1;
+        if (message && window.flxToast) window.flxToast(message);
+    }
+
+    function echec(msg) {
+        if (window.flxToast) window.flxToast(msg || "Erreur — l'action n'a pas pu être traitée");
+    }
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-flx-act]');
+        if (!btn || btn.disabled) return;
+        var act = btn.getAttribute('data-flx-act');
+        var ref = btn.getAttribute('data-flx-ref');
+        btn.disabled = true;
+
+        if (act === 'facture') {
+            fetch('/factures/' + btn.getAttribute('data-facture-id') + '/approuver', {method: 'POST'})
+                .then(function (r) { if (!r.ok) throw 0; retirer(ref, '🧾 Facture approuvée'); })
+                .catch(function () { btn.disabled = false; echec(); });
+
+        } else if (act === 'valider' || act === 'refuser') {
+            var corps = new URLSearchParams();
+            corps.set('demande_id', btn.getAttribute('data-demande-id'));
+            corps.set('demande_type', btn.getAttribute('data-demande-type'));
+            corps.set('action', act);
+            if (act === 'refuser') {
+                var motif = window.prompt('Motif du refus (obligatoire) :');
+                if (!motif || !motif.trim()) { btn.disabled = false; return; }
+                corps.set('motif_refus', motif.trim());
+            }
+            fetch('/validation_demandes_recup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: corps.toString()
+            }).then(function (r) {
+                if (!r.ok) throw 0;
+                retirer(ref, act === 'valider'
+                    ? '✓ Demande validée — le salarié est notifié'
+                    : 'Demande refusée — le salarié est notifié');
+            }).catch(function () { btn.disabled = false; echec(); });
+
+        } else if (act === 'subvention') {
+            fetch('/api/subventions/sous-elements/' + btn.getAttribute('data-se-id') + '/modifier', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({field: 'statut', value: 'fait'})
+            }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+              .then(function (res) {
+                  if (!res.ok || !res.d.ok) throw 0;
+                  retirer(ref, '💶 Étape marquée comme faite');
+              })
+              .catch(function () { btn.disabled = false; echec(); });
+
+        } else if (act === 'relance') {
+            fetch('/api/email/relance_validation', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mois: Number(btn.getAttribute('data-mois')),
+                                      annee: Number(btn.getAttribute('data-annee'))})
+            }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+              .then(function (res) {
+                  if (!res.ok || res.d.error) throw 0;
+                  faites += 1;
+                  majCompteurs();
+                  if (window.flxToast) {
+                      window.flxToast('📧 ' + (res.d.message || 'Relance envoyée aux responsables'));
+                  }
+                  // Les fiches ne sont pas validées pour autant : l'item reste,
+                  // mais son bouton dit que la relance est partie.
+                  document.querySelectorAll('[data-flx-act="relance"][data-flx-ref="' + ref + '"]')
+                      .forEach(function (b) { b.textContent = '✓ Relancé'; b.disabled = true; });
+              })
+              .catch(function () {
+                  btn.disabled = false;
+                  echec('Relance impossible — vérifiez la configuration email');
+              });
+
+        } else {
+            btn.disabled = false;
+        }
+    });
+
+    // Rafraîchissement du fil toutes les 10 minutes : une demande déposée
+    // pendant que la page reste ouverte apparaît sans rechargement. On ne
+    // touche à rien tant qu'une palette ou la vue d'ensemble est ouverte, pour
+    // ne pas déplacer le sol sous les pieds de qui est en train de naviguer.
+    setInterval(function () {
+        if (document.querySelector('.flx-palette, .flx-ensemble')) return;
+        fetch('/api/accueil/flux-fragment')
+            .then(function (r) { return r.ok ? r.text() : null; })
+            .then(function (html) {
+                if (html === null) return;
+                document.getElementById('flxActions').innerHTML = html;
+                majCompteurs();
+            })
+            .catch(function () { /* réseau indisponible : on réessaiera */ });
+    }, 600000);
+
+    majCompteurs();
+})();
+</script>
+{% endblock %}

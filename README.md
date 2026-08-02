@@ -24,6 +24,33 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Historique complet des demandes et modifications
 - Suivi des anomalies
 
+### Interface sans menu (accueil en flux)
+
+Pour la direction, la comptabilite, les responsables et les salaries porteurs
+d'une delegation, le menu lateral est remplace par :
+
+- un **accueil en fil d'actions** : uniquement ce qui attend une decision, avec
+  validation / refus / approbation en un clic ;
+- une zone **« A l'horizon »** : les echeances a venir mais pas immediates
+  (fins de contrat, retours d'absence, etapes de subventions, taches
+  planifiees), separees en une ligne RH et une ligne Echeances ;
+- une **barre intelligente** qui se remplit des la premiere touche frappee,
+  n'importe ou dans la page (ou Ctrl/Cmd + K) ;
+- une **vue d'ensemble** (touche Echap, ou le bouton de la barre du bas) :
+  l'application representee par zones, les themes au centre et les acces
+  directs a l'exterieur ;
+- **Mon espace** (le nom en haut a droite) : soldes de conges et de
+  recuperations, depot d'une demande, suivi de ses demandes.
+
+Les autres pages perdent leur menu et gagnent, en haut, les boutons des pages
+voisines de leur zone, ainsi qu'un flux d'information quand la page s'y prete
+(factures non validees, ecritures a generer, etapes en retard).
+
+Les autres salaries conservent l'interface habituelle. L'option
+d'administration **« Activer l'interface sans menu »** desactive la nouveaute
+pour tout le centre, et chaque utilisateur concerne peut revenir au menu
+classique depuis « Mon espace ».
+
 ### Multi-profils (5 profils)
 - **Salarie** : saisie de ses heures, consultation de son solde, demandes de recup
 - **Responsable** : validation equipe, vue "Mon equipe" hebdomadaire par secteur
@@ -136,6 +163,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 ## Documentation
 
 - **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
+- **[Interface sans menu](docs/interface-sans-menu.md)** — l'accueil en fil d'actions, la barre intelligente, la vue d'ensemble par zones, et comment revenir au menu classique.
 
 ## Installation
 
@@ -193,11 +221,16 @@ CS-PILOT/
 ├── backup_db.py               # Sauvegarde / restauration
 ├── migration_manager.py       # Systeme de migrations
 ├── utils.py                   # Utilitaires (decorateurs, chiffrement)
+├── navigation.py              # Carte des zones et pages (interface sans menu)
+├── interface_flux.py          # Activation et contexte de l'interface sans menu
+├── flux_accueil.py            # Zone « A l'horizon » de l'accueil
+├── flux_infos.py              # Flux d'information par page
 ├── requirements.txt           # Dependances Python
 ├── LANCER.bat                 # Script de lancement Windows
 │
 ├── blueprints/                # Modules fonctionnels Flask
 │   ├── auth.py                # Authentification
+│   ├── accueil.py             # Accueil sans menu et « Mon espace »
 │   ├── dashboard.py           # Tableau de bord salarie
 │   ├── dashboard_direction.py # Tableau de bord direction
 │   ├── saisie.py              # Saisie des heures

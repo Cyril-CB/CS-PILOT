@@ -306,8 +306,10 @@ from blueprints.cse import cse_bp
 from blueprints.planificateur import planificateur_bp
 from blueprints.contrats import contrats_bp
 from blueprints.recherche import recherche_bp
+from blueprints.accueil import accueil_bp
 
 app.register_blueprint(auth)
+app.register_blueprint(accueil_bp)
 app.register_blueprint(dashboard_bp)
 app.register_blueprint(dashboard_responsable_bp)
 app.register_blueprint(dashboard_comptable_bp)
@@ -529,6 +531,25 @@ def inject_delegation_benevoles():
             "Delegation benevoles illisible, entree de menu masquee", exc_info=True
         )
         return {'is_delegue_benevoles': False}
+
+
+@app.context_processor
+def inject_interface_flux():
+    """Injecte l'état et la carte de l'interface sans menu.
+
+    Le calcul est mémorisé dans `flask.g` : plusieurs gabarits peuvent lire la
+    carte sans relancer les lectures de droits. Toute défaillance retombe sur
+    l'interface historique plutôt que de faire échouer le rendu.
+    """
+    try:
+        import interface_flux
+        contexte = dict(interface_flux.contexte())
+        if contexte.get('ui_flux'):
+            contexte['flux_infos'] = interface_flux.flux_infos_page()
+        return contexte
+    except Exception:
+        logger.warning("Contexte de l'interface sans menu indisponible", exc_info=True)
+        return {'ui_flux': False, 'ui_flux_eligible': False}
 
 
 @app.errorhandler(429)

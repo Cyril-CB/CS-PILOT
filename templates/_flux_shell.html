@@ -1,0 +1,66 @@
+{# Ossature de l'interface sans menu : décor, en-tête fixe et barre du bas.
+   Incluse par base.html à la place du menu latéral. Le socle porte la carte de
+   navigation (déjà filtrée par les droits) que `static/js/flux.js` utilise pour
+   la barre intelligente et la vue d'ensemble. #}
+<div class="flx-fond" aria-hidden="true">
+    <span class="flx-halo-1"></span>
+    <span class="flx-halo-2"></span>
+    <span class="flx-grille"></span>
+</div>
+
+<div id="flxSocle"
+     data-carte="{{ nav_carte|tojson|forceescape }}"
+     data-initiales="{{ nav_identite.initiales }}"
+     data-accueil="{{ url_for('accueil_bp.accueil') }}"
+     {% if nav_zone %}data-zone="{{ nav_zone.id }}"{% endif %}></div>
+
+<header class="flx-entete">
+    <a href="{{ url_for('accueil_bp.accueil') }}" class="flx-marque" title="Revenir au flux">
+        <img src="{{ url_for('static', filename='img/petit-logo.png') }}" alt="">
+        <span class="flx-marque-texte">
+            <span class="flx-marque-titre">CS-PILOT</span>
+            <span class="flx-marque-sous">La plateforme libre des centres sociaux</span>
+        </span>
+    </a>
+
+    <div class="flx-recherche">
+        <div class="flx-recherche-boite">
+            <div class="flx-barre" id="flxBarre">
+                <span class="flx-barre-icone">⌕</span>
+                <input type="text" id="flxChamp" autocomplete="off" spellcheck="false"
+                       aria-label="Rechercher ou naviguer"
+                       placeholder="Que voulez-vous faire ? Tapez n'importe où…">
+                <kbd class="flx-kbd">Ctrl K</kbd>
+            </div>
+        </div>
+    </div>
+
+    <div class="flx-entete-droite">
+        <a href="{{ url_for('accueil_bp.mon_espace') }}" class="flx-identite"
+           title="Mon espace — congés, récupérations, demandes">
+            <span class="flx-identite-texte">
+                <span class="flx-identite-nom">{{ nav_identite.nom }}</span>
+                <span class="flx-identite-role">{{ nav_identite.fonction }}</span>
+            </span>
+            <span class="flx-avatar">{{ nav_identite.initiales }}</span>
+        </a>
+        <button type="button" class="flx-icone-btn" id="themeToggle"
+                title="Changer le thème" onclick="toggleTheme()">🌙</button>
+        <a href="{{ url_for('auth.logout') }}" class="flx-icone-btn" title="Déconnexion">⎋</a>
+    </div>
+</header>
+
+<div class="flx-pied">
+    <div class="flx-pied-barre">
+        <button type="button" class="flx-pied-btn" data-flx-ensemble>
+            <span>⊕</span>Tout l'espace
+        </button>
+        <span class="flx-pied-sep"></span>
+        <a href="{{ url_for('accueil_bp.accueil') }}"
+           class="flx-pied-lien{% if request.endpoint == 'accueil_bp.accueil' %} flx-actif{% endif %}"
+           title="Vos décisions du jour">◈ Flux</a>
+        <span id="flxSillage" style="display:contents;"></span>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/flux.js') }}?v=1"></script>

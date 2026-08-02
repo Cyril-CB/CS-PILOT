@@ -1,0 +1,318 @@
+"""
+Tests de l'interface sans menu.
+
+Vérifient ce qui est facile à casser sans s'en apercevoir :
+- qui bascule et qui ne bascule pas ;
+- que le menu latéral disparaît bien pour les uns et reste pour les autres ;
+- que la carte de navigation n'expose que des pages autorisées ;
+- que l'accueil, « Mon espace » et les pages ordinaires s'affichent.
+"""
+import html as html_module
+import json
+import re
+
+import pytest
+
+import navigation
+
+
+def _carte_embarquee(corps):
+    """Relit la carte de navigation déposée dans l'attribut `data-carte`."""
+    trouve = re.search(r'data-carte="([^"]*)"', corps)
+    assert trouve, "attribut data-carte absent de la page"
+    return json.loads(html_module.unescape(trouve.group(1)))
+
+
+# ── Carte de navigation ────────────────────────────────────────────────────
+
+def test_tous_les_endpoints_de_la_carte_existent(app):
+    """Une entrée de menu qui pointe dans le vide casse la vue d'ensemble."""
+    regles = {r.endpoint for r in app.url_map.iter_rules()}
+    for groupe in navigation.ZONES + navigation.ACCES_DIRECTS:
+        for page in groupe['pages']:
+            assert page['endpoint'] in regles, (
+                f"{groupe['id']} → endpoint inconnu : {page['endpoint']}")
+
+
+def test_carte_du_salarie_ne_contient_aucune_page_de_direction(app):
+    """Un salarié délégué ne doit rien gagner d'autre que sa délégation."""
+    with app.test_request_context('/'):
+        carte = navigation.carte_navigation({'profil': 'salarie', 'user_id': 1})
+    endpoints = {p['endpoint']
+                 for g in carte['zones'] + carte['directs']
+                 for p in g['pages']}
+    for interdit in ('admin_bp.gestion_users', 'factures_bp.liste_factures',
+                     'infos_salaries_bp.infos_salaries', 'prepa_paie_bp.prepa_paie',
+                     'tresorerie_bp.tresorerie', 'budget_bp.gestion_budgets'):
+        assert interdit not in endpoints
+
+
+def test_carte_du_responsable_respecte_les_options(app):
+    """Les options d'administration ferment bien les pages concernées."""
+    contexte = {'profil': 'responsable', 'user_id': 1,
+                'can_access_vue_ensemble_validation': True,
+                'generation_contrats_responsable_autorise': False,
+                'budget_previsionnel_responsable_autorise': False}
+    with app.test_request_context('/'):
+        carte = navigation.carte_navigation(contexte)
+    endpoints = {p['endpoint']
+                 for g in carte['zones'] + carte['directs']
+                 for p in g['pages']}
+    assert 'generation_contrats_bp.generation_contrats' not in endpoints
+    assert 'budget_bp.budget_previsionnel' not in endpoints
+    assert 'budget_bp.mon_budget' in endpoints
+
+
+def test_delegation_benevoles_ouvre_la_page_au_salarie(app):
+    """Sans la délégation la page reste fermée ; avec elle, elle apparaît."""
+    with app.test_request_context('/'):
+        sans = navigation.carte_navigation({'profil': 'salarie', 'user_id': 1})
+        avec = navigation.carte_navigation({'profil': 'salarie', 'user_id': 1,
+                                            'is_delegue_benevoles': True})
+    aplat = lambda c: {p['endpoint'] for g in c['zones'] + c['directs'] for p in g['pages']}
+    assert 'benevoles_bp.gestion_benevoles' not in aplat(sans)
+    assert 'benevoles_bp.gestion_benevoles' in aplat(avec)
+
+
+def test_localiser_retrouve_la_zone_d_une_page(app):
+    with app.test_request_context('/'):
+        carte = navigation.carte_navigation({'profil': 'directeur', 'user_id': 1})
+        zone, page = navigation.localiser(carte, 'factures_bp.liste_factures')
+    assert zone['id'] == 'factures'
+    assert page['label'] == 'Factures'
+
+
+# ── Éligibilité ────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize('profil,attendu', [
+    ('directeur', True), ('comptable', True), ('responsable', True),
+    ('salarie', False), ('prestataire', False),
+])
+def test_eligibilite_par_profil(app, sample_users, profil, attendu):
+    with app.app_context():
+        assert navigation.est_eligible(profil, sample_users['salarie_id']) is attendu
+
+
+def test_salarie_delegue_devient_eligible(app, db, sample_users):
+    """Une délégation de mission fait basculer un salarié."""
+    from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
+                                        save_delegation)
+    with app.app_context():
+        assert not navigation.est_eligible('salarie', sample_users['salarie_id'])
+        save_delegation(MISSION_SUIVI_VALIDATIONS_RELANCES,
+                        sample_users['salarie_id'], sample_users['directeur_id'])
+        assert navigation.est_eligible('salarie', sample_users['salarie_id'])
+
+
+def test_delegation_salles_seule_ne_suffit_pas(app, db, sample_users):
+    """La récurrence de salle n'ouvre aucune page : elle ne fait pas basculer."""
+    from blueprints.delegations import save_salle_recurrence_delegations
+    with app.app_context():
+        save_salle_recurrence_delegations([sample_users['salarie_id']],
+                                          sample_users['directeur_id'])
+        assert not navigation.est_eligible('salarie', sample_users['salarie_id'])
+
+
+# ── Rendu des pages ────────────────────────────────────────────────────────
+
+def test_le_directeur_arrive_sur_le_flux_sans_menu(admin_client):
+    reponse = admin_client.get('/dashboard', follow_redirects=True)
+    corps = reponse.get_data(as_text=True)
+    assert reponse.status_code == 200
+    assert 'flx-entete' in corps           # l'ossature sans menu est là
+    assert 'class="sidebar"' not in corps  # le menu latéral a disparu
+    assert "À l'horizon" in corps or 'flx-astuces' in corps
+
+
+def test_le_salarie_garde_son_menu(auth_client):
+    reponse = auth_client.get('/dashboard', follow_redirects=True)
+    corps = reponse.get_data(as_text=True)
+    assert reponse.status_code == 200
+    assert 'class="sidebar"' in corps
+    assert 'flx-entete' not in corps
+
+
+def test_mon_espace_affiche_les_compteurs(admin_client):
+    reponse = admin_client.get('/mon-espace')
+    corps = reponse.get_data(as_text=True)
+    assert reponse.status_code == 200
+    assert 'Congés payés' in corps
+    assert 'Récupérations' in corps
+    assert 'Poser une demande' in corps
+    # Retirés du modèle à la demande : pas de bulletins ni de documents.
+    assert 'Bulletins de paie' not in corps
+    assert 'Mes documents' not in corps
+
+
+def test_le_salarie_non_eligible_ne_peut_pas_ouvrir_le_flux(auth_client):
+    """L'accueil sans menu renvoie au tableau de bord habituel."""
+    reponse = auth_client.get('/accueil')
+    assert reponse.status_code == 302
+    assert '/dashboard' in reponse.headers['Location']
+
+
+def test_une_page_ordinaire_recoit_les_boutons_de_sa_zone(admin_client):
+    """Sur Factures, les pages voisines de la zone remplacent le sous-menu."""
+    reponse = admin_client.get('/factures')
+    corps = reponse.get_data(as_text=True)
+    assert reponse.status_code == 200
+    assert 'flx-chips' in corps
+    assert 'Factures &amp; achats' in corps or 'Factures & achats' in corps
+    assert 'Fournisseurs' in corps and 'Écritures' in corps
+    assert 'Revenir au flux' in corps
+
+
+def test_le_flux_d_information_apparait_sur_les_factures(admin_client, db, sample_users):
+    """Une facture en attente doit se voir avant la liste."""
+    with db:
+        db.execute(
+            "INSERT INTO factures (numero_facture, montant_ttc, approbation, statut) "
+            "VALUES ('F-1', 100, 'en_attente', 'a_traiter')"
+        )
+    corps = admin_client.get('/factures').get_data(as_text=True)
+    assert 'flx-infos' in corps
+    # L'apostrophe est échappée par Jinja dans le rendu HTML.
+    assert 'facture(s) en attente d&#39;approbation' in corps
+    assert 'facture(s) sans écriture — à générer' not in corps  # page Écritures
+
+
+def test_bascule_vers_le_menu_classique_et_retour(admin_client):
+    reponse = admin_client.post('/api/interface/basculer', json={'actif': False})
+    assert reponse.status_code == 200
+    assert reponse.get_json()['actif'] is False
+
+    corps = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    assert 'class="sidebar"' in corps
+    assert 'flx-entete' not in corps
+
+    reponse = admin_client.post('/api/interface/basculer', json={'actif': True})
+    assert reponse.status_code == 200
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'flx-entete' in corps
+
+
+def test_bascule_refusee_pour_un_salarie_non_eligible(auth_client):
+    reponse = auth_client.post('/api/interface/basculer', json={'actif': True})
+    assert reponse.status_code == 403
+
+
+def test_option_globale_desactivee_rend_le_menu(admin_client, app):
+    with app.app_context():
+        from app_options import set_option_bool
+        set_option_bool('interface_sans_menu_active', False)
+    corps = admin_client.get('/dashboard', follow_redirects=True).get_data(as_text=True)
+    assert 'class="sidebar"' in corps
+    assert 'flx-entete' not in corps
+
+
+# ── « À l'horizon » ────────────────────────────────────────────────────────
+
+def test_horizon_separe_le_lointain_de_l_immediat(admin_client, db):
+    """Une échéance à 3 jours reste dans le fil ; à 40 jours elle passe à l'horizon."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    today = aujourd_hui()
+    with db:
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) "
+                   "VALUES ('CAF CLAS', 'depose', ?)", (str(today.year),))
+        sub_id = db.execute("SELECT id FROM subventions WHERE nom = 'CAF CLAS'").fetchone()['id']
+        db.execute("INSERT INTO subventions_sous_elements "
+                   "(subvention_id, nom, statut, date_echeance) VALUES (?, ?, 'non_commence', ?)",
+                   (sub_id, 'Bilan qualitatif', (today + timedelta(days=3)).isoformat()))
+        db.execute("INSERT INTO subventions_sous_elements "
+                   "(subvention_id, nom, statut, date_echeance) VALUES (?, ?, 'non_commence', ?)",
+                   (sub_id, 'Dépôt du dossier', (today + timedelta(days=40)).isoformat()))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    # Le texte littéral d'un gabarit n'est pas échappé : seule la zone
+    # « À l'horizon » sépare le fil de ce qui vient plus tard.
+    fil, horizon = corps.split("À l'horizon", 1)
+    assert 'Bilan qualitatif' in fil          # imminent : dans le fil
+    assert 'Dépôt du dossier' not in fil      # lointain : pas dans le fil
+    assert 'Dépôt du dossier' in horizon      # …mais bien à l'horizon
+    assert 'Échéances' in horizon
+
+
+def test_horizon_annonce_les_fins_de_contrat(admin_client, db, sample_users):
+    """Une fin de CDD à venir doit apparaître dans la ligne RH."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    today = aujourd_hui()
+    with db:
+        db.execute("INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                   "VALUES (?, 'CDD', ?, ?)",
+                   (sample_users['salarie_id'], (today - timedelta(days=200)).isoformat(),
+                    (today + timedelta(days=45)).isoformat()))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'Fin de CDD — Jean Martin' in corps
+    assert '>RH<' in corps
+
+
+def test_page_hors_carte_garde_une_sortie(admin_client, db):
+    """Une page absente de la carte doit tout de même offrir le retour au flux."""
+    with db:
+        db.execute("INSERT INTO factures (id, numero_facture, montant_ttc) VALUES (77, 'F-77', 10)")
+    corps = admin_client.get('/factures/77/detail').get_data(as_text=True)
+    assert 'Revenir au flux' in corps
+    assert 'flx-chips' not in corps
+
+
+def test_fragment_du_fil_est_rechargeable(admin_client, db, sample_users):
+    """Le rafraîchissement automatique renvoie les cartes, sans l'ossature."""
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut) VALUES (?, 'Congé payé', '2026-09-01', '2026-09-05', 5, "
+            "'en_attente_direction')", (sample_users['salarie_id'],))
+    reponse = admin_client.get('/api/accueil/flux-fragment')
+    corps = reponse.get_data(as_text=True)
+    assert reponse.status_code == 200
+    assert 'flx-carte' in corps
+    assert 'Demande de congé payé : Jean Martin' in corps
+    assert '<html' not in corps          # fragment seul, pas la page entière
+
+
+def test_fragment_du_fil_refuse_les_non_eligibles(auth_client):
+    assert auth_client.get('/api/accueil/flux-fragment').status_code == 403
+
+
+def test_le_salarie_delegue_recoit_le_flux_mais_pas_les_pages_de_direction(
+        client, app, db, sample_users):
+    """Le salarié délégué bascule, avec sa seule délégation en plus."""
+    from blueprints.delegations import save_benevoles_delegations
+    with app.app_context():
+        save_benevoles_delegations([sample_users['salarie_id']],
+                                   sample_users['directeur_id'])
+
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                follow_redirects=True)
+    corps = client.get('/accueil').get_data(as_text=True)
+    assert 'flx-entete' in corps
+    assert 'class="sidebar"' not in corps
+
+    # La carte de navigation voyage en JSON dans `data-carte` : on la relit
+    # comme le fait le navigateur, plutôt que de chercher du texte échappé.
+    carte = _carte_embarquee(corps)
+    pages = {p['label'] for g in carte['zones'] + carte['directs'] for p in g['pages']}
+    assert 'Bénévoles' in pages                    # sa délégation
+    assert 'Préparation de la paie' not in pages   # rien de la direction
+    assert 'Utilisateurs' not in pages
+    assert 'Factures' not in pages
+
+
+def test_le_message_du_cse_apparait_sur_le_flux(admin_client, db, sample_users):
+    """La bannière CSE suivait les tableaux de bord : elle suit l'accueil aussi."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    with db:
+        db.execute(
+            "INSERT INTO cse_messages (titre, contenu, date_validite, cree_par) "
+            "VALUES ('Réunion du 12', 'Ordre du jour joint.', ?, ?)",
+            ((aujourd_hui() + timedelta(days=10)).isoformat(), sample_users['directeur_id']))
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'cse-banner' in corps
+    assert 'Message du CSE à lire' in corps

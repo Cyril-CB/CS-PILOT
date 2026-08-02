@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}CS-PILOT{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=19">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20">
     <script>
         (function(){var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();
     </script>
 </head>
-<body>
-    {% if session.user_id %}
+<body{% if ui_flux %} class="flx"{% endif %}>
+    {% if session.user_id and not ui_flux %}
     {# ── Bouton hamburger mobile ── #}
     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">&#9776;</button>
 
@@ -391,13 +391,23 @@
                 <button class="theme-toggle" id="themeToggle" title="Changer le thème" onclick="toggleTheme()">🌙</button>
                 <a href="{{ url_for('auth.logout') }}" class="btn-logout">Déconnexion</a>
             </div>
+            {% if ui_flux_eligible %}
+            <button type="button" class="sidebar-link" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;"
+                    onclick="basculerInterface(true)" title="Accueil sans menu, recherche au clavier">
+                ✨ Essayer la nouvelle interface
+            </button>
+            {% endif %}
         </div>
     </aside>
     {% endif %}
 
-    <div class="main-content{% if session.user_id %} has-sidebar{% endif %}">
+    {% if ui_flux %}{% include '_flux_shell.html' %}{% endif %}
+
+    <div class="main-content{% if session.user_id and not ui_flux %} has-sidebar{% endif %}">
         <div class="container">
-            {% set cse_dashboard_endpoints = ['dashboard_bp.dashboard', 'dashboard_direction_bp.dashboard_direction', 'dashboard_comptable_bp.dashboard_comptable', 'dashboard_responsable_bp.dashboard_responsable'] %}
+            {# L'accueil sans menu remplace les tableaux de bord : le message du
+               CSE doit y apparaître comme il apparaissait sur les leurs. #}
+            {% set cse_dashboard_endpoints = ['dashboard_bp.dashboard', 'dashboard_direction_bp.dashboard_direction', 'dashboard_comptable_bp.dashboard_comptable', 'dashboard_responsable_bp.dashboard_responsable', 'accueil_bp.accueil'] %}
             {% if cse_message_actif and request.endpoint in cse_dashboard_endpoints %}
             <button type="button" class="cse-banner" onclick="cseOpenMessage()">
                 <span class="cse-banner-icon">📢</span>
@@ -414,6 +424,10 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+
+            {% if ui_flux and request.endpoint not in ('accueil_bp.accueil', 'accueil_bp.mon_espace') %}
+            {% include '_flux_page_entete.html' %}
+            {% endif %}
 
             {% block content %}{% endblock %}
         </div>
@@ -663,6 +677,21 @@
             return _fetch.call(this, url, opts);
         };
     })();
+
+    // Bascule entre l'interface sans menu et le menu latéral historique.
+    // Le choix est personnel et réversible : il ne change rien pour les autres.
+    function basculerInterface(actif) {
+        fetch('/api/interface/basculer', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({actif: !!actif})
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (d && d.redirect) { window.location = d.redirect; }
+              else { window.location.reload(); }
+          })
+          .catch(function () { alert("La bascule d'interface a échoué. Réessayez."); });
+    }
 
     // Sidebar : toggle sections accordéon
     function toggleSection(btn) {

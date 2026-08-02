@@ -368,13 +368,13 @@ class TestBilanSecteurs:
 class TestNavigationMenus:
     """Vérifie que les nouveaux menus apparaissent dans la sidebar."""
 
-    def test_menu_financier_bilan_directeur(self, admin_client):
+    def test_menu_financier_bilan_directeur(self, admin_client, menu_classique):
         """Le menu Financier du directeur contient le lien Bilan secteurs/actions."""
         resp = admin_client.get('/', follow_redirects=True)
         html = resp.get_data(as_text=True)
         assert 'Bilan secteurs/actions' in html
 
-    def test_menu_comptable_directeur(self, admin_client):
+    def test_menu_comptable_directeur(self, admin_client, menu_classique):
         """Le directeur voit le menu Comptable avec Plan comptable analytique."""
         resp = admin_client.get('/', follow_redirects=True)
         html = resp.get_data(as_text=True)

@@ -29,6 +29,18 @@ OPTION_DEFINITIONS = {
         ),
         'default': False,
     },
+    'interface_sans_menu_active': {
+        'label': "Activer l'interface sans menu",
+        'description': (
+            "Remplace le menu latéral par un accueil en fil d'actions, une barre "
+            'de recherche qui se remplit dès la première touche frappée et une vue '
+            "d'ensemble par zones (touche Échap). Concerne la direction, la "
+            'comptabilité, les responsables et les salariés porteurs d\'une '
+            'délégation ; les autres salariés gardent leur interface habituelle. '
+            'Chacun peut revenir au menu classique depuis « Mon espace ».'
+        ),
+        'default': True,
+    },
     'generation_contrats_responsable_autorise': {
         'label': 'Autoriser les responsables à accéder à la page Génération contrats',
         'description': (

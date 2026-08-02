@@ -1,7 +1,7 @@
 from werkzeug.security import generate_password_hash
 
 
-def test_responsable_menu_rh_paie_contient_liens_et_deplace_temps_annualise(resp_client):
+def test_responsable_menu_rh_paie_contient_liens_et_deplace_temps_annualise(resp_client, menu_classique):
     response = resp_client.get('/dashboard_responsable')
     assert response.status_code == 200
     html = response.get_data(as_text=True)

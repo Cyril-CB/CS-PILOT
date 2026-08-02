@@ -1,0 +1,59 @@
+{# Cartes du fil d'actions. Fragment autonome : rechargé tel quel par
+   /api/accueil/flux-fragment. Attend `actions` (dashboard_actions). #}
+{% set tons = {'retard': ('flx-retard', 'En retard'),
+               'urgent': ('flx-urgent', "Aujourd'hui"),
+               'normal': ('flx-planifier', 'À planifier')} %}
+{# La carte annonce la zone dont relève la décision, comme dans la vue
+   d'ensemble : on sait d'où vient l'action avant même de la lire. #}
+{% set zones_par_categorie = {'validation': 'Validations & suivi',
+                              'facture': 'Factures & achats',
+                              'subvention': 'Financier',
+                              'surcharge': 'Temps & plannings',
+                              'conges': 'RH & Paie'} %}
+{% for a in actions %}
+{% set ton = tons.get(a.urgence, tons['normal']) %}
+<div class="flx-carte {{ ton[0] }}" data-flx-item data-flx-id="{{ a.id }}">
+    <div class="flx-glyphe">{{ a.icone }}</div>
+    <div class="flx-carte-corps">
+        <div class="flx-carte-meta">
+            <span class="flx-badge">{{ ton[1] }}</span>
+            <span class="flx-carte-zone">{{ zones_par_categorie.get(a.categorie, a.categorie) }}</span>
+        </div>
+        <div class="flx-carte-titre" data-flx-titre>{{ a.titre }}</div>
+        {% if a.detail %}<div class="flx-carte-detail" data-flx-detail>{{ a.detail }}</div>{% endif %}
+    </div>
+    <div class="flx-carte-actions" data-flx-btns>
+        {% if a.type == 'demande' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="valider"
+                data-flx-ref="{{ a.id }}" data-demande-id="{{ a.demande_id }}"
+                data-demande-type="{{ a.demande_type }}">✓ Valider</button>
+        <button type="button" class="flx-btn" data-flx-act="refuser"
+                data-flx-ref="{{ a.id }}" data-demande-id="{{ a.demande_id }}"
+                data-demande-type="{{ a.demande_type }}">Refuser</button>
+        {% elif a.type == 'facture' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="facture"
+                data-flx-ref="{{ a.id }}" data-facture-id="{{ a.facture_id }}">✓ Approuver</button>
+        <a href="{{ a.lien }}" class="flx-btn">Ouvrir</a>
+        {% elif a.type == 'subvention' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="subvention"
+                data-flx-ref="{{ a.id }}" data-se-id="{{ a.se_id }}">✓ C'est fait</button>
+        <a href="{{ a.lien }}" class="flx-btn">Ouvrir</a>
+        {% elif a.type == 'relance' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="relance"
+                data-flx-ref="{{ a.id }}" data-mois="{{ a.relance_mois }}"
+                data-annee="{{ a.relance_annee }}">📧 Relancer</button>
+        <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }}</a>
+        {% else %}
+        <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }} →</a>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+<div class="flx-vide" id="flxToutFait" {% if actions %}style="display:none;"{% endif %}>
+    <div class="flx-vide-glyphe">◉</div>
+    <div class="flx-vide-titre">Flux vide.</div>
+    <p style="margin:0 auto 26px;color:var(--gray-500);max-width:38ch;font-size:0.94rem;">
+        Plus rien n'attend de décision. L'application n'a rien à vous montrer — c'est le but.</p>
+    <button type="button" class="flx-btn" data-flx-ensemble>Explorer l'espace complet</button>
+</div>

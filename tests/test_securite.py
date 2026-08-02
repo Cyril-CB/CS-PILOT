@@ -191,12 +191,12 @@ class TestExportJournalAcces:
 class TestMenuSecurite:
     """Verifie la presence du menu Securite selon le profil."""
 
-    def test_lien_present_pour_directeur(self, admin_client):
+    def test_lien_present_pour_directeur(self, admin_client, menu_classique):
         html = admin_client.get('/securite/journal-acces').get_data(as_text=True)
         assert '🔒 Sécurité' in html
         assert url_securite() in html
 
-    def test_lien_present_pour_comptable(self, comptable_client):
+    def test_lien_present_pour_comptable(self, comptable_client, menu_classique):
         html = comptable_client.get('/dashboard_comptable').get_data(as_text=True)
         assert '🔒 Sécurité' in html
         assert url_securite() in html

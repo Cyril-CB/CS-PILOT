@@ -179,7 +179,7 @@ def test_selecteur_infos_salaries_liste_le_rattache(resp_client, db, sample_user
     assert f'value="{agent_id}"' in html or 'Agent' in html
 
 
-def test_entree_dashboard_redirige_responsable_sans_secteur(resp_client, app, db, sample_users):
+def test_entree_dashboard_redirige_responsable_sans_secteur(resp_client, app, db, sample_users, menu_classique):
     """/dashboard envoie vers le tableau responsable même sans secteur, dès
     lors qu'il y a des rattachés directs — revue Codex."""
     with app.app_context():

@@ -146,7 +146,7 @@ def test_delegation_ouvre_le_suivi_global_au_salarie(app, db, sample_users):
     assert 'Ramette papier A4' in html
 
 
-def test_menus_affichent_les_liens_commandes_et_delegation(app, sample_users):
+def test_menus_affichent_les_liens_commandes_et_delegation(app, sample_users, menu_classique):
     salarie_client = app.test_client()
     admin_client = app.test_client()
     _login(salarie_client, 'salarie_test', 'sal123')

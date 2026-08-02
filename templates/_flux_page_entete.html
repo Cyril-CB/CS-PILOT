@@ -1,0 +1,35 @@
+{# En-tête des pages dans l'interface sans menu : le retour au flux, la zone à
+   laquelle la page appartient et les boutons de ses pages voisines. C'est ce
+   qui remplace le sous-menu du menu latéral.
+
+   Le titre propre de la page n'est pas repris ici : chaque page a déjà le sien
+   (et ses boutons d'action : importer, relancer…), qui restent en place. #}
+{# Le retour est proposé partout : une page hors carte (détail d'une facture,
+   calendrier d'une salle…) doit elle aussi offrir une sortie. #}
+<div class="flx-page-entete">
+    <a href="{{ url_for('accueil_bp.accueil') }}" class="flx-retour">← Revenir au flux</a>
+    {% if nav_zone %}
+    <div class="flx-chips">
+        <span class="flx-chips-label">{{ nav_zone.icone }} {{ nav_zone.nom }}</span>
+        {% for p in nav_zone.pages %}
+        <a href="{{ p.lien }}"
+           class="flx-chip{% if nav_page and p.endpoint == nav_page.endpoint %} flx-chip-actif{% endif %}">{{ p.label }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+{% if flux_infos %}
+<div class="flx-infos">
+    {% for info in flux_infos %}
+    <a href="{{ info.lien }}" class="flx-info flx-{{ info.ton }}">
+        <span class="flx-info-icone">{{ info.icone }}</span>
+        <span class="flx-info-corps">
+            <span class="flx-info-valeur">{{ info.valeur }}</span>
+            <span class="flx-info-libelle">{{ info.libelle }}</span>
+        </span>
+        <span class="flx-info-lien">{{ info.lien_texte }} →</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}

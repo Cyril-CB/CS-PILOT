@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block title %}Mon espace - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="flx-page-entete">
+    <a href="{{ url_for('accueil_bp.accueil') }}" class="flx-retour">← Revenir au flux</a>
+    <div class="flx-page-titre">
+        <div class="flx-page-icone">◉</div>
+        <div>
+            <h1>Mon espace</h1>
+            <p>Vos compteurs, vos demandes — ce que l'application sait de vous comme salarié.</p>
+        </div>
+    </div>
+</div>
+
+{# ── Compteurs ── #}
+<div class="flx-compteurs">
+    {% for c in compteurs %}
+    <div class="flx-compteur">
+        <div class="flx-compteur-nom">{{ c.nom }}</div>
+        <div class="flx-compteur-valeur flx-ton-{{ c.ton }}">{{ c.valeur }}</div>
+        <div class="flx-compteur-detail">{{ c.detail }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+{# ── Poser une demande ── #}
+<form method="POST" action="{{ url_for('recup_bp.demande_conge') }}" id="flxDemandeForm" class="flx-demande">
+    <input type="hidden" name="type_conge" id="flxTypeConge" value="{{ types_demande[0].nom if types_demande }}">
+    <input type="hidden" name="type_demande" value="journee">
+
+    <div class="flx-demande-entete">
+        <span class="flx-etiquette">Poser une demande</span>
+        <span class="flx-demande-note">
+            {% if session.profil == 'directeur' %}
+            Les demandes de votre équipe ne sont pas ici : elles arrivent dans votre flux.
+            {% elif session.profil == 'responsable' %}
+            Vos demandes partent à la direction · vous êtes averti dès qu'elle tranche.
+            {% else %}
+            Vos demandes partent à votre responsable · vous êtes averti dès qu'il tranche.
+            {% endif %}
+        </span>
+    </div>
+
+    <div class="flx-chips" style="border-bottom:none;padding-bottom:18px;">
+        {% for t in types_demande %}
+        <button type="button" class="flx-chip{% if loop.first %} flx-chip-actif{% endif %}"
+                data-flx-type="{{ t.nom }}" data-flx-mode="{{ t.mode }}">{{ t.nom }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="flx-demande-champs">
+        <label class="flx-champ">
+            <span>Du</span>
+            <input type="date" name="date_debut" id="flxDu" value="{{ aujourdhui }}" required>
+        </label>
+        <label class="flx-champ">
+            <span>Au</span>
+            <input type="date" name="date_fin" id="flxAu" value="{{ aujourdhui }}" required>
+        </label>
+        <label class="flx-champ flx-champ-large">
+            <span>Motif (facultatif)</span>
+            <input type="text" name="motif_demande" maxlength="200" placeholder="Précisez si besoin">
+        </label>
+        <button type="submit" class="flx-btn flx-btn-plein">Transmettre</button>
+        <span class="flx-calcul" id="flxCalcul"></span>
+    </div>
+
+    <p style="margin:16px 0 0;font-size:0.78rem;color:var(--gray-500);">
+        Pour une récupération sur une partie de journée seulement, passez par
+        <a href="{{ url_for('recup_bp.demande_recup') }}">la page Demander une récupération</a>.
+    </p>
+</form>
+
+{# ── Mes demandes ── #}
+<div class="flx-liste">
+    <div class="flx-liste-titre">Mes demandes</div>
+    {% if demandes %}
+    {% for d in demandes %}
+    <div class="flx-liste-item">
+        <div style="min-width:0;">
+            <div class="flx-liste-item-titre">{{ d.type }} · {{ d.periode }}</div>
+            <div class="flx-liste-item-meta">
+                {{ d.quantite }}{% if d.depot %} · déposée le {{ d.depot }}{% endif %}
+                {%- if d.motif_refus %} · motif : {{ d.motif_refus }}{% endif %}
+            </div>
+        </div>
+        <span class="flx-statut flx-ton-{{ d.ton }}">{{ d.statut }}</span>
+    </div>
+    {% endfor %}
+    <p style="margin:14px 0 0;font-size:0.78rem;color:var(--gray-500);">
+        Le détail et la suppression restent sur
+        <a href="{{ url_for('recup_bp.mes_demandes_conges') }}">mes demandes de congés</a>
+        {%- if session.profil != 'directeur' %} et
+        <a href="{{ url_for('recup_bp.mes_demandes_recup') }}">mes demandes de récupération</a>{% endif %}.
+    </p>
+    {% else %}
+    <p style="margin:0;color:var(--gray-500);font-size:0.88rem;">Aucune demande pour l'instant.</p>
+    {% endif %}
+</div>
+
+<p style="margin:26px 0 0;font-size:0.8rem;color:var(--gray-500);">
+    Cette interface ne convient pas à votre usage ?
+    <button type="button" onclick="basculerInterface(false)"
+            style="background:none;border:none;padding:0;font:inherit;color:var(--primary);cursor:pointer;text-decoration:underline;">
+        Revenir au menu classique</button>. Vous pourrez y revenir à tout moment.
+</p>
+
+<script>
+/* Le formulaire change de destination selon le type choisi : les congés et les
+   récupérations ont chacun leur circuit de validation, on réutilise les routes
+   existantes plutôt que d'en créer une troisième. */
+(function () {
+    var form = document.getElementById('flxDemandeForm');
+    if (!form) return;
+    var champType = document.getElementById('flxTypeConge');
+    var du = document.getElementById('flxDu');
+    var au = document.getElementById('flxAu');
+    var calcul = document.getElementById('flxCalcul');
+    var ACTIONS = {
+        conge: {{ url_for('recup_bp.demande_conge')|tojson }},
+        recup: {{ url_for('recup_bp.demande_recup')|tojson }}
+    };
+    var SOLDES = {
+        'Congé payé': {{ solde_cp|tojson }},
+        'Congé conventionnel': {{ solde_cc|tojson }}
+    };
+    var mode = 'conge';
+
+    function joursOuvres(a, b) {
+        if (!a || !b) return 0;
+        var d1 = new Date(a + 'T12:00'), d2 = new Date(b + 'T12:00');
+        if (isNaN(d1) || isNaN(d2) || d2 < d1) return 0;
+        var n = 0;
+        for (var d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
+            var j = d.getDay();
+            if (j !== 0 && j !== 6) n++;
+        }
+        return n;
+    }
+
+    function fr(x) { return String(Math.round(x * 10) / 10).replace('.', ','); }
+
+    function majCalcul() {
+        var n = joursOuvres(du.value, au.value);
+        if (!n) {
+            // Distinguer « dates manquantes ou inversées » de « période qui ne
+            // contient aucun jour ouvré » : ce n'est pas la même correction.
+            var d1 = new Date(du.value + 'T12:00'), d2 = new Date(au.value + 'T12:00');
+            calcul.textContent = (du.value && au.value && !isNaN(d1) && !isNaN(d2) && d2 >= d1)
+                ? 'Aucun jour ouvré sur cette période.'
+                : 'Choisissez une date de début et une date de fin.';
+            return;
+        }
+        var texte = n + ' jour' + (n > 1 ? 's' : '') + ' ouvré' + (n > 1 ? 's' : '');
+        var type = champType.value;
+        if (mode === 'recup') {
+            texte += ' · imputés sur vos récupérations ({{ solde_recup|round(1) }} h)';
+        } else if (SOLDES[type] !== undefined) {
+            texte += ' · solde projeté ' + fr(SOLDES[type] - n) + ' j';
+        }
+        calcul.textContent = texte;
+    }
+
+    form.querySelectorAll('[data-flx-type]').forEach(function (b) {
+        b.addEventListener('click', function () {
+            form.querySelectorAll('[data-flx-type]').forEach(function (x) {
+                x.classList.remove('flx-chip-actif');
+            });
+            b.classList.add('flx-chip-actif');
+            mode = b.getAttribute('data-flx-mode');
+            champType.value = b.getAttribute('data-flx-type');
+            form.setAttribute('action', ACTIONS[mode]);
+            majCalcul();
+        });
+    });
+
+    du.addEventListener('change', function () {
+        if (au.value < du.value) au.value = du.value;
+        majCalcul();
+    });
+    au.addEventListener('change', majCalcul);
+    majCalcul();
+})();
+</script>
+{% endblock %}
