@@ -204,8 +204,11 @@ class TestMoteurRH:
     def test_heures_salarie(self, app, db, sample_users):
         with app.app_context():
             _seed(db)
-        v = _analyse(app, db, 'heures Fatou')
-        assert v['type'] == 'redirect' and '/vue_mensuelle' in v['url'] and 'user_id=' in v['url']
+        for q in ('heures Fatou', 'heures de Fatou', 'je veux voir les heures de Fatou',
+                  'est-ce que je peux voir les heures de Fatou'):
+            v = _analyse(app, db, q)
+            assert (v['type'] == 'redirect' and '/vue_mensuelle' in v['url']
+                    and 'user_id=' in v['url']), q
 
     def test_soldes_conges(self, app, db, sample_users):
         # « solde(s) congé(s) », « total (des) congé(s) », « congé(s) restant(s) »
@@ -227,6 +230,8 @@ class TestMoteurRH:
         assert '/infos_salaries' in _analyse(app, db, 'salarié Fatou')['url']
         v = _analyse(app, db, 'contrat Fatou')
         assert v['type'] == 'redirect' and '/infos_salaries' in v['url'] and v['url'].endswith('#contrats')
+        v = _analyse(app, db, 'contrat de Fatou')
+        assert v['type'] == 'redirect' and v['url'].endswith('#contrats')
 
     def test_pesee_salarie_va_a_la_fiche(self, app, db, sample_users):
         with app.app_context():
@@ -266,6 +271,8 @@ class TestMoteurEntitesEtPeriodes:
         with app.app_context():
             _seed(db)
         v = _analyse(app, db, 'EDF')
+        assert v['type'] == 'redirect' and '/fournisseurs/' in v['url']
+        v = _analyse(app, db, 'fournisseur EDF')
         assert v['type'] == 'redirect' and '/fournisseurs/' in v['url']
 
     def test_mot_seul_secteur(self, app, db, sample_users):
@@ -341,8 +348,91 @@ class TestApiSearch:
     def test_salarie_refuse(self, app, auth_client, sample_users):
         assert auth_client.post('/api/search', json={'query': 'EDF'}).status_code == 403
 
-    def test_responsable_refuse(self, app, resp_client, sample_users):
-        assert resp_client.post('/api/search', json={'query': 'EDF'}).status_code == 403
+    def test_responsable_autorise_sans_destination_hors_perimetre(
+            self, app, db, resp_client, sample_users):
+        with app.app_context():
+            _seed(db)
+        r = resp_client.post('/api/search', json={'query': 'EDF'})
+        assert r.status_code == 200
+        assert r.get_json()['type'] == 'none'
+
+    def test_responsable_retrouve_un_salarie_de_son_equipe(
+            self, app, resp_client, sample_users):
+        r = resp_client.post('/api/search', json={'query': 'heures de Jean'})
+        assert r.status_code == 200
+        verdict = r.get_json()
+        assert verdict['type'] == 'redirect'
+        assert f"user_id={sample_users['salarie_id']}" in verdict['url']
+
+    def test_responsable_ne_retrouve_pas_un_salarie_hors_equipe(
+            self, app, db, resp_client, sample_users):
+        with app.app_context():
+            db.execute(
+                "INSERT INTO secteurs (nom) VALUES ('Autre secteur')"
+            )
+            autre_secteur = db.execute(
+                "SELECT id FROM secteurs WHERE nom = 'Autre secteur'"
+            ).fetchone()['id']
+            db.execute(
+                "INSERT INTO users (nom, prenom, login, password, profil, actif, secteur_id) "
+                "VALUES ('Exterieur', 'Fatou', 'hors_equipe', 'x', 'salarie', 1, ?)",
+                (autre_secteur,),
+            )
+            db.commit()
+        verdict = resp_client.post(
+            '/api/search', json={'query': 'heures de Fatou'}
+        ).get_json()
+        assert verdict['type'] == 'none'
+        assert 'Fatou' not in str(verdict)
+
+    def test_responsable_ne_retrouve_que_les_factures_de_son_secteur(
+            self, app, db, resp_client, sample_users):
+        with app.app_context():
+            db.execute(
+                "INSERT INTO secteurs (nom) VALUES ('Secteur extérieur')"
+            )
+            autre_secteur = db.execute(
+                "SELECT id FROM secteurs WHERE nom = 'Secteur extérieur'"
+            ).fetchone()['id']
+            db.execute(
+                "INSERT INTO factures (numero_facture, date_facture, montant_ttc, secteur_id) "
+                "VALUES ('880001', '2026-03-01', 100, ?)",
+                (sample_users['secteur_id'],),
+            )
+            db.execute(
+                "INSERT INTO factures (numero_facture, date_facture, montant_ttc, secteur_id) "
+                "VALUES ('880002', '2026-03-01', 100, ?)",
+                (autre_secteur,),
+            )
+            db.commit()
+        visible = resp_client.post(
+            '/api/search', json={'query': 'facture 880001'}
+        ).get_json()
+        cachee = resp_client.post(
+            '/api/search', json={'query': 'facture 880002'}
+        ).get_json()
+        assert visible['type'] == 'redirect' and '/detail' in visible['url']
+        assert cachee['type'] == 'none'
+        assert 'url' not in cachee
+
+    def test_suggestions_unifiees_et_repli_vers_espace(
+            self, app, db, admin_client, sample_users):
+        with app.app_context():
+            _seed(db)
+        r = admin_client.post('/api/search/suggestions', json={'query': 'facture 225678'})
+        assert r.status_code == 200
+        suggestions = r.get_json()['suggestions']
+        assert suggestions[0]['action'] == 'metier'
+        assert '225678' in suggestions[0]['titre']
+        assert suggestions[-1]['action'] == 'ensemble'
+
+    def test_suggestions_du_salarie_restent_de_la_navigation(
+            self, auth_client, sample_users):
+        r = auth_client.post('/api/search/suggestions', json={'query': 'facture 225678'})
+        assert r.status_code == 200
+        suggestions = r.get_json()['suggestions']
+        assert all(s.get('action') != 'metier' for s in suggestions)
+        assert suggestions[-1]['action'] == 'ensemble'
 
     def test_barre_presente_sur_dashboard_direction(self, app, admin_client, sample_users):
         html = admin_client.get('/dashboard_direction').get_data(as_text=True)
@@ -363,6 +453,16 @@ class TestSynonymesSecteurs:
 
 
 class TestJournalRecherches:
+    def test_les_suggestions_ne_journalisent_pas_chaque_frappe(
+            self, app, db, admin_client, sample_users):
+        with app.app_context():
+            _seed(db)
+        for query in ('f', 'fa', 'fac', 'facture'):
+            admin_client.post('/api/search/suggestions', json={'query': query})
+        with app.app_context():
+            nb = db.execute("SELECT COUNT(*) FROM recherche_log").fetchone()[0]
+        assert nb == 0
+
     def test_recherche_est_journalisee_avec_resultat(self, app, db, admin_client, sample_users):
         # Chaque recherche est tracée avec le fait qu'elle ait abouti ou non.
         with app.app_context():
@@ -431,7 +531,7 @@ class TestDemandeConge:
             assert v['type'] == 'redirect' and '/demande_conge' in v['url'], q
 
     def test_accessible_au_comptable(self, app, db, sample_users):
-        # La barre est réservée direction + comptable : les deux y ont droit.
+        # Le comptable conserve l'accès transverse historique.
         with app.app_context():
             _seed(db)
         v = _analyse(app, db, 'demande de congés', profil='comptable')

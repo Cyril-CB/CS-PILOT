@@ -5,10 +5,9 @@
  * - Ctrl/⌘ + K ouvre la barre vide ;
  * - Échap ouvre la vue d'ensemble (et la referme).
  *
- * La recherche garde le moteur existant : la barre propose d'abord les zones
- * et les pages (ce qui remplace le menu), et « Rechercher … » envoie la requête
- * à /api/search, dont le verdict est traité comme avant (redirect / choices /
- * none).
+ * La recherche interroge un seul endpoint : pages et enregistrements métier
+ * arrivent déjà classés. Une zone ouvre sa constellation ; elle ne redirige
+ * jamais arbitrairement vers sa première page.
  */
 (function () {
     'use strict';
@@ -28,6 +27,7 @@
        Pour les autres, la barre reste un moyen d'aller à une page — proposer
        « Rechercher » leur renverrait un « Accès non autorisé ». */
     var RECHERCHE_GLOBALE = socle.getAttribute('data-recherche-globale') === '1';
+    var URL_RECHERCHE = socle.getAttribute('data-recherche-url') || '/api/search/suggestions';
     var URL_ACCUEIL = socle.getAttribute('data-accueil') || '/accueil';
 
     var champ = document.getElementById('flxChamp');
@@ -36,6 +36,9 @@
     var ensemble = null;     // élément DOM de la vue d'ensemble ouverte
     var selection = 0;
     var resultats = [];
+    var temporisateurRecherche = null;
+    var controleurRecherche = null;
+    var numeroRecherche = 0;
 
     /* ── Utilitaires ──────────────────────────────────────────────────── */
 
@@ -92,7 +95,7 @@
                     entete: i === 0 ? 'Vos lieux' : null,
                     icone: g.icone, titre: g.nom,
                     sous: g.pages.length + ' page(s)',
-                    url: g.pages[0].lien, zone: g.id
+                    action: 'explorer', zone: g.id
                 });
             });
         }
@@ -100,7 +103,7 @@
             liste.push({
                 entete: i === 0 ? 'Zones' : null,
                 icone: g.icone, titre: g.nom, sous: g.description,
-                url: g.pages[0].lien, zone: g.id
+                action: 'explorer', zone: g.id
             });
         });
         liste.push({
@@ -126,51 +129,6 @@
         return t.join(' · ');
     }
 
-    function propositions(q) {
-        if (!q) return propositionsVides();
-        var qp = pliable(q);
-        var liste = [];
-
-        var zones = groupes().filter(function (g) {
-            return pliable(g.nom + ' ' + g.mots + ' ' + g.description).indexOf(qp) !== -1;
-        });
-        zones.forEach(function (g, i) {
-            liste.push({
-                entete: i === 0 ? 'Zones' : null,
-                icone: g.icone, titre: g.nom, sous: g.description,
-                url: g.pages[0].lien, zone: g.id
-            });
-        });
-
-        /* Les pages se cherchent par leur propre nom, pas par les mots-clés de
-           leur zone : sans cela, « facture » ferait remonter les onze pages de
-           la zone Validations, dont les mots-clés contiennent « facture ». La
-           zone, elle, reste proposée juste au-dessus. */
-        var parNom = [], parZone = [];
-        groupes().forEach(function (g) {
-            var zoneMatch = pliable(g.nom).indexOf(qp) !== -1;
-            g.pages.forEach(function (p) {
-                var item = {icone: g.icone, titre: p.label,
-                            sous: 'Page · ' + g.nom, url: p.lien, zone: g.id};
-                if (pliable(p.label).indexOf(qp) !== -1) parNom.push(item);
-                else if (zoneMatch) parZone.push(item);
-            });
-        });
-        /* Une page qui porte le mot cherché passe avant celles qui ne font que
-           partager sa zone : « facture » propose Factures avant Fournisseurs. */
-        parNom.concat(parZone).slice(0, 8).forEach(function (p, i) {
-            liste.push(Object.assign({entete: i === 0 ? 'Pages' : null}, p));
-        });
-
-        if (RECHERCHE_GLOBALE) {
-            liste.push({
-                entete: 'Rechercher', icone: '⌕', titre: 'Rechercher « ' + q + ' »',
-                sous: 'Fournisseur, salarié, facture, budget…', action: 'recherche'
-            });
-        }
-        return liste;
-    }
-
     /* ── Palette : rendu ──────────────────────────────────────────────── */
 
     function ouvrirPalette(valeurInitiale) {
@@ -192,7 +150,7 @@
         }
         if (typeof valeurInitiale === 'string' && champ) champ.value = valeurInitiale;
         selection = 0;
-        rendrePalette();
+        mettreAJourSuggestions();
         if (champ) champ.focus();
     }
 
@@ -201,23 +159,23 @@
         if (palette._voile) palette._voile.remove();
         palette.remove();
         palette = null;
+        clearTimeout(temporisateurRecherche);
+        if (controleurRecherche) controleurRecherche.abort();
         if (barre) barre.classList.remove('flx-ouverte');
         if (champ) { champ.value = ''; champ.blur(); }
     }
 
-    function rendrePalette() {
+    function rendrePalette(nouveaux) {
         if (!palette) return;
-        resultats = propositions(champ ? champ.value.trim() : '');
+        if (nouveaux) resultats = nouveaux;
         if (selection >= resultats.length) selection = Math.max(0, resultats.length - 1);
         var corps = palette.querySelector('#flxPaletteCorps');
         if (!resultats.length) {
-            corps.innerHTML = '<div class="flx-palette-vide">Aucune page ne correspond. ' +
-                'Essayez « congés », « facture », « salle »' +
-                (RECHERCHE_GLOBALE ? '' : ' — ou ouvrez la vue d\'ensemble avec Échap') +
-                '.</div>';
+            corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
             return;
         }
         corps.innerHTML = resultats.map(function (r, i) {
+            var types = {page: 'Page', metier: 'Donnée', explorer: 'Zone', ensemble: 'Carte'};
             return (r.entete ? '<div class="flx-palette-groupe">' + ech(r.entete) + '</div>' : '') +
                 '<button type="button" class="flx-res' + (i === selection ? ' flx-res-actif' : '') +
                 '" data-i="' + i + '">' +
@@ -225,6 +183,7 @@
                 '<span class="flx-res-corps">' +
                 '<span class="flx-res-titre">' + ech(r.titre) + '</span>' +
                 '<span class="flx-res-sous">' + ech(r.sous) + '</span></span>' +
+                '<span class="flx-res-type">' + ech(types[r.action] || '') + '</span>' +
                 '<span class="flx-res-fleche">↵</span></button>';
         }).join('');
         corps.querySelectorAll('.flx-res').forEach(function (b) {
@@ -243,63 +202,62 @@
     function executer(r) {
         if (!r) return;
         if (r.action === 'ensemble') { fermerPalette(); ouvrirEnsemble(); return; }
-        if (r.action === 'recherche') { lancerRecherche(); return; }
+        if (r.action === 'explorer') { fermerPalette(); ouvrirEnsemble(r.zone); return; }
         if (r.zone) noterUsage(r.zone);
+        if (r.action === 'metier') {
+            /* La prévisualisation n'est pas journalisée à chaque frappe. Seul
+               le résultat effectivement choisi l'est via l'API historique. */
+            var q = champ ? champ.value.trim() : '';
+            fetch('/api/search', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({query: q})
+            }).catch(function () {}).then(function () { window.location = r.url; });
+            return;
+        }
         window.location = r.url;
     }
 
-    /* Recherche intelligente : le moteur existant, inchangé. */
-    function lancerRecherche() {
-        var q = champ ? champ.value.trim() : '';
-        if (!q) return;
-        var corps = palette && palette.querySelector('#flxPaletteCorps');
-        if (corps) corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
-        fetch('/api/search', {
+    function chargerSuggestions(q) {
+        var numero = ++numeroRecherche;
+        if (controleurRecherche) controleurRecherche.abort();
+        controleurRecherche = typeof AbortController === 'undefined' ? null : new AbortController();
+        fetch(URL_RECHERCHE, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({query: q})
-        }).then(function (r) { return r.json(); })
-          .then(function (v) { rendreVerdict(v, corps); })
-          .catch(function () {
-              if (corps) corps.innerHTML = '<div class="flx-palette-vide">Erreur de recherche.</div>';
-          });
+            body: JSON.stringify({query: q}),
+            signal: controleurRecherche ? controleurRecherche.signal : undefined
+        }).then(function (r) {
+            if (!r.ok) throw new Error('Recherche indisponible');
+            return r.json();
+        }).then(function (data) {
+            if (numero !== numeroRecherche || !palette) return;
+            selection = 0;
+            rendrePalette(data.suggestions || []);
+        }).catch(function (erreur) {
+            if (erreur && erreur.name === 'AbortError') return;
+            if (numero !== numeroRecherche || !palette) return;
+            rendrePalette([{
+                entete: 'Recherche indisponible', icone: '⊕',
+                titre: "Voir tout l'espace", sous: 'Toutes les pages accessibles',
+                action: 'ensemble'
+            }]);
+        });
     }
 
-    function rendreVerdict(v, corps) {
-        if (!corps) return;
-        if (v.type === 'redirect') {
-            corps.innerHTML = '<div class="flx-palette-vide">Ouverture : ' + ech(v.label) + '…</div>';
-            window.location = v.url;
+    function mettreAJourSuggestions() {
+        var q = champ ? champ.value.trim() : '';
+        clearTimeout(temporisateurRecherche);
+        if (!q) {
+            ++numeroRecherche;
+            if (controleurRecherche) controleurRecherche.abort();
+            selection = 0;
+            rendrePalette(propositionsVides());
             return;
         }
-        if (v.type === 'choices') {
-            corps.innerHTML = '<div class="flx-palette-groupe">' + ech(v.prompt) + '</div>' +
-                (v.options || []).map(function (o) {
-                    return '<a class="flx-res" href="' + ech(o.url) + '">' +
-                        '<span class="flx-res-icone">→</span>' +
-                        '<span class="flx-res-corps">' +
-                        '<span class="flx-res-titre">' + ech(o.label) + '</span>' +
-                        (o.sous_titre ? '<span class="flx-res-sous">' + ech(o.sous_titre) + '</span>' : '') +
-                        '</span></a>';
-                }).join('');
-            return;
-        }
-        var h = '<div class="flx-palette-vide">' + ech(v.message) + '</div>';
-        if (v.exemples && v.exemples.length) {
-            h += '<div class="flx-palette-groupe">Essayez</div>' + v.exemples.map(function (e) {
-                return '<button type="button" class="flx-res" data-ex="' + ech(e) + '">' +
-                    '<span class="flx-res-icone">⌕</span>' +
-                    '<span class="flx-res-corps"><span class="flx-res-titre">' + ech(e) +
-                    '</span></span></button>';
-            }).join('');
-        }
-        corps.innerHTML = h;
-        corps.querySelectorAll('[data-ex]').forEach(function (b) {
-            b.addEventListener('click', function () {
-                if (champ) champ.value = b.dataset.ex;
-                lancerRecherche();
-            });
-        });
+        var corps = palette && palette.querySelector('#flxPaletteCorps');
+        if (corps) corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
+        resultats = [];
+        temporisateurRecherche = setTimeout(function () { chargerSuggestions(q); }, 140);
     }
 
     /* ── Vue d'ensemble : géométrie ───────────────────────────────────── */
@@ -307,7 +265,7 @@
     var latch = null;        // zone dépliée
     var tEntree = null, tSortie = null, cible = null, cam = null;
 
-    function ouvrirEnsemble() {
+    function ouvrirEnsemble(zoneInitiale) {
         if (ensemble) return;
         fermerPalette();
         ensemble = document.createElement('div');
@@ -330,7 +288,7 @@
             if (latch) { latch = null; dessinerEnsemble(); }
         });
         window.addEventListener('resize', dessinerEnsemble);
-        latch = null;
+        latch = zoneInitiale || null;
         dessinerEnsemble(true);
         /* L'entrée en cascade ne joue qu'à l'ouverture : la classe est retirée
            une fois posée, pour que déplier une zone reste instantané. */
@@ -593,13 +551,13 @@
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 selection = (selection + 1) % Math.max(resultats.length, 1);
-                rendrePalette();
+                rendrePalette(resultats);
                 return;
             }
             if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 selection = (selection - 1 + resultats.length) % Math.max(resultats.length, 1);
-                rendrePalette();
+                rendrePalette(resultats);
                 return;
             }
             if (e.key === 'Enter') {
@@ -622,7 +580,7 @@
         champ.addEventListener('input', function () {
             if (!palette) { ouvrirPalette(champ.value); return; }
             selection = 0;
-            rendrePalette();
+            mettreAJourSuggestions();
         });
         champ.addEventListener('focus', function () { if (!palette) ouvrirPalette(champ.value); });
     }

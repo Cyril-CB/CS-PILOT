@@ -35,7 +35,9 @@ d'une delegation, le menu lateral est remplace par :
   (fins de contrat, retours d'absence, etapes de subventions, taches
   planifiees), separees en une ligne RH et une ligne Echeances ;
 - une **barre intelligente** qui se remplit des la premiere touche frappee,
-  n'importe ou dans la page (ou Ctrl/Cmd + K) ;
+  n'importe ou dans la page (ou Ctrl/Cmd + K), classe ensemble pages et
+  enregistrements metier, tolere accents, pluriels et fautes proches, et garde
+  toujours « Voir tout l'espace » comme solution de repli ;
 - une **vue d'ensemble** (touche Echap, ou le bouton de la barre du bas) :
   l'application representee par zones, les themes au centre et les acces
   directs a l'exterieur ;
@@ -116,7 +118,7 @@ classique depuis « Mon espace ».
 ### Tableau de bord direction
 - Vue d'ensemble effectifs, absences, validations et anomalies
 - Demandes de recuperation en attente et top conges cumules
-- Barre de recherche intelligente (direction / comptabilite) : detecte l'intention et redirige vers la bonne page (facture par numero, fiche fournisseur, budget d'une action ou d'un secteur, tresorerie, subventions, bilan/CR, absences ou fiche temps d'un salarie, contrats du mois...). Reconnait les periodes (mois, annee, mois dernier...) et les synonymes de secteurs ; propose un choix en cas d'ambiguite (plusieurs salaries homonymes)
+- Barre de recherche intelligente (direction / comptabilite / responsables, ces derniers dans le perimetre de leur equipe et de leur secteur) : detecte l'intention et redirige vers la bonne page ou le bon enregistrement (facture par numero, fiche fournisseur, budget d'une action ou d'un secteur, tresorerie, subventions, bilan/CR, absences ou fiche temps d'un salarie, contrats du mois...). Reconnait les periodes, les synonymes, le singulier/pluriel, les formulations naturelles et les fautes proches ; propose un choix en cas d'ambiguite
 
 ### Reservations de salles
 - Gestion des reservations de salles avec recurrences

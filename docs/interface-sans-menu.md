@@ -117,35 +117,31 @@ est respecté.
 | `↵` | ouvre la proposition sélectionnée |
 | `Échap` | ferme la barre, sinon ouvre la vue d'ensemble |
 
-La barre fait deux choses distinctes :
+La barre fusionne deux sources dans une seule liste classée :
 
 1. **La navigation locale** — zones et pages, filtrées par les droits du
    lecteur. C'est ce qui remplace le menu, et cela vaut pour **tous** les
    profils de l'interface sans menu. Personne ne se retrouve donc sans menu
    *et* sans barre.
-2. **La recherche métier** — l'entrée « Rechercher … », qui envoie la requête
-   au moteur existant (`POST /api/search`) et en traite le verdict comme
-   auparavant. Elle route vers un enregistrement : une facture par son numéro,
-   une fiche fournisseur, un budget, la fiche temps d'un salarié…
+2. **La recherche métier** — elle route directement vers un enregistrement :
+   une facture par son numéro, une fiche fournisseur, un budget, la fiche temps
+   d'un salarié… Il n'y a plus de ligne intermédiaire « Rechercher… ».
 
-La seconde n'est proposée qu'à la **direction et à la comptabilité**. C'est la
-seule liste que `/api/search` autorise, et c'était déjà l'état antérieur : la
-barre intelligente n'existait que sur les tableaux de bord direction et
-comptabilité. La proposer à un responsable lui vaudrait un « Accès non
-autorisé » ; quand aucune page ne correspond, la palette lui suggère plutôt la
-vue d'ensemble.
+Une page exacte passe avant une zone générale. Une zone n'ouvre jamais sa
+première page arbitrairement : elle déplie sa constellation. Le dernier choix
+est toujours **« Voir tout l'espace »**, même si aucun résultat précis n'a été
+trouvé. Accents, singulier/pluriel, formulations conversationnelles et fautes
+proches sont normalisés par `search_palette.py`.
 
-Pour que les deux ne divergent jamais,
-`interface_flux.recherche_globale_autorisee()` lit la liste à la source, dans
-le blueprint qui la fait respecter, et un test le verrouille.
+La recherche métier est ouverte à la **direction, à la comptabilité et aux
+responsables**. Pour ces derniers, le moteur limite les salariés à leur équipe,
+les secteurs à leur secteur, les factures à ce secteur et les subventions à
+leurs attributions. Une seconde barrière supprime toute destination absente de
+leur carte. Les salariés délégués conservent uniquement la navigation locale.
 
-**Ouvrir la recherche métier aux autres profils** est un chantier à part
-entière, pas un élargissement de liste : le moteur reçoit bien le profil mais
-ne s'en sert jamais pour filtrer ses verdicts, il route vers 23 destinations
-dont 8 seulement sont ouvertes à un responsable, et il interroge l'effectif
-entier pour retrouver un salarié par son nom. Il faudrait donc à la fois
-filtrer les verdicts (la carte de navigation ferait un bon oracle : elle sait
-déjà quelles pages chacun peut ouvrir) et cadrer les lectures de données.
+`POST /api/search/suggestions` calcule la liste unifiée sans journaliser chaque
+frappe. Seul le résultat métier effectivement choisi repasse par
+`POST /api/search` et alimente le journal de recherche.
 
 ## Les autres pages
 
@@ -169,6 +165,9 @@ Tout se joue dans `navigation.py` :
   la condition **suffit** (délégation, appartenance au CSE) ; avec `profils`
   renseignés, elle **restreint** (option d'administration) ;
 - `labels=` permet de nommer une même page différemment selon le profil.
+- `mots=` ajoute le vocabulaire propre à la page ; `expressions=` déclare les
+  formulations qui doivent la désigner sans ambiguïté. Les mots de la zone
+  servent à proposer son exploration, pas toutes ses pages.
 
 Les droits reproduisent ceux du menu latéral historique : ce fichier réorganise
 la présentation, il n'ouvre aucun accès. Les routes gardent leur propre
