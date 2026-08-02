@@ -101,9 +101,35 @@ L'application représentée par zones :
 | `↵` | ouvre la proposition sélectionnée |
 | `Échap` | ferme la barre, sinon ouvre la vue d'ensemble |
 
-La barre propose d'abord les zones et les pages (c'est ce qui remplace le
-menu), puis une entrée « Rechercher … » qui envoie la requête au moteur
-existant (`POST /api/search`) et en traite le verdict comme auparavant.
+La barre fait deux choses distinctes :
+
+1. **La navigation locale** — zones et pages, filtrées par les droits du
+   lecteur. C'est ce qui remplace le menu, et cela vaut pour **tous** les
+   profils de l'interface sans menu. Personne ne se retrouve donc sans menu
+   *et* sans barre.
+2. **La recherche métier** — l'entrée « Rechercher … », qui envoie la requête
+   au moteur existant (`POST /api/search`) et en traite le verdict comme
+   auparavant. Elle route vers un enregistrement : une facture par son numéro,
+   une fiche fournisseur, un budget, la fiche temps d'un salarié…
+
+La seconde n'est proposée qu'à la **direction et à la comptabilité**. C'est la
+seule liste que `/api/search` autorise, et c'était déjà l'état antérieur : la
+barre intelligente n'existait que sur les tableaux de bord direction et
+comptabilité. La proposer à un responsable lui vaudrait un « Accès non
+autorisé » ; quand aucune page ne correspond, la palette lui suggère plutôt la
+vue d'ensemble.
+
+Pour que les deux ne divergent jamais,
+`interface_flux.recherche_globale_autorisee()` lit la liste à la source, dans
+le blueprint qui la fait respecter, et un test le verrouille.
+
+**Ouvrir la recherche métier aux autres profils** est un chantier à part
+entière, pas un élargissement de liste : le moteur reçoit bien le profil mais
+ne s'en sert jamais pour filtrer ses verdicts, il route vers 23 destinations
+dont 8 seulement sont ouvertes à un responsable, et il interroge l'effectif
+entier pour retrouver un salarié par son nom. Il faudrait donc à la fois
+filtrer les verdicts (la carte de navigation ferait un bon oracle : elle sait
+déjà quelles pages chacun peut ouvrir) et cadrer les lectures de données.
 
 ## Les autres pages
 
