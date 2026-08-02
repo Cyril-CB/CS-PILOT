@@ -395,7 +395,14 @@
 
     function dessinerEnsemble(entree) {
         if (!ensemble) return;
-        if (entree) ensemble.classList.add('flx-ensemble-anime');
+        /* `entree === true` et non `entree` : cette fonction sert aussi de
+           gestionnaire de `resize`, qui lui passe un UIEvent — toujours vrai.
+           Sans ce test strict, un redimensionnement après l'ouverture
+           réarmerait l'animation d'entrée sans que rien ne la retire, et
+           déplier une zone rejouerait la cascade au lieu d'être instantané.
+           Le gestionnaire garde volontairement cette référence, pour que
+           `removeEventListener` puisse le retirer à la fermeture. */
+        if (entree === true) ensemble.classList.add('flx-ensemble-anime');
         var W = window.innerWidth, H = window.innerHeight;
         var HAUT = H < 640 ? 116 : 162, BAS = H < 640 ? 56 : 84;
         var dGrand = 68, dPetit = 56;
