@@ -163,11 +163,15 @@ def test_une_page_ordinaire_recoit_les_boutons_de_sa_zone(admin_client):
 
 
 def test_le_flux_d_information_apparait_sur_les_factures(admin_client, db, sample_users):
-    """Une facture en attente doit se voir avant la liste."""
+    """Une facture en attente doit se voir avant la liste.
+
+    Elle est assignée à la direction : c'est ce que la page d'approbation
+    liste, et donc ce que le bandeau doit compter.
+    """
     with db:
         db.execute(
-            "INSERT INTO factures (numero_facture, montant_ttc, approbation, statut) "
-            "VALUES ('F-1', 100, 'en_attente', 'a_traiter')"
+            "INSERT INTO factures (numero_facture, montant_ttc, approbation, statut, "
+            "assigned_direction) VALUES ('F-1', 100, 'en_attente', 'a_traiter', 1)"
         )
     corps = admin_client.get('/factures').get_data(as_text=True)
     assert 'flx-infos' in corps
@@ -552,3 +556,167 @@ def test_le_centre_de_controle_partage_le_meme_gabarit(admin_client):
                   'ccSeuilSurcharge', 'ccSeuilDigest'):
         assert champ in accueil, champ
         assert champ in controle, champ
+
+
+# ── Revue Codex n°2 : ne jamais pointer vers une page fermée au lecteur ────
+
+def test_le_bandeau_factures_compte_ce_que_la_page_d_approbation_montre(
+        admin_client, db, sample_users):
+    """Le compteur ne doit pas promettre plus que sa destination n'affiche."""
+    with db:
+        db.execute("INSERT INTO secteurs (nom) VALUES ('Enfance')")
+        sect = db.execute("SELECT id FROM secteurs WHERE nom='Enfance'").fetchone()['id']
+        # Une facture assignée : elle apparaît sur la page d'approbation.
+        db.execute("INSERT INTO factures (numero_facture, montant_ttc, approbation, "
+                   "secteur_id) VALUES ('F-A', 100, 'en_attente', ?)", (sect,))
+        # Deux factures encore non assignées : la page ne les liste pas.
+        db.execute("INSERT INTO factures (numero_facture, montant_ttc, approbation, "
+                   "assigned_direction) VALUES ('F-B', 100, 'en_attente', 0)")
+        db.execute("INSERT INTO factures (numero_facture, montant_ttc, approbation, "
+                   "assigned_direction) VALUES ('F-C', 100, 'en_attente', 0)")
+
+    corps = admin_client.get('/factures').get_data(as_text=True)
+    approbation = admin_client.get('/factures/approbation').get_data(as_text=True)
+    assert 'F-A' in approbation and 'F-B' not in approbation
+
+    bandeaux = re.findall(r'flx-info-valeur">(\d+)</span>\s*<span class="flx-info-libelle">([^<]+)',
+                          corps)
+    par_libelle = {libelle.strip(): int(n) for n, libelle in bandeaux}
+    assert par_libelle.get("facture(s) en attente d&#39;approbation") == 1
+    # Les non assignées sont signalées à part, vers leur vraie destination.
+    assert par_libelle.get('facture(s) à assigner à un secteur') == 2
+
+
+def test_le_responsable_ne_compte_que_les_fiches_de_son_equipe(
+        resp_client, db, sample_users):
+    """Le bandeau suit le cadrage de la page qu'il décore."""
+    with db:
+        db.execute("INSERT INTO secteurs (nom) VALUES ('Ailleurs')")
+        autre = db.execute("SELECT id FROM secteurs WHERE nom='Ailleurs'").fetchone()['id']
+        db.execute("INSERT INTO users (nom, prenom, login, password, profil, secteur_id) "
+                   "VALUES ('Loin', 'Paul', 'ploin', 'x', 'salarie', ?)", (autre,))
+
+    corps = resp_client.get('/vue_ensemble_validation').get_data(as_text=True)
+    assert 'dans votre équipe' in corps
+    bandeaux = re.findall(r'flx-info-valeur">(\d+)</span>', corps)
+    # Son équipe : le salarié de test et lui-même — pas le salarié d'ailleurs
+    # ni le comptable.
+    assert bandeaux and int(bandeaux[0]) == 2
+
+
+def test_le_delegue_aux_validations_ne_voit_pas_les_demandes_a_valider(
+        client, app, db, sample_users):
+    """Sa délégation porte sur le suivi des fiches, pas sur les congés."""
+    from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
+                                        save_delegation)
+    with app.app_context():
+        save_delegation(MISSION_SUIVI_VALIDATIONS_RELANCES,
+                        sample_users['salarie_id'], sample_users['directeur_id'])
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut) VALUES (?, 'Congé payé', '2026-09-01', '2026-09-05', 5, "
+            "'en_attente_direction')", (sample_users['comptable_id'],))
+
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                follow_redirects=True)
+    corps = client.get('/vue_ensemble_validation').get_data(as_text=True)
+    assert corps.count('flx-info') > 0                      # il voit bien la page
+    assert 'demande(s) en attente de validation' not in corps
+    assert '/validation_demandes_recup' not in corps
+
+
+def test_pas_de_carte_de_subvention_pour_un_salarie_delegue(
+        client, app, db, sample_users):
+    """La page et l'action « C'est fait » lui sont fermées : pas de carte."""
+    from blueprints.delegations import save_benevoles_delegations
+    with app.app_context():
+        save_benevoles_delegations([sample_users['salarie_id']],
+                                   sample_users['directeur_id'])
+    with db:
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) "
+                   "VALUES ('CAF CLAS', 'depose', '2026')")
+        sub = db.execute("SELECT id FROM subventions LIMIT 1").fetchone()['id']
+        db.execute("INSERT INTO subventions_sous_elements (subvention_id, nom, statut, "
+                   "date_echeance, assignee_id) VALUES (?, 'Bilan', 'non_commence', "
+                   "'2026-08-05', ?)", (sub, sample_users['salarie_id']))
+
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                follow_redirects=True)
+    corps = client.get('/accueil').get_data(as_text=True)
+    assert 'Bilan' not in corps
+    assert 'data-flx-act="subvention"' not in corps
+
+
+def test_pas_de_retour_d_absence_pour_un_responsable(resp_client, db, sample_users):
+    """La page des absences lui est fermée : la carte ne doit pas exister."""
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    with db:
+        db.execute("INSERT INTO absences (user_id, motif, date_debut, date_fin, "
+                   "jours_ouvres, saisi_par) VALUES (?, 'maladie', ?, ?, 20, ?)",
+                   (sample_users['salarie_id'],
+                    (aujourd_hui() - timedelta(days=10)).isoformat(),
+                    (aujourd_hui() + timedelta(days=20)).isoformat(),
+                    sample_users['directeur_id']))
+    corps = resp_client.get('/accueil').get_data(as_text=True)
+    assert 'Retour de' not in corps
+
+    # La direction, elle, peut ouvrir la page : la carte lui est proposée.
+    assert '/absences' not in corps
+
+
+# ── Barre intelligente : recherche métier vs navigation locale ─────────────
+
+def _drapeau_recherche(corps):
+    trouve = re.search(r'data-recherche-globale="([01])"', corps)
+    assert trouve, 'drapeau de recherche absent du socle'
+    return trouve.group(1) == '1'
+
+
+def test_la_recherche_metier_est_offerte_a_qui_l_api_autorise(admin_client):
+    """Direction : la palette peut proposer « Rechercher »."""
+    from blueprints.recherche import PROFILS_AUTORISES
+    assert 'directeur' in PROFILS_AUTORISES
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert _drapeau_recherche(corps) is True
+    assert admin_client.post('/api/search', json={'query': 'budget'}).status_code == 200
+
+
+def test_le_responsable_garde_la_navigation_sans_recherche_metier(resp_client):
+    """`/api/search` lui répond 403 : la palette ne doit pas la lui proposer.
+
+    Sa barre reste utile — elle ouvre zones et pages, ce qui remplace le menu.
+    """
+    assert resp_client.post('/api/search', json={'query': 'budget'}).status_code == 403
+    corps = resp_client.get('/accueil').get_data(as_text=True)
+    assert _drapeau_recherche(corps) is False
+    assert 'Où voulez-vous aller' in corps
+    # La navigation locale, elle, est bien alimentée.
+    carte = _carte_embarquee(corps)
+    assert carte['zones'], 'la palette du responsable serait vide'
+
+
+def test_le_salarie_delegue_garde_la_navigation_sans_recherche_metier(
+        client, app, db, sample_users):
+    from blueprints.delegations import save_benevoles_delegations
+    with app.app_context():
+        save_benevoles_delegations([sample_users['salarie_id']],
+                                   sample_users['directeur_id'])
+    client.post('/login', data={'login': 'salarie_test', 'password': 'sal123'},
+                follow_redirects=True)
+    assert client.post('/api/search', json={'query': 'budget'}).status_code == 403
+    corps = client.get('/accueil').get_data(as_text=True)
+    assert _drapeau_recherche(corps) is False
+    assert _carte_embarquee(corps)['zones']
+
+
+def test_le_drapeau_suit_la_liste_d_autorisation_de_l_api(app):
+    """Palette et API lisent la même source : elles ne peuvent pas diverger."""
+    import interface_flux
+    from blueprints.recherche import PROFILS_AUTORISES
+    for profil in ('directeur', 'comptable', 'responsable', 'salarie', 'prestataire'):
+        with app.app_context():
+            assert (interface_flux.recherche_globale_autorisee(profil)
+                    is (profil in PROFILS_AUTORISES)), profil

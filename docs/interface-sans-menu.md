@@ -136,6 +136,26 @@ chaque entrée pointe vers une route réelle.
 Pour ajouter un flux d'information à une page, écrire un constructeur dans
 `flux_infos.py` et l'inscrire dans `CONSTRUCTEURS` sous son endpoint.
 
+## La règle qui gouverne cartes et bandeaux
+
+**Ne jamais proposer ce que le lecteur ne peut ni ouvrir ni conclure, et ne
+jamais compter plus que la destination n'affiche.** Concrètement :
+
+- une carte du fil ou de l'horizon n'est construite que pour les profils que sa
+  page de destination accepte — pas de carte de subvention pour un salarié
+  délégué, pas de retour d'absence pour un responsable (la page Absences lui
+  est fermée) ;
+- un bandeau reprend le filtre de la page qu'il annonce — le compteur de
+  factures à approuver applique le même prédicat que la page d'approbation
+  (secteur renseigné ou assignation à la direction), les factures encore non
+  assignées étant signalées à part, vers la page Factures ;
+- un bandeau reprend aussi son cadrage — un responsable ne compte que les
+  fiches de son équipe, comme la vue d'ensemble le fait pour lui.
+
+Ces règles sont vérifiées par des tests dédiés dans
+`tests/test_interface_flux.py` : un écart entre un compteur et sa destination
+fait tomber la suite.
+
 ## Revenir en arrière
 
 - **Pour tout le centre** : Administration → Options → décocher « Activer

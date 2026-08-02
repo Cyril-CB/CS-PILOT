@@ -196,9 +196,14 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     # Le responsable voit les étapes des subventions dont il est assigné (parent)
     # ainsi que celles des sous-éléments qui lui sont directement attribués — en
     # cohérence avec la notification d'attribution par e-mail.
-    # La direction et la comptabilité suivent tous les dossiers. Tout autre
-    # profil — responsable, ou salarié délégué — ne voit que les étapes qui lui
-    # sont confiées.
+    # Une carte de subvention mène à la page des subventions et propose de
+    # marquer l'étape faite : les deux sont fermés à tout profil hors direction,
+    # comptabilité et responsables. On ne propose donc pas d'action que le
+    # lecteur ne pourrait ni ouvrir ni conclure.
+    suit_des_subventions = profil in ('directeur', 'comptable', 'responsable')
+
+    # La direction et la comptabilité suivent tous les dossiers ; un
+    # responsable, seulement ceux qui lui sont confiés.
     if profil in ('directeur', 'comptable'):
         sub_scope = ''
         sub_params = ()
@@ -219,7 +224,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             ORDER BY se.date_echeance ASC
             LIMIT 25""",
         sub_params
-    ).fetchall()
+    ).fetchall() if suit_des_subventions else []
     # La page subventions filtre par année (année courante par défaut). Pour que
     # la subvention pointée reste visible, on cible son année si elle est dans la
     # plage du filtre (N-3..N+2), sinon « toutes » (année absente ou hors plage).

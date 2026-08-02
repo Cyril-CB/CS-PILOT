@@ -83,6 +83,25 @@ def interface_active(profil, user_id):
     return preference_utilisateur(user_id) is not False
 
 
+def recherche_globale_autorisee(profil):
+    """La recherche métier (`POST /api/search`) est-elle ouverte à ce profil ?
+
+    La barre intelligente propose deux choses : la navigation locale — zones et
+    pages, qui remplace le menu et vaut pour tout le monde — et la recherche
+    métier, qui route vers une facture, un fournisseur, un budget, la fiche
+    temps d'un salarié… Cette dernière n'a jamais existé que sur les tableaux
+    de bord direction et comptabilité, et son moteur ne filtre pas ses verdicts
+    par profil. On lit la liste d'autorisation à la source, dans le blueprint
+    qui la fait respecter, pour que la palette et l'API ne divergent jamais.
+    """
+    try:
+        from blueprints.recherche import PROFILS_AUTORISES
+        return profil in PROFILS_AUTORISES
+    except Exception:
+        logger.warning("Profils de recherche illisibles", exc_info=True)
+        return False
+
+
 def _drapeaux(profil, user_id):
     """Drapeaux de droits utilisés pour filtrer la carte de navigation.
 
@@ -218,6 +237,7 @@ def contexte():
             'nav_zone': zone,
             'nav_page': page,
             'nav_identite': _identite(profil, user_id),
+            'nav_recherche_globale': recherche_globale_autorisee(profil),
         }
 
     try:

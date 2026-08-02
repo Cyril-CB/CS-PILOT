@@ -95,7 +95,13 @@ def _fins_de_contrat(conn, today, borne_min, borne_max, scope_sql, scope_params)
 
 
 def _retours_absence(conn, today, borne_min, borne_max, scope_sql, scope_params):
-    """Retours d'absence longue (plus de deux semaines) à préparer."""
+    """Retours d'absence longue (plus de deux semaines) à préparer.
+
+    La carte mène à la page des absences, fermée aux responsables : l'appelant
+    ne la construit donc que pour la direction et la comptabilité (voir
+    `construire_horizon`). Mieux vaut ne rien annoncer qu'annoncer un retour
+    dont on ne peut pas ouvrir le détail.
+    """
     rows = conn.execute(
         f'''SELECT a.date_fin, a.motif, a.jours_ouvres, u.nom, u.prenom
             FROM absences a
@@ -229,8 +235,13 @@ def construire_horizon(conn, profil, user_id, secteur_id=None):
 
     rh = []
     if suit_l_effectif:
-        for lecture, args in ((_fins_de_contrat, (scope_sql, scope_params)),
-                              (_retours_absence, (scope_sql, scope_params))):
+        # Les fins de contrat mènent à « Infos salariés », ouverte aussi aux
+        # responsables ; les retours d'absence mènent à « Absences », qui ne
+        # l'est pas. Chaque carte n'est produite que pour qui peut la suivre.
+        lectures = [(_fins_de_contrat, (scope_sql, scope_params))]
+        if profil in ('directeur', 'comptable'):
+            lectures.append((_retours_absence, (scope_sql, scope_params)))
+        for lecture, args in lectures:
             try:
                 rh.extend(lecture(conn, today, borne_min, borne_max, *args))
             except Exception:

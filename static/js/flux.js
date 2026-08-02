@@ -24,6 +24,10 @@
     CARTE.directs = CARTE.directs || [];
 
     var INITIALES = socle.getAttribute('data-initiales') || '?';
+    /* La recherche métier n'est ouverte qu'aux profils que /api/search accepte.
+       Pour les autres, la barre reste un moyen d'aller à une page — proposer
+       « Rechercher » leur renverrait un « Accès non autorisé ». */
+    var RECHERCHE_GLOBALE = socle.getAttribute('data-recherche-globale') === '1';
     var URL_ACCUEIL = socle.getAttribute('data-accueil') || '/accueil';
 
     var champ = document.getElementById('flxChamp');
@@ -158,10 +162,12 @@
             liste.push(Object.assign({entete: i === 0 ? 'Pages' : null}, p));
         });
 
-        liste.push({
-            entete: 'Rechercher', icone: '⌕', titre: 'Rechercher « ' + q + ' »',
-            sous: 'Fournisseur, salarié, facture, budget…', action: 'recherche'
-        });
+        if (RECHERCHE_GLOBALE) {
+            liste.push({
+                entete: 'Rechercher', icone: '⌕', titre: 'Rechercher « ' + q + ' »',
+                sous: 'Fournisseur, salarié, facture, budget…', action: 'recherche'
+            });
+        }
         return liste;
     }
 
@@ -205,7 +211,10 @@
         if (selection >= resultats.length) selection = Math.max(0, resultats.length - 1);
         var corps = palette.querySelector('#flxPaletteCorps');
         if (!resultats.length) {
-            corps.innerHTML = '<div class="flx-palette-vide">Rien ne correspond.</div>';
+            corps.innerHTML = '<div class="flx-palette-vide">Aucune page ne correspond. ' +
+                'Essayez « congés », « facture », « salle »' +
+                (RECHERCHE_GLOBALE ? '' : ' — ou ouvrez la vue d\'ensemble avec Échap') +
+                '.</div>';
             return;
         }
         corps.innerHTML = resultats.map(function (r, i) {

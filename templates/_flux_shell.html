@@ -12,6 +12,7 @@
      data-carte="{{ nav_carte|tojson|forceescape }}"
      data-initiales="{{ nav_identite.initiales }}"
      data-accueil="{{ url_for('accueil_bp.accueil') }}"
+     data-recherche-globale="{{ '1' if nav_recherche_globale else '0' }}"
      {% if nav_zone %}data-zone="{{ nav_zone.id }}"{% endif %}></div>
 
 <header class="flx-entete">
@@ -29,7 +30,7 @@
                 <span class="flx-barre-icone">⌕</span>
                 <input type="text" id="flxChamp" autocomplete="off" spellcheck="false"
                        aria-label="Rechercher ou naviguer"
-                       placeholder="Que voulez-vous faire ? Tapez n'importe où…">
+                       placeholder="{% if nav_recherche_globale %}Que voulez-vous faire ? Tapez n'importe où…{% else %}Où voulez-vous aller ? Tapez n'importe où…{% endif %}">
                 <kbd class="flx-kbd">Ctrl K</kbd>
             </div>
         </div>

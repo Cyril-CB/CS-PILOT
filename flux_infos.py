@@ -36,14 +36,24 @@ def _info(icone, valeur, libelle, lien, lien_texte, ton='calme'):
 
 
 def _factures(conn, contexte):
-    """Ce que la page Factures doit signaler avant sa liste."""
+    """Ce que la page Factures doit signaler avant sa liste.
+
+    Les compteurs d'approbation reprennent le filtre de la page d'approbation
+    (`factures_bp.approbation_factures`) : elle n'affiche que les factures
+    rattachées à un secteur ou assignées à la direction. Annoncer un nombre
+    plus grand enverrait vers une page qui en montre moins — ou vide. Les
+    factures non assignées sont signalées à part, vers leur vraie destination.
+    """
     if contexte.get('profil') not in _COMPTA:
         return []
     today = aujourd_hui().isoformat()
+    # Ce que la page d'approbation liste réellement.
+    approuvables = "(secteur_id IS NOT NULL OR assigned_direction = 1)"
     infos = []
 
     attente = conn.execute(
-        "SELECT COUNT(*) AS nb FROM factures WHERE approbation = 'en_attente'"
+        f"""SELECT COUNT(*) AS nb FROM factures
+            WHERE approbation = 'en_attente' AND {approuvables}"""
     ).fetchone()['nb']
     if attente:
         infos.append(_info(
@@ -53,10 +63,10 @@ def _factures(conn, contexte):
         ))
 
     retard = conn.execute(
-        '''SELECT COUNT(*) AS nb FROM factures
-           WHERE approbation = 'en_attente'
-             AND date_echeance IS NOT NULL AND date_echeance != ''
-             AND date_echeance < ?''',
+        f'''SELECT COUNT(*) AS nb FROM factures
+            WHERE approbation = 'en_attente' AND {approuvables}
+              AND date_echeance IS NOT NULL AND date_echeance != ''
+              AND date_echeance < ?''',
         (today,)
     ).fetchone()['nb']
     if retard:
@@ -64,6 +74,20 @@ def _factures(conn, contexte):
             '⏰', retard, "facture(s) dont l'échéance est dépassée",
             url_for('factures_bp.approbation_factures'), 'Traiter',
             'alerte',
+        ))
+
+    # Une facture importée sans secteur ni direction n'est encore entrée dans
+    # aucun circuit : elle n'est pas « à approuver », elle est à assigner.
+    a_assigner = conn.execute(
+        """SELECT COUNT(*) AS nb FROM factures
+           WHERE approbation = 'en_attente'
+             AND secteur_id IS NULL AND assigned_direction = 0"""
+    ).fetchone()['nb']
+    if a_assigner:
+        infos.append(_info(
+            '📥', a_assigner, 'facture(s) à assigner à un secteur',
+            url_for('factures_bp.liste_factures'), 'Assigner',
+            'attention',
         ))
 
     orphelines = conn.execute(
@@ -164,36 +188,78 @@ def _subventions(conn, contexte):
 
 
 def _validations(conn, contexte):
-    """Ce que la vue d'ensemble des validations doit signaler."""
+    """Ce que la vue d'ensemble des validations doit signaler.
+
+    Deux cadrages distincts, calqués sur ce que le lecteur peut réellement
+    voir et faire :
+    - le décompte des fiches suit la page elle-même, qui borne un responsable
+      sans délégation à son équipe ;
+    - le bandeau des demandes à valider n'apparaît que pour les profils que
+      `recup_bp.validation_demandes_recup` accepte. Un salarié délégué au
+      suivi des validations n'y a pas droit — sa délégation porte sur le suivi
+      des fiches, pas sur les décisions de congés.
+    """
+    profil = contexte.get('profil')
+    user_id = contexte.get('user_id')
     today = aujourd_hui()
     mois_prec = today.month - 1 or 12
     annee_prec = today.year if today.month > 1 else today.year - 1
     infos = []
 
+    # Un responsable ne suit que son équipe ; les autres lecteurs de la page
+    # (direction, comptabilité, délégué au suivi) la voient en entier.
+    equipe_seule = profil == 'responsable'
+    if equipe_seule:
+        secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?',
+                               (user_id,)).fetchone()
+        scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
+        params = (secteur['secteur_id'] if secteur else None, user_id)
+    else:
+        scope, params = '', ()
+
     non_validees = conn.execute(
-        '''SELECT COUNT(*) AS nb FROM users u
-           WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
-             AND NOT EXISTS (
-                 SELECT 1 FROM validations v
-                 WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ? AND v.bloque = 1
-             )''',
-        (mois_prec, annee_prec)
+        f'''SELECT COUNT(*) AS nb FROM users u
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+              {scope}
+              AND NOT EXISTS (
+                  SELECT 1 FROM validations v
+                  WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ? AND v.bloque = 1
+              )''',
+        params + (mois_prec, annee_prec)
     ).fetchone()['nb']
     if non_validees:
         infos.append(_info(
             '✅', non_validees,
-            f"fiche(s) de {NOMS_MOIS[mois_prec].lower()} non validée(s)",
+            f"fiche(s) de {NOMS_MOIS[mois_prec].lower()} non validée(s)"
+            + (' dans votre équipe' if equipe_seule else ''),
             url_for('validation_bp.vue_ensemble_validation'), 'Vue mensuelle',
             'alerte' if today.day > 10 else 'attention',
         ))
 
-    attente = conn.execute(
-        '''SELECT (SELECT COUNT(*) FROM demandes_recup
-                   WHERE statut IN ('en_attente_responsable', 'en_attente_direction'))
-                + (SELECT COUNT(*) FROM demandes_conges
-                   WHERE statut IN ('en_attente_responsable', 'en_attente_direction'))
-                AS nb'''
-    ).fetchone()['nb']
+    if profil not in ('directeur', 'comptable', 'responsable'):
+        return infos
+
+    if equipe_seule:
+        attente = conn.execute(
+            '''SELECT (SELECT COUNT(*) FROM demandes_recup d
+                       JOIN users u ON u.id = d.user_id
+                       WHERE d.statut = 'en_attente_responsable'
+                         AND (u.secteur_id = ? OR u.responsable_id = ?))
+                    + (SELECT COUNT(*) FROM demandes_conges d
+                       JOIN users u ON u.id = d.user_id
+                       WHERE d.statut = 'en_attente_responsable'
+                         AND (u.secteur_id = ? OR u.responsable_id = ?))
+                    AS nb''',
+            params + params
+        ).fetchone()['nb']
+    else:
+        attente = conn.execute(
+            '''SELECT (SELECT COUNT(*) FROM demandes_recup
+                       WHERE statut IN ('en_attente_responsable', 'en_attente_direction'))
+                    + (SELECT COUNT(*) FROM demandes_conges
+                       WHERE statut IN ('en_attente_responsable', 'en_attente_direction'))
+                    AS nb'''
+        ).fetchone()['nb']
     if attente:
         infos.append(_info(
             '📋', attente, 'demande(s) en attente de validation',
