@@ -14,6 +14,16 @@ partie des profils, et explique comment l'ajuster.
 | Salarié sans délégation | menu latéral habituel |
 | Prestataire paie | menu latéral habituel (page unique) |
 
+**Sur téléphone, tout le monde garde le menu latéral.** L'interface sans menu
+suppose un écran large : une barre fixe en haut, une autre en bas, une vue
+d'ensemble en anneau. Le menu historique, lui, est déjà responsive avec son
+bouton hamburger. La détection se fait sur l'agent utilisateur
+(`interface_flux.est_telephone()`), la largeur d'écran n'étant pas connue du
+serveur : le marqueur normalisé `Mobi` couvre Chrome Android comme Safari iOS.
+Une tablette n'en porte pas — un iPad récent annonce même un Safari de bureau —
+et garde donc l'interface sans menu. Le même compte suit ainsi son appareil,
+sans rien avoir à régler.
+
 Les délégations qui font basculer un salarié sont celles qui lui confient des
 pages à suivre : suivi des validations et relances, suivi et commande des
 fournitures, gestion des bénévoles. La délégation des **récurrences de
@@ -91,6 +101,12 @@ L'application représentée par zones :
 
 Échap, ou un clic dans le vide, referme.
 
+L'ouverture est animée : le voile apparaît en 0,42 s et les zones se posent en
+cascade depuis le haut, décalées de 45 ms chacune. La classe
+`flx-ensemble-anime` porte cette entrée et est retirée une fois posée, pour que
+déplier une zone reste instantané. Le réglage système « animations réduites »
+est respecté.
+
 ## Le clavier
 
 | Touche | Effet |
@@ -161,6 +177,20 @@ chaque entrée pointe vers une route réelle.
 
 Pour ajouter un flux d'information à une page, écrire un constructeur dans
 `flux_infos.py` et l'inscrire dans `CONSTRUCTEURS` sous son endpoint.
+
+## La place gagnée revient au contenu
+
+Sans menu latéral, les 260 px qu'il occupait doivent revenir au contenu, pas à
+des marges. Deux largeurs coexistent donc :
+
+- les **pages ordinaires** (tableaux, listes) montent à 1500 px, au-delà du
+  plafond classique de 1400 px qui incluait la sidebar. Sur un portable de
+  1440 px, la largeur utile passe de 1180 à 1440 px ;
+- les **deux pages de lecture** — le fil et Mon espace — gardent les 880 px du
+  modèle, où une ligne trop longue nuirait à la lecture. Elles se reconnaissent
+  à la classe `flx-lecture` posée sur `<body>` par `base.html`.
+
+Un test vérifie que la classe n'est posée que sur ces deux pages.
 
 ## La règle qui gouverne cartes et bandeaux
 

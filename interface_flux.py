@@ -12,6 +12,7 @@ L'activation se décide à trois niveaux, du plus général au plus personnel :
 3. le choix de l'utilisateur, qui peut toujours revenir au menu historique.
 """
 import logging
+import re
 
 from flask import has_request_context, request, session
 
@@ -72,6 +73,30 @@ def option_globale_active():
         return False
 
 
+# Marqueurs de téléphone dans l'en-tête User-Agent. « Mobi » est le marqueur
+# normalisé, présent sur Chrome Android comme sur Safari iOS ; les autres
+# couvrent les cas plus anciens. Une tablette n'en porte pas — un iPad récent
+# annonce même un Safari de bureau — et garde donc l'interface sans menu, que
+# son écran peut afficher.
+_TELEPHONE = re.compile(r'Mobi|iPhone|iPod|Windows Phone|BlackBerry|Opera Mini',
+                        re.IGNORECASE)
+
+
+def est_telephone():
+    """Vrai si la requête vient d'un téléphone.
+
+    L'interface sans menu suppose un écran large : une barre fixe en haut, une
+    autre en bas, et une vue d'ensemble en anneau. Sur un téléphone, le menu
+    latéral historique — déjà responsive, avec son bouton hamburger — reste plus
+    confortable. La détection se fait sur l'agent utilisateur car la largeur de
+    l'écran n'est pas connue du serveur ; c'est une approximation assumée, et
+    elle n'ouvre aucun droit : elle ne fait que choisir un habillage.
+    """
+    if not has_request_context():
+        return False
+    return bool(_TELEPHONE.search(request.headers.get('User-Agent', '')))
+
+
 def interface_active(profil, user_id):
     """Décide si la requête courante doit être servie sans menu."""
     if not user_id:
@@ -79,6 +104,8 @@ def interface_active(profil, user_id):
     if not option_globale_active():
         return False
     if not navigation.est_eligible(profil, user_id):
+        return False
+    if est_telephone():
         return False
     return preference_utilisateur(user_id) is not False
 
@@ -223,6 +250,7 @@ def contexte():
         donnees = {
             'ui_flux': False,
             'ui_flux_eligible': (bool(user_id)
+                                 and not est_telephone()
                                  and option_globale_active()
                                  and navigation.est_eligible(profil, user_id)),
         }

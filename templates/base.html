@@ -10,7 +10,9 @@
         (function(){var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();
     </script>
 </head>
-<body{% if ui_flux %} class="flx"{% endif %}>
+{# `flx-lecture` réserve la colonne étroite du modèle aux deux pages de
+   lecture ; toutes les autres récupèrent la place laissée par le menu. #}
+<body{% if ui_flux %} class="flx{% if request.endpoint in ('accueil_bp.accueil', 'accueil_bp.mon_espace') %} flx-lecture{% endif %}"{% endif %}>
     {% if session.user_id and not ui_flux %}
     {# ── Bouton hamburger mobile ── #}
     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">&#9776;</button>
