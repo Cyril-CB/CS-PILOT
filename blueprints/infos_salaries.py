@@ -6,6 +6,7 @@ Fiche de renseignement salarie : email, contrats, documents
 import os
 import re
 import logging
+import sqlite3
 import unicodedata
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
@@ -37,6 +38,10 @@ def _date_iso_valide(valeur):
 DOCUMENTS_DIR = os.path.join(DATA_DIR, 'documents')
 
 TYPES_CONTRAT = ['CDI', 'CDD', 'CEE', 'Autre']
+
+# Valeur de l'entrée « + Ajouter une fonction… » de la liste déroulante : elle
+# ouvre le champ libre et n'est jamais enregistrée telle quelle.
+SENTINELLE_NOUVELLE_FONCTION = '__autre__'
 
 TYPES_DOCUMENT = [
     ('FICHE-RENSEIGNEMENT', 'Fiche de renseignement'),
@@ -223,6 +228,15 @@ def infos_salaries():
                 ORDER BY d.type_document
             ''', (selected_id,)).fetchall()
 
+    # Référentiel des fonctions proposées (table absente tant que la migration
+    # 0064 n'est pas appliquée : la fiche doit rester affichable).
+    try:
+        fonctions = [r['libelle'] for r in conn.execute(
+            'SELECT libelle FROM fonctions ORDER BY ordre, libelle').fetchall()]
+    except sqlite3.Error:
+        logger.warning("Liste des fonctions illisible", exc_info=True)
+        fonctions = []
+
     conn.close()
 
     # Construire un dict des documents existants par type pour le template
@@ -237,6 +251,8 @@ def infos_salaries():
                            contrats=contrats,
                            documents=documents,
                            docs_par_type=docs_par_type,
+                           fonctions=fonctions,
+                           sentinelle_fonction=SENTINELLE_NOUVELLE_FONCTION,
                            types_contrat=TYPES_CONTRAT,
                            types_document=TYPES_DOCUMENT)
 
@@ -299,6 +315,81 @@ def modifier_infos_personnelles():
     conn.close()
 
     flash("Informations personnelles mises a jour.", 'success')
+    return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+
+@infos_salaries_bp.route('/infos_salaries/fonction', methods=['POST'])
+@login_required
+def modifier_fonction():
+    """Enregistrer la fonction d'un salarié.
+
+    La liste proposée est complétable : une fonction saisie dans le champ
+    « Autre » est ajoutée au référentiel commun, pour être ensuite proposée à
+    tout le monde. Elle est normalisée (espaces superflus retirés) et la table
+    porte une contrainte d'unicité, donc un doublon ne crée pas de seconde
+    entrée.
+    """
+    if not _peut_gerer():
+        flash("Acces non autorise.", 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    user_id = request.form.get('user_id', type=int)
+    fonction = request.form.get('fonction', '').strip()
+    nouvelle = request.form.get('nouvelle_fonction', '').strip()
+
+    if not user_id:
+        flash("Salarie invalide.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+    # Le champ libre l'emporte : il n'est rempli que si on veut créer.
+    if nouvelle:
+        fonction = nouvelle
+    elif fonction == SENTINELLE_NOUVELLE_FONCTION:
+        flash("Saisissez le nom de la nouvelle fonction.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    if len(fonction) > 60:
+        flash("La fonction ne doit pas depasser 60 caracteres.", 'error')
+        return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+    conn = get_db()
+    try:
+        if not _est_salarie_visible(conn, user_id):
+            flash("Acces non autorise.", 'error')
+            return redirect(url_for('infos_salaries_bp.infos_salaries'))
+
+        # Hors création, la valeur doit venir du référentiel — ou être celle
+        # déjà portée par le salarié (fonction retirée de la liste depuis).
+        # Le référentiel reste ainsi la seule source des libellés.
+        if fonction and not nouvelle:
+            connue = conn.execute(
+                'SELECT 1 FROM fonctions WHERE libelle = ?', (fonction,)
+            ).fetchone()
+            actuelle = conn.execute(
+                'SELECT fonction FROM users WHERE id = ?', (user_id,)
+            ).fetchone()
+            if not connue and not (actuelle and actuelle['fonction'] == fonction):
+                flash("Fonction inconnue : choisissez-la dans la liste ou "
+                      "ajoutez-la.", 'error')
+                return redirect(
+                    url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
+
+        if nouvelle:
+            ordre = conn.execute(
+                'SELECT COALESCE(MAX(ordre), 0) + 1 AS suivant FROM fonctions'
+            ).fetchone()['suivant']
+            conn.execute(
+                'INSERT OR IGNORE INTO fonctions (libelle, ordre) VALUES (?, ?)',
+                (nouvelle, ordre)
+            )
+
+        conn.execute('UPDATE users SET fonction = ? WHERE id = ?',
+                     (fonction or None, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    flash("Fonction enregistree." if fonction else "Fonction retiree.", 'success')
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))
 
 

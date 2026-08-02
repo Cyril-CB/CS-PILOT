@@ -143,9 +143,9 @@ def _drapeaux(profil, user_id):
 def _identite(profil, user_id):
     """Nom, fonction et initiales affichés en haut à droite.
 
-    Faute de champ « fonction » sur les comptes, la fonction affichée est le
-    profil, précisé par le secteur quand il y en a un — c'est l'information
-    dont dispose réellement l'application.
+    La fonction est celle renseignée sur la fiche du salarié, avec les
+    informations de contrat. Tant qu'elle ne l'est pas, on retombe sur le
+    profil précisé par le secteur — l'information dont dispose l'application.
     """
     prenom = (session.get('prenom') or '').strip()
     nom = (session.get('nom') or '').strip()
@@ -156,16 +156,18 @@ def _identite(profil, user_id):
         conn = get_db()
         try:
             row = conn.execute(
-                '''SELECT s.nom AS secteur FROM users u
+                '''SELECT u.fonction, s.nom AS secteur FROM users u
                    LEFT JOIN secteurs s ON s.id = u.secteur_id
                    WHERE u.id = ?''', (user_id,)
             ).fetchone()
         finally:
             conn.close()
-        if row and row['secteur']:
+        if row and (row['fonction'] or '').strip():
+            fonction = row['fonction'].strip()
+        elif row and row['secteur']:
             fonction = f"{fonction} · {row['secteur']}"
     except Exception:
-        logger.warning("Secteur de l'utilisateur illisible", exc_info=True)
+        logger.warning("Fonction de l'utilisateur illisible", exc_info=True)
 
     initiales = ((prenom[:1] + nom[:1]) or '?').upper()
     return {

@@ -38,6 +38,17 @@ Une échéance à 7 jours ou moins appartient au fil ; au-delà, elle passe à
 l'horizon. Le seuil est `flux_accueil.JOURS_IMMEDIAT`, l'horizon s'arrête à
 `JOURS_HORIZON` (120 jours).
 
+### Le nom et la fonction, en haut à droite
+
+Le nom vient de la session ; la **fonction** est celle renseignée sur la fiche
+du salarié, dans la section Contrats de « Infos salariés ». Elle se choisit
+dans une liste (table `fonctions`, pré-remplie à l'installation) complétable
+via « + Ajouter une fonction… » : la fonction créée est affectée au salarié et
+proposée ensuite pour tous.
+
+Tant qu'aucune fonction n'est renseignée, l'affichage retombe sur le profil,
+précisé par le secteur (« direction · Famille »).
+
 ### Mon espace (`/mon-espace`)
 
 Ouvert par le nom, en haut à droite. Compteurs de congés payés, de congés

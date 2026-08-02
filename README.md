@@ -42,6 +42,10 @@ d'une delegation, le menu lateral est remplace par :
 - **Mon espace** (le nom en haut a droite) : soldes de conges et de
   recuperations, depot d'une demande, suivi de ses demandes.
 
+Le nom est accompagne de la **fonction** du salarie, renseignee avec les
+informations de contrat (liste deroulante completable : Directeur, EJE,
+Auxiliaire Puer., Agent d'accueil, Gardien...).
+
 Les autres pages perdent leur menu et gagnent, en haut, les boutons des pages
 voisines de leur zone, ainsi qu'un flux d'information quand la page s'y prete
 (factures non validees, ecritures a generer, etapes en retard).

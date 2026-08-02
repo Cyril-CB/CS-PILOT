@@ -241,10 +241,28 @@ def init_db():
             adresse TEXT,
             date_naissance TEXT,
             numero_secu TEXT,
+            fonction TEXT,
             FOREIGN KEY (secteur_id) REFERENCES secteurs(id),
             FOREIGN KEY (responsable_id) REFERENCES users(id)
         )
     ''')
+
+    # ===== Liste des fonctions proposees (migration 0064) =====
+    # Renseignee avec les informations de contrat, completable par la direction.
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS fonctions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            libelle TEXT NOT NULL UNIQUE,
+            ordre INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    from migrations import FONCTIONS_INITIALES
+    for ordre, libelle in enumerate(FONCTIONS_INITIALES):
+        cursor.execute(
+            'INSERT OR IGNORE INTO fonctions (libelle, ordre) VALUES (?, ?)',
+            (libelle, ordre)
+        )
 
     # ===== Table des secteurs =====
     cursor.execute('''
