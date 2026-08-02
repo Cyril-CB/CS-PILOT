@@ -1,0 +1,104 @@
+{# Fenêtre « Seuils d'alerte », partagée par le centre de contrôle et l'accueil
+   sans menu. Les seuils décident de ce qui remonte : trésorerie, budget
+   consommé, congés conventionnels à planifier, score de surcharge. Ils
+   alimentent aussi le fil d'actions, d'où leur présence sur l'accueil.
+
+   Attend `seuils`. Expose `window.ccOuvrirSeuils()` pour l'ouvrir. #}
+<div id="ccSeuilsModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)ccFermerSeuils()">
+    <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true">
+        <div class="modal-header">
+            <h3>⚙ Seuils d'alerte</h3>
+            <button class="modal-close" type="button" onclick="ccFermerSeuils()" aria-label="Fermer">&times;</button>
+        </div>
+        <div style="padding:0 1.5rem;">
+            <p style="font-size:0.85rem;color:var(--gray-500);margin:0 0 1.25rem;">
+                Un indicateur ne remonte que s'il franchit son seuil.
+                Ajustez-les à votre structure.</p>
+            <div style="display:flex;flex-direction:column;gap:1rem;">
+                <label class="cc-seuil-label">Trésorerie minimum (€)
+                    <input type="number" id="ccSeuilTreso" value="{{ seuils.treso|int }}" min="0" step="1000"></label>
+                <label class="cc-seuil-label">Budget consommé (%)
+                    <input type="number" id="ccSeuilBudget" value="{{ seuils.budget|int }}" min="0" max="200"></label>
+                <label class="cc-seuil-label">Solde congés conventionnels (jours)
+                    <input type="number" id="ccSeuilConges" value="{{ seuils.conges|int }}" min="0" step="0.5"></label>
+                <label class="cc-seuil-label">Score de surcharge (/100)
+                    <input type="number" id="ccSeuilSurcharge" value="{{ seuils.surcharge|int }}" min="0" max="100"></label>
+                <label class="cc-seuil-label" style="border-top:1px solid var(--gray-200);padding-top:1rem;align-items:flex-start;">
+                    <span>Digest quotidien par email<br>
+                        <span style="font-weight:400;font-size:0.78rem;color:var(--gray-500);">
+                            Envoyé à la direction et à la comptabilité au premier accès après 8 h.
+                            Les personnes en congé ce jour-là ne le reçoivent pas.</span></span>
+                    <input type="checkbox" id="ccSeuilDigest" style="width:auto;margin-top:4px;" {% if seuils.digest %}checked{% endif %}>
+                </label>
+            </div>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;padding:1.25rem 1.5rem 1.5rem;align-items:center;">
+            <span id="ccSeuilsMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>
+            <button class="btn btn-secondary" type="button" onclick="ccFermerSeuils()">Annuler</button>
+            <button class="btn btn-primary" type="button" onclick="ccEnregistrerSeuils()">Enregistrer</button>
+        </div>
+    </div>
+</div>
+
+<style>
+.cc-seuil-label {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; font-size: 0.9rem; font-weight: 600; color: var(--gray-700);
+}
+.cc-seuil-label input {
+    width: 120px; padding: 0.5rem; border: 1px solid var(--gray-300);
+    border-radius: 6px; font-size: 0.9rem; text-align: right;
+}
+</style>
+
+<script>
+(function () {
+    var modal = document.getElementById('ccSeuilsModal');
+    if (!modal) return;
+
+    function signaler(message) {
+        // L'accueil sans menu a ses propres messages éphémères ; ailleurs on
+        // se rabat sur le champ de statut de la fenêtre.
+        if (window.flxToast) { window.flxToast(message); return; }
+        document.getElementById('ccSeuilsMsg').textContent = message;
+    }
+
+    window.ccOuvrirSeuils = function () { modal.style.display = 'flex'; };
+    window.ccFermerSeuils = function () { modal.style.display = 'none'; };
+
+    window.ccEnregistrerSeuils = function () {
+        var msg = document.getElementById('ccSeuilsMsg');
+        msg.textContent = 'Enregistrement…';
+        fetch('/api/dashboard-direction/seuils', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                treso: Number(document.getElementById('ccSeuilTreso').value),
+                budget: Number(document.getElementById('ccSeuilBudget').value),
+                conges: Number(document.getElementById('ccSeuilConges').value),
+                surcharge: Number(document.getElementById('ccSeuilSurcharge').value),
+                digest: document.getElementById('ccSeuilDigest').checked
+            })
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (!d.success) {
+                  msg.textContent = '';
+                  signaler(d.error || 'Enregistrement impossible');
+                  return;
+              }
+              msg.textContent = '✓ Enregistré';
+              // Les seuils décident du contenu affiché : on recharge pour que
+              // la page reflète immédiatement le nouveau réglage.
+              window.location.reload();
+          })
+          .catch(function () {
+              msg.textContent = '';
+              signaler("Erreur — les seuils n'ont pas pu être enregistrés");
+          });
+    };
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && modal.style.display === 'flex') ccFermerSeuils();
+    });
+})();
+</script>

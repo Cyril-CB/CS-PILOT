@@ -53,6 +53,13 @@ Pour la direction et la comptabilité, le fil reprend la file étendue du centre
 de contrôle qu'il remplace : factures assignées à la direction, relance des
 fiches non validées, surcharges, soldes de congés élevés.
 
+Ce sont les **seuils d'alerte** qui décident de ce qui remonte. Comme ils
+façonnent le fil, ils se règlent là où le fil s'affiche : bouton ⚙ à droite de
+l'en-tête de l'accueil, réservé à la direction et à la comptabilité. La fenêtre
+est le gabarit partagé `_seuils_modal.html`, également inclus par le centre de
+contrôle historique — les deux pages règlent donc exactement les mêmes valeurs,
+et il n'y a qu'un seul endroit à modifier pour en ajouter une.
+
 ### Le nom et la fonction, en haut à droite
 
 Le nom vient de la session ; la **fonction** est celle renseignée sur la fiche
@@ -141,7 +148,9 @@ Pour ajouter un flux d'information à une page, écrire un constructeur dans
 
 Les tableaux de bord historiques (`/dashboard_direction`,
 `/dashboard_responsable`, `/dashboard_comptable`) restent accessibles par leur
-URL dans les deux cas.
+URL dans les deux cas. Ils ne figurent pas dans la carte : l'accueil les
+remplace. Rien n'y est pour autant inaccessible — les seuils d'alerte, seul
+réglage qui n'existait que là, sont désormais sur l'accueil.
 
 ## Tests
 

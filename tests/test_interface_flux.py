@@ -510,3 +510,45 @@ def test_une_zone_entierement_fermee_disparait(client, app, sample_users):
     assert 'administration' not in ids
     assert 'comptabilite' not in ids
     assert 'validations' in ids          # celle-ci, il y a droit
+
+
+# ── Seuils d'alerte, réglables depuis l'accueil ────────────────────────────
+
+def test_les_seuils_se_reglent_depuis_l_accueil(admin_client):
+    """L'accueil remplace le centre de contrôle : il en porte aussi les réglages."""
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'ccSeuilsModal' in corps
+    assert 'ccOuvrirSeuils()' in corps
+    assert 'Score de surcharge' in corps
+
+
+def test_le_responsable_n_a_pas_les_seuils(resp_client):
+    """Les seuils pilotent la file étendue : ils ne concernent pas un responsable."""
+    corps = resp_client.get('/accueil').get_data(as_text=True)
+    assert 'ccSeuilsModal' not in corps
+
+
+def test_un_seuil_enregistre_depuis_l_accueil_change_le_fil(admin_client, db, sample_users):
+    """Enregistrer un seuil doit réellement modifier ce que le fil affiche."""
+    with db:
+        db.execute('UPDATE users SET cc_solde = 9 WHERE id = ?',
+                   (sample_users['salarie_id'],))
+
+    # Seuil bas : le solde de congés conventionnels remonte dans le fil.
+    reponse = admin_client.post('/api/dashboard-direction/seuils', json={'conges': 5})
+    assert reponse.status_code == 200
+    assert 'Solde congés conventionnels élevé' in admin_client.get('/accueil').get_data(as_text=True)
+
+    # Seuil relevé au-dessus : il n'a plus lieu d'être signalé.
+    admin_client.post('/api/dashboard-direction/seuils', json={'conges': 20})
+    assert 'Solde congés conventionnels élevé' not in admin_client.get('/accueil').get_data(as_text=True)
+
+
+def test_le_centre_de_controle_partage_le_meme_gabarit(admin_client):
+    """Les deux pages règlent exactement les mêmes valeurs."""
+    accueil = admin_client.get('/accueil').get_data(as_text=True)
+    controle = admin_client.get('/dashboard_direction').get_data(as_text=True)
+    for champ in ('ccSeuilTreso', 'ccSeuilBudget', 'ccSeuilConges',
+                  'ccSeuilSurcharge', 'ccSeuilDigest'):
+        assert champ in accueil, champ
+        assert champ in controle, champ

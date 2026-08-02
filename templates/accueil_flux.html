@@ -17,6 +17,12 @@
         </p>
     </div>
     <div class="flx-compte">
+        {% if seuils %}
+        {# Les seuils décident de ce qui remonte dans le fil : ils se règlent
+           donc là où le fil s'affiche. #}
+        <button type="button" class="flx-icone-btn" onclick="ccOuvrirSeuils()"
+                title="Seuils d'alerte — trésorerie, budget, congés, surcharge">⚙</button>
+        {% endif %}
         <div class="flx-compte-chiffres">
             <div class="flx-compte-valeur"><span id="flxFaites">0</span><span>/{{ nb_actions }}</span></div>
             <div class="flx-compte-label">traitées</div>
@@ -24,6 +30,8 @@
         <div class="flx-anneau" id="flxAnneau"><i>◈</i></div>
     </div>
 </div>
+
+{% if seuils %}{% include '_seuils_modal.html' %}{% endif %}
 
 {# ── Le fil : ce qui attend une décision ── #}
 <div id="flxActions">

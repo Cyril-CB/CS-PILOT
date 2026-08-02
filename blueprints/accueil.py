@@ -113,6 +113,14 @@ def accueil():
     finally:
         conn.close()
 
+    # Les seuils d'alerte façonnent la file étendue : ils se règlent depuis
+    # l'accueil, qui remplace le centre de contrôle où ils vivaient. Seuls la
+    # direction et la comptabilité y ont droit — comme l'API qui les enregistre.
+    seuils = None
+    if profil in ('directeur', 'comptable'):
+        from blueprints.dashboard_direction import _lire_seuils
+        seuils = _lire_seuils()
+
     actions = separer_actions(actions)
     prenom = session.get('prenom') or ''
     salutation = ('Bonjour' if today.hour < 18 else 'Bonsoir')
@@ -125,6 +133,7 @@ def accueil():
         actions=actions,
         nb_actions=len(actions),
         horizon=horizon,
+        seuils=seuils,
     )
 
 
