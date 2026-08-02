@@ -436,3 +436,77 @@ def test_le_calcul_des_jours_ouvres_exclut_les_feries(admin_client, db):
     corps = admin_client.get('/mon-espace').get_data(as_text=True)
     assert '2026-08-15' in corps        # la liste est bien transmise au gabarit
     assert 'FERIES.indexOf' in corps    # …et réellement utilisée dans le calcul
+
+
+# ── Invariant : la carte n'excède jamais le menu latéral ───────────────────
+
+def _liens_du_menu(corps):
+    """Liens réellement rendus dans le menu latéral."""
+    aside = re.search(r'<aside class="sidebar".*?</aside>', corps, re.S)
+    return {h for h in re.findall(r'href="([^"]+)"', aside.group(0) if aside else '')
+            if h.startswith('/')}
+
+
+def _liens_de_la_carte(corps):
+    carte = _carte_embarquee(corps)
+    return {p['lien'] for g in carte['zones'] + carte['directs'] for p in g['pages']}
+
+
+# Pages dont l'écart avec le menu est voulu : « Mon espace » est créé par cette
+# interface, les tableaux de bord historiques sont ce que le flux remplace, et
+# la déconnexion vit dans l'en-tête plutôt que dans la carte.
+_ECARTS_ATTENDUS = {
+    '/',                     # le logo, présent dans les deux en-têtes
+    '/mon-espace',           # créé par cette interface
+    '/logout',               # dans l'en-tête du flux, pas dans la carte
+    '/dashboard', '/dashboard_direction',
+    '/dashboard_responsable', '/dashboard_comptable',
+}
+
+
+@pytest.mark.parametrize('login,mdp,profil', [
+    ('admin', 'Admin1234', 'directeur'),
+    ('resp_test', 'resp123', 'responsable'),
+    ('salarie_test', 'sal123', 'salarie'),
+])
+def test_la_carte_n_ouvre_rien_de_plus_que_le_menu(client, app, db, sample_users,
+                                                   login, mdp, profil):
+    """Garantie centrale : la vue d'ensemble ne montre que des pages autorisées.
+
+    On compare la carte réellement transmise au navigateur (`data-carte`) aux
+    liens réellement rendus dans le menu latéral du même utilisateur. Aucune
+    page ne doit apparaître d'un côté sans l'autre — hors écarts voulus.
+    """
+    from app_options import set_option_bool
+    if profil == 'salarie':   # un salarié ne bascule qu'avec une délégation
+        from blueprints.delegations import save_benevoles_delegations
+        with app.app_context():
+            save_benevoles_delegations([sample_users['salarie_id']],
+                                       sample_users['directeur_id'])
+
+    with app.app_context():
+        set_option_bool('interface_sans_menu_active', False)
+    client.post('/login', data={'login': login, 'password': mdp}, follow_redirects=True)
+    menu = _liens_du_menu(client.get('/dashboard', follow_redirects=True).get_data(as_text=True))
+    assert menu, "le menu latéral attendu est vide"
+
+    with app.app_context():
+        set_option_bool('interface_sans_menu_active', True)
+    carte = _liens_de_la_carte(
+        client.get('/accueil', follow_redirects=True).get_data(as_text=True))
+
+    en_trop = carte - menu - _ECARTS_ATTENDUS
+    assert not en_trop, f"{profil} : pages dans la carte mais pas dans le menu : {sorted(en_trop)}"
+    perdues = menu - carte - _ECARTS_ATTENDUS
+    assert not perdues, f"{profil} : pages du menu absentes de la carte : {sorted(perdues)}"
+
+
+def test_une_zone_entierement_fermee_disparait(client, app, sample_users):
+    """Un responsable n'a aucune page d'administration : la zone n'existe pas."""
+    client.post('/login', data={'login': 'resp_test', 'password': 'resp123'},
+                follow_redirects=True)
+    carte = _carte_embarquee(client.get('/accueil').get_data(as_text=True))
+    ids = {g['id'] for g in carte['zones'] + carte['directs']}
+    assert 'administration' not in ids
+    assert 'comptabilite' not in ids
+    assert 'validations' in ids          # celle-ci, il y a droit
