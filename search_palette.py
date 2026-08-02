@@ -222,18 +222,26 @@ def construire_suggestions(carte, query, verdict=None, limite=10):
     # Le meilleur libellé suffit ; montrer deux lignes identiques crée du doute.
     # L'URL seule ne suffit pas à les reconnaître : le moteur ajoute souvent un
     # paramètre à la page que la carte nomme sans (« /tresorerie » et
-    # « /tresorerie?annee=2026 »), qui ouvrent pourtant le même écran. On
-    # rapproche donc aussi les lignes de même chemin et de même titre — deux
-    # enregistrements distincts partagent leur chemin, jamais leur titre.
-    uniques, urls, ecrans = [], set(), set()
+    # « /tresorerie?annee=2026 »), qui ouvrent pourtant le même écran.
+    #
+    # Ce rapprochement par chemin et titre ne vaut qu'entre sources différentes,
+    # là où la carte et le moteur désignent la même chose. Deux résultats du
+    # moteur ne sont jamais rapprochés ainsi : deux homonymes parfaits portent
+    # le même titre sur le même chemin et ne se distinguent que par leur
+    # `user_id`. Les confondre effacerait un salarié de la liste, alors que le
+    # choix ne lui est proposé que pour les départager.
+    uniques, urls, ecrans = [], set(), {}
     for item in candidats:
         url = item.get('url')
         if url:
+            if url in urls:
+                continue
             ecran = (url.split('?')[0], normaliser(item.get('titre')))
-            if url in urls or ecran in ecrans:
+            source = ecrans.get(ecran)
+            if source is not None and source != item['action']:
                 continue
             urls.add(url)
-            ecrans.add(ecran)
+            ecrans.setdefault(ecran, item['action'])
         uniques.append(item)
         if len(uniques) >= limite:
             break

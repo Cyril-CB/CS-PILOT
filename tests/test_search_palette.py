@@ -99,6 +99,28 @@ def test_deux_enregistrements_du_meme_ecran_restent_distincts():
     assert metiers == ['Facture 880001 — EDF', 'Facture 880002 — EDF']
 
 
+def test_deux_homonymes_parfaits_restent_choisissables():
+    # Même chemin *et* même titre : seuls deux salariés strictement homonymes le
+    # permettent. Le choix leur est justement proposé pour les départager — en
+    # effacer un rendrait sa fiche inatteignable depuis la barre.
+    verdict = {
+        'type': 'choices', 'prompt': 'Plusieurs salariés « Marie Dupont » :',
+        'options': [
+            {'label': 'Marie Dupont', 'sous_titre': 'Famille',
+             'url': '/infos_salaries?user_id=1'},
+            {'label': 'Marie Dupont', 'sous_titre': 'Enfance',
+             'url': '/infos_salaries?user_id=2'},
+        ],
+    }
+    suggestions = construire_suggestions(CARTE, 'salarié Marie Dupont', verdict)
+    metiers = [(s['titre'], s['sous'], s['url'])
+               for s in suggestions if s['action'] == 'metier']
+    assert metiers == [
+        ('Marie Dupont', 'Famille', '/infos_salaries?user_id=1'),
+        ('Marie Dupont', 'Enfance', '/infos_salaries?user_id=2'),
+    ]
+
+
 def test_univers_complet_est_toujours_le_dernier_recours():
     suggestions = construire_suggestions(CARTE, 'zzztotalementinconnu')
     assert len(suggestions) == 1
