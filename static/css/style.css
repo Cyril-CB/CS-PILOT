@@ -4413,7 +4413,13 @@ a.btn-icon:-webkit-any-link {
 /* ── Ossature ─────────────────────────────────────────────────────────── */
 body.flx { background: var(--gray-50); }
 body.flx .main-content.has-sidebar { margin-left: 0; }
-body.flx .container { max-width: 880px; }
+/* Sans menu latéral, la place gagnée doit revenir au contenu : les pages
+   ordinaires (tableaux, listes) s'élargissent au-delà du plafond classique de
+   1400 px, sidebar comprise. Seules les deux pages de lecture — le fil et
+   Mon espace — gardent la colonne étroite du modèle, où une ligne trop longue
+   nuirait à la lecture. */
+body.flx .container { max-width: 1500px; }
+body.flx.flx-lecture .container { max-width: 880px; }
 body.flx footer { display: none; }
 
 .flx-fond { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
@@ -4878,7 +4884,43 @@ body.flx .main-content {
 .flx-ensemble {
     position: fixed; inset: 0; z-index: 80;
     background: radial-gradient(circle at 50% 42%, var(--white) 0%, var(--gray-100) 58%, var(--gray-200) 100%);
-    animation: scaleIn .28s ease;
+    animation: flxVoileEntre .42s cubic-bezier(.22,.72,.2,1);
+}
+@keyframes flxVoileEntre {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+/* Les zones se posent en cascade depuis le centre : l'œil suit l'ouverture au
+   lieu de la subir. Le retard est porté par un style en ligne, calculé par
+   `flux.js` selon la position du nœud. */
+@keyframes flxNoeudEntre {
+    from { opacity: 0; transform: scale(.72); }
+    to   { opacity: 1; transform: scale(1); }
+}
+.flx-ensemble-anime .flx-noeud {
+    animation: flxNoeudEntre .5s cubic-bezier(.22,.72,.2,1) backwards;
+}
+.flx-ensemble-anime .flx-centre { animation: flxNoeudEntre .42s cubic-bezier(.22,.72,.2,1); }
+.flx-ensemble-anime .flx-rayon {
+    animation: flxRayonEntre .55s cubic-bezier(.22,.72,.2,1) backwards;
+    transform-origin: 0 0;
+}
+@keyframes flxRayonEntre { from { opacity: 0; } to { opacity: 1; } }
+.flx-ensemble-anime .flx-ensemble-entete,
+.flx-ensemble-anime .flx-ensemble-pied {
+    animation: flxMonteDoux .55s cubic-bezier(.22,.72,.2,1) backwards;
+    animation-delay: .12s;
+}
+@keyframes flxMonteDoux {
+    from { opacity: 0; transform: translate(-50%, 10px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+}
+/* Respect du réglage système : pas d'animation pour qui n'en veut pas. */
+@media (prefers-reduced-motion: reduce) {
+    .flx-ensemble, .flx-ensemble-anime .flx-noeud, .flx-ensemble-anime .flx-centre,
+    .flx-ensemble-anime .flx-rayon, .flx-ensemble-anime .flx-ensemble-entete,
+    .flx-ensemble-anime .flx-ensemble-pied { animation: none; }
+    .flx-anneau-carte { transition: none; }
 }
 .flx-ensemble-fond { position: absolute; inset: 0; }
 .flx-ensemble-entete {

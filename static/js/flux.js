@@ -331,7 +331,12 @@
         });
         window.addEventListener('resize', dessinerEnsemble);
         latch = null;
-        dessinerEnsemble();
+        dessinerEnsemble(true);
+        /* L'entrée en cascade ne joue qu'à l'ouverture : la classe est retirée
+           une fois posée, pour que déplier une zone reste instantané. */
+        setTimeout(function () {
+            if (ensemble) ensemble.classList.remove('flx-ensemble-anime');
+        }, 1100);
     }
 
     function fermerEnsemble() {
@@ -388,8 +393,16 @@
         }, 280);
     }
 
-    function dessinerEnsemble() {
+    function dessinerEnsemble(entree) {
         if (!ensemble) return;
+        /* `entree === true` et non `entree` : cette fonction sert aussi de
+           gestionnaire de `resize`, qui lui passe un UIEvent — toujours vrai.
+           Sans ce test strict, un redimensionnement après l'ouverture
+           réarmerait l'animation d'entrée sans que rien ne la retire, et
+           déplier une zone rejouerait la cascade au lieu d'être instantané.
+           Le gestionnaire garde volontairement cette référence, pour que
+           `removeEventListener` puisse le retirer à la fermeture. */
+        if (entree === true) ensemble.classList.add('flx-ensemble-anime');
         var W = window.innerWidth, H = window.innerHeight;
         var HAUT = H < 640 ? 116 : 162, BAS = H < 640 ? 56 : 84;
         var dGrand = 68, dPetit = 56;
@@ -456,6 +469,7 @@
         places.forEach(function (p) {
             var r = document.createElement('div');
             r.className = 'flx-rayon';
+            r.style.animationDelay = (90 + places.indexOf(p) * 45) + 'ms';
             r.style.width = Math.max(16, p.dist - (p.interieur ? dGrand : dPetit) / 2 - 10) + 'px';
             r.style.transform = 'rotate(' + p.deg + 'deg)';
             r.style.opacity = (actif && actif.g.id !== p.g.id) ? '0.15' : '1';
@@ -482,6 +496,7 @@
             n.style.width = larg + 'px';
             n.style.opacity = actif ? (ici ? '1' : '0.32') : '1';
             n.style.pointerEvents = (actif && !ici) ? 'none' : 'auto';
+            n.style.animationDelay = (120 + places.indexOf(p) * 45) + 'ms';
             n.innerHTML =
                 '<span class="flx-noeud-disque" style="width:' + taille + 'px;height:' + taille + 'px">' +
                 ech(p.g.icone) +

@@ -720,3 +720,63 @@ def test_le_drapeau_suit_la_liste_d_autorisation_de_l_api(app):
         with app.app_context():
             assert (interface_flux.recherche_globale_autorisee(profil)
                     is (profil in PROFILS_AUTORISES)), profil
+
+
+# ── Retours d'usage : largeur, téléphone ───────────────────────────────────
+
+UA_BUREAU = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+             '(KHTML, like Gecko) Chrome/120.0 Safari/537.36')
+UA_IPHONE = ('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
+             'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1')
+UA_ANDROID = ('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36')
+UA_IPAD = ('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 '
+           '(KHTML, like Gecko) Version/17.0 Safari/605.1.15')
+
+
+def test_les_pages_ordinaires_recuperent_la_place_du_menu(admin_client):
+    """Un tableau ne doit pas être plus à l'étroit qu'avec le menu latéral."""
+    lecture = admin_client.get('/accueil').get_data(as_text=True)
+    tableau = admin_client.get('/presence-effectif').get_data(as_text=True)
+    # La colonne étroite du modèle ne concerne que les pages de lecture.
+    assert 'class="flx flx-lecture"' in lecture
+    assert 'class="flx"' in tableau and 'flx-lecture' not in tableau
+
+
+@pytest.mark.parametrize('agent', [UA_IPHONE, UA_ANDROID])
+def test_le_telephone_garde_l_interface_classique(client, sample_users, agent):
+    """Sur téléphone, le menu latéral reste plus confortable."""
+    client.post('/login', data={'login': 'admin', 'password': 'Admin1234'},
+                follow_redirects=True, headers={'User-Agent': agent})
+    corps = client.get('/dashboard', follow_redirects=True,
+                       headers={'User-Agent': agent}).get_data(as_text=True)
+    assert 'class="sidebar"' in corps
+    assert 'flx-entete' not in corps
+    # Et l'accueil sans menu n'est pas atteignable depuis le téléphone.
+    reponse = client.get('/accueil', headers={'User-Agent': agent})
+    assert reponse.status_code == 302
+    # Inutile de lui proposer une bascule qui ne changerait rien.
+    assert 'Essayer la nouvelle interface' not in corps
+
+
+@pytest.mark.parametrize('agent', [UA_BUREAU, UA_IPAD])
+def test_le_bureau_et_la_tablette_gardent_le_flux(client, sample_users, agent):
+    """Un iPad récent annonce un Safari de bureau : son écran suffit."""
+    client.post('/login', data={'login': 'admin', 'password': 'Admin1234'},
+                follow_redirects=True, headers={'User-Agent': agent})
+    corps = client.get('/dashboard', follow_redirects=True,
+                       headers={'User-Agent': agent}).get_data(as_text=True)
+    assert 'flx-entete' in corps
+    assert 'class="sidebar"' not in corps
+
+
+def test_le_meme_compte_suit_l_appareil(client, sample_users):
+    """Flux au bureau, menu classique sur le téléphone — sans rien régler."""
+    client.post('/login', data={'login': 'admin', 'password': 'Admin1234'},
+                follow_redirects=True, headers={'User-Agent': UA_BUREAU})
+    bureau = client.get('/dashboard', follow_redirects=True,
+                        headers={'User-Agent': UA_BUREAU}).get_data(as_text=True)
+    telephone = client.get('/dashboard', follow_redirects=True,
+                           headers={'User-Agent': UA_IPHONE}).get_data(as_text=True)
+    assert 'flx-entete' in bureau and 'class="sidebar"' not in bureau
+    assert 'class="sidebar"' in telephone and 'flx-entete' not in telephone
