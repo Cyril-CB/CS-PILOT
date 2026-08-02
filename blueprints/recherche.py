@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 PROFILS_AUTORISES = ('directeur', 'comptable', 'responsable')
 
 
+def _lire_query_json():
+    """Lit une requête JSON objet contenant une chaîne `query`, sinon None."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    query = data.get('query', '')
+    if not isinstance(query, str):
+        return None
+    return query.strip()[:200]
+
+
 def _journaliser_recherche(conn, terme, verdict):
     """Trace la recherche (terme + a-t-elle abouti) — best-effort, jamais bloquant.
 
@@ -57,8 +68,11 @@ def api_search():
     if session.get('profil') not in PROFILS_AUTORISES:
         return jsonify({'type': 'none', 'message': 'Accès non autorisé', 'exemples': []}), 403
 
-    data = request.get_json(silent=True) or {}
-    query = (data.get('query') or '').strip()[:200]
+    query = _lire_query_json()
+    if query is None:
+        return jsonify({
+            'type': 'none', 'message': 'Requête JSON invalide', 'exemples': [],
+        }), 400
 
     conn = get_db()
     try:
@@ -84,8 +98,11 @@ def api_search():
 @login_required
 def api_search_suggestions():
     """Retourne une palette unifiée sans journaliser les frappes intermédiaires."""
-    data = request.get_json(silent=True) or {}
-    query = (data.get('query') or '').strip()[:200]
+    query = _lire_query_json()
+    if query is None:
+        return jsonify({
+            'suggestions': [], 'error': 'Requête JSON invalide',
+        }), 400
     profil = session.get('profil')
     user_id = session.get('user_id')
 

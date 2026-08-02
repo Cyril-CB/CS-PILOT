@@ -217,9 +217,7 @@
         window.location = r.url;
     }
 
-    function chargerSuggestions(q) {
-        var numero = ++numeroRecherche;
-        if (controleurRecherche) controleurRecherche.abort();
+    function chargerSuggestions(q, numero) {
         controleurRecherche = typeof AbortController === 'undefined' ? null : new AbortController();
         fetch(URL_RECHERCHE, {
             method: 'POST',
@@ -247,9 +245,13 @@
     function mettreAJourSuggestions() {
         var q = champ ? champ.value.trim() : '';
         clearTimeout(temporisateurRecherche);
+        /* Invalider la réponse précédente dès la frappe, pas au terme du délai
+           de 140 ms : elle ne doit jamais pouvoir repeupler la palette entre
+           deux requêtes. */
+        var numero = ++numeroRecherche;
+        if (controleurRecherche) controleurRecherche.abort();
+        controleurRecherche = null;
         if (!q) {
-            ++numeroRecherche;
-            if (controleurRecherche) controleurRecherche.abort();
             selection = 0;
             rendrePalette(propositionsVides());
             return;
@@ -257,7 +259,9 @@
         var corps = palette && palette.querySelector('#flxPaletteCorps');
         if (corps) corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
         resultats = [];
-        temporisateurRecherche = setTimeout(function () { chargerSuggestions(q); }, 140);
+        temporisateurRecherche = setTimeout(function () {
+            chargerSuggestions(q, numero);
+        }, 140);
     }
 
     /* ── Vue d'ensemble : géométrie ───────────────────────────────────── */

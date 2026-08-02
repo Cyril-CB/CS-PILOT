@@ -339,6 +339,17 @@ class TestNouvellesIntentions:
 
 
 class TestApiSearch:
+    def test_json_invalide_est_refuse_proprement(
+            self, admin_client, sample_users):
+        corps_invalides = ('"facture"', '[1]', '{"query": 1}', '{')
+        for url in ('/api/search', '/api/search/suggestions'):
+            for corps in corps_invalides:
+                r = admin_client.post(
+                    url, data=corps, content_type='application/json'
+                )
+                assert r.status_code == 400, (url, corps)
+                assert r.is_json
+
     def test_directeur_ok(self, app, db, admin_client, sample_users):
         with app.app_context():
             _seed(db)
