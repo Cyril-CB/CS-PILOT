@@ -133,6 +133,41 @@ est toujours **« Voir tout l'espace »**, même si aucun résultat précis n'a 
 trouvé. Accents, singulier/pluriel, formulations conversationnelles et fautes
 proches sont normalisés par `search_palette.py`.
 
+Quand la requête **nomme** une page — son libellé exact, une de ses
+`expressions`, ou son début — cette page passe devant l'interprétation du
+moteur. « congés à valider » désigne la page de validation, là où le moteur n'y
+voit que le mot-clé « congé » et proposerait les absences. Le résultat du moteur
+reste offert, une ligne plus bas. Un enregistrement précis, lui, n'est jamais
+concurrencé : aucune page ne porte le nom d'une facture ou d'un salarié.
+
+## La richesse du dictionnaire, mesurée
+
+Le vocabulaire est la première cause de déception d'une barre de recherche : une
+requête qui ne trouve rien se lit comme une panne. `tests/test_search_dictionnaire.py`
+en fait donc une propriété mesurée, pas une impression. Il fait passer un corpus
+de **142 formulations telles qu'un utilisateur les tape** — mot unique, pluriel,
+phrase parlée, jargon du secteur, abréviation, faute de frappe — et vérifie où
+atterrit chacune. La comparaison porte sur le chemin d'arrivée : la page
+« Compte de résultat & bilan » de la carte et le résultat « Compte de résultat
+2026 » du moteur ouvrent le même écran et comptent tous deux comme une réussite.
+
+État actuel : **98 % des requêtes mènent en première proposition, 100 % dans les
+trois premières, aucune ne reste sans réponse.** Le test verrouille des seuils
+un peu plus bas (92 % et 98 %) pour qu'une page nouvelle ne fasse pas tomber la
+suite avant d'avoir reçu son vocabulaire.
+
+Pour enrichir le dictionnaire, la boucle est toujours la même :
+
+1. relever dans le journal de recherche (Sécurité → Barre intelligente) les
+   termes restés **sans résultat** — c'est exactement ce pour quoi il existe ;
+2. les ajouter au corpus du test, avec la page qu'ils devraient atteindre ;
+3. compléter `mots=` ou `expressions=` de cette page dans `navigation.py`
+   jusqu'à ce que le test repasse.
+
+Les mots qui ne portent que la formulation (« qui », « est », « pas », « au »…)
+n'ont pas à être déclarés page par page : ils sont écartés une fois pour toutes
+dans `search_palette._MOTS_CONVERSATION`.
+
 La recherche métier est ouverte à la **direction, à la comptabilité et aux
 responsables**. Pour ces derniers, le moteur limite les salariés à leur équipe,
 les secteurs à leur secteur, les factures à ce secteur et les subventions à
