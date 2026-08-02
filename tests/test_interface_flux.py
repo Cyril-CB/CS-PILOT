@@ -684,18 +684,15 @@ def test_la_recherche_metier_est_offerte_a_qui_l_api_autorise(admin_client):
     assert admin_client.post('/api/search', json={'query': 'budget'}).status_code == 200
 
 
-def test_le_responsable_garde_la_navigation_sans_recherche_metier(resp_client):
-    """`/api/search` lui répond 403 : la palette ne doit pas la lui proposer.
-
-    Sa barre reste utile — elle ouvre zones et pages, ce qui remplace le menu.
-    """
-    assert resp_client.post('/api/search', json={'query': 'budget'}).status_code == 403
+def test_le_responsable_a_une_recherche_metier_limitee(resp_client):
+    """Le responsable accède au moteur, dont les résultats suivent sa carte."""
+    assert resp_client.post('/api/search', json={'query': 'budget'}).status_code == 200
     corps = resp_client.get('/accueil').get_data(as_text=True)
-    assert _drapeau_recherche(corps) is False
-    assert 'Où voulez-vous aller' in corps
-    # La navigation locale, elle, est bien alimentée.
+    assert _drapeau_recherche(corps) is True
+    assert 'Que voulez-vous faire' in corps
     carte = _carte_embarquee(corps)
     assert carte['zones'], 'la palette du responsable serait vide'
+    assert '/api/search/suggestions' in corps
 
 
 def test_le_salarie_delegue_garde_la_navigation_sans_recherche_metier(

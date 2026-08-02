@@ -1,9 +1,13 @@
 """
 Blueprint recherche_bp — API de la barre de recherche intelligente.
 
-POST /api/search {query} → verdict de routage (redirect | choices | none),
-calculé par le moteur pur search_engine.analyser_recherche. Accès réservé à la
-direction et à la comptabilité (comme les tableaux de bord qui l'affichent).
+POST /api/search {query} → verdict de routage (redirect | choices | none).
+POST /api/search/suggestions {query} → pages et enregistrements déjà classés.
+
+La recherche métier est ouverte aux responsables depuis que les entités et les
+destinations sont filtrées sur leur périmètre. La route de suggestions reste
+ouverte à tout utilisateur connecté : les autres profils n'y reçoivent que leur
+carte de navigation, déjà filtrée par leurs droits.
 CSRF est injecté automatiquement par base.html.
 """
 import logging
@@ -12,12 +16,24 @@ from flask import Blueprint, request, session, jsonify
 from database import get_db
 from utils import login_required, aujourd_hui, maintenant
 from search_engine import analyser_recherche, anonymiser_terme_salaries
+from search_palette import construire_suggestions
 
 recherche_bp = Blueprint('recherche_bp', __name__)
 
 logger = logging.getLogger(__name__)
 
-PROFILS_AUTORISES = ('directeur', 'comptable')
+PROFILS_AUTORISES = ('directeur', 'comptable', 'responsable')
+
+
+def _lire_query_json():
+    """Lit une requête JSON objet contenant une chaîne `query`, sinon None."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    query = data.get('query', '')
+    if not isinstance(query, str):
+        return None
+    return query.strip()[:200]
 
 
 def _journaliser_recherche(conn, terme, verdict):
@@ -52,15 +68,58 @@ def api_search():
     if session.get('profil') not in PROFILS_AUTORISES:
         return jsonify({'type': 'none', 'message': 'Accès non autorisé', 'exemples': []}), 403
 
-    data = request.get_json(silent=True) or {}
-    query = (data.get('query') or '').strip()
+    query = _lire_query_json()
+    if query is None:
+        return jsonify({
+            'type': 'none', 'message': 'Requête JSON invalide', 'exemples': [],
+        }), 400
 
     conn = get_db()
     try:
-        verdict = analyser_recherche(conn, query, session.get('profil'), aujourd_hui())
+        from interface_flux import (carte_pour_utilisateur,
+                                    endpoints_recherche_autorises)
+        profil = session.get('profil')
+        user_id = session.get('user_id')
+        carte = carte_pour_utilisateur(profil, user_id)
+        verdict = analyser_recherche(
+            conn, query, profil, aujourd_hui(), user_id=user_id,
+            endpoints_autorises=endpoints_recherche_autorises(
+                profil, user_id, carte),
+        )
         if query:
             _journaliser_recherche(conn, query, verdict)
     finally:
         conn.close()
 
     return jsonify(verdict)
+
+
+@recherche_bp.route('/api/search/suggestions', methods=['POST'])
+@login_required
+def api_search_suggestions():
+    """Retourne une palette unifiée sans journaliser les frappes intermédiaires."""
+    query = _lire_query_json()
+    if query is None:
+        return jsonify({
+            'suggestions': [], 'error': 'Requête JSON invalide',
+        }), 400
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+
+    from interface_flux import (carte_pour_utilisateur,
+                                endpoints_recherche_autorises,
+                                recherche_globale_autorisee)
+    carte = carte_pour_utilisateur(profil, user_id)
+    verdict = None
+    if query and recherche_globale_autorisee(profil):
+        conn = get_db()
+        try:
+            verdict = analyser_recherche(
+                conn, query, profil, aujourd_hui(), user_id=user_id,
+                endpoints_autorises=endpoints_recherche_autorises(
+                    profil, user_id, carte),
+            )
+        finally:
+            conn.close()
+
+    return jsonify({'suggestions': construire_suggestions(carte, query, verdict)})

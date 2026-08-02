@@ -307,7 +307,7 @@ ROUTES_SENSIBLES = [
     RouteSensible('email_test', '/api/email/test', 'POST',
                   ('directeur', 'comptable'), REFUS_403),
     RouteSensible('recherche_globale', '/api/search', 'POST',
-                  ('directeur', 'comptable'), REFUS_403),
+                  ('directeur', 'comptable', 'responsable'), REFUS_403),
 
     # ── Suivi des heures de bénévolat ────────────────────────────────────────
     # Le calendrier des activités est commun à l'association : un responsable,

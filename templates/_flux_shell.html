@@ -12,6 +12,7 @@
      data-carte="{{ nav_carte|tojson|forceescape }}"
      data-initiales="{{ nav_identite.initiales }}"
      data-accueil="{{ url_for('accueil_bp.accueil') }}"
+     data-recherche-url="{{ url_for('recherche_bp.api_search_suggestions') }}"
      data-recherche-globale="{{ '1' if nav_recherche_globale else '0' }}"
      {% if nav_zone %}data-zone="{{ nav_zone.id }}"{% endif %}></div>
 
@@ -64,4 +65,4 @@
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/flux.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='js/flux.js') }}?v=2"></script>

@@ -116,10 +116,10 @@ def recherche_globale_autorisee(profil):
     La barre intelligente propose deux choses : la navigation locale — zones et
     pages, qui remplace le menu et vaut pour tout le monde — et la recherche
     métier, qui route vers une facture, un fournisseur, un budget, la fiche
-    temps d'un salarié… Cette dernière n'a jamais existé que sur les tableaux
-    de bord direction et comptabilité, et son moteur ne filtre pas ses verdicts
-    par profil. On lit la liste d'autorisation à la source, dans le blueprint
-    qui la fait respecter, pour que la palette et l'API ne divergent jamais.
+    temps d'un salarié… On lit la liste d'autorisation à la source, dans le
+    blueprint qui la fait respecter, pour que la palette et l'API ne divergent
+    jamais. Les responsables y figurent depuis que le moteur cadre leurs
+    entités et filtre ses destinations par la carte de navigation.
     """
     try:
         from blueprints.recherche import PROFILS_AUTORISES
@@ -127,6 +127,34 @@ def recherche_globale_autorisee(profil):
     except Exception:
         logger.warning("Profils de recherche illisibles", exc_info=True)
         return False
+
+
+def carte_pour_utilisateur(profil, user_id):
+    """Construit la même carte filtrée pour une page ou pour l'API de recherche."""
+    return navigation.carte_navigation(_drapeaux(profil, user_id))
+
+
+def endpoints_recherche_autorises(profil, user_id, carte=None):
+    """Destinations métier autorisées, ou ``None`` pour le périmètre complet.
+
+    Direction et comptabilité conservent le moteur transverse historique. Pour
+    un responsable, la carte est la source de vérité et le détail d'une facture
+    est autorisé dès lors que sa page d'approbation l'est ; le moteur filtre en
+    plus le numéro sur le secteur du responsable.
+    """
+    if profil in ('directeur', 'comptable'):
+        return None
+    if profil != 'responsable':
+        return set()
+    carte = carte or carte_pour_utilisateur(profil, user_id)
+    endpoints = {
+        page['endpoint']
+        for groupe in carte.get('zones', []) + carte.get('directs', [])
+        for page in groupe.get('pages', [])
+    }
+    if 'factures_bp.approbation_factures' in endpoints:
+        endpoints.add('factures_bp.detail_facture')
+    return endpoints
 
 
 def _drapeaux(profil, user_id):
@@ -255,8 +283,7 @@ def contexte():
                                  and navigation.est_eligible(profil, user_id)),
         }
     else:
-        drapeaux = _drapeaux(profil, user_id)
-        carte = navigation.carte_navigation(drapeaux)
+        carte = carte_pour_utilisateur(profil, user_id)
         zone, page = navigation.localiser(carte, request.endpoint)
         donnees = {
             'ui_flux': True,

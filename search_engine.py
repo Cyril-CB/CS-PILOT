@@ -1,6 +1,6 @@
 """
-Moteur de la barre de recherche intelligente (tableaux de bord direction /
-comptable).
+Moteur de la barre de recherche intelligente (direction, comptabilité et
+responsables dans leur périmètre).
 
 100 % règles (déterministe, testable, sans IA). Une requête est analysée pour
 détecter une intention (mot-clé + entité + période) et renvoyer un verdict :
@@ -9,14 +9,16 @@ détecter une intention (mot-clé + entité + période) et renvoyer un verdict :
 - {'type': 'choices',  'prompt': ..., 'options': [{'label','sous_titre','url'}]}
 - {'type': 'none',     'message': ..., 'exemples': [...]}
 
-Le module est pur (aucun accès `session`/`request`) : il reçoit `conn`, la
-requête, le profil et la date du jour. Les URLs sont construites avec `url_for`
-(nécessite un contexte d'application — les tests utilisent
-`app.test_request_context()`, comme dashboard_actions.py).
+Le module n'accède ni à `session` ni à `request` : il reçoit `conn`, la requête,
+le profil, l'identifiant utilisateur et la date du jour. Les URLs sont
+construites avec `url_for` (nécessite un contexte d'application — les tests
+utilisent `app.test_request_context()`, comme dashboard_actions.py).
 """
 import re
 import unicodedata
-from flask import url_for
+from urllib.parse import urlsplit
+
+from flask import current_app, url_for
 
 from utils import NOMS_MOIS
 
@@ -130,11 +132,27 @@ def _resoudre_fournisseur(conn, terme):
     return exact or prefixe
 
 
-def _resoudre_secteur(conn, terme):
+def _secteur_responsable(conn, profil, user_id):
+    if profil != 'responsable' or not user_id:
+        return None
+    row = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (user_id,)).fetchone()
+    return row['secteur_id'] if row else None
+
+
+def _resoudre_secteur(conn, terme, profil=None, user_id=None):
     terme_n = _normaliser(terme)
     if not terme_n:
         return []
-    rows = conn.execute('SELECT id, nom, synonymes FROM secteurs ORDER BY nom').fetchall()
+    secteur_id = _secteur_responsable(conn, profil, user_id)
+    if profil == 'responsable':
+        if not secteur_id:
+            return []
+        rows = conn.execute(
+            'SELECT id, nom, synonymes FROM secteurs WHERE id = ? ORDER BY nom',
+            (secteur_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute('SELECT id, nom, synonymes FROM secteurs ORDER BY nom').fetchall()
     exact, prefixe = [], []
     for r in rows:
         termes = [_normaliser(r['nom'])]
@@ -149,16 +167,29 @@ def _resoudre_secteur(conn, terme):
     return exact or prefixe
 
 
-def _resoudre_salarie(conn, terme):
+def _resoudre_salarie(conn, terme, profil=None, user_id=None):
     terme_n = _normaliser(terme)
     if not terme_n:
         return []
     mots = terme_n.split()
-    rows = conn.execute(
+    sql = (
         "SELECT u.id, u.nom, u.prenom, s.nom AS secteur_nom "
         "FROM users u LEFT JOIN secteurs s ON u.secteur_id = s.id "
-        "WHERE u.actif = 1 AND u.profil != 'prestataire' ORDER BY u.nom, u.prenom"
-    ).fetchall()
+        "WHERE u.actif = 1 AND u.profil != 'prestataire'"
+    )
+    params = []
+    if profil == 'responsable':
+        secteur_id = _secteur_responsable(conn, profil, user_id)
+        sql += ' AND (u.id = ? OR u.responsable_id = ?'
+        params.extend((user_id, user_id))
+        if secteur_id:
+            sql += ' OR u.secteur_id = ?'
+            params.append(secteur_id)
+        sql += ')'
+    elif profil not in (None, 'directeur', 'comptable'):
+        sql += ' AND u.id = ?'
+        params.append(user_id)
+    rows = conn.execute(sql + ' ORDER BY u.nom, u.prenom', params).fetchall()
     exact, prefixe = [], []
     for r in rows:
         nom_n = _normaliser(r['nom'] or '')
@@ -226,26 +257,58 @@ def _resoudre_action(conn, terme):
     return [r for r in rows if _normaliser(r['nom']).startswith(terme_n)]
 
 
-def _resoudre_subvention(conn, terme):
+def _resoudre_subvention(conn, terme, profil=None, user_id=None):
     terme_n = _normaliser(terme)
     if not terme_n or len(terme_n) < 2:
         return []
-    rows = conn.execute('SELECT id, nom, annee_action FROM subventions ORDER BY nom').fetchall()
+    if profil == 'responsable':
+        # Certaines bases de test ou installations en cours de migration n'ont
+        # pas encore les sous-éléments. Les attributions du parent restent alors
+        # utilisables au lieu de rendre toute la barre indisponible.
+        table_sous_elements = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='subventions_sous_elements'"
+        ).fetchone()
+        if table_sous_elements:
+            rows = conn.execute(
+                '''SELECT DISTINCT s.id, s.nom, s.annee_action
+                   FROM subventions s
+                   LEFT JOIN subventions_sous_elements se ON se.subvention_id = s.id
+                   WHERE s.assignee_1_id = ? OR s.assignee_2_id = ? OR se.assignee_id = ?
+                   ORDER BY s.nom''',
+                (user_id, user_id, user_id),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                '''SELECT id, nom, annee_action FROM subventions
+                   WHERE assignee_1_id = ? OR assignee_2_id = ? ORDER BY nom''',
+                (user_id, user_id),
+            ).fetchall()
+    else:
+        rows = conn.execute('SELECT id, nom, annee_action FROM subventions ORDER BY nom').fetchall()
     exact = [r for r in rows if _normaliser(r['nom']) == terme_n]
     if exact:
         return exact
     return [r for r in rows if terme_n in _normaliser(r['nom'])]
 
 
-def _resoudre_facture_numero(conn, numero):
+def _resoudre_facture_numero(conn, numero, profil=None, user_id=None):
     num = (numero or '').strip()
     if not num:
         return []
-    return conn.execute(
+    sql = (
         'SELECT f.id, f.numero_facture, f.date_facture, fr.nom AS fournisseur_nom '
         'FROM factures f LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id '
-        'WHERE f.numero_facture = ? ORDER BY f.date_facture DESC', (num,)
-    ).fetchall()
+        'WHERE f.numero_facture = ?'
+    )
+    params = [num]
+    if profil == 'responsable':
+        secteur_id = _secteur_responsable(conn, profil, user_id)
+        if not secteur_id:
+            return []
+        sql += ' AND f.secteur_id = ?'
+        params.append(secteur_id)
+    return conn.execute(sql + ' ORDER BY f.date_facture DESC', params).fetchall()
 
 
 # ── Constructeurs de verdicts ──
@@ -309,6 +372,9 @@ _KW_HEURES = {'heure', 'heures', 'temps'}
 _KW_CONTRAT = {'contrat', 'contrats', 'cdd', 'cdi'}
 _KW_PLANNING = {'planning', 'plannings', 'horaire', 'horaires'}
 _KW_SALLES = {'salle', 'salles', 'reservation', 'reservations'}
+_KW_FOURNISSEUR = {'fournisseur', 'fournisseurs', 'prestataire', 'prestataires'}
+_KW_SECTEUR = {'secteur', 'secteurs', 'service', 'services'}
+_KW_ACTION = {'action', 'actions', 'activite', 'activites'}
 
 # Nombre d'années passées présélectionnables par la page « Budget action »
 # (bilan_action.py : annees = current+1 … current-4). Au-delà (année réalisée
@@ -333,11 +399,28 @@ _RE_SOLDE_CONGE = re.compile(
 )
 
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
-_MOTS_OUTILS = {'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
-                'ouvre', 'ouvrir', 'les', 'la', 'le', 'des', 'du', 'de', 'mes', 'mon', 'ma'}
+_MOTS_OUTILS = {
+    'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
+    'ouvre', 'ouvrir', 'retrouve', 'retrouver', 'cherche', 'chercher', 'trouve',
+    'trouver', 'aller', 'vais', 'veut', 'veux', 'peux', 'souhaite', 'souhaiter',
+    'aimerais', 'voudrais', 'donne', 'emmene', 'est', 'ce', 'que', 'ou', 'moi',
+    'tu', 'je', 'les', 'la', 'le', 'des', 'du', 'de', 'mes', 'mon', 'ma', 'un',
+    'une',
+}
+_MOTS_LIAISON = {'a', 'au', 'aux', 'chez', 'dans', 'de', 'des', 'du', 'en',
+                 'la', 'le', 'les', 'pour', 'sur', 'un', 'une'}
 
 
-def analyser_recherche(conn, query, profil, today):
+def _nettoyer_complement(texte, mots_type=()):
+    """Retire les liaisons de « heures de Fatou » ou « budget du secteur X »."""
+    tokens = _normaliser(texte).split()
+    interdits = _MOTS_LIAISON | set(mots_type)
+    while tokens and tokens[0] in interdits:
+        tokens.pop(0)
+    return ' '.join(tokens)
+
+
+def _analyser_recherche(conn, query, profil, today, user_id=None):
     """Analyse une requête et renvoie un verdict de routage. Fonction pure."""
     q = (query or '').strip()
     if not q or q in ('?', 'aide', 'help'):
@@ -384,20 +467,25 @@ def analyser_recherche(conn, query, profil, today):
 
     # ── A. Compta / finance ──
     if kw in _KW_FACTURE:
-        return _intention_facture(conn, apres_kw, mois, annee_eff)
+        return _intention_facture(conn, _nettoyer_complement(apres_kw), mois, annee_eff,
+                                  profil, user_id)
     if kw in _KW_BUDGET or kw in _KW_PREV:
-        return _intention_budget(conn, kw, apres_kw, annee_eff, annee_explicite, today)
+        terme = _nettoyer_complement(apres_kw, _KW_SECTEUR | _KW_ACTION)
+        return _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today,
+                                 profil, user_id)
     if kw in _KW_TRESO or 'tresorerie' in reste:
         params = {'annee': annee_eff}
         if mois:
             params['mois'] = mois
         return _redirect(url_for('tresorerie_bp.tresorerie', **params), 'Trésorerie')
     if kw in _KW_SUBV:
-        return _intention_subvention(conn, apres_kw, annee, annee_explicite)
+        return _intention_subvention(conn, _nettoyer_complement(apres_kw), annee,
+                                     annee_explicite, profil, user_id)
     if kw == 'bilan':
         # « bilan » seul → compte-résultat (bilan de la structure) ; « bilan <secteur|action> »
         # → bilan-secteurs (consultation).
-        return _intention_bilan(conn, apres_kw, annee_eff)
+        return _intention_bilan(conn, _nettoyer_complement(
+            apres_kw, _KW_SECTEUR | _KW_ACTION), annee_eff, profil, user_id)
     if kw in ('cr', 'resultat'):
         return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='cr'),
                          f'Compte de résultat {annee_eff}')
@@ -409,12 +497,26 @@ def analyser_recherche(conn, query, profil, today):
                          'Plan comptable général')
     if kw in _KW_SALLES:
         return _redirect(url_for('salles_bp.salles'), 'Réservation de salles')
+    if kw in _KW_FOURNISSEUR:
+        terme = _nettoyer_complement(apres_kw)
+        return _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois,
+                                     today, profil, user_id, types=('fournisseur',))
+    if kw in _KW_SECTEUR:
+        terme = _nettoyer_complement(apres_kw)
+        return _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois,
+                                     today, profil, user_id, types=('secteur',))
+    if kw in _KW_ACTION:
+        terme = _nettoyer_complement(apres_kw)
+        return _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois,
+                                     today, profil, user_id, types=('action',))
 
     # ── B. RH ──
     if kw in _KW_CONTRAT:
-        return _intention_contrat(conn, kw, apres_kw, mois, annee_eff, today)
+        return _intention_contrat(conn, kw, _nettoyer_complement(apres_kw), mois,
+                                  annee_eff, today, profil, user_id)
     if kw in _KW_ABSENCE:
-        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        apres_kw = _nettoyer_complement(apres_kw)
+        salaries = _resoudre_salarie(conn, apres_kw, profil, user_id) if apres_kw else []
         if apres_kw and salaries:
             return _salarie_ou_choix(
                 salaries,
@@ -425,14 +527,16 @@ def analyser_recherche(conn, query, profil, today):
         # postes_alisfa n'a pas de filtre par personne : la pesée d'un salarié est
         # affichée sur sa fiche → « pesée Marie » y renvoie ; « pesée » seul ouvre
         # l'outil de pesée ALISFA.
-        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        apres_kw = _nettoyer_complement(apres_kw)
+        salaries = _resoudre_salarie(conn, apres_kw, profil, user_id) if apres_kw else []
         if apres_kw and salaries:
             return _salarie_ou_choix(
                 salaries, lambda uid: _url_salarie(uid),
                 f"Plusieurs salariés « {apres_kw} » — pesée de :")
         return _redirect(url_for('pesee_alisfa_bp.postes_alisfa'), 'Pesée comptable (ALISFA)')
     if kw in _KW_HEURES:
-        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        apres_kw = _nettoyer_complement(apres_kw)
+        salaries = _resoudre_salarie(conn, apres_kw, profil, user_id) if apres_kw else []
         if apres_kw and salaries:
             return _salarie_ou_choix(
                 salaries,
@@ -441,7 +545,8 @@ def analyser_recherche(conn, query, profil, today):
                 f"Plusieurs salariés « {apres_kw} » — fiche temps de :")
         return _aide("Précisez un salarié : ex. « heures Marie ».")
     if kw in _KW_SALARIE:
-        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        apres_kw = _nettoyer_complement(apres_kw)
+        salaries = _resoudre_salarie(conn, apres_kw, profil, user_id) if apres_kw else []
         ancre = '#contrats' if 'contrat' in reste else ''
         if apres_kw and salaries:
             return _salarie_ou_choix(
@@ -449,7 +554,8 @@ def analyser_recherche(conn, query, profil, today):
                 f"Plusieurs salariés « {apres_kw} » :", ancre)
         return _aide("Précisez un salarié : ex. « salarié Marie ».")
     if kw in _KW_PLANNING:
-        salaries = _resoudre_salarie(conn, apres_kw) if apres_kw else []
+        apres_kw = _nettoyer_complement(apres_kw)
+        salaries = _resoudre_salarie(conn, apres_kw, profil, user_id) if apres_kw else []
         if apres_kw and salaries:
             return _salarie_ou_choix(
                 salaries, lambda uid: url_for('planning_bp.planning_theorique', user_id=uid),
@@ -459,10 +565,11 @@ def analyser_recherche(conn, query, profil, today):
         return _redirect(url_for('rh_statistiques_bp.rh_statistiques'), 'Statistiques RH')
 
     # ── Mot(s) seul(s) : résolution multi-types ──
-    return _resoudre_terme_libre(conn, reste_str, annee, annee_explicite, mois, today)
+    return _resoudre_terme_libre(conn, reste_str, annee, annee_explicite, mois,
+                                 today, profil, user_id)
 
 
-def _intention_facture(conn, terme, mois, annee_eff):
+def _intention_facture(conn, terme, mois, annee_eff, profil=None, user_id=None):
     terme_n = _normaliser(terme)
     # « facture(s) à valider / à approuver / en attente » → page d'approbation
     if terme_n in ('a valider', 'valider', 'a approuver', 'approuver',
@@ -471,7 +578,7 @@ def _intention_facture(conn, terme, mois, annee_eff):
                          'Factures à valider')
     # Numéro de facture (ex. « facture 225678 »)
     if re.fullmatch(r'\d{3,}', terme_n):
-        factures = _resoudre_facture_numero(conn, terme_n)
+        factures = _resoudre_facture_numero(conn, terme_n, profil, user_id)
         if len(factures) == 1:
             return _redirect(url_for('factures_bp.detail_facture', facture_id=factures[0]['id']),
                              f"Facture {terme_n}")
@@ -501,13 +608,13 @@ def _intention_facture(conn, terme, mois, annee_eff):
     return _redirect(url_for('factures_bp.liste_factures'), 'Factures')
 
 
-def _intention_bilan(conn, terme, annee_eff):
+def _intention_bilan(conn, terme, annee_eff, profil=None, user_id=None):
     """« bilan » : sans entité → compte-résultat (bilan de la structure) ; avec un
     secteur ou une action → bilan-secteurs (consultation du clôturé / réalisé)."""
     if not terme:
         return _redirect(url_for('compte_resultat_bp.compte_resultat', annee=annee_eff, vue='bilan'),
                          f'Bilan {annee_eff}')
-    secteurs = _resoudre_secteur(conn, terme)
+    secteurs = _resoudre_secteur(conn, terme, profil, user_id)
     actions = _resoudre_action(conn, terme)
     if len(secteurs) == 1 and not actions:
         s = secteurs[0]
@@ -546,7 +653,8 @@ def _url_budget_action(a, annee_eff, passe, is_prev, today):
             f"Budget action — {a['nom']} {annee_eff}")
 
 
-def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
+def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today,
+                      profil=None, user_id=None):
     """Budget / prévisionnel / actualisé :
     - sans entité, ou « prev/budget <année> » → budget-prévisionnel (général) ;
     - secteur année courante/future → budget-prévisionnel (secteur) ; secteur année
@@ -560,7 +668,7 @@ def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
         return _redirect(url_for('budget_bp.budget_previsionnel', annee=annee_eff),
                          f'Budget prévisionnel {annee_eff}')
 
-    secteurs = _resoudre_secteur(conn, terme)
+    secteurs = _resoudre_secteur(conn, terme, profil, user_id)
     actions = _resoudre_action(conn, terme)
 
     if len(secteurs) == 1 and not actions:
@@ -592,9 +700,10 @@ def _intention_budget(conn, kw, terme, annee_eff, annee_explicite, today):
                      f'Budget prévisionnel {annee_eff}')
 
 
-def _intention_subvention(conn, terme, annee, annee_explicite):
+def _intention_subvention(conn, terme, annee, annee_explicite,
+                          profil=None, user_id=None):
     if terme and terme not in ('liste', 'toutes'):
-        subs = _resoudre_subvention(conn, terme)
+        subs = _resoudre_subvention(conn, terme, profil, user_id)
         if len(subs) == 1:
             an = subs[0]['annee_action'] or 'toutes'
             return _redirect(url_for('subventions_bp.gestion_subventions', annee=an),
@@ -609,10 +718,11 @@ def _intention_subvention(conn, terme, annee, annee_explicite):
     return _redirect(url_for('subventions_bp.gestion_subventions', annee=an), 'Subventions')
 
 
-def _intention_contrat(conn, kw, terme, mois, annee_eff, today):
+def _intention_contrat(conn, kw, terme, mois, annee_eff, today,
+                       profil=None, user_id=None):
     # « contrat <salarié> » → sa fiche (section contrats)
     if terme:
-        salaries = _resoudre_salarie(conn, terme)
+        salaries = _resoudre_salarie(conn, terme, profil, user_id)
         if salaries:
             return _salarie_ou_choix(
                 salaries, lambda uid: _url_salarie(uid, '#contrats'),
@@ -630,35 +740,39 @@ def _intention_contrat(conn, kw, terme, mois, annee_eff, today):
     return _redirect(url_for('contrats_bp.liste_contrats', **params), 'Contrats')
 
 
-def _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois, today):
+def _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois, today,
+                          profil=None, user_id=None, types=None):
     """Mot(s) seul(s) sans mot-clé : essaie fournisseur / secteur / salarié / action / subvention."""
     if not terme:
         return _aide()
 
     # Numéro seul → facture
     if re.fullmatch(r'\d{4,}', _normaliser(terme)):
-        return _intention_facture(conn, terme, mois, annee if annee else today.year)
+        return _intention_facture(conn, terme, mois, annee if annee else today.year,
+                                  profil, user_id)
 
     candidats = []  # (type_label, nom, url, sous_titre)
-    for f in _resoudre_fournisseur(conn, terme):
+    types = set(types or ('fournisseur', 'secteur', 'salarie', 'subvention', 'action'))
+    for f in (_resoudre_fournisseur(conn, terme) if 'fournisseur' in types else []):
         candidats.append(('Fournisseur', f['nom'],
                           url_for('fournisseurs_bp.detail_fournisseur', fournisseur_id=f['id']),
                           f['code_comptable'] or ''))
-    for s in _resoudre_secteur(conn, terme):
+    for s in (_resoudre_secteur(conn, terme, profil, user_id) if 'secteur' in types else []):
         candidats.append(('Secteur', s['nom'],
                           url_for('bilan_secteurs_bp.bilan_secteurs', secteur_id=s['id'],
                                   annee=annee if annee_explicite else today.year), 'Bilan secteur'))
-    for u in _resoudre_salarie(conn, terme):
+    for u in (_resoudre_salarie(conn, terme, profil, user_id) if 'salarie' in types else []):
         candidats.append(('Salarié', f"{u['prenom']} {u['nom']}",
                           _url_salarie(u['id']), u['secteur_nom'] or ''))
-    for sv in _resoudre_subvention(conn, terme):
+    for sv in (_resoudre_subvention(conn, terme, profil, user_id)
+               if 'subvention' in types else []):
         candidats.append(('Subvention', sv['nom'],
                           url_for('subventions_bp.gestion_subventions',
                                   annee=sv['annee_action'] or 'toutes'),
                           f"Année {sv['annee_action'] or '—'}"))
 
     an = annee if annee_explicite else today.year
-    actions = _resoudre_action(conn, terme)
+    actions = _resoudre_action(conn, terme) if 'action' in types else []
 
     # Action seule → doute consultation / construction : proposer les deux.
     if not candidats and len(actions) == 1:
@@ -683,3 +797,48 @@ def _resoudre_terme_libre(conn, terme, annee, annee_explicite, mois, today):
         return _choices(f"« {terme} » correspond à plusieurs éléments :", options)
 
     return _aide(f"Rien trouvé pour « {terme} ».")
+
+
+def _endpoint_url(url):
+    """Résout l'endpoint Flask d'une URL produite par le moteur."""
+    try:
+        chemin = urlsplit(url).path
+        return current_app.url_map.bind('').match(chemin, method='GET')[0]
+    except Exception:
+        return None
+
+
+def _filtrer_verdict(verdict, endpoints_autorises):
+    """Supprime les destinations absentes de la carte de l'utilisateur."""
+    if endpoints_autorises is None or verdict.get('type') == 'none':
+        return verdict
+    autorises = set(endpoints_autorises)
+
+    def accessible(option):
+        return bool(option.get('url') and _endpoint_url(option['url']) in autorises)
+
+    if verdict.get('type') == 'redirect':
+        if accessible(verdict):
+            return verdict
+        return _aide("Aucun résultat accessible dans votre espace.")
+    options = [o for o in verdict.get('options', []) if accessible(o)]
+    if len(options) == 1:
+        return _redirect(options[0]['url'], options[0].get('label', 'Résultat'))
+    if options:
+        resultat = dict(verdict)
+        resultat['options'] = options
+        return resultat
+    return _aide("Aucun résultat accessible dans votre espace.")
+
+
+def analyser_recherche(conn, query, profil, today, user_id=None,
+                       endpoints_autorises=None):
+    """Analyse puis limite le verdict au profil, au périmètre et aux pages visibles.
+
+    `user_id` est indispensable pour un responsable : les salariés, secteurs,
+    factures et subventions sont alors résolus dans son seul périmètre. Quand
+    `endpoints_autorises` est fourni par l'interface, une destination que la
+    carte de navigation masque ne peut pas réapparaître via la recherche.
+    """
+    verdict = _analyser_recherche(conn, query, profil, today, user_id)
+    return _filtrer_verdict(verdict, endpoints_autorises)
