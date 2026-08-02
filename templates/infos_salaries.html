@@ -30,6 +30,7 @@
         <h2 style="margin-top: 0;">{{ salarie.nom }} {{ salarie.prenom }}</h2>
         <div style="display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <div><strong>Profil :</strong> {{ salarie.profil }}</div>
+            <div><strong>Fonction :</strong> {{ salarie.fonction or '-' }}</div>
             <div><strong>Secteur :</strong> {{ salarie.secteur_nom or '-' }}</div>
             <div><strong>Login :</strong> {{ salarie.login }}</div>
             <div><strong>Statut :</strong>
@@ -97,6 +98,37 @@
     <!-- Contrats -->
     <div class="section" id="contrats" style="margin-bottom: 1.5rem;">
         <h2>Contrats</h2>
+
+        <!-- Fonction occupee : elle accompagne les informations de contrat et
+             s'affiche sous le nom du salarie dans l'interface sans menu. -->
+        <form method="POST" action="{{ url_for('infos_salaries_bp.modifier_fonction') }}"
+              style="background: var(--gray-50, #f8f9fa); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <input type="hidden" name="user_id" value="{{ salarie.id }}">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="fonction">Fonction</label>
+                    <select name="fonction" id="fonction" onchange="fonctionAutre()">
+                        <option value="">— Non renseignee —</option>
+                        {% for f in fonctions %}
+                        <option value="{{ f }}" {% if salarie.fonction == f %}selected{% endif %}>{{ f }}</option>
+                        {% endfor %}
+                        {# Fonction enregistree autrefois puis retiree de la liste :
+                           on la garde visible plutot que de l'effacer en silence. #}
+                        {% if salarie.fonction and salarie.fonction not in fonctions %}
+                        <option value="{{ salarie.fonction }}" selected>{{ salarie.fonction }}</option>
+                        {% endif %}
+                        <option value="{{ sentinelle_fonction }}">+ Ajouter une fonction…</option>
+                    </select>
+                </div>
+                <div class="form-group" id="fonction-autre-champ" style="margin-bottom: 0; display: none;">
+                    <label for="nouvelle_fonction">Nouvelle fonction</label>
+                    <input type="text" name="nouvelle_fonction" id="nouvelle_fonction" maxlength="60"
+                           placeholder="Ex: Mediateur numerique"
+                           title="Elle sera ajoutee a la liste proposee pour tous les salaries">
+                </div>
+                <button type="submit" class="btn btn-primary">Enregistrer la fonction</button>
+            </div>
+        </form>
 
         <!-- Formulaire ajout contrat -->
         <form method="POST" action="{{ url_for('infos_salaries_bp.ajouter_contrat') }}" enctype="multipart/form-data"
@@ -303,6 +335,17 @@ function dfEditer(id) {
 function dfAnnuler(id) {
     document.getElementById('df-form-' + id).style.display = 'none';
     document.getElementById('df-aff-' + id).style.display = '';
+}
+// « + Ajouter une fonction… » ouvre le champ libre ; sa valeur l'emporte
+// cote serveur et vient enrichir la liste proposee a tous.
+function fonctionAutre() {
+    var select = document.getElementById('fonction');
+    var champ = document.getElementById('fonction-autre-champ');
+    var saisie = document.getElementById('nouvelle_fonction');
+    if (!select || !champ) return;
+    var ouvert = select.value === {{ sentinelle_fonction|tojson }};
+    champ.style.display = ouvert ? '' : 'none';
+    if (ouvert) { saisie.focus(); } else { saisie.value = ''; }
 }
 document.addEventListener('DOMContentLoaded', function() {
     var typeSelect = document.getElementById('type_contrat');

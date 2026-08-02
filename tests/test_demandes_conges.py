@@ -254,7 +254,7 @@ def test_historique_inclut_conges(admin_client, app, db, sample_users):
     assert 'CP' in html
 
 
-def test_pending_count_includes_conges(admin_client, app, db, sample_users):
+def test_pending_count_includes_conges(admin_client, app, db, sample_users, menu_classique):
     """Le compteur de demandes en attente inclut les conges."""
     with app.app_context():
         db.execute('''

@@ -245,7 +245,7 @@ def test_section_benevoles_active_pour_le_comptable(app, sample_users):
     assert 'disabled' not in section.split('form-actions')[0]
 
 
-def test_menu_benevoles_visible_pour_le_salarie_delegue(app, sample_users):
+def test_menu_benevoles_visible_pour_le_salarie_delegue(app, sample_users, menu_classique):
     sal = app.test_client()
     _login(sal, 'salarie_test', 'sal123')
     assert '🤝 Bénévoles' not in sal.get('/dashboard').get_data(as_text=True)

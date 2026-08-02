@@ -20,6 +20,14 @@ def dashboard():
     """Tableau de bord selon le profil"""
     profil = session.get('profil')
     user = None
+
+    # Interface sans menu : l'accueil devient le fil d'actions. Le tableau de
+    # bord historique reste accessible par son URL propre, pour qui la garde en
+    # favori ou revient au menu classique.
+    import interface_flux
+    if interface_flux.interface_active(profil, session.get('user_id')):
+        return redirect(url_for('accueil_bp.accueil'))
+
     if profil == 'directeur':
         return redirect(url_for('dashboard_direction_bp.dashboard_direction'))
     if profil == 'responsable':

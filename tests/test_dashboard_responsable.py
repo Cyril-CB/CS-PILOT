@@ -86,14 +86,14 @@ def test_dashboard_responsable_refuse_directeur(admin_client):
     assert response.status_code == 302
 
 
-def test_dashboard_redirect_responsable(resp_client):
+def test_dashboard_redirect_responsable(resp_client, menu_classique):
     """Verifie que /dashboard redirige vers dashboard_responsable pour un responsable."""
     response = resp_client.get('/dashboard', follow_redirects=False)
     assert response.status_code == 302
     assert 'dashboard_responsable' in response.headers.get('Location', '')
 
 
-def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, sample_users):
+def test_dashboard_responsable_sans_secteur_ne_boucle_pas(resp_client, app, db, sample_users, menu_classique):
     """Pas de boucle de redirection pour un responsable sans secteur.
 
     - avec des rattachés directs : /dashboard renvoie vers le tableau

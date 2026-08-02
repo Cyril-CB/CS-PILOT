@@ -254,3 +254,21 @@ def sample_planning(app, db, sample_users):
             'planning_id': planning_id,
             **planning_data,
         }
+
+
+@pytest.fixture
+def menu_classique(app):
+    """Bascule l'application sur le menu latéral historique.
+
+    L'interface sans menu (accueil en fil d'actions, recherche au clavier, vue
+    d'ensemble par zones) est active par défaut pour la direction, la
+    comptabilité, les responsables et les salariés délégués. Les tests qui
+    vérifient le contenu du menu latéral ou le routage de `/dashboard` par
+    profil décrivent le mode classique, qui reste pleinement supporté : ils le
+    demandent donc explicitement. Les tests de l'interface sans menu vivent
+    dans `tests/test_interface_flux.py`.
+    """
+    with app.app_context():
+        from app_options import set_option_bool
+        set_option_bool('interface_sans_menu_active', False)
+    return True

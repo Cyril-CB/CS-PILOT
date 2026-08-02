@@ -83,7 +83,7 @@ def test_dashboard_comptable_refuse_responsable(resp_client):
     assert response.status_code == 302
 
 
-def test_dashboard_redirect_comptable(comptable_client):
+def test_dashboard_redirect_comptable(comptable_client, menu_classique):
     """Verifie que /dashboard redirige vers dashboard_comptable pour un comptable."""
     response = comptable_client.get('/dashboard', follow_redirects=False)
     assert response.status_code == 302

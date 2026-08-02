@@ -92,6 +92,12 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     today = aujourd_hui()
     seuils = seuils or {}
 
+    # Seuls ces profils valident des demandes. Un salarié — même porteur d'une
+    # délégation qui lui ouvre l'accueil sans menu — n'a rien à valider : lui
+    # servir la branche « toutes les demandes » exposerait les congés, les
+    # dates et les soldes de tout le monde.
+    valide_des_demandes = profil in ('directeur', 'comptable', 'responsable')
+
     # 1. Demandes de récupération / congé à valider.
     if profil == 'responsable':
         # Équipe = secteur + rattachés directs (responsable_id), même d'un
@@ -113,7 +119,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             ORDER BY d.date_demande ASC
             LIMIT 25""",
         scope_params
-    ).fetchall()
+    ).fetchall() if valide_des_demandes else []
     for r in rows:
         depot = _to_date(r['date_demande'])
         parts = [p for p in (_periode_demande(r),
@@ -157,7 +163,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             ORDER BY d.date_demande ASC
             LIMIT 25""",
         scope_params
-    ).fetchall()
+    ).fetchall() if valide_des_demandes else []
     for r in rows:
         depot = _to_date(r['date_demande'])
         parts = [p for p in (_periode_demande(r),
@@ -190,12 +196,20 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     # Le responsable voit les étapes des subventions dont il est assigné (parent)
     # ainsi que celles des sous-éléments qui lui sont directement attribués — en
     # cohérence avec la notification d'attribution par e-mail.
-    if profil == 'responsable':
-        sub_scope = 'AND (s.assignee_1_id = ? OR s.assignee_2_id = ? OR se.assignee_id = ?)'
-        sub_params = (user_id, user_id, user_id)
-    else:
+    # Une carte de subvention mène à la page des subventions et propose de
+    # marquer l'étape faite : les deux sont fermés à tout profil hors direction,
+    # comptabilité et responsables. On ne propose donc pas d'action que le
+    # lecteur ne pourrait ni ouvrir ni conclure.
+    suit_des_subventions = profil in ('directeur', 'comptable', 'responsable')
+
+    # La direction et la comptabilité suivent tous les dossiers ; un
+    # responsable, seulement ceux qui lui sont confiés.
+    if profil in ('directeur', 'comptable'):
         sub_scope = ''
         sub_params = ()
+    else:
+        sub_scope = 'AND (s.assignee_1_id = ? OR s.assignee_2_id = ? OR se.assignee_id = ?)'
+        sub_params = (user_id, user_id, user_id)
 
     # On exclut uniquement les subventions refusées : une subvention acceptée
     # garde des échéances actionnables (bilans qualitatif / financier).
@@ -210,7 +224,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             ORDER BY se.date_echeance ASC
             LIMIT 25""",
         sub_params
-    ).fetchall()
+    ).fetchall() if suit_des_subventions else []
     # La page subventions filtre par année (année courante par défaut). Pour que
     # la subvention pointée reste visible, on cible son année si elle est dans la
     # plage du filtre (N-3..N+2), sinon « toutes » (année absente ou hors plage).

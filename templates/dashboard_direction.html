@@ -100,44 +100,9 @@
     </div>
 </div>
 
-{# ── Fenêtre seuils d'alerte (classes modales globales de style.css :
-     en-tête à bord franc, corps et pied avec padding — .modal-content a
-     volontairement padding:0). ── #}
-<div id="ccSeuilsModal" class="modal-overlay" style="display:none;" onclick="if(event.target===this)ccFermerSeuils()">
-    <div class="modal-content" style="max-width:480px;" role="dialog" aria-modal="true">
-        <div class="modal-header">
-            <h3>⚙ Seuils d'alerte</h3>
-            <button class="modal-close" type="button" onclick="ccFermerSeuils()" aria-label="Fermer">&times;</button>
-        </div>
-        <div style="padding:0 1.5rem;">
-            <p style="font-size:0.85rem;color:var(--gray-500);margin:0 0 1.25rem;">
-                Le tableau de bord n'affiche un indicateur que s'il franchit son seuil.
-                Ajustez-les à votre structure.</p>
-            <div style="display:flex;flex-direction:column;gap:1rem;">
-                <label class="cc-seuil-label">Trésorerie minimum (€)
-                    <input type="number" id="ccSeuilTreso" value="{{ seuils.treso|int }}" min="0" step="1000"></label>
-                <label class="cc-seuil-label">Budget consommé (%)
-                    <input type="number" id="ccSeuilBudget" value="{{ seuils.budget|int }}" min="0" max="200"></label>
-                <label class="cc-seuil-label">Solde congés conventionnels (jours)
-                    <input type="number" id="ccSeuilConges" value="{{ seuils.conges|int }}" min="0" step="0.5"></label>
-                <label class="cc-seuil-label">Score de surcharge (/100)
-                    <input type="number" id="ccSeuilSurcharge" value="{{ seuils.surcharge|int }}" min="0" max="100"></label>
-                <label class="cc-seuil-label" style="border-top:1px solid var(--gray-200);padding-top:1rem;align-items:flex-start;">
-                    <span>Digest quotidien par email<br>
-                        <span style="font-weight:400;font-size:0.78rem;color:var(--gray-500);">
-                            Envoyé à la direction et à la comptabilité au premier accès après 8 h.
-                            Les personnes en congé ce jour-là ne le reçoivent pas.</span></span>
-                    <input type="checkbox" id="ccSeuilDigest" style="width:auto;margin-top:4px;" {% if seuils.digest %}checked{% endif %}>
-                </label>
-            </div>
-        </div>
-        <div style="display:flex;justify-content:flex-end;gap:0.75rem;padding:1.25rem 1.5rem 1.5rem;align-items:center;">
-            <span id="ccSeuilsMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>
-            <button class="btn btn-secondary" type="button" onclick="ccFermerSeuils()">Annuler</button>
-            <button class="btn btn-primary" type="button" onclick="ccEnregistrerSeuils()">Enregistrer</button>
-        </div>
-    </div>
-</div>
+{# ── Fenêtre des seuils d'alerte : gabarit partagé avec l'accueil sans menu,
+     pour que les deux pages règlent exactement les mêmes valeurs. ── #}
+{% include '_seuils_modal.html' %}
 
 <div id="ccToast" style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--primary-dark);color:#fff;padding:0.7rem 1.4rem;border-radius:99px;font-size:0.9rem;font-weight:600;box-shadow:0 12px 24px -4px rgba(0,0,0,0.25);z-index:3000;"></div>
 
@@ -207,14 +172,6 @@
     box-shadow: 0 4px 12px -2px rgba(0,0,0,0.1); transform: translateY(-2px);
 }
 
-.cc-seuil-label {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 1rem; font-size: 0.9rem; font-weight: 600; color: var(--gray-700);
-}
-.cc-seuil-label input {
-    width: 120px; padding: 0.5rem; border: 1px solid var(--gray-300);
-    border-radius: 6px; font-size: 0.9rem; text-align: right;
-}
 </style>
 
 <script>
@@ -348,34 +305,6 @@
         } else {
             btn.disabled = false;
         }
-    });
-
-    // Seuils d'alerte
-    window.ccOuvrirSeuils = function () { document.getElementById('ccSeuilsModal').style.display = 'flex'; };
-    window.ccFermerSeuils = function () { document.getElementById('ccSeuilsModal').style.display = 'none'; };
-    window.ccEnregistrerSeuils = function () {
-        var msg = document.getElementById('ccSeuilsMsg');
-        msg.textContent = 'Enregistrement…';
-        fetch('/api/dashboard-direction/seuils', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                treso: Number(document.getElementById('ccSeuilTreso').value),
-                budget: Number(document.getElementById('ccSeuilBudget').value),
-                conges: Number(document.getElementById('ccSeuilConges').value),
-                surcharge: Number(document.getElementById('ccSeuilSurcharge').value),
-                digest: document.getElementById('ccSeuilDigest').checked
-            })
-        }).then(function (r) { return r.json(); })
-          .then(function (d) {
-              if (!d.success) { msg.textContent = ''; echec(d.error || 'Enregistrement impossible'); return; }
-              msg.textContent = '✓ Enregistré';
-              window.location.reload();
-          })
-          .catch(function () { msg.textContent = ''; echec(); });
-    };
-    document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') ccFermerSeuils();
     });
 
     // Rafraîchissement automatique de la file toutes les 10 minutes : les
