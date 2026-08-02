@@ -140,8 +140,20 @@ leurs attributions. Une seconde barrière supprime toute destination absente de
 leur carte. Les salariés délégués conservent uniquement la navigation locale.
 
 `POST /api/search/suggestions` calcule la liste unifiée sans journaliser chaque
-frappe. Seul le résultat métier effectivement choisi repasse par
-`POST /api/search` et alimente le journal de recherche.
+frappe. Le journal de recherche (Sécurité → Barre intelligente) est alimenté aux
+deux extrémités de l'usage, et une seule fois par recherche :
+
+- le résultat métier **effectivement choisi** repasse par `POST /api/search`,
+  comme avant ;
+- la recherche **restée vaine** est signalée à la fermeture de la barre, par un
+  dernier appel aux suggestions portant `journal: true`. Le serveur revérifie
+  que la palette ne proposait rien d'autre que « Voir tout l'espace » : ce
+  chemin ne peut enregistrer que des échecs.
+
+Ce sont justement les requêtes sans réponse qui font vivre le dictionnaire du
+moteur ; les perdre reviendrait à ne plus voir que ce qui marche déjà. Une
+saisie de moins de trois caractères n'est pas tracée : la barre s'ouvrant à la
+première touche frappée, un appui accidentel suivi d'Échap n'apprend rien.
 
 ## Les autres pages
 

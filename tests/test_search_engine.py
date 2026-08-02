@@ -474,6 +474,62 @@ class TestJournalRecherches:
             nb = db.execute("SELECT COUNT(*) FROM recherche_log").fetchone()[0]
         assert nb == 0
 
+    def test_recherche_vaine_journalisee_a_la_fermeture_de_la_barre(
+            self, app, db, admin_client, sample_users):
+        # Le défaut à ne pas réintroduire : une requête sans réponse doit
+        # rester visible dans le journal, c'est elle qui nourrit le moteur.
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search/suggestions',
+                          json={'query': 'zzztotalementinconnu', 'journal': True})
+        with app.app_context():
+            rows = db.execute(
+                "SELECT terme, a_resultat FROM recherche_log").fetchall()
+        assert [(r['terme'], r['a_resultat']) for r in rows] == [
+            ('zzztotalementinconnu', 0)]
+
+    def test_journal_refuse_de_tracer_une_recherche_qui_aboutit(
+            self, app, db, admin_client, sample_users):
+        # Le serveur revérifie : ce chemin n'enregistre que des échecs, même si
+        # le client demande la journalisation à tort.
+        with app.app_context():
+            _seed(db)
+        for query in ('EDF', 'factures'):
+            r = admin_client.post('/api/search/suggestions',
+                                  json={'query': query, 'journal': True})
+            precis = [s for s in r.get_json()['suggestions']
+                      if s['action'] != 'ensemble']
+            assert precis, query
+        with app.app_context():
+            nb = db.execute("SELECT COUNT(*) FROM recherche_log").fetchone()[0]
+        assert nb == 0
+
+    def test_journal_ignore_une_saisie_trop_courte(
+            self, app, db, admin_client, sample_users):
+        # La barre s'ouvre à la première touche frappée : une frappe
+        # accidentelle suivie d'Échap n'apprend rien sur le vocabulaire.
+        with app.app_context():
+            _seed(db)
+        admin_client.post('/api/search/suggestions',
+                          json={'query': 'zq', 'journal': True})
+        with app.app_context():
+            nb = db.execute("SELECT COUNT(*) FROM recherche_log").fetchone()[0]
+        assert nb == 0
+
+    def test_recherche_vaine_d_un_salarie_delegue_journalisee(
+            self, app, db, auth_client, sample_users):
+        # Un profil sans recherche métier n'a que la navigation locale ; ses
+        # requêtes vaines disent quelles pages il cherche et sont donc tracées.
+        with app.app_context():
+            _seed(db)
+        admin = auth_client.post('/api/search/suggestions',
+                                 json={'query': 'bulletin de paie', 'journal': True})
+        assert admin.status_code == 200
+        with app.app_context():
+            row = db.execute(
+                "SELECT terme, a_resultat FROM recherche_log").fetchone()
+        assert row['terme'] == 'bulletin de paie' and row['a_resultat'] == 0
+
     def test_recherche_est_journalisee_avec_resultat(self, app, db, admin_client, sample_users):
         # Chaque recherche est tracée avec le fait qu'elle ait abouti ou non.
         with app.app_context():

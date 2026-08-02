@@ -220,13 +220,20 @@ def construire_suggestions(carte, query, verdict=None, limite=10):
 
     # Une page et un verdict métier peuvent pointer vers la même destination.
     # Le meilleur libellé suffit ; montrer deux lignes identiques crée du doute.
-    uniques, urls = [], set()
+    # L'URL seule ne suffit pas à les reconnaître : le moteur ajoute souvent un
+    # paramètre à la page que la carte nomme sans (« /tresorerie » et
+    # « /tresorerie?annee=2026 »), qui ouvrent pourtant le même écran. On
+    # rapproche donc aussi les lignes de même chemin et de même titre — deux
+    # enregistrements distincts partagent leur chemin, jamais leur titre.
+    uniques, urls, ecrans = [], set(), set()
     for item in candidats:
         url = item.get('url')
-        if url and url in urls:
-            continue
         if url:
+            ecran = (url.split('?')[0], normaliser(item.get('titre')))
+            if url in urls or ecran in ecrans:
+                continue
             urls.add(url)
+            ecrans.add(ecran)
         uniques.append(item)
         if len(uniques) >= limite:
             break

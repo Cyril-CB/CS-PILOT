@@ -76,6 +76,29 @@ def test_resultat_metier_precis_passe_en_premier():
     assert suggestions[0]['url'] == '/factures/12/detail'
 
 
+def test_une_page_et_son_resultat_metier_ne_font_qu_une_ligne():
+    # Le moteur route vers la même page avec un paramètre : « Factures » ne doit
+    # pas apparaître deux fois, la carte la nommant déjà.
+    verdict = {'type': 'redirect', 'label': 'Factures', 'url': '/factures?annee=2026'}
+    suggestions = construire_suggestions(CARTE, 'factures', verdict)
+    titres = [s['titre'] for s in suggestions]
+    assert titres.count('Factures') == 1
+
+
+def test_deux_enregistrements_du_meme_ecran_restent_distincts():
+    # Même chemin, titres différents : ce sont deux factures, pas un doublon.
+    verdict = {
+        'type': 'choices', 'prompt': 'Deux factures portent ce numéro',
+        'options': [
+            {'label': 'Facture 880001 — EDF', 'url': '/factures/detail?id=1'},
+            {'label': 'Facture 880002 — EDF', 'url': '/factures/detail?id=2'},
+        ],
+    }
+    suggestions = construire_suggestions(CARTE, 'facture 8800', verdict)
+    metiers = [s['titre'] for s in suggestions if s['action'] == 'metier']
+    assert metiers == ['Facture 880001 — EDF', 'Facture 880002 — EDF']
+
+
 def test_univers_complet_est_toujours_le_dernier_recours():
     suggestions = construire_suggestions(CARTE, 'zzztotalementinconnu')
     assert len(suggestions) == 1
