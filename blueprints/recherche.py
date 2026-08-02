@@ -8,6 +8,10 @@ La recherche métier est ouverte aux responsables depuis que les entités et les
 destinations sont filtrées sur leur périmètre. La route de suggestions reste
 ouverte à tout utilisateur connecté : les autres profils n'y reçoivent que leur
 carte de navigation, déjà filtrée par leurs droits.
+
+Le journal de recherche est alimenté par les deux routes, jamais à la frappe :
+`/api/search` trace le résultat métier effectivement ouvert, `/api/search/
+suggestions` trace la recherche restée vaine que l'utilisateur abandonne.
 CSRF est injecté automatiquement par base.html.
 """
 import logging
@@ -24,6 +28,11 @@ logger = logging.getLogger(__name__)
 
 PROFILS_AUTORISES = ('directeur', 'comptable', 'responsable')
 
+# Longueur minimale d'une recherche vaine pour être journalisée. La barre
+# s'ouvre dès la première touche frappée n'importe où sur la page : une frappe
+# accidentelle suivie d'Échap ne dit rien du vocabulaire attendu.
+LONGUEUR_MIN_JOURNAL = 3
+
 
 def _lire_query_json():
     """Lit une requête JSON objet contenant une chaîne `query`, sinon None."""
@@ -34,6 +43,21 @@ def _lire_query_json():
     if not isinstance(query, str):
         return None
     return query.strip()[:200]
+
+
+def _journal_demande():
+    """Le client signale-t-il une recherche abandonnée, à tracer une fois ?"""
+    data = request.get_json(silent=True)
+    return isinstance(data, dict) and data.get('journal') is True
+
+
+def _resultat_precis(suggestions):
+    """La palette a-t-elle proposé autre chose que la vue d'ensemble ?
+
+    La vue d'ensemble est toujours ajoutée en dernier ; elle ne répond à aucune
+    saisie en particulier. Si elle est seule, la recherche n'a rien donné.
+    """
+    return any(s.get('action') != 'ensemble' for s in suggestions)
 
 
 def _journaliser_recherche(conn, terme, verdict):
@@ -97,7 +121,15 @@ def api_search():
 @recherche_bp.route('/api/search/suggestions', methods=['POST'])
 @login_required
 def api_search_suggestions():
-    """Retourne une palette unifiée sans journaliser les frappes intermédiaires."""
+    """Palette unifiée. Aucune frappe n'est tracée, les recherches vaines si.
+
+    Le journal de recherche existe pour repérer le vocabulaire qui manque au
+    moteur : ce sont donc les saisies restées sans réponse qui l'intéressent le
+    plus. Le client ne demande la journalisation qu'une fois, au moment où
+    l'utilisateur referme la barre sur une recherche vaine. Le serveur revérifie
+    que la palette était bien vide : ce chemin ne peut enregistrer que des
+    échecs, jamais un faux succès.
+    """
     query = _lire_query_json()
     if query is None:
         return jsonify({
@@ -122,4 +154,17 @@ def api_search_suggestions():
         finally:
             conn.close()
 
-    return jsonify({'suggestions': construire_suggestions(carte, query, verdict)})
+    suggestions = construire_suggestions(carte, query, verdict)
+
+    if (_journal_demande() and len(query) >= LONGUEUR_MIN_JOURNAL
+            and not _resultat_precis(suggestions)):
+        conn = get_db()
+        try:
+            _journaliser_recherche(conn, query, {
+                'type': 'none',
+                'message': (verdict or {}).get('message') or 'Aucune correspondance',
+            })
+        finally:
+            conn.close()
+
+    return jsonify({'suggestions': suggestions})

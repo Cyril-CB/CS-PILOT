@@ -8,11 +8,16 @@ import re
 import unicodedata
 
 
+# Mots qui portent la formulation, pas la demande. On les écarte avant de
+# mesurer la couverture, sans quoi « qui n'a pas validé ses heures » n'aurait
+# que deux mots utiles sur sept et n'atteindrait jamais le seuil.
 _MOTS_CONVERSATION = {
-    'a', 'aller', 'aux', 'chez', 'comment', 'dans', 'de', 'des', 'du', 'en',
-    'faire', 'je', 'la', 'le', 'les', 'ma', 'mes', 'mon', 'ou', 'ouvrir',
-    'peux', 'pour', 'sur', 'trouver', 'un', 'une', 'vais', 'veut', 'voir',
-    'veux', 'vers',
+    'a', 'aller', 'au', 'aux', 'ce', 'cette', 'chez', 'comment', 'dans', 'de',
+    'des', 'du', 'en', 'est', 'et', 'faire', 'je', 'la', 'le', 'les', 'ma',
+    'mes', 'mon', 'n', 'ne', 'ou', 'ouvrir', 'pas', 'peux', 'pour', 'qui',
+    'quel', 'quelle', 'quelles', 'quels', 'quoi', 'sa', 'se', 'ses', 'son',
+    'sont', 'sur', 'trouver', 'un', 'une', 'vais', 'vers', 'veut', 'veux',
+    'voir',
 }
 
 # Les variantes sont ramenées à un vocabulaire commun avant le calcul du score.
@@ -144,6 +149,12 @@ def _score_page(query_norm, query_tokens, groupe, page):
     return 0
 
 
+# Score à partir duquel la requête *désigne* une page : libellé exact,
+# expression déclarée, mêmes mots ou début de libellé. En deçà, elle ne fait que
+# l'évoquer.
+_SCORE_DESIGNATION = 300
+
+
 def _score_groupe(query_norm, query_tokens, groupe):
     nom = normaliser(groupe.get('nom'))
     if query_norm == nom:
@@ -215,18 +226,45 @@ def construire_suggestions(carte, query, verdict=None, limite=10):
                 'score': score,
             })
 
-    candidats.extend(_items_metier(verdict, query_tokens))
+    # Quand la requête nomme une page, cette page passe devant l'interprétation
+    # du moteur. « congés à valider » désigne la page de validation ; le moteur,
+    # lui, y voit le mot-clé « congé » et propose les absences. Le résultat
+    # métier reste proposé, une ligne plus bas — un enregistrement précis, lui,
+    # n'est jamais concurrencé, aucune page ne portant son nom.
+    metier = _items_metier(verdict, query_tokens)
+    designee = max((c['score'] for c in candidats if c['action'] == 'page'),
+                   default=0)
+    if designee >= _SCORE_DESIGNATION:
+        for item in metier:
+            item['score'] = min(item['score'], designee - 1)
+
+    candidats.extend(metier)
     candidats.sort(key=lambda item: (-item['score'], normaliser(item['titre'])))
 
     # Une page et un verdict métier peuvent pointer vers la même destination.
     # Le meilleur libellé suffit ; montrer deux lignes identiques crée du doute.
-    uniques, urls = [], set()
+    # L'URL seule ne suffit pas à les reconnaître : le moteur ajoute souvent un
+    # paramètre à la page que la carte nomme sans (« /tresorerie » et
+    # « /tresorerie?annee=2026 »), qui ouvrent pourtant le même écran.
+    #
+    # Ce rapprochement par chemin et titre ne vaut qu'entre sources différentes,
+    # là où la carte et le moteur désignent la même chose. Deux résultats du
+    # moteur ne sont jamais rapprochés ainsi : deux homonymes parfaits portent
+    # le même titre sur le même chemin et ne se distinguent que par leur
+    # `user_id`. Les confondre effacerait un salarié de la liste, alors que le
+    # choix ne lui est proposé que pour les départager.
+    uniques, urls, ecrans = [], set(), {}
     for item in candidats:
         url = item.get('url')
-        if url and url in urls:
-            continue
         if url:
+            if url in urls:
+                continue
+            ecran = (url.split('?')[0], normaliser(item.get('titre')))
+            source = ecrans.get(ecran)
+            if source is not None and source != item['action']:
+                continue
             urls.add(url)
+            ecrans.setdefault(ecran, item['action'])
         uniques.append(item)
         if len(uniques) >= limite:
             break

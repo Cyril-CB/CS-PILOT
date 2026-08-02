@@ -39,6 +39,8 @@
     var temporisateurRecherche = null;
     var controleurRecherche = null;
     var numeroRecherche = 0;
+    var rechercheVaine = '';    // saisie affichée sans aucun résultat précis
+    var rechercheTracee = '';   // dernière saisie déjà signalée au journal
 
     /* ── Utilitaires ──────────────────────────────────────────────────── */
 
@@ -154,8 +156,26 @@
         if (champ) champ.focus();
     }
 
+    /* Le journal de recherche sert à repérer le vocabulaire qui manque au
+       moteur : ce sont les recherches restées vaines qui l'intéressent. Rien
+       n'est envoyé à la frappe — on ne signale qu'une fois, quand la barre se
+       referme sur une saisie qui n'a rien donné. `keepalive` laisse la requête
+       partir même si la fermeture est suivie d'une navigation. */
+    function signalerRechercheVaine() {
+        var q = rechercheVaine;
+        rechercheVaine = '';
+        if (q.length < 3 || q === rechercheTracee) return;
+        rechercheTracee = q;
+        fetch(URL_RECHERCHE, {
+            method: 'POST', keepalive: true,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query: q, journal: true})
+        }).catch(function () { /* le journal n'est jamais bloquant */ });
+    }
+
     function fermerPalette() {
         if (!palette) return;
+        signalerRechercheVaine();
         if (palette._voile) palette._voile.remove();
         palette.remove();
         palette = null;
@@ -229,11 +249,18 @@
             return r.json();
         }).then(function (data) {
             if (numero !== numeroRecherche || !palette) return;
+            var liste = data.suggestions || [];
+            /* Seule la vue d'ensemble répond : la saisie n'a rien trouvé. */
+            rechercheVaine = liste.some(function (s) {
+                return s.action !== 'ensemble';
+            }) ? '' : q;
             selection = 0;
-            rendrePalette(data.suggestions || []);
+            rendrePalette(liste);
         }).catch(function (erreur) {
             if (erreur && erreur.name === 'AbortError') return;
             if (numero !== numeroRecherche || !palette) return;
+            /* Une recherche indisponible n'est pas une recherche sans résultat. */
+            rechercheVaine = '';
             rendrePalette([{
                 entete: 'Recherche indisponible', icone: '⊕',
                 titre: "Voir tout l'espace", sous: 'Toutes les pages accessibles',
@@ -251,6 +278,8 @@
         var numero = ++numeroRecherche;
         if (controleurRecherche) controleurRecherche.abort();
         controleurRecherche = null;
+        /* La saisie a changé : on ne journalise que ce dont on a vu la réponse. */
+        rechercheVaine = '';
         if (!q) {
             selection = 0;
             rendrePalette(propositionsVides());
