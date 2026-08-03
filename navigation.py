@@ -170,13 +170,6 @@ ZONES = [
                   profils=('responsable',),
                   condition='generation_contrats_responsable_autorise',
                   mots='contrat modele document creer generer rediger embauche cdd cdi'),
-            _page('contrats_bp.salaries_sans_contrat', 'Salariés sans contrat',
-                  profils=('directeur', 'comptable'),
-                  mots='contrat manquant sans oublie bloque saisie regulariser echu '
-                       'renouveler embauche dossier',
-                  expressions=('salariés sans contrat', 'sans contrat',
-                               'contrats manquants', 'qui n\'a pas de contrat',
-                               'contrat oublié')),
             _page('absences_bp.absences', 'Absences',
                   profils=('directeur', 'comptable'),
                   mots='absence maladie arret travail justificatif suivi retour'),

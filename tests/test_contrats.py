@@ -152,6 +152,20 @@ class TestSalariesSansContrat:
         assert 'Contrat à venir' in html
         assert 'Contrat échu' not in html
 
+    def test_la_page_reste_hors_du_menu_et_de_la_carte(self, app):
+        """Page de réponse : on l'appelle, on ne la parcourt pas.
+
+        Comme la page Contrats dont elle sort, elle n'encombre pas le menu.
+        On y arrive par son bouton, par la barre intelligente, ou par le
+        bandeau d'alerte quand un salarié n'a aucun contrat.
+        """
+        import navigation
+        endpoints = {p['endpoint']
+                     for g in navigation.ZONES + navigation.ACCES_DIRECTS
+                     for p in g['pages']}
+        assert 'contrats_bp.salaries_sans_contrat' not in endpoints
+        assert 'contrats_bp.liste_contrats' not in endpoints
+
     def test_le_bouton_figure_sur_la_page_contrats(self, app, comptable_client):
         html = comptable_client.get('/contrats').get_data(as_text=True)
         assert '/contrats/sans-contrat' in html

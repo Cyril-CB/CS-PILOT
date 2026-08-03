@@ -367,11 +367,15 @@ Les contrats sont listés par ordre chronologique décroissant.
 > Le **planning théorique**, lui, n'est pas exigé pour saisir. S'il est
 > renseigné plus tard, les heures supplémentaires se recalculent d'elles-mêmes.
 >
-> **Pour savoir qui est bloqué** : *RH & Paie → Salariés sans contrat*, ou le
-> bouton du même nom sur la page Contrats. La barre intelligente y mène aussi
-> (« salariés sans contrat », « contrats manquants »). La page distingue ceux
-> dont le contrat n'a jamais été saisi de ceux dont le contrat est échu et
-> n'a pas été renouvelé — les deux n'appellent pas le même geste.
+> **Pour savoir qui est bloqué** : dès qu'un salarié actif n'a aucun contrat
+> au dossier, un bandeau rouge l'annonce en tête d'*Infos Salariés* et de la
+> page *Contrats*, et mène à la liste. On peut aussi la demander directement à
+> la barre intelligente (« salariés sans contrat », « contrats manquants »).
+>
+> Cette liste distingue ceux dont le contrat n'a jamais été saisi de ceux dont
+> le contrat est échu et n'a pas été renouvelé — les deux n'appellent pas le
+> même geste. Seul le premier cas déclenche le bandeau : la fin d'un CDD est
+> une situation normale, pas un oubli.
 
 ---
 

@@ -208,6 +208,53 @@ def test_les_subventions_ne_signalent_que_le_retard(admin_client, db):
     assert "étape(s) dont l&#39;échéance est passée" in corps
 
 
+def test_le_manque_de_contrat_s_annonce_sur_la_fiche_salarie(admin_client, db, sample_users):
+    """L'anomalie se signale seule : sa page ne se consulte pas, elle se demande."""
+    corps = admin_client.get('/infos_salaries').get_data(as_text=True)
+    assert 'flx-infos' in corps
+    assert 'sans aucun contrat' in corps
+    assert '/contrats/sans-contrat' in corps
+
+
+def test_aucune_alerte_quand_tout_le_monde_a_un_contrat(admin_client, db, sample_users):
+    with db:
+        salaries = db.execute(
+            "SELECT id FROM users WHERE actif = 1 "
+            "AND profil NOT IN ('directeur', 'prestataire')"
+        ).fetchall()
+        for row in salaries:
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDI', '2000-01-01', NULL)", (row['id'],)
+            )
+
+    corps = admin_client.get('/infos_salaries').get_data(as_text=True)
+    assert 'sans aucun contrat' not in corps
+
+
+def test_un_contrat_echu_ne_declenche_pas_l_alerte(admin_client, db, sample_users):
+    """La fin d'un CDD est normale ; c'est le contrat jamais saisi qui alerte."""
+    with db:
+        salaries = db.execute(
+            "SELECT id FROM users WHERE actif = 1 "
+            "AND profil NOT IN ('directeur', 'prestataire')"
+        ).fetchall()
+        for row in salaries:
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDD', '2000-01-01', '2001-12-31')", (row['id'],)
+            )
+
+    corps = admin_client.get('/infos_salaries').get_data(as_text=True)
+    assert 'sans aucun contrat' not in corps
+
+
+def test_un_responsable_ne_voit_pas_l_alerte_de_contrat(resp_client, db, sample_users):
+    """Il lit la fiche salarié mais ne peut pas y enregistrer un contrat."""
+    corps = resp_client.get('/infos_salaries').get_data(as_text=True)
+    assert 'sans aucun contrat' not in corps
+
+
 def test_bascule_vers_le_menu_classique_et_retour(admin_client):
     reponse = admin_client.post('/api/interface/basculer', json={'actif': False})
     assert reponse.status_code == 200

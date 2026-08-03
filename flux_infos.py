@@ -185,6 +185,39 @@ def _subventions(conn, contexte):
     return infos
 
 
+def _contrats_manquants(conn, contexte):
+    """Salariés actifs dont aucun contrat ne figure au dossier.
+
+    C'est une anomalie, pas une statistique : sans contrat, la saisie des
+    heures est fermée et la paie n'a rien à traiter. Elle doit donc se
+    signaler d'elle-même — la page qui la détaille ne se consulte pas, elle se
+    demande.
+
+    Volontairement limité au manque total. Un contrat échu non renouvelé se
+    voit sur la page dédiée, mais ne mérite pas d'alerte : la fin d'un CDD est
+    une situation normale, pas un oubli de saisie.
+
+    Réservé aux profils qui peuvent enregistrer un contrat — un responsable
+    lit la fiche salarié sans pouvoir y remédier.
+    """
+    if contexte.get('profil') not in _COMPTA:
+        return []
+
+    sans_contrat = conn.execute(
+        """SELECT COUNT(*) AS nb FROM users u
+           WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+             AND NOT EXISTS (SELECT 1 FROM contrats c WHERE c.user_id = u.id)"""
+    ).fetchone()['nb']
+    if not sans_contrat:
+        return []
+
+    return [_info(
+        '📄', sans_contrat, 'salarié(s) sans aucun contrat — saisie bloquée',
+        url_for('contrats_bp.salaries_sans_contrat'), 'Régulariser',
+        'alerte',
+    )]
+
+
 def _validations(conn, contexte):
     """Ce que la vue d'ensemble des validations doit signaler.
 
@@ -275,6 +308,11 @@ CONSTRUCTEURS = {
     'ecritures_bp.liste_ecritures': _ecritures,
     'subventions_bp.gestion_subventions': _subventions,
     'validation_bp.vue_ensemble_validation': _validations,
+    # Le manque de contrat s'annonce là où on le corrige (fiche salarié) et là
+    # où on regarde les contrats. Sa page dédiée ne figure pas au menu : elle
+    # répond à une intention, elle ne se consulte pas.
+    'infos_salaries_bp.infos_salaries': _contrats_manquants,
+    'contrats_bp.liste_contrats': _contrats_manquants,
 }
 
 
