@@ -252,7 +252,12 @@ jamais compter plus que la destination n'affiche.** Concrètement :
   (secteur renseigné ou assignation à la direction), les factures encore non
   assignées étant signalées à part, vers la page Factures ;
 - un bandeau reprend aussi son cadrage — un responsable ne compte que les
-  fiches de son équipe, comme la vue d'ensemble le fait pour lui.
+  fiches de son équipe, comme la vue d'ensemble le fait pour lui ;
+- un bandeau ne recompte pas le tableau qu'il précède. La page Subventions ne
+  signale que les étapes échues : annoncer « 100 étapes encore ouvertes » au
+  dessus des mêmes cent lignes n'apprenait rien et repoussait la liste vers le
+  bas. Un total sans retard, sans échéance ni décision à prendre n'est pas une
+  information.
 
 Ces règles sont vérifiées par des tests dédiés dans
 `tests/test_interface_flux.py` : un écart entre un compteur et sa destination
