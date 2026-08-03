@@ -27,6 +27,22 @@ MOTIFS_ABSENCE = [
     'Autre',
 ]
 
+# Motifs pour lesquels une pièce est réellement attendue au dossier, et dont
+# l'absence se signale avant la paie.
+#
+# Les congés validés ne sont PAS de ceux-là : `_creer_absence_depuis_conge`
+# leur crée une ligne d'absence sans justificatif, par construction — il n'y a
+# rien à fournir pour un congé payé accordé. Les compter ferait crier au loup
+# chaque mois, et un rappel qui se déclenche toujours cesse d'être lu.
+MOTIFS_AVEC_JUSTIFICATIF = (
+    'Arrêt maladie',
+    'Accident du travail',
+    'Jour enfant malade',
+    'Congé parental',
+    'Mi-temps thérapeutique',
+    'Evènement familial',
+)
+
 # Correspondance motif d'absence -> type de journee du calendrier forfait jour
 # (direction). Les motifs non listes retombent sur 'autre' : toute absence
 # retire de toute facon le jour du decompte des jours travailles.

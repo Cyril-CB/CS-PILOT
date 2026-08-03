@@ -485,7 +485,7 @@ class TestRappelPreparationPaie:
             db.execute(
                 """INSERT INTO absences (user_id, motif, date_debut, date_fin,
                                          jours_ouvres, saisi_par, justificatif_path)
-                   VALUES (?, 'maladie', '2026-07-06', '2026-07-10', 5, ?, 'abs/arret.pdf')""",
+                   VALUES (?, 'Arrêt maladie', '2026-07-06', '2026-07-10', 5, ?, 'abs/arret.pdf')""",
                 (sample_users['salarie_id'], sample_users['directeur_id']))
             db.commit()
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
@@ -502,7 +502,7 @@ class TestRappelPreparationPaie:
             db.execute(
                 """INSERT INTO absences (user_id, motif, date_debut, date_fin,
                                          jours_ouvres, saisi_par)
-                   VALUES (?, 'maladie', '2026-07-06', '2026-07-10', 5, ?)""",
+                   VALUES (?, 'Arrêt maladie', '2026-07-06', '2026-07-10', 5, ?)""",
                 (sample_users['salarie_id'], sample_users['directeur_id']))
             db.commit()
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
@@ -528,3 +528,125 @@ class TestRappelPreparationPaie:
 
         assert not [a for a in vu_directeur if a['type'] == 'paie']
         assert [a for a in vu_responsable if a['type'] == 'paie']
+
+
+class TestPerimetreEtAgregation:
+    """Trois angles morts relevés en revue : périmètre, motifs, agrégation."""
+
+    def _le_20(self, monkeypatch):
+        import dashboard_actions
+        monkeypatch.setattr(dashboard_actions, 'aujourd_hui',
+                            lambda: date(2026, 7, 20))
+
+    def test_un_responsable_ne_compte_que_son_equipe(self, app, db, sample_users,
+                                                     monkeypatch):
+        """Sinon il lit les situations RH des autres équipes."""
+        self._le_20(monkeypatch)
+        with app.app_context():
+            # Un CDD sans fiche, hors du secteur du responsable.
+            cur = db.execute(
+                "INSERT INTO users (nom, prenom, login, password, profil) "
+                "VALUES ('Ailleurs', 'Luc', 'ailleurs', 'x', 'salarie')")
+            etranger = cur.lastrowid
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDD', '2026-07-01', '2026-07-31')", (etranger,))
+            db.commit()
+
+            vu_responsable = construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+            vu_direction = construire_actions(db, 'directeur',
+                                              sample_users['directeur_id'])
+
+        paie_resp = [a for a in vu_responsable if a['type'] == 'paie']
+        paie_dir = next(a for a in vu_direction if a['type'] == 'paie')
+        assert 'CDD' in paie_dir['detail']              # la direction le voit
+        assert not paie_resp or 'CDD' not in paie_resp[0]['detail']
+
+    def test_un_conge_valide_ne_compte_pas_comme_absence_injustifiee(
+            self, app, db, sample_users, monkeypatch):
+        """Un congé validé crée une absence sans pièce, par construction.
+
+        La compter ferait sonner le rappel tous les mois, et un rappel qui
+        se déclenche toujours cesse d'être lu.
+        """
+        self._le_20(monkeypatch)
+        with app.app_context():
+            db.execute(
+                """INSERT INTO absences (user_id, motif, date_debut, date_fin,
+                                         jours_ouvres, saisi_par, commentaire)
+                   VALUES (?, 'Congé payé', '2026-07-06', '2026-07-10', 5, ?,
+                           'Congé validé - Demande #1')""",
+                (sample_users['salarie_id'], sample_users['directeur_id']))
+            db.commit()
+            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+        paie = next(a for a in actions if a['type'] == 'paie')
+        assert 'sans justificatif' not in paie['detail']
+
+    def test_un_arret_maladie_sans_piece_compte_toujours(self, app, db, sample_users,
+                                                         monkeypatch):
+        self._le_20(monkeypatch)
+        with app.app_context():
+            db.execute(
+                """INSERT INTO absences (user_id, motif, date_debut, date_fin,
+                                         jours_ouvres, saisi_par)
+                   VALUES (?, 'Arrêt maladie', '2026-07-06', '2026-07-10', 5, ?)""",
+                (sample_users['salarie_id'], sample_users['directeur_id']))
+            db.commit()
+            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+        paie = next(a for a in actions if a['type'] == 'paie')
+        assert '1 absence(s) sans justificatif' in paie['detail']
+
+    def test_un_poste_alp_se_juge_sur_le_total_de_ses_periodes(self, app, db,
+                                                               sample_users):
+        """150 dépensés sur une période budgétée 100 ne sont pas un dépassement
+        si le poste, budgété 1000 au total, reste sous enveloppe."""
+        from utils import aujourd_hui
+        annee = aujourd_hui().year
+        with app.app_context():
+            cur = db.execute(
+                "INSERT INTO budgets (secteur_id, annee, montant_global) VALUES (?, ?, 2000)",
+                (sample_users['secteur_id'], annee))
+            budget_id = cur.lastrowid
+            cur = db.execute("INSERT INTO postes_depense (nom) VALUES ('Sorties ALP')")
+            poste_id = cur.lastrowid
+            for periode, prevu, reel in (('mercredis', 100, 150), ('ete', 900, 0)):
+                db.execute("INSERT INTO budget_lignes (budget_id, poste_depense_id, "
+                           "periode, montant) VALUES (?, ?, ?, ?)",
+                           (budget_id, poste_id, periode, prevu))
+                db.execute("INSERT INTO budget_reel_lignes (budget_id, poste_depense_id, "
+                           "periode, montant) VALUES (?, ?, ?, ?)",
+                           (budget_id, poste_id, periode, reel))
+            db.commit()
+
+            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+        assert not [a for a in actions if a['id'].startswith('budget-')]
+
+    def test_un_poste_alp_reellement_depasse_remonte(self, app, db, sample_users):
+        from utils import aujourd_hui
+        annee = aujourd_hui().year
+        with app.app_context():
+            cur = db.execute(
+                "INSERT INTO budgets (secteur_id, annee, montant_global) VALUES (?, ?, 2000)",
+                (sample_users['secteur_id'], annee))
+            budget_id = cur.lastrowid
+            cur = db.execute("INSERT INTO postes_depense (nom) VALUES ('Sorties ALP')")
+            poste_id = cur.lastrowid
+            for periode, prevu, reel in (('mercredis', 100, 150), ('ete', 900, 1000)):
+                db.execute("INSERT INTO budget_lignes (budget_id, poste_depense_id, "
+                           "periode, montant) VALUES (?, ?, ?, ?)",
+                           (budget_id, poste_id, periode, prevu))
+                db.execute("INSERT INTO budget_reel_lignes (budget_id, poste_depense_id, "
+                           "periode, montant) VALUES (?, ?, ?, ?)",
+                           (budget_id, poste_id, periode, reel))
+            db.commit()
+
+            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+        budgets = [a for a in actions if a['id'].startswith('budget-')]
+        assert len(budgets) == 1
+        assert '150' in budgets[0]['detail']      # 1150 réels − 1000 prévus

@@ -317,7 +317,7 @@ def cle_preparation_paie(mois, annee, user_id):
     return f'paie_signalee_{annee:04d}_{mois:02d}_u{user_id}'
 
 
-def _preparation_paie(conn, profil, user_id, today):
+def _preparation_paie(conn, profil, user_id, secteur_id, today):
     """Rappel daté : les cas particuliers que la paie ne devinera pas.
 
     Une fiche absente n'est pas toujours un oubli — un salarié mis à pied,
@@ -327,6 +327,11 @@ def _preparation_paie(conn, profil, user_id, today):
 
     Elle s'adresse aux **responsables et à la direction**, qui signalent ; la
     comptabilité, elle, reçoit le signalement et a ses propres cartes.
+
+    Chacun ne compte que son périmètre — un responsable son équipe, la
+    direction tout l'effectif. Sans ce cadrage, un responsable lirait les
+    situations RH des autres équipes, et éteindrait un rappel portant sur des
+    salariés dont il n'a pas à répondre.
 
     Deux des quatre cas se calculent (CDD sans fiche, absence sans
     justificatif) et sont nommés. Les deux autres — mise à pied, licenciement
@@ -349,28 +354,44 @@ def _preparation_paie(conn, profil, user_id, today):
     if get_setting(cle_preparation_paie(mois, annee, user_id)):
         return []
 
+    from blueprints.absences import MOTIFS_AVEC_JUSTIFICATIF
+
     debut = f'{annee:04d}-{mois:02d}-01'
     fin = (date(annee + (mois == 12), (mois % 12) + 1, 1) - timedelta(days=1)).isoformat()
 
+    if profil == 'responsable':
+        scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
+        params = (secteur_id, user_id)
+    else:
+        scope, params = '', ()
+
     # CDD sous contrat sur le mois, sans la moindre saisie : la paie n'a rien.
     cdd_sans_fiche = conn.execute(
-        '''SELECT COUNT(DISTINCT u.id) AS nb FROM users u
-           JOIN contrats c ON c.user_id = u.id
-           WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
-             AND UPPER(c.type_contrat) LIKE 'CDD%'
-             AND c.date_debut <= ? AND (c.date_fin IS NULL OR c.date_fin >= ?)
-             AND NOT EXISTS (
-                 SELECT 1 FROM heures_reelles h
-                 WHERE h.user_id = u.id AND h.date >= ? AND h.date <= ?
-             )''',
-        (fin, debut, debut, fin)
+        f'''SELECT COUNT(DISTINCT u.id) AS nb FROM users u
+            JOIN contrats c ON c.user_id = u.id
+            WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+              {scope}
+              AND UPPER(c.type_contrat) LIKE 'CDD%'
+              AND c.date_debut <= ? AND (c.date_fin IS NULL OR c.date_fin >= ?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM heures_reelles h
+                  WHERE h.user_id = u.id AND h.date >= ? AND h.date <= ?
+              )''',
+        params + (fin, debut, debut, fin)
     ).fetchone()['nb']
 
+    # Seuls les motifs qui appellent réellement une pièce. Un congé validé
+    # crée une ligne d'absence sans justificatif par construction : le
+    # compter ferait sonner ce rappel tous les mois pour rien.
+    motifs = ','.join('?' for _ in MOTIFS_AVEC_JUSTIFICATIF)
     absences_sans_justificatif = conn.execute(
-        '''SELECT COUNT(*) AS nb FROM absences
-           WHERE date_debut <= ? AND date_fin >= ?
-             AND (justificatif_path IS NULL OR justificatif_path = '')''',
-        (fin, debut)
+        f'''SELECT COUNT(*) AS nb FROM absences a
+            JOIN users u ON u.id = a.user_id
+            WHERE a.date_debut <= ? AND a.date_fin >= ?
+              AND a.motif IN ({motifs})
+              AND (a.justificatif_path IS NULL OR a.justificatif_path = '')
+              {scope}''',
+        (fin, debut) + MOTIFS_AVEC_JUSTIFICATIF + params
     ).fetchone()['nb']
 
     constats = []
@@ -468,24 +489,38 @@ def _budgets_depasses(conn, profil, user_id, secteur_id, today):
     if profil == 'responsable':
         if not secteur_id:
             return []
-        scope, params = 'AND b.secteur_id = ?', (secteur_id,)
+        scope, params = 'AND postes.secteur_id = ?', (secteur_id,)
     elif profil in ('directeur', 'comptable'):
         scope, params = '', ()
     else:
         return []
 
+    # Un poste ALP est réparti sur plusieurs périodes (mercredis, vacances…) ;
+    # la page budget le juge sur leur **total**, pas période par période. Sans
+    # ce regroupement, 150 dépensés sur une période budgétée 100 crieraient au
+    # dépassement alors que le poste, budgété 1000 au total, est largement
+    # sous enveloppe. On agrège donc avant de comparer — un poste annuel n'a
+    # qu'une ligne, l'agrégation le laisse intact.
     rows = conn.execute(
-        f'''SELECT s.id AS secteur_id, s.nom AS secteur_nom,
+        f'''WITH postes AS (
+                SELECT b.secteur_id,
+                       p.poste_depense_id,
+                       SUM(p.montant) AS prevu,
+                       (SELECT COALESCE(SUM(r.montant), 0)
+                        FROM budget_reel_lignes r
+                        WHERE r.budget_id = p.budget_id
+                          AND r.poste_depense_id = p.poste_depense_id) AS reel
+                FROM budget_lignes p
+                JOIN budgets b ON b.id = p.budget_id
+                WHERE b.annee = ?
+                GROUP BY p.budget_id, p.poste_depense_id
+            )
+            SELECT s.id AS secteur_id, s.nom AS secteur_nom,
                    COUNT(*) AS nb_postes,
-                   SUM(r.montant - p.montant) AS depassement
-            FROM budget_lignes p
-            JOIN budget_reel_lignes r
-              ON r.budget_id = p.budget_id
-             AND r.poste_depense_id = p.poste_depense_id
-             AND r.periode = p.periode
-            JOIN budgets b ON b.id = p.budget_id
-            JOIN secteurs s ON s.id = b.secteur_id
-            WHERE b.annee = ? AND p.montant > 0 AND r.montant > p.montant
+                   SUM(postes.reel - postes.prevu) AS depassement
+            FROM postes
+            JOIN secteurs s ON s.id = postes.secteur_id
+            WHERE postes.prevu > 0 AND postes.reel > postes.prevu
               {scope}
             GROUP BY s.id, s.nom
             ORDER BY depassement DESC''',
@@ -797,7 +832,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     for constructeur, arguments in (
         (_fiches_a_valider, (profil, user_id, secteur_id, today)),
         (_factures_a_valider, (profil, user_id, secteur_id, today)),
-        (_preparation_paie, (profil, user_id, today)),
+        (_preparation_paie, (profil, user_id, secteur_id, today)),
         (_fournitures_en_attente, (profil, user_id, today)),
         (_budgets_depasses, (profil, user_id, secteur_id, today)),
         (_taches_du_jour, (user_id, today)),
