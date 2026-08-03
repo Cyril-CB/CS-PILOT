@@ -129,11 +129,15 @@ def test_facture_hors_circuit_sans_bouton(admin_client, db, sample_users):
 
 
 def test_relance_sans_bouton_pour_comptable_sans_delegation(comptable_client, db, sample_users):
-    """L'endpoint de relance refuse un comptable sans délégation : l'item des
-    fiches non validées reste informatif (lien) au lieu d'un bouton voué au
-    403 — revue Codex."""
+    """L'endpoint de relance refuse un comptable sans délégation : pas de
+    bouton voué au 403 — revue Codex.
+
+    L'information lui parvient désormais par les fiches nommées, qui disent
+    *qui* attend plutôt que *combien* : c'est ce qui remplace l'ancien item
+    informatif « N fiches non validées ».
+    """
     html = comptable_client.get('/dashboard_direction').get_data(as_text=True)
-    assert 'non validée(s)' in html          # l'information reste visible
+    assert 'Fiche à valider' in html                # l'information reste visible
     # … mais pas de bouton un clic (data-mois n'est rendu qu'avec le bouton ;
     # la chaîne data-cc-act="relance" existe aussi dans le JS statique).
     assert 'data-mois=' not in html

@@ -38,6 +38,11 @@
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="subvention"
                 data-flx-ref="{{ a.id }}" data-se-id="{{ a.se_id }}">✓ C'est fait</button>
         <a href="{{ a.lien }}" class="flx-btn">Ouvrir</a>
+        {% elif a.type == 'paie' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="paie"
+                data-flx-ref="{{ a.id }}" data-mois="{{ a.paie_mois }}"
+                data-annee="{{ a.paie_annee }}">✓ C'est fait</button>
+        <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }}</a>
         {% elif a.type == 'relance' %}
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="relance"
                 data-flx-ref="{{ a.id }}" data-mois="{{ a.relance_mois }}"
@@ -46,7 +51,15 @@
         {% else %}
         <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }} →</a>
         {% endif %}
+        {% if a.circuit %}
+        {# Sous les boutons : la question, pas une action de plus. #}
+        <button type="button" class="flx-pourquoi" data-flx-pourquoi
+                aria-expanded="false">Pourquoi ?</button>
+        {% endif %}
     </div>
+    {% if a.circuit %}
+    {% with circuit = a.circuit %}{% include '_flux_circuit.html' %}{% endwith %}
+    {% endif %}
 </div>
 {% endfor %}
 

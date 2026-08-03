@@ -110,6 +110,30 @@
         if (window.flxToast) window.flxToast(msg || "Erreur — l'action n'a pas pu être traitée");
     }
 
+    // « Pourquoi ? » : déplie le circuit et amène l'étape en attente sous les
+    // yeux. Sans ce recentrage, un circuit de six étapes s'ouvre sur son
+    // début — c'est-à-dire sur ce qui est déjà fait.
+    document.addEventListener('click', function (e) {
+        var lien = e.target.closest('[data-flx-pourquoi]');
+        if (!lien) return;
+        var carte = lien.closest('[data-flx-item]');
+        var circuit = carte && carte.querySelector('[data-flx-circuit]');
+        if (!circuit) return;
+
+        var ouvert = !circuit.hidden;
+        circuit.hidden = ouvert;
+        lien.setAttribute('aria-expanded', String(!ouvert));
+        lien.textContent = ouvert ? 'Pourquoi ?' : 'Masquer le circuit ↑';
+        if (ouvert) return;
+
+        var piste = circuit.querySelector('.flx-circuit-piste');
+        var courante = circuit.querySelector('.flx-etape-courant');
+        if (piste && courante) {
+            piste.scrollLeft = Math.max(
+                0, courante.offsetLeft - (piste.clientWidth - courante.offsetWidth) / 2);
+        }
+    });
+
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('[data-flx-act]');
         if (!btn || btn.disabled) return;
@@ -152,6 +176,19 @@
               .then(function (res) {
                   if (!res.ok || !res.d.ok) throw 0;
                   retirer(ref, '💶 Étape marquée comme faite');
+              })
+              .catch(function () { btn.disabled = false; echec(); });
+
+        } else if (act === 'paie') {
+            fetch('/api/accueil/preparation-paie', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mois: Number(btn.getAttribute('data-mois')),
+                                      annee: Number(btn.getAttribute('data-annee'))})
+            }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+              .then(function (res) {
+                  if (!res.ok || !res.d.ok) throw 0;
+                  retirer(ref, '📆 Préparation de paie signalée comme faite');
               })
               .catch(function () { btn.disabled = false; echec(); });
 

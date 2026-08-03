@@ -1,0 +1,43 @@
+{# Le circuit d'une carte : replié par défaut, déployé par « Pourquoi ? ».
+
+   L'étape courante prend le ton de la carte (retard / urgent / normal) plutôt
+   que la couleur de son rôle : une décision en retard doit se voir comme
+   telle jusque dans son circuit. Le rôle reste lisible sur sa pastille. #}
+<div class="flx-circuit" data-flx-circuit hidden>
+    <div class="flx-circuit-entete">
+        <span class="flx-circuit-cle">Circuit</span>
+        <span class="flx-circuit-intitule">{{ circuit.intitule }}</span>
+        <span class="flx-circuit-rang">
+            Étape {{ circuit.rang }} sur {{ circuit.total }}{% if circuit.a_moi %} — la vôtre{% endif %}.
+        </span>
+    </div>
+
+    <div class="flx-circuit-piste">
+        {% for etape in circuit.etapes %}
+        <div class="flx-etape flx-etape-{{ etape.statut }}">
+            <div class="flx-etape-role">
+                <i style="background: {{ etape.role_couleur }};"></i>{{ etape.role_label }}
+            </div>
+            <div class="flx-etape-titre">{{ etape.titre }}</div>
+            {% for ligne in etape.lignes %}
+            <div class="flx-etape-ligne">{{ ligne }}</div>
+            {% endfor %}
+            {% if etape.note %}
+            <div class="flx-etape-note">{{ etape.note }}</div>
+            {% endif %}
+            <div class="flx-etape-statut">
+                {% if etape.statut == 'fait' %}✓ Fait
+                {% elif etape.statut == 'courant' %}● {% if circuit.a_moi %}Vous, maintenant{% else %}En attente{% endif %}
+                {% else %}○ À venir{% endif %}
+            </div>
+        </div>
+        {% if etape.liaison and not loop.last %}
+        <div class="flx-liaison">{{ etape.liaison }}<span>→</span></div>
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {% if circuit.consequence %}
+    <div class="flx-circuit-consequence">⚠ {{ circuit.consequence }}</div>
+    {% endif %}
+</div>
