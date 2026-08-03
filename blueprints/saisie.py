@@ -16,6 +16,11 @@ saisie_bp = Blueprint('saisie_bp', __name__)
 SEUIL_ECART_ANOMALIE_HEURES = 3
 
 
+# Lignes de `heures_reelles` écrites par les circuits absences et récup, et
+# non par quelqu'un venu saisir ses heures ici.
+_TYPES_GENERES = ('absence', 'recup_journee', 'recup_partielle')
+
+
 def _saisie_sans_contrat(conn, user_id_cible, date_str, saisie_existante):
     """La saisie doit-elle être refusée faute de contrat couvrant ce jour ?
 
@@ -24,14 +29,21 @@ def _saisie_sans_contrat(conn, user_id_cible, date_str, saisie_existante):
     L'absence de contrat au dossier vaut donc refus — c'est ce qui pousse à
     l'enregistrer plutôt que de le remettre à plus tard.
 
-    Une saisie déjà enregistrée échappe à la règle. Les heures posées avant
-    que cette règle n'existe restent en place et modifiables : on ne fige pas
-    des données que leur auteur pourrait avoir à corriger.
+    Une **saisie manuelle** déjà enregistrée échappe à la règle : les heures
+    posées avant qu'elle n'existe restent modifiables, on ne fige pas des
+    données que leur auteur pourrait avoir à corriger.
+
+    Une ligne **générée** (absence, récupération) ne rouvre en revanche pas la
+    porte. Ces circuits écrivent librement hors contrat — une absence se
+    régularise parfois après la fin d'un contrat — et leur ligne servirait
+    sinon de laissez-passer : il suffirait d'ouvrir le jour d'une absence pour
+    y substituer des heures travaillées sur une période sans contrat. Corriger
+    l'absence elle-même se fait sur la page Absences, pas ici.
 
     Le planning théorique, lui, n'est pas exigé : s'il arrive plus tard, les
     heures supplémentaires se recalculent d'elles-mêmes.
     """
-    if saisie_existante:
+    if saisie_existante and saisie_existante['type_saisie'] not in _TYPES_GENERES:
         return False
     return not est_couvert_par_contrat(periodes_contrat(conn, user_id_cible), date_str)
 

@@ -152,6 +152,50 @@ class TestSalariesSansContrat:
         assert 'Contrat à venir' in html
         assert 'Contrat échu' not in html
 
+    def test_cdd_a_venir_n_est_pas_annonce_echu(self, app, db, comptable_client,
+                                                sample_users):
+        """Un CDD futur a une date de fin, futures elles aussi.
+
+        S'en remettre à la seule présence d'une date de fin l'annonçait
+        « échu depuis » une date à venir.
+        """
+        an, _, _ = _ctx_mois()
+        with app.app_context():
+            _couvrir_les_autres(db, sample_users['salarie_id'])
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDD', ?, ?)",
+                (sample_users['salarie_id'], f"{an + 1:04d}-03-01", f"{an + 1:04d}-08-31")
+            )
+            db.commit()
+
+        html = comptable_client.get(self.URL).get_data(as_text=True)
+        assert 'Contrat à venir' in html
+        assert 'Contrat échu' not in html
+        assert f'01/03/{an + 1}' in html
+
+    def test_un_renouvellement_deja_signe_prime_sur_le_contrat_echu(
+            self, app, db, comptable_client, sample_users):
+        """Contrat terminé + reprise programmée : il n'y a rien à régulariser."""
+        an, _, _ = _ctx_mois()
+        with app.app_context():
+            _couvrir_les_autres(db, sample_users['salarie_id'])
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDD', ?, ?)",
+                (sample_users['salarie_id'], f"{an - 2:04d}-01-01", f"{an - 1:04d}-06-30")
+            )
+            db.execute(
+                "INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin) "
+                "VALUES (?, 'CDI', ?, NULL)",
+                (sample_users['salarie_id'], f"{an + 1:04d}-01-01")
+            )
+            db.commit()
+
+        html = comptable_client.get(self.URL).get_data(as_text=True)
+        assert 'Contrat à venir' in html
+        assert 'Contrat échu' not in html
+
     def test_la_page_reste_hors_du_menu_et_de_la_carte(self, app):
         """Page de réponse : on l'appelle, on ne la parcourt pas.
 

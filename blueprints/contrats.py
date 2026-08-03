@@ -140,11 +140,17 @@ def salaries_sans_contrat():
 
     conn = get_db()
     try:
+        # `prochain_debut` distingue l'embauche à venir du contrat échu. Se
+        # fier à la seule présence d'une date de fin ne suffit pas : un CDD
+        # futur en a une, et serait annoncé « échu depuis » une date à venir.
         salaries = conn.execute(
             '''SELECT u.id, u.nom, u.prenom, u.profil,
                       COALESCE(s.nom, '') AS secteur_nom,
+                      (SELECT MIN(c.date_debut) FROM contrats c
+                       WHERE c.user_id = u.id AND c.date_debut > ?) AS prochain_debut,
                       (SELECT MAX(c.date_fin) FROM contrats c
-                       WHERE c.user_id = u.id) AS derniere_fin,
+                       WHERE c.user_id = u.id
+                         AND c.date_fin IS NOT NULL AND c.date_fin < ?) AS derniere_fin,
                       (SELECT COUNT(*) FROM contrats c
                        WHERE c.user_id = u.id) AS nb_contrats
                FROM users u
@@ -157,7 +163,7 @@ def salaries_sans_contrat():
                        AND (c.date_fin IS NULL OR c.date_fin >= ?)
                  )
                ORDER BY nb_contrats, u.nom, u.prenom''',
-            (today, today)
+            (today, today, today, today)
         ).fetchall()
     finally:
         conn.close()

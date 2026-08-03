@@ -236,6 +236,62 @@ class TestSaisieExigeUnContrat:
             row = self._saisie_en_base(db, sample_users['salarie_id'])
             assert row['heure_debut_matin'] == '08:00'
 
+    def test_une_ligne_d_absence_ne_sert_pas_de_laissez_passer(
+            self, auth_client, app, db, sample_users):
+        """Les circuits absences et récup écrivent librement hors contrat.
+
+        Leur ligne ne doit pas rouvrir la saisie pour autant : sans ce
+        garde-fou, il suffirait d'ouvrir le jour d'une absence pour y
+        substituer des heures travaillées sur une période sans contrat.
+        """
+        with app.app_context():
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, type_saisie, declaration_conforme, commentaire)
+                   VALUES (?, ?, 'absence', 1, 'Arrêt maladie')""",
+                (sample_users['salarie_id'], self.DATE)
+            )
+            db.commit()
+
+            self._saisir(auth_client)
+            row = self._saisie_en_base(db, sample_users['salarie_id'])
+
+        assert row['type_saisie'] == 'absence'          # rien n'a été remplacé
+        assert row['heure_debut_matin'] is None
+
+    def test_une_recup_ne_sert_pas_davantage_de_laissez_passer(
+            self, auth_client, app, db, sample_users):
+        with app.app_context():
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, type_saisie, declaration_conforme, commentaire)
+                   VALUES (?, ?, 'recup_journee', 0, 'Récupération')""",
+                (sample_users['salarie_id'], self.DATE)
+            )
+            db.commit()
+
+            self._saisir(auth_client)
+            row = self._saisie_en_base(db, sample_users['salarie_id'])
+
+        assert row['type_saisie'] == 'recup_journee'
+
+    def test_une_absence_sous_contrat_reste_modifiable(
+            self, auth_client, app, db, sample_users, sample_contrat):
+        """Le garde-fou ne vaut que hors contrat : sous contrat, rien ne change."""
+        with app.app_context():
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, type_saisie, declaration_conforme, commentaire)
+                   VALUES (?, ?, 'absence', 1, 'Arrêt maladie')""",
+                (sample_users['salarie_id'], self.DATE)
+            )
+            db.commit()
+
+            self._saisir(auth_client)
+            row = self._saisie_en_base(db, sample_users['salarie_id'])
+
+        assert row['heure_debut_matin'] == '08:30'
+
     def test_le_planning_n_est_pas_exige(self, auth_client, app, db, sample_users, sample_contrat):
         """Un contrat suffit : le planning peut arriver plus tard."""
         with app.app_context():
