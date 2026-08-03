@@ -63,6 +63,42 @@ Pour la direction et la comptabilité, le fil reprend la file étendue du centre
 de contrôle qu'il remplace : factures assignées à la direction, relance des
 fiches non validées, surcharges, soldes de congés élevés.
 
+### Le « Pourquoi ? » : le circuit derrière une carte
+
+Une carte dit *quoi faire*. Elle ne dit pas *ce qui est arrêté derrière*.
+« Fiche à valider — Marie Dupont » ne laisse pas deviner que la préparation de
+la paie attend, ni qu'un CDD n'aura plus qu'un bulletin pour se régulariser.
+Sous les boutons, un lien **Pourquoi ?** déplie le circuit dans lequel la
+décision s'inscrit, centré sur l'étape en attente.
+
+`flux_circuits.py` décrit six circuits — congé, récupération, fiche d'heures,
+facture, subvention, fourniture. Chaque étape porte le **rôle** qui la traite
+(pastille colorée : salarié, responsable, direction, comptabilité,
+prestataire, ou *application* quand le logiciel agit seul), ce qu'elle fait,
+et son état — faite, en cours, à venir. Les liaisons nomment le geste qui mène
+à la suivante (« soumet », « alimente », « verrouille »).
+
+Trois règles de forme :
+
+- **l'étape courante prend le ton de la carte**, pas la couleur de son rôle.
+  Une décision en retard se signale en rouge jusque dans son circuit ; le rôle
+  reste lisible sur sa pastille ;
+- **la conséquence tient en une phrase**, avec les vraies dates : c'est elle
+  qui répond à « pourquoi c'est important », le schéma seul ne le dit pas.
+  Elle ne paraît que lorsqu'il y a réellement quelque chose à dire — une
+  demande déposée hier ne reproche rien ;
+- **les alimentations annexes se notent sur l'étape concernée.** Les arrêts
+  maladie saisis en comptabilité nourrissent la préparation de paie : le
+  circuit le montre, parce que c'est ce lien entre éléments que l'application
+  fait et que personne ne voit.
+
+Le circuit est rendu **avec la carte, replié** (`hidden`) : pas d'aller-retour
+serveur au clic. À l'ouverture, la piste défile jusqu'à l'étape courante —
+sans ce recentrage, un circuit de six étapes s'ouvre sur ce qui est déjà fait.
+
+Toutes les familles n'en ont pas : la ligne « et N autres » ne désigne aucun
+enregistrement précis, elle n'a donc pas d'étape à mettre en avant.
+
 ### La règle du fil : on nomme, on ne compte pas
 
 **Le fil ne porte aucune donnée informative fixe.** Chaque carte attend une

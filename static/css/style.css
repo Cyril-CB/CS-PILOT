@@ -4618,6 +4618,98 @@ body.flx .main-content {
 .flx-btn-plein:hover { background: var(--primary-dark); color: #fff; }
 .flx-btn[disabled] { opacity: 0.55; cursor: default; }
 
+/* ── « Pourquoi ? » : le circuit d'une carte ─────────────────────────── */
+/* La carte passe en deux lignes : l'en-tête habituel, puis le circuit qui
+   s'étend sous les trois colonnes. Replié, il ne coûte rien à la mise en page. */
+.flx-carte:has(> .flx-circuit:not([hidden])) { align-items: start; }
+.flx-circuit { grid-column: 1 / -1; margin-top: 18px; }
+
+.flx-pourquoi {
+    background: none; border: none; padding: 0; margin-top: 2px;
+    font-family: inherit; font-size: 0.78rem; color: var(--gray-500);
+    text-decoration: underline; text-decoration-style: dotted;
+    text-underline-offset: 3px; cursor: pointer; width: 100%; text-align: right;
+}
+.flx-pourquoi:hover { color: var(--gray-700); }
+
+.flx-circuit-entete {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+.flx-circuit-cle {
+    font-family: var(--flx-mono); font-size: 0.62rem; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--gray-500);
+}
+.flx-circuit-intitule { font-size: 0.87rem; color: var(--gray-700); }
+.flx-circuit-rang {
+    margin-left: auto; font-size: 0.8rem; color: var(--gray-500);
+}
+
+/* Défilement horizontal : un circuit de six étapes ne tient pas dans la
+   carte, et le tronquer cacherait justement la fin — ce qui est bloqué. */
+.flx-circuit-piste {
+    display: flex; align-items: stretch; gap: 0; overflow-x: auto;
+    padding: 4px 2px 12px; scrollbar-width: thin;
+}
+.flx-etape {
+    flex: 0 0 208px; padding: 13px 15px; border-radius: 11px;
+    border: 1px solid var(--gray-200); background: var(--gray-100);
+    display: flex; flex-direction: column; gap: 5px;
+}
+.flx-etape-role {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--flx-mono); font-size: 0.58rem; letter-spacing: 1.3px;
+    text-transform: uppercase; color: var(--gray-500);
+}
+.flx-etape-role i { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.flx-etape-titre {
+    font-size: 0.93rem; color: var(--gray-900); line-height: 1.35;
+}
+.flx-etape-ligne { font-size: 0.78rem; color: var(--gray-500); line-height: 1.4; }
+.flx-etape-note {
+    margin-top: 4px; padding: 7px 9px; border-radius: 7px;
+    border: 1px solid var(--gray-300); background: var(--white);
+    font-size: 0.74rem; color: var(--gray-600); line-height: 1.4;
+}
+.flx-etape-statut {
+    margin-top: auto; padding-top: 9px;
+    font-family: var(--flx-mono); font-size: 0.58rem; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--gray-500);
+}
+.flx-etape-a_venir { background: transparent; border-style: dashed; }
+.flx-etape-a_venir .flx-etape-titre { color: var(--gray-600); }
+
+/* L'étape en attente : fond plein, bordure au ton de la carte. */
+.flx-etape-courant {
+    background: var(--white); border-width: 1.5px;
+    border-color: var(--flx-planifier);
+}
+.flx-etape-courant .flx-etape-statut { color: var(--flx-planifier); }
+.flx-retard .flx-etape-courant { border-color: var(--flx-retard); }
+.flx-retard .flx-etape-courant .flx-etape-statut { color: var(--flx-retard); }
+.flx-urgent .flx-etape-courant { border-color: var(--flx-urgent); }
+.flx-urgent .flx-etape-courant .flx-etape-statut { color: var(--flx-urgent); }
+
+.flx-liaison {
+    flex: 0 0 auto; align-self: center; padding: 0 11px; text-align: center;
+    font-family: var(--flx-mono); font-size: 0.57rem; letter-spacing: 1.1px;
+    text-transform: uppercase; color: var(--gray-500); line-height: 1.6;
+}
+.flx-liaison span { display: block; font-size: 0.8rem; }
+
+/* La conséquence : ce que le schéma ne dit pas — pourquoi ça compte. */
+.flx-circuit-consequence {
+    padding: 11px 14px; border-radius: 9px; font-size: 0.84rem; line-height: 1.5;
+    background: rgba(47,93,80,0.07); color: var(--gray-700);
+}
+.flx-retard .flx-circuit-consequence { background: rgba(191,68,68,0.08); color: #8c3535; }
+.flx-urgent .flx-circuit-consequence { background: rgba(197,106,42,0.09); color: #8a4c1e; }
+
+@media (max-width: 700px) {
+    .flx-etape { flex-basis: 172px; }
+    .flx-circuit-rang { margin-left: 0; width: 100%; }
+}
+
 /* ── Flux vide ───────────────────────────────────────────────────────── */
 .flx-vide {
     text-align: center; padding: 72px 24px; border: 1px dashed var(--gray-300);

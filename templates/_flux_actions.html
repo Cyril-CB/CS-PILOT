@@ -51,7 +51,15 @@
         {% else %}
         <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }} →</a>
         {% endif %}
+        {% if a.circuit %}
+        {# Sous les boutons : la question, pas une action de plus. #}
+        <button type="button" class="flx-pourquoi" data-flx-pourquoi
+                aria-expanded="false">Pourquoi ?</button>
+        {% endif %}
     </div>
+    {% if a.circuit %}
+    {% with circuit = a.circuit %}{% include '_flux_circuit.html' %}{% endwith %}
+    {% endif %}
 </div>
 {% endfor %}
 

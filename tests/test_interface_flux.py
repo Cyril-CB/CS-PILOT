@@ -883,3 +883,44 @@ def test_le_rappel_de_paie_est_ferme_au_salarie(auth_client, sample_users):
     reponse = auth_client.post('/api/accueil/preparation-paie',
                                json={'mois': today.month, 'annee': today.year})
     assert reponse.status_code == 403
+
+
+# ── Le « Pourquoi ? » sur les cartes du fil ─────────────────────────────────
+
+def test_le_circuit_est_replie_mais_present(admin_client, db, sample_users):
+    """Rendu avec la carte, caché : pas d'aller-retour au clic."""
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut, date_demande) VALUES (?, 'Congé payé', '2026-08-12', "
+            "'2026-08-19', 5, 'en_attente_direction', '2026-07-25')",
+            (sample_users['salarie_id'],))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'flx-pourquoi' in corps
+    assert 'data-flx-circuit' in corps
+    assert 'hidden' in corps.split('data-flx-circuit')[1][:20]
+    assert 'De la demande au planning et aux compteurs' in corps
+
+
+def test_le_circuit_situe_l_etape_en_attente(admin_client, db, sample_users):
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut, date_demande) VALUES (?, 'Congé payé', '2026-08-12', "
+            "'2026-08-19', 5, 'en_attente_direction', '2026-07-25')",
+            (sample_users['salarie_id'],))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'Étape 3 sur 5' in corps
+    assert 'la vôtre' in corps
+    assert 'flx-etape-courant' in corps
+
+
+def test_une_carte_sans_circuit_n_affiche_pas_pourquoi(admin_client, db, sample_users):
+    """Toutes les familles n'ont pas de circuit : la question ne se pose pas."""
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    # Les fiches à valider en ont un, la ligne « et N autres » non.
+    assert 'reste-fiches' in corps
+    bloc_reste = corps.split('data-flx-id="reste-fiches')[1][:900]
+    assert 'flx-pourquoi' not in bloc_reste

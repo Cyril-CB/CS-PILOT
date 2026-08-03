@@ -30,6 +30,7 @@ from flask import url_for
 from blueprints.delegations import (MISSION_SUIVI_COMMANDES_FOURNITURES,
                                     MISSION_SUIVI_VALIDATIONS_RELANCES,
                                     user_has_delegation)
+import flux_circuits
 from utils import (NOMS_MOIS, aujourd_hui, calculer_solde_recup, get_setting,
                    save_setting)
 
@@ -146,6 +147,24 @@ def _solde_du_mois(conn, user_id, mois, annee, planning_cache, periode_cache):
     return round(total, 2)
 
 
+def _est_cdd(conn, user_id, annee, mois):
+    """Le salarié était-il en CDD sur ce mois ?
+
+    Change ce que le circuit annonce : les heures d'un CDD se paient et se
+    régularisent sur un nombre de bulletins compté, celles d'un CDI se
+    récupèrent. La conséquence d'un retard n'est pas la même.
+    """
+    debut = f'{annee:04d}-{mois:02d}-01'
+    fin = (date(annee + (mois == 12), (mois % 12) + 1, 1) - timedelta(days=1)).isoformat()
+    return conn.execute(
+        '''SELECT 1 FROM contrats
+           WHERE user_id = ? AND UPPER(type_contrat) LIKE 'CDD%'
+             AND date_debut <= ? AND (date_fin IS NULL OR date_fin >= ?)
+           LIMIT 1''',
+        (user_id, fin, debut)
+    ).fetchone() is not None
+
+
 def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     """Fiches d'heures du mois précédent encore non validées.
 
@@ -222,6 +241,9 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
                             mois=mois, annee=annee),
             'lien_texte': 'Ouvrir la fiche',
             'urgence': urgence,
+            'circuit': flux_circuits.fiche_heures(
+                profil, today, est_cdd=_est_cdd(conn, salarie['id'], annee, mois),
+                solde=arrondi),
         })
 
     reste = len(classees) - len(actions)
@@ -271,6 +293,8 @@ def _factures_a_valider(conn, profil, user_id, secteur_id, today):
             'lien': url_for('factures_bp.detail_facture', facture_id=r['id']),
             'lien_texte': 'Détail',
             'urgence': _urgence_echeance(ech, today),
+            'circuit': flux_circuits.facture('en_attente', r['date_echeance'],
+                                             profil, today),
         })
 
     reste = len(rows) - len(actions)
@@ -417,6 +441,8 @@ def _fournitures_en_attente(conn, profil, user_id, today):
             'lien': url_for('commandes_salaries_bp.commandes_salaries'),
             'lien_texte': 'Traiter',
             'urgence': tons.get(r['urgence'], 'normal'),
+            'circuit': flux_circuits.fourniture(r['date_demande'], profil, today,
+                                                urgence=r['urgence']),
         })
 
     reste = len(rows) - len(actions)
@@ -656,6 +682,8 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             'lien': url_for('recup_bp.validation_demandes_recup'),
             'lien_texte': 'Valider',
             'urgence': _urgence_depot(depot, today),
+            'circuit': flux_circuits.demande_recup(
+                r['statut'], r['date_demande'], profil, today),
         })
 
     # Congés : dates + solde du compteur concerné APRÈS validation (CP ou
@@ -697,6 +725,9 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             'detail': ' — '.join(parts),
             'lien': url_for('recup_bp.validation_demandes_recup'),
             'lien_texte': 'Valider',
+            'circuit': flux_circuits.demande_conge(
+                r['statut'], r['date_demande'], profil, today,
+                nb_jours=r['nb_jours']),
             'urgence': _urgence_depot(depot, today),
         })
 
@@ -756,6 +787,8 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
             'lien': lien_sub,
             'lien_texte': 'Voir',
             'urgence': _urgence_echeance(ech, today),
+            'circuit': flux_circuits.subvention(r['date_echeance'], profil, today,
+                                                etape_nom=r['etape']),
         })
 
     # 3. Ce que chaque profil doit trancher, nommé plutôt que compté. Chaque
