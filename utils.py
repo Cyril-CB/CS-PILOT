@@ -121,6 +121,45 @@ def calcul_etp(type_contrat, temps_hebdo):
     return 1.0
 
 
+def periodes_contrat(conn, user_id):
+    """Périodes d'emploi d'un salarié, d'après ses contrats : [(début, fin|None)].
+
+    `fin` à None = contrat sans terme (CDI, ou CDD dont la fin n'est pas encore
+    saisie). Les dates sont des chaînes ISO, directement comparables.
+
+    Une liste vide signifie « aucun contrat au dossier », pas « jamais
+    employé » : la table s'est remplie après coup pour une partie de
+    l'effectif. L'appelant doit donc s'abstenir de conclure quoi que ce soit
+    d'une liste vide — voir `est_hors_contrat`.
+    """
+    rows = conn.execute(
+        """SELECT date_debut, date_fin FROM contrats
+           WHERE user_id = ? AND date_debut IS NOT NULL AND date_debut != ''
+           ORDER BY date_debut""",
+        (user_id,)
+    ).fetchall()
+    return [(str(r['date_debut'])[:10],
+             str(r['date_fin'])[:10] if r['date_fin'] else None)
+            for r in rows]
+
+
+def est_hors_contrat(periodes, date_str):
+    """Ce jour-là, le salarié n'était couvert par aucun de ses contrats.
+
+    Toujours faux tant qu'aucun contrat n'est enregistré : sans référence, on
+    ne retranche rien plutôt que de vider la fiche d'un salarié dont le
+    contrat n'a pas été saisi.
+
+    `date_fin` est le dernier jour travaillé : elle est donc incluse. (Le
+    prorata de congés, lui, l'exclut délibérément pour solder les compteurs le
+    mois de la sortie — même colonne, deux bornes, deux usages.)
+    """
+    if not periodes:
+        return False
+    return not any(debut <= date_str and (fin is None or date_str <= fin)
+                   for debut, fin in periodes)
+
+
 def validate_password_strength(password):
     """Valide la complexité d'un mot de passe.
 

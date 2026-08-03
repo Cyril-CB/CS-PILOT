@@ -338,6 +338,18 @@ L'adresse email est indispensable pour recevoir les notifications.
 
 Les contrats sont listés par ordre chronologique décroissant.
 
+> **Les dates du contrat bornent la fiche d'heures.** Les jours situés avant
+> la date de début ou après la date de fin sont marqués *Hors contrat* : ils
+> ne sont pas réclamés à la saisie, ne comptent pas dans les heures
+> théoriques du mois et n'empêchent plus la validation. C'est ce qui permet à
+> un CDD entré ou sorti en cours de mois de valider son mois partiel.
+>
+> La date de fin est **incluse** : c'est le dernier jour travaillé.
+>
+> Tant qu'aucun contrat n'est enregistré pour un salarié, rien ne change —
+> tous ses jours ouvrés restent à saisir. Une fiche entièrement vide reste
+> ainsi visible au lieu d'être silencieusement dispensée de saisie.
+
 ---
 
 ### 8.3 Déposer des documents RH
