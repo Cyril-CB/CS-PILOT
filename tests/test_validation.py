@@ -764,6 +764,50 @@ class TestJoursHorsContrat:
         assert par_date['2024-12-10']['hors_contrat'] is True    # dans le trou
         assert par_date['2024-12-16']['hors_contrat'] is False   # début du second
 
+    def test_le_trou_entre_deux_cdd_n_empeche_pas_la_validation(
+            self, app, db, sample_users, sample_planning):
+        """Cas de référence : CDD du 01 au 10/07, retour du 16 au 31/07.
+
+        Du 11 au 15 il n'y a rien à saisir, donc rien qui doive rougir ni
+        retenir la validation du mois. Le 14 juillet, férié tombé dans le
+        trou, ne compte pas davantage : il n'est pas chômé pour quelqu'un qui
+        n'est pas employé.
+        """
+        from datetime import timedelta
+
+        with app.app_context():
+            _ajouter_jour_ferie(db, '2026-07-14', 'Fête nationale')
+            _creer_contrat(db, sample_users['salarie_id'], '2026-07-01', '2026-07-10')
+            _creer_contrat(db, sample_users['salarie_id'], '2026-07-16', '2026-07-31')
+
+            # Saisir les jours ouvrés des deux périodes, et eux seuls.
+            jour = datetime(2026, 7, 1)
+            while jour <= datetime(2026, 7, 31):
+                dans_contrat = (jour.day <= 10 or jour.day >= 16)
+                if jour.weekday() < 5 and dans_contrat:
+                    db.execute(
+                        """INSERT OR IGNORE INTO heures_reelles
+                           (user_id, date, heure_debut_matin, heure_fin_matin,
+                            heure_debut_aprem, heure_fin_aprem, type_saisie,
+                            declaration_conforme)
+                           VALUES (?, ?, '08:30', '12:00', '13:30', '17:00',
+                                   'heures_modifiees', 0)""",
+                        (sample_users['salarie_id'], jour.strftime('%Y-%m-%d'))
+                    )
+                jour += timedelta(days=1)
+            db.commit()
+
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 7, 2026)
+
+        par_date = {j['date']: j for j in data['journees']}
+        for jour_du_trou in ('2026-07-13', '2026-07-14', '2026-07-15'):
+            assert par_date[jour_du_trou]['hors_contrat'] is True, jour_du_trou
+            assert par_date[jour_du_trou]['non_declare'] is False, jour_du_trou
+            assert par_date[jour_du_trou]['heures_theoriques'] == 0, jour_du_trou
+
+        assert data['nb_jours_non_declares'] == 0
+        assert data['peut_valider_mois'] is True
+
     def test_contrat_sans_terme_ne_retranche_rien(self, app, db, sample_users, sample_planning):
         """Un CDI (date_fin vide) couvre tout ce qui suit son début."""
         with app.app_context():
