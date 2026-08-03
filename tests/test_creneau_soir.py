@@ -78,7 +78,7 @@ class TestMetriquesTempsSoir:
 
 
 class TestSaisieSoir:
-    def test_saisie_enregistre_le_creneau_soir(self, auth_client, app, db, sample_users):
+    def test_saisie_enregistre_le_creneau_soir(self, auth_client, app, db, sample_users, sample_contrat):
         date_test = '2025-01-13'  # lundi
         with app.app_context():
             auth_client.post('/saisie_heures', data={

@@ -143,21 +143,33 @@ def periodes_contrat(conn, user_id):
             for r in rows]
 
 
-def est_hors_contrat(periodes, date_str):
-    """Ce jour-là, le salarié n'était couvert par aucun de ses contrats.
+def est_couvert_par_contrat(periodes, date_str):
+    """Un contrat enregistré couvre-t-il ce jour ?
 
-    Toujours faux tant qu'aucun contrat n'est enregistré : sans référence, on
-    ne retranche rien plutôt que de vider la fiche d'un salarié dont le
-    contrat n'a pas été saisi.
+    C'est la question de la **saisie** : sans contrat au dossier, la réponse
+    est non, et les heures ne peuvent pas être saisies. Le contrat alimente la
+    paie — le laisser de côté n'est plus une option.
 
     `date_fin` est le dernier jour travaillé : elle est donc incluse. (Le
     prorata de congés, lui, l'exclut délibérément pour solder les compteurs le
     mois de la sortie — même colonne, deux bornes, deux usages.)
     """
+    return any(debut <= date_str and (fin is None or date_str <= fin)
+               for debut, fin in periodes)
+
+
+def est_hors_contrat(periodes, date_str):
+    """Ce jour est-il hors de l'emploi du salarié — donc ni dû ni à réclamer ?
+
+    C'est la question de l'**affichage**, et elle diffère de la précédente sur
+    un point : sans aucun contrat au dossier, on ne conclut rien. La fiche
+    continue alors de réclamer ses journées, le mois reste non validable, et
+    le manque saute aux yeux — au lieu qu'une fiche se vide toute seule parce
+    qu'un contrat n'a pas été saisi.
+    """
     if not periodes:
         return False
-    return not any(debut <= date_str and (fin is None or date_str <= fin)
-                   for debut, fin in periodes)
+    return not est_couvert_par_contrat(periodes, date_str)
 
 
 def validate_password_strength(password):

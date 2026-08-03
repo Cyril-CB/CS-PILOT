@@ -807,6 +807,22 @@ class TestJoursHorsContrat:
         assert lundi['hors_contrat'] is False
         assert lundi['heures_reelles'] > 0
 
+    def test_la_fiche_explique_l_absence_de_contrat(self, auth_client, app, db,
+                                                    sample_users, sample_planning):
+        """Sans contrat, la fiche réclame des journées que la saisie refuse.
+
+        Le blocage doit être expliqué là où on le rencontre, sinon les jours
+        rouges deviennent une impasse muette.
+        """
+        html = auth_client.get('/vue_mensuelle?mois=12&annee=2024').get_data(as_text=True)
+        assert 'Aucun contrat enregistré' in html
+        assert 'jour(s) non déclaré(s)' in html
+
+    def test_la_fiche_d_un_salarie_sous_contrat_ne_dit_rien(
+            self, auth_client, app, db, sample_users, sample_planning, sample_contrat):
+        html = auth_client.get('/vue_mensuelle?mois=12&annee=2024').get_data(as_text=True)
+        assert 'Aucun contrat enregistré' not in html
+
     def test_la_fiche_affiche_hors_contrat(self, auth_client, app, db, sample_users,
                                            sample_planning):
         with app.app_context():

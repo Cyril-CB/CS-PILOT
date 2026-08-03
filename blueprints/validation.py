@@ -705,6 +705,9 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         peut_valider_mois=peut_valider_mois,
         mois_est_termine=mois_est_termine,
         nb_jours_non_declares=nb_jours_non_declares,
+        # Sans contrat au dossier, la fiche réclame ses journées mais la
+        # saisie les refuse : il faut dire pourquoi, et à qui s'adresser.
+        aucun_contrat=not contrats_salarie,
         jours_feries=jours_feries,
         premier_jour_semaine=premier_jour.weekday(),
         nb_jours_mois=dernier_jour.day,

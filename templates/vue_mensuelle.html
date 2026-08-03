@@ -244,7 +244,9 @@
                         </div>
                         <div class="month-mobile-metric month-mobile-metric-action">
                             <span>Action</span>
-                            {% if peut_modifier %}
+                            {% if j.hors_contrat %}
+                            <strong style="color: #6c757d;">—</strong>
+                            {% elif peut_modifier %}
                             <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
                                class="month-mobile-action-link"
                                title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">
@@ -333,6 +335,19 @@
         </div>
         {% endif %}
         
+        {% if aucun_contrat %}
+        <div class="help-box" style="background: #fef3c7; border-left-color: #d97706; margin-bottom: 1rem;">
+            <h4>📄 Aucun contrat enregistré</h4>
+            <p><strong>La saisie des heures est fermée tant qu'aucun contrat ne figure au dossier.</strong></p>
+            <p>
+                Les heures alimentent la paie : elles doivent se rattacher à un
+                contrat. Ajoutez-le depuis <em>Infos Salariés → Contrats</em>, ou
+                signalez-le à la direction — les journées ci-dessous redeviendront
+                saisissables aussitôt.
+            </p>
+        </div>
+        {% endif %}
+
         {% if nb_jours_non_declares > 0 %}
         <div class="help-box" style="background: #fee2e2; border-left-color: #dc2626; margin-bottom: 1rem;">
             <h4>⚠️ Jours non déclarés</h4>
@@ -451,7 +466,9 @@
                             {{ j.commentaire or '-' }}
                         </td>
                         <td data-label="Actions">
-                            {% if peut_modifier %}
+                            {% if j.hors_contrat %}
+                            <span class="btn-icon" style="opacity: 0.3;" title="Hors contrat — rien à saisir">—</span>
+                            {% elif peut_modifier %}
                             <a href="{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='mensuelle') }}"
                                class="btn-icon"
                                title="{% if j.est_saisi %}Modifier{% else %}Saisir{% endif %}">

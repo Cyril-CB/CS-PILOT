@@ -338,17 +338,34 @@ L'adresse email est indispensable pour recevoir les notifications.
 
 Les contrats sont listés par ordre chronologique décroissant.
 
-> **Les dates du contrat bornent la fiche d'heures.** Les jours situés avant
-> la date de début ou après la date de fin sont marqués *Hors contrat* : ils
-> ne sont pas réclamés à la saisie, ne comptent pas dans les heures
-> théoriques du mois et n'empêchent plus la validation. C'est ce qui permet à
-> un CDD entré ou sorti en cours de mois de valider son mois partiel.
+> ### ⚠️ Le contrat conditionne la saisie des heures
+>
+> **Sans contrat couvrant la date, aucune heure ne peut être saisie.** Les
+> heures alimentent la paie : elles doivent se rattacher à un contrat. Le
+> formulaire de saisie reste fermé et affiche la raison, pour le salarié comme
+> pour son responsable.
+>
+> Enregistrez donc le contrat **dès l'embauche**, avant la première saisie.
 >
 > La date de fin est **incluse** : c'est le dernier jour travaillé.
 >
-> Tant qu'aucun contrat n'est enregistré pour un salarié, rien ne change —
-> tous ses jours ouvrés restent à saisir. Une fiche entièrement vide reste
-> ainsi visible au lieu d'être silencieusement dispensée de saisie.
+> **Sur la fiche d'heures**, les jours situés avant la date de début ou après
+> la date de fin sont marqués *Hors contrat* : ils ne sont pas réclamés, ne
+> comptent pas dans les heures théoriques du mois et n'empêchent plus la
+> validation. C'est ce qui permet à un CDD entré ou sorti en cours de mois de
+> valider son mois partiel.
+>
+> **Tant qu'aucun contrat n'est enregistré**, la fiche continue de réclamer
+> tous les jours ouvrés — mais la saisie les refuse, et un bandeau explique
+> pourquoi. Le manque reste visible au lieu qu'une fiche se vide toute seule.
+> Ajouter le contrat rouvre la saisie aussitôt.
+>
+> **Les heures déjà enregistrées ne sont pas touchées** : elles restent
+> visibles sur la fiche et modifiables, y compris hors contrat. La règle
+> refuse une saisie nouvelle, jamais la correction d'une saisie existante.
+>
+> Le **planning théorique**, lui, n'est pas exigé pour saisir. S'il est
+> renseigné plus tard, les heures supplémentaires se recalculent d'elles-mêmes.
 
 ---
 

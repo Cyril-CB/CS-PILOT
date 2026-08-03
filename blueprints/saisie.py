@@ -8,11 +8,45 @@ from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                    calculer_solde_recup, est_dans_equipe_responsable)
+                    calculer_solde_recup, est_dans_equipe_responsable,
+                    periodes_contrat, est_couvert_par_contrat)
 from app_options import get_option_bool
 
 saisie_bp = Blueprint('saisie_bp', __name__)
 SEUIL_ECART_ANOMALIE_HEURES = 3
+
+
+def _saisie_sans_contrat(conn, user_id_cible, date_str, saisie_existante):
+    """La saisie doit-elle être refusée faute de contrat couvrant ce jour ?
+
+    Un contrat est désormais obligatoire pour saisir des heures : c'est lui
+    qui alimente la paie, et une journée sans contrat n'est due à personne.
+    L'absence de contrat au dossier vaut donc refus — c'est ce qui pousse à
+    l'enregistrer plutôt que de le remettre à plus tard.
+
+    Une saisie déjà enregistrée échappe à la règle. Les heures posées avant
+    que cette règle n'existe restent en place et modifiables : on ne fige pas
+    des données que leur auteur pourrait avoir à corriger.
+
+    Le planning théorique, lui, n'est pas exigé : s'il arrive plus tard, les
+    heures supplémentaires se recalculent d'elles-mêmes.
+    """
+    if saisie_existante:
+        return False
+    return not est_couvert_par_contrat(periodes_contrat(conn, user_id_cible), date_str)
+
+
+def _message_sans_contrat(date_str, pour_soi):
+    """Refus de saisie : dire quoi faire, et à qui."""
+    try:
+        jour = datetime.strptime(date_str, '%Y-%m-%d').strftime('%d/%m/%Y')
+    except (ValueError, TypeError):
+        jour = date_str
+    if pour_soi:
+        return (f"Aucun contrat enregistré au {jour} : la saisie est impossible. "
+                "Signalez-le à la direction pour que le contrat soit ajouté à votre dossier.")
+    return (f"Aucun contrat enregistré au {jour} pour ce salarié : la saisie est "
+            "impossible. Ajoutez le contrat depuis Infos Salariés → Contrats.")
 
 
 @saisie_bp.route('/saisie_heures', methods=['GET', 'POST'])
@@ -74,6 +108,17 @@ def saisie_heures():
         anciennes_donnees = conn.execute('''
             SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?
         ''', (user_id_cible, date)).fetchone()
+
+        if _saisie_sans_contrat(conn, user_id_cible, date, anciennes_donnees):
+            flash(_message_sans_contrat(date, user_id_cible == session['user_id']), 'error')
+            conn.close()
+            if next_page == 'calendrier':
+                return redirect(url_for('validation_bp.vue_calendrier',
+                                        user_id=user_id_cible, mois=mois, annee=annee))
+            if next_page == 'mensuelle' or user_id_cible != session['user_id']:
+                return redirect(url_for('validation_bp.vue_mensuelle',
+                                        user_id=user_id_cible, mois=mois, annee=annee))
+            return redirect(url_for('saisie_bp.saisie_heures', date=date))
 
         preserve_declaration_conforme = (
             not declaration_conforme_active
@@ -323,6 +368,10 @@ def saisie_heures():
     ''', (user_id_cible, date_obj.month, date_obj.year)).fetchone()
     mois_verrouille = validation and validation['bloque']
 
+    sans_contrat = _saisie_sans_contrat(conn, user_id_cible, date_defaut, row)
+    message_sans_contrat = _message_sans_contrat(
+        date_defaut, user_id_cible == session['user_id']) if sans_contrat else None
+
     conn.close()
 
     next_page = request.args.get('next', '')
@@ -341,6 +390,8 @@ def saisie_heures():
                           next_page=next_page,
                           solde_recup=solde_recup,
                           mois_verrouille=mois_verrouille,
+                          sans_contrat=sans_contrat,
+                          message_sans_contrat=message_sans_contrat,
                           soir_disponible=est_vacances or a_soir,
                           soir_rempli=a_soir,
                           declaration_conforme_active=declaration_conforme_active)

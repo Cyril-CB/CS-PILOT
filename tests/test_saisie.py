@@ -26,7 +26,7 @@ class TestSaisieAcces:
 class TestSaisieCreation:
     """Tests de création de saisie d'heures."""
 
-    def test_saisie_heures_standard(self, auth_client, app, db, sample_users):
+    def test_saisie_heures_standard(self, auth_client, app, db, sample_users, sample_contrat):
         """Un salarié peut saisir ses heures pour une journée."""
         # Utiliser une date passée pour éviter les problèmes de validation
         date_test = '2025-01-06'  # Un lundi
@@ -52,7 +52,7 @@ class TestSaisieCreation:
             assert row['heure_fin_matin'] == '12:00'
             assert row['commentaire'] == 'Test automatisé'
 
-    def test_saisie_declaration_conforme(self, auth_client, app, db, sample_users):
+    def test_saisie_declaration_conforme(self, auth_client, app, db, sample_users, sample_contrat):
         """Déclaration conforme : pas d'heures stockées, flag à 1."""
         date_test = '2025-01-07'
 
@@ -71,7 +71,7 @@ class TestSaisieCreation:
             assert row['heure_debut_matin'] is None
             assert row['type_saisie'] == 'declaration_conforme'
 
-    def test_saisie_recup_journee(self, auth_client, app, db, sample_users):
+    def test_saisie_recup_journee(self, auth_client, app, db, sample_users, sample_contrat):
         """Récupération journée : heures vides, type_saisie = recup_journee."""
         date_test = '2025-01-08'
 
@@ -93,7 +93,7 @@ class TestSaisieCreation:
 class TestSaisieHistorique:
     """Tests de traçabilité."""
 
-    def test_historique_creation(self, auth_client, app, db, sample_users):
+    def test_historique_creation(self, auth_client, app, db, sample_users, sample_contrat):
         """La création d'une saisie doit être enregistrée dans l'historique."""
         date_test = '2025-01-09'
 
@@ -117,7 +117,7 @@ class TestSaisieHistorique:
 class TestSaisieAnomalies:
     """Tests de détection d'anomalies à la saisie."""
 
-    def test_creation_declenche_anomalie_si_ecart_superieur_a_3h(self, auth_client, app, db, sample_users, sample_planning):
+    def test_creation_declenche_anomalie_si_ecart_superieur_a_3h(self, auth_client, app, db, sample_users, sample_planning, sample_contrat):
         """Une création avec +4h vs planning théorique doit créer une anomalie."""
         date_test = '2025-01-06'  # Lundi, 7h théoriques via sample_planning
 
@@ -137,6 +137,127 @@ class TestSaisieAnomalies:
                 (sample_users['salarie_id'], date_test, 'gros_changement_heures')
             ).fetchone()
             assert anomalie is not None
+
+
+class TestSaisieExigeUnContrat:
+    """Saisir des heures suppose un contrat couvrant la date.
+
+    Les heures alimentent la paie : elles doivent se rattacher à un contrat.
+    Le planning théorique, lui, n'est pas exigé — il peut arriver plus tard,
+    les heures supplémentaires se recalculent alors d'elles-mêmes.
+    """
+
+    DATE = '2025-01-06'  # un lundi
+
+    def _saisir(self, client, date=None, **extra):
+        donnees = {
+            'date': date or self.DATE,
+            'heure_debut_matin': '08:30',
+            'heure_fin_matin': '12:00',
+            'heure_debut_aprem': '13:30',
+            'heure_fin_aprem': '17:00',
+        }
+        donnees.update(extra)
+        return client.post('/saisie_heures', data=donnees, follow_redirects=True)
+
+    def _saisie_en_base(self, db, user_id, date=None):
+        return db.execute(
+            "SELECT * FROM heures_reelles WHERE user_id = ? AND date = ?",
+            (user_id, date or self.DATE)
+        ).fetchone()
+
+    def test_refus_sans_aucun_contrat(self, auth_client, app, db, sample_users):
+        """Sans contrat au dossier, la saisie est fermée."""
+        with app.app_context():
+            reponse = self._saisir(auth_client)
+            assert reponse.status_code == 200
+            assert 'Aucun contrat enregistré' in reponse.get_data(as_text=True)
+            assert self._saisie_en_base(db, sample_users['salarie_id']) is None
+
+    def test_refus_hors_periode_du_contrat(self, auth_client, app, db, sample_users):
+        """Un CDD ne peut pas saisir avant son début ni après son terme."""
+        with app.app_context():
+            db.execute(
+                """INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+                   VALUES (?, 'CDD', '2025-02-01', '2025-02-28')""",
+                (sample_users['salarie_id'],)
+            )
+            db.commit()
+
+            self._saisir(auth_client)  # janvier : avant le contrat
+            assert self._saisie_en_base(db, sample_users['salarie_id']) is None
+
+            self._saisir(auth_client, date='2025-03-03')  # après le terme
+            assert self._saisie_en_base(db, sample_users['salarie_id'], '2025-03-03') is None
+
+    def test_saisie_acceptee_dans_la_periode(self, auth_client, app, db, sample_users):
+        with app.app_context():
+            db.execute(
+                """INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+                   VALUES (?, 'CDD', '2025-02-01', '2025-02-28')""",
+                (sample_users['salarie_id'],)
+            )
+            db.commit()
+
+            self._saisir(auth_client, date='2025-02-03')
+            assert self._saisie_en_base(db, sample_users['salarie_id'], '2025-02-03') is not None
+
+    def test_le_dernier_jour_du_contrat_est_saisissable(self, auth_client, app, db, sample_users):
+        """`date_fin` est le dernier jour travaillé, pas le premier jour exclu."""
+        with app.app_context():
+            db.execute(
+                """INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+                   VALUES (?, 'CDD', '2025-02-01', '2025-02-28')""",
+                (sample_users['salarie_id'],)
+            )
+            db.commit()
+
+            self._saisir(auth_client, date='2025-02-28')
+            assert self._saisie_en_base(db, sample_users['salarie_id'], '2025-02-28') is not None
+
+    def test_une_saisie_anterieure_reste_modifiable(self, auth_client, app, db, sample_users):
+        """Les heures posées avant la règle ne sont pas figées par elle.
+
+        Leur auteur peut encore les corriger : on refuse la création, pas la
+        rectification de ce qui existe déjà.
+        """
+        with app.app_context():
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, heure_debut_matin, heure_fin_matin,
+                    heure_debut_aprem, heure_fin_aprem, type_saisie, declaration_conforme)
+                   VALUES (?, ?, '09:00', '12:00', '14:00', '17:00',
+                           'heures_modifiees', 0)""",
+                (sample_users['salarie_id'], self.DATE)
+            )
+            db.commit()
+
+            self._saisir(auth_client, heure_debut_matin='08:00')
+            row = self._saisie_en_base(db, sample_users['salarie_id'])
+            assert row['heure_debut_matin'] == '08:00'
+
+    def test_le_planning_n_est_pas_exige(self, auth_client, app, db, sample_users, sample_contrat):
+        """Un contrat suffit : le planning peut arriver plus tard."""
+        with app.app_context():
+            # Volontairement pas de fixture sample_planning.
+            self._saisir(auth_client)
+            assert self._saisie_en_base(db, sample_users['salarie_id']) is not None
+
+    def test_le_formulaire_annonce_le_refus(self, auth_client, app, db, sample_users):
+        """Le bouton est désactivé et la raison affichée, avant tout envoi."""
+        html = auth_client.get(f'/saisie_heures?date={self.DATE}').get_data(as_text=True)
+        assert 'Aucun contrat enregistré' in html
+
+    def test_le_message_dit_quoi_faire_selon_le_lecteur(self, auth_client, resp_client,
+                                                        app, db, sample_users):
+        """Un salarié ne peut pas créer son contrat ; un responsable, si."""
+        pour_soi = auth_client.get(f'/saisie_heures?date={self.DATE}').get_data(as_text=True)
+        assert 'Signalez-le à la direction' in pour_soi
+
+        pour_autrui = resp_client.get(
+            f"/saisie_heures?date={self.DATE}&user_id={sample_users['salarie_id']}"
+        ).get_data(as_text=True)
+        assert 'Infos Salariés' in pour_autrui
 
 
 def _creer_salarie_meme_secteur(db, sample_users, login='collegue_test'):
@@ -264,7 +385,7 @@ class TestSaisieDroits:
             ).fetchone()
             assert row is None    # rien écrit
 
-    def test_responsable_peut_saisir_pour_son_secteur(self, resp_client, app, db, sample_users):
+    def test_responsable_peut_saisir_pour_son_secteur(self, resp_client, app, db, sample_users, sample_contrat):
         """Le responsable peut saisir pour un salarié de son secteur."""
         date_test = '2025-01-10'
 
