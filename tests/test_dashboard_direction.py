@@ -137,7 +137,7 @@ def test_relance_sans_bouton_pour_comptable_sans_delegation(comptable_client, db
     informatif « N fiches non validées ».
     """
     html = comptable_client.get('/dashboard_direction').get_data(as_text=True)
-    assert 'Fiche de' in html                # l'information reste visible
+    assert 'Fiche à valider' in html                # l'information reste visible
     # … mais pas de bouton un clic (data-mois n'est rendu qu'avec le bouton ;
     # la chaîne data-cc-act="relance" existe aussi dans le JS statique).
     assert 'data-mois=' not in html

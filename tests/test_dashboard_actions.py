@@ -213,7 +213,7 @@ class TestFichesNommees:
             titres = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])]
 
-        nommees = [t for t in titres if t.startswith('Fiche de')]
+        nommees = [t for t in titres if t.startswith('Fiche à valider')]
         assert len(nommees) == 2, titres
         # sample_users crée trois salariés non validés : un doit rester en file.
         assert any(t.startswith('et 1 autre') for t in titres), titres
@@ -236,10 +236,36 @@ class TestFichesNommees:
 
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
 
-        fiches = [a for a in actions if a['titre'].startswith('Fiche de')]
+        fiches = [a for a in actions if a['titre'].startswith('Fiche à valider')]
         assert len(fiches) == 2
         assert 'Martin' in fiches[0]['titre'], [f['titre'] for f in fiches]
-        assert '+' in fiches[0]['detail'] and 'h sur le mois' in fiches[0]['detail']
+        assert fiches[0]['detail'] == 'heures supplémentaires sur le mois : +1 h'
+
+    def test_la_carte_annonce_une_validation_pas_une_anomalie(
+            self, app, db, sample_users, sample_planning):
+        """Le fil signale qu'une fiche attend, il ne qualifie pas les écarts.
+
+        Le solde y figure comme un fait. Les heures supplémentaires se
+        récupèrent — elles ne se paient pas, sauf pour un CDD — donc rien n'y
+        est « à trancher avant la paie ».
+        """
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            jour = date(annee, mois, 1)
+            while jour.weekday() >= 5:
+                jour += timedelta(days=1)
+            _saisir_journee(db, salarie, jour.isoformat())
+            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+
+        fiches = [a for a in actions if a['titre'].startswith('Fiche à valider')]
+        assert fiches
+        for fiche in fiches:
+            assert 'sur le mois' in fiche['detail'] or 'équilibre' in fiche['detail']
+            for verdict in ('trancher', 'paie', 'expliquer', 'anomalie', 'écart à'):
+                assert verdict not in fiche['detail'], fiche['detail']
 
     def test_aucune_carte_quand_tout_est_valide(self, app, db, sample_users):
         from utils import aujourd_hui
@@ -249,7 +275,7 @@ class TestFichesNommees:
             _valider_tout_le_monde(db, mois, annee)
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
 
-        assert not [a for a in actions if a['titre'].startswith('Fiche de')]
+        assert not [a for a in actions if a['titre'].startswith('Fiche à valider')]
         assert not [a for a in actions if a['id'].startswith('reste-fiches')]
 
     def test_un_responsable_ne_voit_que_son_equipe(self, app, db, sample_users):
@@ -258,7 +284,7 @@ class TestFichesNommees:
                                          sample_users['responsable_id'],
                                          secteur_id=sample_users['secteur_id'])
 
-        titres = [a['titre'] for a in actions if a['titre'].startswith('Fiche de')]
+        titres = [a['titre'] for a in actions if a['titre'].startswith('Fiche à valider')]
         # Le comptable est hors secteur : il ne doit pas apparaître.
         assert titres and not any('Durand' in t for t in titres), titres
 

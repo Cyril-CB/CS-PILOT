@@ -75,12 +75,19 @@ D'où la forme de toutes les familles de `dashboard_actions.py` :
 
 - **au plus deux cartes nommées** (`MAX_CARTES_NOMMEES`), puis une ligne
   discrète « et N autres ». « 30 fiches à valider » décourage et n'indique pas
-  par où commencer ; « Fiche de Marie Dupont — juillet, +12 h sur le mois »
-  se traite. Traiter la première fait remonter la suivante ;
-- **un tri qui dit l'urgence réelle.** Les fiches sont classées par solde
-  d'heures décroissant : une fiche à +20 h engage un compteur de récupération
-  et une paie, une fiche à −5 h attend surtout une explication ;
+  par où commencer ; « Fiche à valider — Marie Dupont, juillet » se traite.
+  Traiter la première fait remonter la suivante ;
+- **un tri qui dit par où commencer.** Les fiches sont classées par solde
+  d'heures décroissant : plus le solde est élevé, plus il pèse sur le compteur
+  de récupération, et plus la validation tarde à venir ;
 - **rien quand il n'y a rien.** Aucune famille ne produit de carte à zéro.
+
+Une carte **dit ce qu'elle attend, elle ne juge pas**. La fiche de Marie
+Dupont attend une validation : c'est tout ce que la carte annonce. Le solde y
+figure comme un fait, jamais comme un verdict — le fil n'est pas un détecteur
+d'anomalies, et une fiche chargée n'en est pas une. (Rappel métier utile ici :
+les heures supplémentaires se **récupèrent**, elles ne se paient pas, sauf
+pour un CDD.)
 
 Chaque constructeur décide seul de son public et s'isole des autres : une
 famille en panne (table absente, base verrouillée) est journalisée et ignorée,

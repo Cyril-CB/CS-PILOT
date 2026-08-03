@@ -150,10 +150,16 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     """Fiches d'heures du mois précédent encore non validées.
 
     Les deux plus lourdes sont nommées, le reste tient en une ligne. Le
-    classement suit le **solde d'heures du mois**, décroissant : une fiche à
-    +20 h engage un compteur de récupération et une paie, une fiche à −5 h
-    attend surtout une explication. À enjeu égal on ne saurait pas par où
-    commencer — c'est ce tri qui rend la carte actionnable.
+    classement suit le **solde d'heures du mois**, décroissant : plus le solde
+    est élevé, plus il pèse sur le compteur de récupération, et plus la
+    validation tarde à venir. À enjeu égal on ne saurait pas par où commencer
+    — c'est ce tri qui rend la carte actionnable.
+
+    La carte dit **que la fiche attend une validation**, et rien d'autre. Le
+    solde y figure comme un fait, pas comme un verdict : ce n'est pas ici
+    qu'on qualifie un écart, et une fiche chargée n'est pas une anomalie. Les
+    heures supplémentaires se récupèrent — elles ne se paient pas, sauf pour
+    un CDD — donc rien à « trancher avant la paie ».
 
     Un responsable ne voit que son équipe, comme la vue d'ensemble le fait
     pour lui ; la direction et la comptabilité voient tout l'effectif.
@@ -195,18 +201,22 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     nom_mois = NOMS_MOIS[mois].lower()
     actions = []
     for salarie, solde in classees[:MAX_CARTES_NOMMEES]:
-        if solde > 0:
-            detail = f"+{_fr_num(round(solde, 1))} h sur le mois — à trancher avant la paie"
-        elif solde < 0:
-            detail = f"{_fr_num(round(solde, 1))} h sur le mois — écart à expliquer"
+        arrondi = round(solde, 1)
+        if arrondi > 0:
+            detail = f"heures supplémentaires sur le mois : +{_fr_num(arrondi)} h"
+        elif arrondi < 0:
+            # « Heures supplémentaires : −3 h » se contredirait : un solde
+            # négatif n'en est pas.
+            detail = f"solde du mois : {_fr_num(arrondi)} h"
         else:
-            detail = "aucun écart — validation de forme"
+            detail = "solde du mois à l'équilibre"
         actions.append({
             'id': f"fiche-{salarie['id']}-{annee}-{mois:02d}",
             'categorie': 'validation',
             'type': 'lien',
             'icone': '✅',
-            'titre': f"Fiche de {salarie['prenom']} {salarie['nom']} — {nom_mois}",
+            'titre': (f"Fiche à valider — {salarie['prenom']} {salarie['nom']}, "
+                      f"{nom_mois}"),
             'detail': detail,
             'lien': url_for('validation_bp.vue_mensuelle', user_id=salarie['id'],
                             mois=mois, annee=annee),
