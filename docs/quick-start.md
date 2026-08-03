@@ -366,6 +366,12 @@ Les contrats sont listés par ordre chronologique décroissant.
 >
 > Le **planning théorique**, lui, n'est pas exigé pour saisir. S'il est
 > renseigné plus tard, les heures supplémentaires se recalculent d'elles-mêmes.
+>
+> **Pour savoir qui est bloqué** : *RH & Paie → Salariés sans contrat*, ou le
+> bouton du même nom sur la page Contrats. La barre intelligente y mène aussi
+> (« salariés sans contrat », « contrats manquants »). La page distingue ceux
+> dont le contrat n'a jamais été saisi de ceux dont le contrat est échu et
+> n'a pas été renouvelé — les deux n'appellent pas le même geste.
 
 ---
 

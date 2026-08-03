@@ -258,6 +258,23 @@ class TestMoteurRH:
         assert v['type'] == 'redirect' and '/contrats' in v['url'] and 'mois=7' in v['url']
         assert 'filtre=echeance' in v['url'] and 'type=CDD' in v['url']
 
+    def test_salaries_sans_contrat(self, app, db, sample_users):
+        """Les formulations du manque mènent à la liste des salariés bloqués."""
+        with app.app_context():
+            _seed(db)
+        for requete in ('salariés sans contrat', 'contrat manquant',
+                        'contrats manquants', 'qui est sans contrat'):
+            v = _analyse(app, db, requete)
+            assert v['type'] == 'redirect', requete
+            assert '/contrats/sans-contrat' in v['url'], requete
+
+    def test_sans_contrat_ne_capture_pas_les_autres_requetes(self, app, db, sample_users):
+        """« contrats avril » ou « contrat Fatou » gardent leur destination."""
+        with app.app_context():
+            _seed(db)
+        assert '/contrats/sans-contrat' not in _analyse(app, db, 'contrats avril')['url']
+        assert '/contrats/sans-contrat' not in _analyse(app, db, 'contrat Fatou')['url']
+
     def test_cdi_en_cours_filtre_type_cdi(self, app, db, sample_users):
         # « cdi » doit ajouter type=CDI (au même titre que « cdd »).
         with app.app_context():

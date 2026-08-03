@@ -44,6 +44,15 @@
             <button type="submit" class="btn btn-primary btn-sm">Afficher</button>
         </form>
 
+        <p style="margin:0.75rem 0 0;">
+            <a href="{{ url_for('contrats_bp.salaries_sans_contrat') }}" class="btn btn-secondary btn-sm">
+                ⚠️ Salariés actifs sans contrat
+            </a>
+            <span style="color:#666; font-size:0.85rem; margin-left:0.5rem;">
+                Ceux qu'aucun contrat ne couvre aujourd'hui — donc bloqués à la saisie de leurs heures.
+            </span>
+        </p>
+
         <p class="contrats-resume">
             {{ contrats|length }} contrat{{ 's' if contrats|length != 1 else '' }} —
             {{ noms_mois[mois_selected] }} {{ annee_selected }}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Salariés sans contrat - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="factures-page">
+    <div style="margin-bottom:1rem;">
+        <h1>Salariés sans contrat</h1>
+        <p class="subtitle">Salariés actifs qu'aucun contrat ne couvre aujourd'hui</p>
+    </div>
+
+    <div class="section">
+        <p style="margin-bottom:1rem;">
+            <a href="{{ url_for('contrats_bp.liste_contrats') }}" class="btn btn-secondary btn-sm">← Tous les contrats</a>
+        </p>
+
+        {% if not salaries %}
+        <div class="help-box" style="background:#dcfce7; border-left-color:#16a34a;">
+            <h4>✅ Aucun salarié sans contrat</h4>
+            <p style="margin-bottom:0;">Tous les salariés actifs sont couverts par un contrat en cours. Personne n'est bloqué à la saisie de ses heures.</p>
+        </div>
+        {% else %}
+        <div class="help-box" style="background:#fee2e2; border-left-color:#dc2626;">
+            <h4>⚠️ {{ salaries|length }} salarié{{ 's' if salaries|length > 1 else '' }} sans contrat en cours</h4>
+            <p style="margin-bottom:0;">
+                La saisie des heures exige un contrat couvrant la date : ces salariés
+                ne peuvent rien saisir aujourd'hui. Ouvrez leur fiche pour ajouter ou
+                renouveler le contrat — la saisie se rouvre aussitôt.
+            </p>
+        </div>
+
+        <table class="data-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Salarié</th>
+                    <th>Secteur</th>
+                    <th>Profil</th>
+                    <th>Situation</th>
+                    <th style="text-align:center;">Fiche</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in salaries %}
+                <tr>
+                    <td><strong>{{ s.prenom }} {{ s.nom }}</strong></td>
+                    <td>{{ s.secteur_nom or '—' }}</td>
+                    <td>{{ s.profil }}</td>
+                    <td>
+                        {% if not s.nb_contrats %}
+                        <span class="badge" style="background:#dc2626;color:#fff;">Aucun contrat au dossier</span>
+                        {% elif s.derniere_fin %}
+                        <span class="badge" style="background:#f59e0b;color:#000;">Contrat échu</span>
+                        <span style="color:#666;"> depuis le {{ s.derniere_fin[8:10] }}/{{ s.derniere_fin[5:7] }}/{{ s.derniere_fin[0:4] }}</span>
+                        {% else %}
+                        {# Contrats au dossier, aucun en cours, aucune date de fin :
+                           tous commencent après aujourd'hui (embauche à venir). #}
+                        <span class="badge" style="background:#6366f1;color:#fff;">Contrat à venir</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align:center;">
+                        <a href="{{ url_for('infos_salaries_bp.infos_salaries', user_id=s.id) }}#contrats"
+                           class="btn-icon" title="Ouvrir la fiche salarié" aria-label="Fiche salarié">📄</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

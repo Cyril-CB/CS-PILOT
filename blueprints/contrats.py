@@ -112,3 +112,56 @@ def liste_contrats():
         filtre_selected=filtre,
         filtres=FILTRES,
     )
+
+
+@contrats_bp.route('/contrats/sans-contrat')
+@login_required
+def salaries_sans_contrat():
+    """Salariés actifs qu'aucun contrat ne couvre aujourd'hui.
+
+    Depuis que la saisie des heures exige un contrat, cette liste dit
+    exactement qui est bloqué. Deux situations s'y côtoient, distinguées car
+    elles n'appellent pas le même geste :
+
+    - **aucun contrat au dossier** : le contrat n'a jamais été saisi. C'est
+      l'anomalie à traiter en premier, le salarié ne peut rien saisir ;
+    - **contrat échu** : le dernier contrat s'est terminé et n'a pas été
+      renouvelé. Soit le renouvellement manque, soit c'est le salarié qui
+      aurait dû être désactivé.
+
+    Le cadrage est celui de l'effectif qui saisit ses heures — actifs, hors
+    direction et prestataires — le même que la vue d'ensemble des validations.
+    """
+    if session.get('profil') not in PROFILS_AUTORISES:
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+
+    today = aujourd_hui().isoformat()
+
+    conn = get_db()
+    try:
+        salaries = conn.execute(
+            '''SELECT u.id, u.nom, u.prenom, u.profil,
+                      COALESCE(s.nom, '') AS secteur_nom,
+                      (SELECT MAX(c.date_fin) FROM contrats c
+                       WHERE c.user_id = u.id) AS derniere_fin,
+                      (SELECT COUNT(*) FROM contrats c
+                       WHERE c.user_id = u.id) AS nb_contrats
+               FROM users u
+               LEFT JOIN secteurs s ON u.secteur_id = s.id
+               WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+                 AND NOT EXISTS (
+                     SELECT 1 FROM contrats c
+                     WHERE c.user_id = u.id
+                       AND c.date_debut <= ?
+                       AND (c.date_fin IS NULL OR c.date_fin >= ?)
+                 )
+               ORDER BY nb_contrats, u.nom, u.prenom''',
+            (today, today)
+        ).fetchall()
+    finally:
+        conn.close()
+
+    return render_template('contrats_sans_contrat.html',
+                           salaries=salaries,
+                           aujourd_hui=today)
