@@ -8,7 +8,8 @@ from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                   total_hs_payees, est_dans_equipe_responsable)
+                   total_hs_payees, est_dans_equipe_responsable,
+                   periodes_contrat, est_hors_contrat)
 
 exports_bp = Blueprint('exports_bp', __name__)
 
@@ -101,7 +102,13 @@ def export_pdf_mensuel():
     
     for h in heures_rows:
         heures_reelles[h['date']] = dict(h)
-    
+
+    # Périodes d'emploi : le PDF est le document signé, il doit dire la même
+    # chose que la fiche qu'il reproduit. Sans cela, une journée hors contrat
+    # non saisie serait comptée « conforme » au planning — le PDF attesterait
+    # d'un mois plein pour un CDD entré ou sorti en cours de mois.
+    contrats_salarie = periodes_contrat(conn, user_id_param)
+
     # Générer les journées
     journees = []
     jour_actuel = premier_jour
@@ -118,9 +125,11 @@ def export_pdf_mensuel():
                 continue
             
             type_periode = get_type_periode(date_str)
-            
+            jour_hors_contrat = est_hors_contrat(contrats_salarie, date_str)
+
             # Récupérer le planning valide à cette date (gère historisation + alternance)
-            planning = get_planning_valide_a_date(user_id_param, type_periode, date_str)
+            planning = None if jour_hors_contrat else get_planning_valide_a_date(
+                user_id_param, type_periode, date_str)
             
             # Horaires théoriques
             noms_jours_minuscule = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
@@ -129,7 +138,10 @@ def export_pdf_mensuel():
             horaires_theo_str = ""
             heures_theo_jour = 0
             
-            if jour_semaine == 5:
+            if jour_hors_contrat:
+                horaires_theo_str = "Hors contrat"
+                heures_theo_jour = 0
+            elif jour_semaine == 5:
                 horaires_theo_str = "Samedi"
                 heures_theo_jour = 0
             elif planning and jour_nom:
@@ -195,6 +207,10 @@ def export_pdf_mensuel():
                             horaires_reels_str += " (+ pause)"
                     else:
                         horaires_reels_str = "Non saisi"
+            elif jour_hors_contrat:
+                # Le salarié n'était pas employé : ni dû, ni conforme, ni rien.
+                horaires_reels_str = "—"
+                heures_reelles_jour = 0
             else:
                 # Pas de saisie = considéré conforme
                 horaires_reels_str = "✓ Conforme"

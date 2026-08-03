@@ -9,7 +9,8 @@ from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                    total_hs_payees, est_dans_equipe_responsable)
+                    total_hs_payees, est_dans_equipe_responsable,
+                    periodes_contrat, est_hors_contrat)
 from app_options import get_option_bool
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
                         ACTION_DEVERROUILLAGE_MOIS)
@@ -430,6 +431,13 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
     jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
 
+    # Périodes d'emploi : hors contrat, une journée n'est ni due ni à saisir.
+    # Le planning théorique ne peut pas en tenir lieu — il n'a pas de fin de
+    # validité, celui d'un CDD reste donc « valide » longtemps après son
+    # terme, et il n'existe pas avant son premier jour. C'est ce qui faisait
+    # réclamer la saisie de journées où le salarié n'était pas employé.
+    contrats_salarie = periodes_contrat(conn, user_id_a_afficher)
+
     # Generer toutes les journees du mois
     journees = []
     jour_actuel = premier_jour
@@ -449,11 +457,12 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 continue
 
             type_periode = get_type_periode(date_str)
+            jour_hors_contrat = est_hors_contrat(contrats_salarie, date_str)
 
             heures_theo_jour = 0
             horaires_theoriques = '-'
             planning_existe = False
-            if jour_semaine == 5:
+            if jour_semaine == 5 or jour_hors_contrat:
                 heures_theo_jour = 0
             else:
                 planning = get_planning_valide_a_date(user_id_a_afficher, type_periode, date_str)
@@ -500,7 +509,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
                 type_saisie = h['type_saisie']
                 commentaire = h['commentaire']
-            elif est_ferie and jour_semaine < 5:
+            elif est_ferie and jour_semaine < 5 and not jour_hors_contrat:
                 heures_reelles_jour = heures_theo_jour
                 horaires_reels = horaires_theoriques
                 est_declare = True
@@ -518,7 +527,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 jour_repos_planifie = planning_existe and heures_theo_jour == 0
                 if (jour_actuel.date() < datetime.now().date()
                         and jour_semaine < 5
-                        and not jour_repos_planifie):
+                        and not jour_repos_planifie
+                        and not jour_hors_contrat):
                     non_declare = True
                 heures_reelles_jour = heures_theo_jour
 
@@ -555,6 +565,10 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                 'est_saisi': est_saisi,
                 'est_declare': est_declare,
                 'non_declare': non_declare,
+                # Une saisie existante l'emporte sur l'affichage « hors
+                # contrat » : des heures enregistrées se montrent toujours,
+                # quitte à révéler un contrat oublié au dossier.
+                'hors_contrat': jour_hors_contrat and not est_saisi,
                 'est_repos_habituel': est_repos_habituel,
                 'type_saisie': type_saisie,
                 'commentaire': commentaire,
@@ -691,6 +705,9 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         peut_valider_mois=peut_valider_mois,
         mois_est_termine=mois_est_termine,
         nb_jours_non_declares=nb_jours_non_declares,
+        # Sans contrat au dossier, la fiche réclame ses journées mais la
+        # saisie les refuse : il faut dire pourquoi, et à qui s'adresser.
+        aucun_contrat=not contrats_salarie,
         jours_feries=jours_feries,
         premier_jour_semaine=premier_jour.weekday(),
         nb_jours_mois=dernier_jour.day,

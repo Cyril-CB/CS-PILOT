@@ -224,6 +224,20 @@ chaque entrée pointe vers une route réelle.
 Pour ajouter un flux d'information à une page, écrire un constructeur dans
 `flux_infos.py` et l'inscrire dans `CONSTRUCTEURS` sous son endpoint.
 
+### Les pages de réponse ne sont pas dans la carte
+
+Certaines pages n'existent que pour répondre à une intention formulée dans la
+barre intelligente : « contrats de mai » ouvre la liste des contrats du mois,
+« salariés sans contrat » ouvre celle des dossiers incomplets. Elles ne
+figurent **ni au menu latéral ni dans la carte** — les y mettre chargerait la
+navigation d'écrans que personne ne parcourt.
+
+Le risque est alors qu'on ignore leur existence. La réponse n'est pas de les
+ajouter au menu, mais de les faire s'annoncer : un bandeau de `flux_infos.py`
+sur la page où l'on peut agir, qui ne paraît que lorsqu'il y a lieu. Les
+salariés sans aucun contrat s'affichent ainsi en tête d'Infos Salariés — et
+disparaissent dès que les dossiers sont complets.
+
 ## La place gagnée revient au contenu
 
 Sans menu latéral, les 260 px qu'il occupait doivent revenir au contenu, pas à

@@ -99,7 +99,7 @@ class TestOptionsSaisie:
         assert response.status_code == 200
         assert 'Je certifie avoir travaillé mes heures habituelles ce jour' not in html
 
-    def test_saisie_ignore_declaration_conforme_si_option_desactivee(self, auth_client, app, db, sample_users):
+    def test_saisie_ignore_declaration_conforme_si_option_desactivee(self, auth_client, app, db, sample_users, sample_contrat):
         with app.app_context():
             set_option_bool('saisie_afficher_declaration_conforme', False)
 

@@ -158,6 +158,28 @@ def sample_users(app, db):
         }
 
 
+@pytest.fixture
+def sample_contrat(app, db, sample_users):
+    """Contrat sans terme (CDI) pour le salarié de test, depuis toujours.
+
+    La saisie d'heures exige un contrat couvrant la date : tout test qui
+    enregistre des heures doit donc en poser un. Volontairement séparé de
+    `sample_users`, pour ne pas modifier le décompte des contrats des tests
+    d'effectif, de masse salariale ou de documents obligatoires.
+    """
+    with app.app_context():
+        cursor = db.cursor()
+        cursor.execute(
+            """INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+               VALUES (?, 'CDI', '2000-01-01', NULL)""",
+            (sample_users['salarie_id'],)
+        )
+        contrat_id = cursor.lastrowid
+        db.commit()
+
+    return {'contrat_id': contrat_id, 'user_id': sample_users['salarie_id']}
+
+
 def _login(client, login, password):
     """Fonction utilitaire pour se connecter via le formulaire."""
     return client.post('/login', data={

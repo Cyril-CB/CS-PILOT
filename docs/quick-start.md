@@ -338,6 +338,45 @@ L'adresse email est indispensable pour recevoir les notifications.
 
 Les contrats sont listés par ordre chronologique décroissant.
 
+> ### ⚠️ Le contrat conditionne la saisie des heures
+>
+> **Sans contrat couvrant la date, aucune heure ne peut être saisie.** Les
+> heures alimentent la paie : elles doivent se rattacher à un contrat. Le
+> formulaire de saisie reste fermé et affiche la raison, pour le salarié comme
+> pour son responsable.
+>
+> Enregistrez donc le contrat **dès l'embauche**, avant la première saisie.
+>
+> La date de fin est **incluse** : c'est le dernier jour travaillé.
+>
+> **Sur la fiche d'heures**, les jours situés avant la date de début ou après
+> la date de fin sont marqués *Hors contrat* : ils ne sont pas réclamés, ne
+> comptent pas dans les heures théoriques du mois et n'empêchent plus la
+> validation. C'est ce qui permet à un CDD entré ou sorti en cours de mois de
+> valider son mois partiel.
+>
+> **Tant qu'aucun contrat n'est enregistré**, la fiche continue de réclamer
+> tous les jours ouvrés — mais la saisie les refuse, et un bandeau explique
+> pourquoi. Le manque reste visible au lieu qu'une fiche se vide toute seule.
+> Ajouter le contrat rouvre la saisie aussitôt.
+>
+> **Les heures déjà enregistrées ne sont pas touchées** : elles restent
+> visibles sur la fiche et modifiables, y compris hors contrat. La règle
+> refuse une saisie nouvelle, jamais la correction d'une saisie existante.
+>
+> Le **planning théorique**, lui, n'est pas exigé pour saisir. S'il est
+> renseigné plus tard, les heures supplémentaires se recalculent d'elles-mêmes.
+>
+> **Pour savoir qui est bloqué** : dès qu'un salarié actif n'a aucun contrat
+> au dossier, un bandeau rouge l'annonce en tête d'*Infos Salariés* et de la
+> page *Contrats*, et mène à la liste. On peut aussi la demander directement à
+> la barre intelligente (« salariés sans contrat », « contrats manquants »).
+>
+> Cette liste distingue ceux dont le contrat n'a jamais été saisi de ceux dont
+> le contrat est échu et n'a pas été renouvelé — les deux n'appellent pas le
+> même geste. Seul le premier cas déclenche le bandeau : la fin d'un CDD est
+> une situation normale, pas un oubli.
+
 ---
 
 ### 8.3 Déposer des documents RH

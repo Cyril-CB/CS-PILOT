@@ -101,7 +101,7 @@ class TestPreventionPauseRemuneree:
 class TestSaisiePauseRemuneree:
     DATE = '2025-06-16'
 
-    def test_saisie_enregistre_la_pause_remuneree(self, auth_client, app, db, sample_users):
+    def test_saisie_enregistre_la_pause_remuneree(self, auth_client, app, db, sample_users, sample_contrat):
         with app.app_context():
             auth_client.post('/saisie_heures', data={
                 'date': self.DATE,
@@ -114,7 +114,7 @@ class TestSaisiePauseRemuneree:
         assert row['pause_remuneree'] == 1
         assert calculer_heures_reelles_jour(row) == 8.0
 
-    def test_saisie_sans_case_reste_a_zero(self, auth_client, app, db, sample_users):
+    def test_saisie_sans_case_reste_a_zero(self, auth_client, app, db, sample_users, sample_contrat):
         with app.app_context():
             auth_client.post('/saisie_heures', data={
                 'date': self.DATE,
@@ -125,7 +125,7 @@ class TestSaisiePauseRemuneree:
                              (sample_users['salarie_id'], self.DATE)).fetchone()
         assert row['pause_remuneree'] == 0
 
-    def test_recup_journee_ignore_la_pause(self, auth_client, app, db, sample_users):
+    def test_recup_journee_ignore_la_pause(self, auth_client, app, db, sample_users, sample_contrat):
         # Une récup journée n'a pas d'heures : le flag est remis à zéro même si envoyé.
         with app.app_context():
             auth_client.post('/saisie_heures', data={

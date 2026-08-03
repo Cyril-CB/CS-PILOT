@@ -398,6 +398,16 @@ _RE_SOLDE_CONGE = re.compile(
     r'|\bconges?\b\s+restants?\b'
 )
 
+# Salariés qu'aucun contrat ne couvre. Se teste avant le mot-clé, car la
+# formulation la plus naturelle (« salariés sans contrat ») commence par
+# « salarié » et partirait sinon chercher quelqu'un de ce nom.
+_RE_SANS_CONTRAT = re.compile(
+    r'\bsans\s+contrat\b'
+    r'|\bcontrats?\s+(?:manquants?|oublies?|absents?)\b'
+    r'|\b(?:pas|aucun|aucune)\s+(?:de\s+)?contrat\b'
+    r'|\bcontrats?\s+a\s+(?:saisir|enregistrer|regulariser)\b'
+)
+
 # Mots outils ignorés en tête de requête (« voir budget », « liste subventions »…)
 _MOTS_OUTILS = {
     'liste', 'listes', 'voir', 'afficher', 'montre', 'montrer', 'montrez',
@@ -457,6 +467,11 @@ def _analyser_recherche(conn, query, profil, today, user_id=None):
     # Soldes de congés de l'effectif (avant le mot-clé « solde » → trésorerie).
     if _RE_SOLDE_CONGE.search(norm):
         return _redirect(url_for('infos_salaries_bp.soldes_conges'), 'Soldes de congés')
+    # Salariés sans contrat (avant « salarié » → recherche d'une personne, et
+    # avant « contrat » → liste des contrats du mois).
+    if _RE_SANS_CONTRAT.search(norm):
+        return _redirect(url_for('contrats_bp.salaries_sans_contrat'),
+                         'Salariés sans contrat')
 
     # Retirer les mots outils en tête (« voir », « liste », « les »…) pour révéler le mot-clé.
     while reste and reste[0] in _MOTS_OUTILS:

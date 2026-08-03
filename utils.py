@@ -121,6 +121,57 @@ def calcul_etp(type_contrat, temps_hebdo):
     return 1.0
 
 
+def periodes_contrat(conn, user_id):
+    """Périodes d'emploi d'un salarié, d'après ses contrats : [(début, fin|None)].
+
+    `fin` à None = contrat sans terme (CDI, ou CDD dont la fin n'est pas encore
+    saisie). Les dates sont des chaînes ISO, directement comparables.
+
+    Une liste vide signifie « aucun contrat au dossier », pas « jamais
+    employé » : la table s'est remplie après coup pour une partie de
+    l'effectif. L'appelant doit donc s'abstenir de conclure quoi que ce soit
+    d'une liste vide — voir `est_hors_contrat`.
+    """
+    rows = conn.execute(
+        """SELECT date_debut, date_fin FROM contrats
+           WHERE user_id = ? AND date_debut IS NOT NULL AND date_debut != ''
+           ORDER BY date_debut""",
+        (user_id,)
+    ).fetchall()
+    return [(str(r['date_debut'])[:10],
+             str(r['date_fin'])[:10] if r['date_fin'] else None)
+            for r in rows]
+
+
+def est_couvert_par_contrat(periodes, date_str):
+    """Un contrat enregistré couvre-t-il ce jour ?
+
+    C'est la question de la **saisie** : sans contrat au dossier, la réponse
+    est non, et les heures ne peuvent pas être saisies. Le contrat alimente la
+    paie — le laisser de côté n'est plus une option.
+
+    `date_fin` est le dernier jour travaillé : elle est donc incluse. (Le
+    prorata de congés, lui, l'exclut délibérément pour solder les compteurs le
+    mois de la sortie — même colonne, deux bornes, deux usages.)
+    """
+    return any(debut <= date_str and (fin is None or date_str <= fin)
+               for debut, fin in periodes)
+
+
+def est_hors_contrat(periodes, date_str):
+    """Ce jour est-il hors de l'emploi du salarié — donc ni dû ni à réclamer ?
+
+    C'est la question de l'**affichage**, et elle diffère de la précédente sur
+    un point : sans aucun contrat au dossier, on ne conclut rien. La fiche
+    continue alors de réclamer ses journées, le mois reste non validable, et
+    le manque saute aux yeux — au lieu qu'une fiche se vide toute seule parce
+    qu'un contrat n'a pas été saisi.
+    """
+    if not periodes:
+        return False
+    return not est_couvert_par_contrat(periodes, date_str)
+
+
 def validate_password_strength(password):
     """Valide la complexité d'un mot de passe.
 

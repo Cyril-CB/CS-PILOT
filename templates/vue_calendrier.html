@@ -137,8 +137,8 @@
 
             {% for j in jours_calendrier %}
             {% set d = j.donnees %}
-            <div class="calendar-mobile-cell {% if d and d.non_declare %}calendar-mobile-cell-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-cell-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-cell-recup{% elif j.est_ferie %}calendar-mobile-cell-ferie{% elif d and d.est_declare %}calendar-mobile-cell-declare{% elif d and d.est_saisi %}calendar-mobile-cell-saisi{% elif j.est_weekend %}calendar-mobile-cell-weekend{% endif %}"
-                 {% if d and peut_modifier and not j.est_dimanche %}
+            <div class="calendar-mobile-cell {% if d and d.hors_contrat %}calendar-mobile-cell-weekend{% elif d and d.non_declare %}calendar-mobile-cell-danger{% elif d and d.type_saisie == 'absence' %}calendar-mobile-cell-absence{% elif d and d.type_saisie == 'recup_journee' %}calendar-mobile-cell-recup{% elif j.est_ferie %}calendar-mobile-cell-ferie{% elif d and d.est_declare %}calendar-mobile-cell-declare{% elif d and d.est_saisi %}calendar-mobile-cell-saisi{% elif j.est_weekend %}calendar-mobile-cell-weekend{% endif %}"
+                 {% if d and peut_modifier and not j.est_dimanche and not d.hors_contrat %}
                  onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
                  onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'; }"
                  role="link"
@@ -150,7 +150,9 @@
                  {% endif %}>
                 <div class="calendar-mobile-cell-top">
                     <span class="calendar-mobile-cell-day">{{ j.jour }}</span>
-                    {% if j.est_ferie %}
+                    {% if d and d.hors_contrat %}
+                    {# Hors contrat : aucune pastille, il n'y a rien à signaler #}
+                    {% elif j.est_ferie %}
                     <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-ferie"></span>
                     {% elif d and d.non_declare %}
                     <span class="calendar-mobile-cell-dot calendar-mobile-cell-dot-danger"></span>
@@ -166,7 +168,9 @@
                 </div>
 
                 {% if d %}
-                    {% if d.type_saisie == 'recup_journee' %}
+                    {% if d.hors_contrat %}
+                    <div class="calendar-mobile-cell-main calendar-mobile-cell-main-label">–</div>
+                    {% elif d.type_saisie == 'recup_journee' %}
                     <div class="calendar-mobile-cell-main">R</div>
                     {% elif d.est_saisi or d.est_declare or d.type_saisie == 'absence' %}
                     <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_reelles) }}h</div>
@@ -174,7 +178,9 @@
                     <div class="calendar-mobile-cell-main">{{ "%.1f"|format(d.heures_theoriques) }}h</div>
                     {% endif %}
 
-                    {% if d.type_periode == 'vacances' and not d.est_samedi %}
+                    {% if d.hors_contrat %}
+                    {# Ni vacances, ni écart : le salarié n'était pas employé #}
+                    {% elif d.type_periode == 'vacances' and not d.est_samedi %}
                     <div class="calendar-mobile-cell-note">vac.</div>
                     {% elif d.ecart > 0 %}
                     <div class="calendar-mobile-cell-note calendar-mobile-cell-note-pos">+{{ "%.1f"|format(d.ecart) }}</div>
@@ -299,6 +305,10 @@
             <span>Non declare</span>
         </div>
         <div class="cal-legende-item">
+            <div class="cal-swatch" style="background: #e9ecef; border: 1px solid #ced4da;"></div>
+            <span>Hors contrat</span>
+        </div>
+        <div class="cal-legende-item">
             <div class="cal-swatch" style="background: #fce7f3; border: 1px solid #f9a8d4;"></div>
             <span>Jour ferie</span>
         </div>
@@ -332,6 +342,8 @@
 
             {% if j.est_dimanche %}
                 {% set cls = cls + ' cal-cell-dimanche' %}
+            {% elif d and d.hors_contrat %}
+                {% set cls = cls + ' cal-cell-vide' %}
             {% elif j.est_ferie %}
                 {% set cls = cls + ' cal-cell-ferie' %}
             {% elif j.est_weekend and not d %}
@@ -351,24 +363,28 @@
             {% endif %}
 
             <div class="{{ cls }}"
-                 {% if d and peut_modifier and not j.est_dimanche %}
+                 {% if d and peut_modifier and not j.est_dimanche and not d.hors_contrat %}
                  onclick="window.location.href='{{ url_for('saisie_bp.saisie_heures', date=j.date, user_id=user_id_a_afficher, next='calendrier') }}'"
                  style="cursor: pointer;"
                  title="Cliquer pour {% if d.est_saisi %}modifier{% else %}saisir{% endif %}"
+                 {% elif d and d.hors_contrat %}
+                 title="Hors contrat — rien à saisir"
                  {% elif j.est_ferie %}
                  title="{{ j.libelle_ferie }}"
                  {% endif %}>
 
                 <div class="cal-cell-numero">{{ j.jour }}</div>
 
-                {% if j.est_ferie %}
+                {% if j.est_ferie and not (d and d.hors_contrat) %}
                 <div class="cal-cell-badge cal-badge-ferie">{{ j.libelle_ferie }}</div>
                 {% endif %}
 
                 {% if j.est_dimanche %}
                     {# Rien a afficher pour les dimanches #}
                 {% elif d %}
-                    {% if d.type_saisie == 'absence' %}
+                    {% if d.hors_contrat %}
+                    <div class="cal-cell-badge" style="background:#e9ecef;color:#6c757d;">📄 Hors contrat</div>
+                    {% elif d.type_saisie == 'absence' %}
                     <div class="cal-cell-badge cal-badge-absence">🏥 Absence</div>
                     <div class="cal-cell-info">
                         <span class="cal-cell-heures">{{ "%.1f"|format(d.heures_reelles) }}h</span>
@@ -399,7 +415,7 @@
                     </div>
                     {% endif %}
 
-                    {% if d.type_periode == 'vacances' and not d.est_samedi %}
+                    {% if d.type_periode == 'vacances' and not d.est_samedi and not d.hors_contrat %}
                     <div class="cal-cell-periode">vac.</div>
                     {% endif %}
                 {% endif %}

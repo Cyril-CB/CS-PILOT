@@ -61,6 +61,16 @@ def _planning_sans_mercredi(db, planning_id):
     db.commit()
 
 
+def _creer_contrat(db, user_id, date_debut, date_fin, type_contrat='CDD'):
+    """Helper : enregistre un contrat (date_fin à None pour un CDI)."""
+    db.execute(
+        '''INSERT INTO contrats (user_id, type_contrat, date_debut, date_fin)
+           VALUES (?, ?, ?, ?)''',
+        (user_id, type_contrat, date_debut, date_fin)
+    )
+    db.commit()
+
+
 def _charger_vue_mensuelle(app, user_id, mois, annee, profil='salarie'):
     """Helper : charge les données de la fiche mensuelle pour un utilisateur."""
     with app.test_request_context(f'/vue_mensuelle?mois={mois}&annee={annee}'):
@@ -653,6 +663,221 @@ class TestJoursNonTravaillesHabituels:
         assert mercredis  # le mois en compte plusieurs
         assert all(j['est_repos_habituel'] for j in mercredis)
         assert all(not j['non_declare'] for j in mercredis)
+
+
+class TestJoursHorsContrat:
+    """Hors de son contrat, une journée n'est ni due ni à saisir.
+
+    Le planning théorique ne sait pas répondre : il n'a pas de fin de validité
+    (celui d'un CDD reste « valide » après son terme) et n'existe pas avant son
+    premier jour. C'est le contrat qui borne l'emploi.
+
+    Repères de décembre 2024 : le 02 est un lundi, le 13 un vendredi, le 16 le
+    lundi suivant.
+    """
+
+    def test_jours_avant_le_debut_du_cdd_ne_sont_pas_a_saisir(
+            self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-09', '2024-12-20')
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi_avant = next(j for j in data['journees'] if j['date'] == '2024-12-02')
+        assert lundi_avant['hors_contrat'] is True
+        assert lundi_avant['non_declare'] is False
+        assert lundi_avant['heures_theoriques'] == 0
+
+    def test_jours_apres_la_fin_du_cdd_ne_sont_pas_a_saisir(
+            self, app, db, sample_users, sample_planning):
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-02', '2024-12-13')
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi_apres = next(j for j in data['journees'] if j['date'] == '2024-12-16')
+        assert lundi_apres['hors_contrat'] is True
+        assert lundi_apres['non_declare'] is False
+        assert lundi_apres['heures_theoriques'] == 0
+
+    def test_le_dernier_jour_du_contrat_reste_du(self, app, db, sample_users, sample_planning):
+        """`date_fin` est le dernier jour travaillé : il est encore à saisir."""
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-02', '2024-12-13')
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        dernier_jour = next(j for j in data['journees'] if j['date'] == '2024-12-13')
+        assert dernier_jour['hors_contrat'] is False
+        assert dernier_jour['non_declare'] is True
+        assert dernier_jour['heures_theoriques'] > 0
+
+    def test_le_cdd_peut_valider_son_mois_partiel(self, app, db, sample_users, sample_planning):
+        """Le blocage à la validation était la vraie conséquence du défaut."""
+        from datetime import timedelta
+
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-09', '2024-12-20')
+
+            # Saisir les seuls jours ouvrés couverts par le contrat.
+            jour = datetime(2024, 12, 9)
+            while jour <= datetime(2024, 12, 20):
+                if jour.weekday() < 5:
+                    db.execute(
+                        """INSERT OR IGNORE INTO heures_reelles
+                           (user_id, date, heure_debut_matin, heure_fin_matin,
+                            heure_debut_aprem, heure_fin_aprem, type_saisie,
+                            declaration_conforme)
+                           VALUES (?, ?, '08:30', '12:00', '13:30', '17:00',
+                                   'heures_modifiees', 0)""",
+                        (sample_users['salarie_id'], jour.strftime('%Y-%m-%d'))
+                    )
+                jour += timedelta(days=1)
+            db.commit()
+
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        assert data['nb_jours_non_declares'] == 0
+        assert data['peut_valider_mois'] is True
+
+    def test_le_total_theorique_se_limite_au_contrat(self, app, db, sample_users, sample_planning):
+        """Sinon la fiche réclame au CDD les heures d'un mois plein."""
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-09', '2024-12-20')
+            partiel = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+            db.execute("DELETE FROM contrats WHERE user_id = ?",
+                       (sample_users['salarie_id'],))
+            db.commit()
+            plein = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        # 10 jours ouvrés couverts, à 7h : le reste du mois ne compte plus.
+        assert partiel['total_heures_theoriques'] == 70
+        assert plein['total_heures_theoriques'] > partiel['total_heures_theoriques']
+
+    def test_trou_entre_deux_contrats(self, app, db, sample_users, sample_planning):
+        """Un CDD renouvelé après une interruption : le trou n'est pas à saisir."""
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-02', '2024-12-06')
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-16', '2024-12-31')
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        par_date = {j['date']: j for j in data['journees']}
+        assert par_date['2024-12-06']['hors_contrat'] is False   # fin du premier
+        assert par_date['2024-12-10']['hors_contrat'] is True    # dans le trou
+        assert par_date['2024-12-16']['hors_contrat'] is False   # début du second
+
+    def test_le_trou_entre_deux_cdd_n_empeche_pas_la_validation(
+            self, app, db, sample_users, sample_planning):
+        """Cas de référence : CDD du 01 au 10/07, retour du 16 au 31/07.
+
+        Du 11 au 15 il n'y a rien à saisir, donc rien qui doive rougir ni
+        retenir la validation du mois. Le 14 juillet, férié tombé dans le
+        trou, ne compte pas davantage : il n'est pas chômé pour quelqu'un qui
+        n'est pas employé.
+        """
+        from datetime import timedelta
+
+        with app.app_context():
+            _ajouter_jour_ferie(db, '2026-07-14', 'Fête nationale')
+            _creer_contrat(db, sample_users['salarie_id'], '2026-07-01', '2026-07-10')
+            _creer_contrat(db, sample_users['salarie_id'], '2026-07-16', '2026-07-31')
+
+            # Saisir les jours ouvrés des deux périodes, et eux seuls.
+            jour = datetime(2026, 7, 1)
+            while jour <= datetime(2026, 7, 31):
+                dans_contrat = (jour.day <= 10 or jour.day >= 16)
+                if jour.weekday() < 5 and dans_contrat:
+                    db.execute(
+                        """INSERT OR IGNORE INTO heures_reelles
+                           (user_id, date, heure_debut_matin, heure_fin_matin,
+                            heure_debut_aprem, heure_fin_aprem, type_saisie,
+                            declaration_conforme)
+                           VALUES (?, ?, '08:30', '12:00', '13:30', '17:00',
+                                   'heures_modifiees', 0)""",
+                        (sample_users['salarie_id'], jour.strftime('%Y-%m-%d'))
+                    )
+                jour += timedelta(days=1)
+            db.commit()
+
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 7, 2026)
+
+        par_date = {j['date']: j for j in data['journees']}
+        for jour_du_trou in ('2026-07-13', '2026-07-14', '2026-07-15'):
+            assert par_date[jour_du_trou]['hors_contrat'] is True, jour_du_trou
+            assert par_date[jour_du_trou]['non_declare'] is False, jour_du_trou
+            assert par_date[jour_du_trou]['heures_theoriques'] == 0, jour_du_trou
+
+        assert data['nb_jours_non_declares'] == 0
+        assert data['peut_valider_mois'] is True
+
+    def test_contrat_sans_terme_ne_retranche_rien(self, app, db, sample_users, sample_planning):
+        """Un CDI (date_fin vide) couvre tout ce qui suit son début."""
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-01-01', None)
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        assert not any(j['hors_contrat'] for j in data['journees'])
+        assert data['nb_jours_non_declares'] > 0
+
+    def test_sans_contrat_au_dossier_rien_ne_change(self, app, db, sample_users, sample_planning):
+        """Un contrat non saisi ne doit pas vider la fiche.
+
+        La table s'est remplie après coup : « aucun contrat » veut dire
+        « on ne sait pas », pas « jamais employé ».
+        """
+        with app.app_context():
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi = next(j for j in data['journees'] if j['date'] == '2024-12-02')
+        assert lundi['hors_contrat'] is False
+        assert lundi['non_declare'] is True
+
+    def test_une_saisie_hors_contrat_reste_visible(self, app, db, sample_users, sample_planning):
+        """Des heures enregistrées se montrent toujours : elles révèlent un
+        contrat oublié au dossier plutôt que de disparaître."""
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-09', '2024-12-20')
+            db.execute(
+                """INSERT INTO heures_reelles
+                   (user_id, date, heure_debut_matin, heure_fin_matin,
+                    heure_debut_aprem, heure_fin_aprem, type_saisie, declaration_conforme)
+                   VALUES (?, '2024-12-02', '08:30', '12:00', '13:30', '17:00',
+                           'heures_modifiees', 0)""",
+                (sample_users['salarie_id'],)
+            )
+            db.commit()
+            data = _charger_vue_mensuelle(app, sample_users['salarie_id'], 12, 2024)
+
+        lundi = next(j for j in data['journees'] if j['date'] == '2024-12-02')
+        assert lundi['est_saisi'] is True
+        assert lundi['hors_contrat'] is False
+        assert lundi['heures_reelles'] > 0
+
+    def test_la_fiche_explique_l_absence_de_contrat(self, auth_client, app, db,
+                                                    sample_users, sample_planning):
+        """Sans contrat, la fiche réclame des journées que la saisie refuse.
+
+        Le blocage doit être expliqué là où on le rencontre, sinon les jours
+        rouges deviennent une impasse muette.
+        """
+        html = auth_client.get('/vue_mensuelle?mois=12&annee=2024').get_data(as_text=True)
+        assert 'Aucun contrat enregistré' in html
+        assert 'jour(s) non déclaré(s)' in html
+
+    def test_la_fiche_d_un_salarie_sous_contrat_ne_dit_rien(
+            self, auth_client, app, db, sample_users, sample_planning, sample_contrat):
+        html = auth_client.get('/vue_mensuelle?mois=12&annee=2024').get_data(as_text=True)
+        assert 'Aucun contrat enregistré' not in html
+
+    def test_la_fiche_affiche_hors_contrat(self, auth_client, app, db, sample_users,
+                                           sample_planning):
+        with app.app_context():
+            _creer_contrat(db, sample_users['salarie_id'], '2024-12-09', '2024-12-20')
+
+        html = auth_client.get('/vue_mensuelle?mois=12&annee=2024').get_data(as_text=True)
+        assert 'Hors contrat' in html
+        # Décembre 2024 compte 22 jours ouvrés ; seuls les 10 du contrat
+        # restent à saisir, contre le mois entier auparavant.
+        assert '10 jour(s) non déclaré(s)' in html
+        assert '22 jour(s) non déclaré(s)' not in html
 
 
 class TestPlanningTheoriqueAffichage:
