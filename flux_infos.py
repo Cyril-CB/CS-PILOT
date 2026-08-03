@@ -9,6 +9,11 @@ retard — avant la liste elle-même.
 Chaque entrée est un bandeau court : `{icone, valeur, libelle, lien,
 lien_texte, ton}`. Le ton (`alerte`, `attention`, `calme`) donne la couleur.
 
+Un bandeau ne dit que ce que la liste ne dit pas d'elle-même. Recompter ses
+lignes juste au-dessus d'elle n'apprend rien et repousse le tableau vers le
+bas : un total sans retard, sans échéance ni décision à prendre n'est pas une
+information, c'est la liste écrite deux fois.
+
 Toutes les pages n'ont pas de flux : la trésorerie, par exemple, EST son
 tableau. Une page sans constructeur n'affiche simplement rien de plus.
 """
@@ -141,7 +146,13 @@ def _ecritures(conn, contexte):
 
 
 def _subventions(conn, contexte):
-    """Ce que la page Subventions doit signaler."""
+    """Ce que la page Subventions doit signaler : le retard, et rien d'autre.
+
+    Le nombre d'étapes encore ouvertes ne vaut pas un bandeau : c'est le
+    tableau qui suit, annoncé une ligne plus haut. Le retard, lui, ne se lit
+    pas d'un coup d'œil — il se disperse dans les sous-éléments repliés, et
+    souvent hors de l'année filtrée par défaut, d'où le lien vers « toutes ».
+    """
     profil = contexte.get('profil')
     user_id = contexte.get('user_id')
     if profil == 'responsable':
@@ -169,19 +180,6 @@ def _subventions(conn, contexte):
             '🚨', retard, "étape(s) dont l'échéance est passée",
             url_for('subventions_bp.gestion_subventions', annee='toutes'), 'Voir',
             'alerte',
-        ))
-
-    en_cours = conn.execute(
-        f'''SELECT COUNT(*) AS nb
-            FROM subventions_sous_elements se
-            JOIN subventions s ON s.id = se.subvention_id
-            WHERE se.statut != 'fait' AND s.groupe != 'refusee' {scope}''',
-        params
-    ).fetchone()['nb']
-    if en_cours:
-        infos.append(_info(
-            '📋', en_cours, 'étape(s) encore ouverte(s)',
-            url_for('subventions_bp.gestion_subventions', annee='toutes'), 'Suivre',
         ))
 
     return infos

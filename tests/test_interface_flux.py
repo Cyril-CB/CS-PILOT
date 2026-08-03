@@ -180,6 +180,34 @@ def test_le_flux_d_information_apparait_sur_les_factures(admin_client, db, sampl
     assert 'facture(s) sans écriture — à générer' not in corps  # page Écritures
 
 
+def test_les_subventions_ne_signalent_que_le_retard(admin_client, db):
+    """Un bandeau ne recompte pas le tableau qu'il précède.
+
+    Deux étapes ouvertes, dont une échue : seule l'échue mérite d'être
+    annoncée. Compter les étapes encore ouvertes n'apprenait rien de plus que
+    la liste et la repoussait vers le bas de la page.
+    """
+    from datetime import timedelta
+
+    from utils import aujourd_hui
+    today = aujourd_hui()
+    with db:
+        db.execute("INSERT INTO subventions (nom, groupe, annee_action) "
+                   "VALUES ('Ville Fonctionnement', 'depose', ?)", (str(today.year),))
+        sub_id = db.execute("SELECT id FROM subventions "
+                            "WHERE nom = 'Ville Fonctionnement'").fetchone()['id']
+        db.execute("INSERT INTO subventions_sous_elements "
+                   "(subvention_id, nom, statut, date_echeance) VALUES (?, ?, 'non_commence', ?)",
+                   (sub_id, 'Bilan financier', (today - timedelta(days=5)).isoformat()))
+        db.execute("INSERT INTO subventions_sous_elements "
+                   "(subvention_id, nom, statut, date_echeance) VALUES (?, ?, 'non_commence', ?)",
+                   (sub_id, 'Dépôt du dossier', (today + timedelta(days=30)).isoformat()))
+
+    corps = admin_client.get('/subventions').get_data(as_text=True)
+    assert 'étape(s) encore ouverte(s)' not in corps
+    assert "étape(s) dont l&#39;échéance est passée" in corps
+
+
 def test_bascule_vers_le_menu_classique_et_retour(admin_client):
     reponse = admin_client.post('/api/interface/basculer', json={'actif': False})
     assert reponse.status_code == 200
