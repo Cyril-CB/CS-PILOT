@@ -63,6 +63,39 @@ Pour la direction et la comptabilité, le fil reprend la file étendue du centre
 de contrôle qu'il remplace : factures assignées à la direction, relance des
 fiches non validées, surcharges, soldes de congés élevés.
 
+### La règle du fil : on nomme, on ne compte pas
+
+**Le fil ne porte aucune donnée informative fixe.** Chaque carte attend une
+décision, signale un risque réel ou annonce une échéance — sinon elle n'est
+pas construite. C'est ce qui le sépare d'un tableau de bord d'indicateurs : un
+compteur qui affiche la même chose tous les jours n'apprend rien et use
+l'attention de son lecteur.
+
+D'où la forme de toutes les familles de `dashboard_actions.py` :
+
+- **au plus deux cartes nommées** (`MAX_CARTES_NOMMEES`), puis une ligne
+  discrète « et N autres ». « 30 fiches à valider » décourage et n'indique pas
+  par où commencer ; « Fiche de Marie Dupont — juillet, +12 h sur le mois »
+  se traite. Traiter la première fait remonter la suivante ;
+- **un tri qui dit l'urgence réelle.** Les fiches sont classées par solde
+  d'heures décroissant : une fiche à +20 h engage un compteur de récupération
+  et une paie, une fiche à −5 h attend surtout une explication ;
+- **rien quand il n'y a rien.** Aucune famille ne produit de carte à zéro.
+
+Chaque constructeur décide seul de son public et s'isole des autres : une
+famille en panne (table absente, base verrouillée) est journalisée et ignorée,
+le reste du fil tient.
+
+Deux exceptions assumées à la règle du nommage. Les **tâches du planificateur**
+restent agrégées (« 3 tâches prévues aujourd'hui ») : le planificateur est
+déjà l'écran qui détaille et réordonne, le fil ne fait qu'y conduire. Le
+**rappel de préparation de paie** est daté plutôt que déclenché par un état :
+il paraît le 20 (`JOUR_RAPPEL_PAIE`) parce que le geste attendu — prévenir la
+comptabilité des mises à pied et licenciements — se fait hors de
+l'application, qui ne peut rien en constater. Son bouton « C'est fait » est
+donc déclaratif, et n'éteint le rappel que pour celui qui l'a signalé :
+chacun ne répond que de son périmètre.
+
 Ce sont les **seuils d'alerte** qui décident de ce qui remonte. Comme ils
 façonnent le fil, ils se règlent là où le fil s'affiche : bouton ⚙ à droite de
 l'en-tête de l'accueil, réservé à la direction et à la comptabilité. La fenêtre

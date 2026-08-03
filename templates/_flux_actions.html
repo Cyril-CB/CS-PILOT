@@ -38,6 +38,11 @@
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="subvention"
                 data-flx-ref="{{ a.id }}" data-se-id="{{ a.se_id }}">✓ C'est fait</button>
         <a href="{{ a.lien }}" class="flx-btn">Ouvrir</a>
+        {% elif a.type == 'paie' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="paie"
+                data-flx-ref="{{ a.id }}" data-mois="{{ a.paie_mois }}"
+                data-annee="{{ a.paie_annee }}">✓ C'est fait</button>
+        <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }}</a>
         {% elif a.type == 'relance' %}
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="relance"
                 data-flx-ref="{{ a.id }}" data-mois="{{ a.relance_mois }}"

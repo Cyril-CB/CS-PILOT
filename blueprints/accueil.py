@@ -23,7 +23,7 @@ from dashboard_actions import construire_actions
 from database import get_db
 from flux_accueil import construire_horizon, separer_actions
 from utils import (aujourd_hui, calculer_solde_recup, get_user_info,
-                   login_required, NOMS_MOIS)
+                   login_required, save_setting, NOMS_MOIS)
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +268,41 @@ def api_flux_fragment():
     finally:
         conn.close()
     return render_template('_flux_actions.html', actions=separer_actions(actions))
+
+
+@accueil_bp.route('/api/accueil/preparation-paie', methods=['POST'])
+@login_required
+def api_preparation_paie():
+    """Marque comme signalés les cas particuliers de paie d'un mois.
+
+    Déclaratif : le geste attendu — prévenir la comptabilité — se fait hors de
+    l'application, qui ne peut donc que prendre acte. La marque est posée au
+    nom de la personne qui clique, chacune ne répondant que de son périmètre.
+
+    Réservé aux profils qui reçoivent le rappel. Un mois autre que le mois
+    courant ou le précédent est refusé : rien ne justifie de marquer d'avance
+    ou de rouvrir un exercice ancien.
+    """
+    from dashboard_actions import cle_preparation_paie
+
+    profil = session.get('profil')
+    user_id = session.get('user_id')
+    if profil not in ('directeur', 'responsable'):
+        return jsonify({'error': 'Accès non autorisé'}), 403
+
+    donnees = request.get_json(silent=True) or {}
+    mois, annee = donnees.get('mois'), donnees.get('annee')
+    if not isinstance(mois, int) or not isinstance(annee, int):
+        return jsonify({'error': 'Mois ou année manquant'}), 400
+
+    today = aujourd_hui()
+    precedent = (today.month - 1 or 12,
+                 today.year if today.month > 1 else today.year - 1)
+    if (mois, annee) not in ((today.month, today.year), precedent):
+        return jsonify({'error': 'Mois hors de la période courante'}), 400
+
+    save_setting(cle_preparation_paie(mois, annee, user_id), '1')
+    return jsonify({'ok': True})
 
 
 @accueil_bp.route('/api/interface/basculer', methods=['POST'])

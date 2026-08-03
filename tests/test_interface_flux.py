@@ -852,3 +852,34 @@ def test_le_meme_compte_suit_l_appareil(client, sample_users):
                            headers={'User-Agent': UA_IPHONE}).get_data(as_text=True)
     assert 'flx-entete' in bureau and 'class="sidebar"' not in bureau
     assert 'class="sidebar"' in telephone and 'flx-entete' not in telephone
+
+
+def test_le_bouton_c_est_fait_eteint_le_rappel_de_paie(admin_client, db, sample_users):
+    """L'API prend acte d'un signalement fait hors de l'application."""
+    from utils import aujourd_hui
+    today = aujourd_hui()
+
+    reponse = admin_client.post('/api/accueil/preparation-paie',
+                                json={'mois': today.month, 'annee': today.year})
+    assert reponse.status_code == 200
+    assert reponse.get_json()['ok'] is True
+
+    # Rejoué : idempotent, la marque est déjà posée.
+    assert admin_client.post('/api/accueil/preparation-paie',
+                             json={'mois': today.month,
+                                   'annee': today.year}).status_code == 200
+
+
+def test_le_rappel_de_paie_refuse_un_mois_lointain(admin_client, sample_users):
+    """Ni marquage d'avance, ni réouverture d'un exercice ancien."""
+    reponse = admin_client.post('/api/accueil/preparation-paie',
+                                json={'mois': 1, 'annee': 2001})
+    assert reponse.status_code == 400
+
+
+def test_le_rappel_de_paie_est_ferme_au_salarie(auth_client, sample_users):
+    from utils import aujourd_hui
+    today = aujourd_hui()
+    reponse = auth_client.post('/api/accueil/preparation-paie',
+                               json={'mois': today.month, 'annee': today.year})
+    assert reponse.status_code == 403

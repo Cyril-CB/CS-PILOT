@@ -155,6 +155,19 @@
               })
               .catch(function () { btn.disabled = false; echec(); });
 
+        } else if (act === 'paie') {
+            fetch('/api/accueil/preparation-paie', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({mois: Number(btn.getAttribute('data-mois')),
+                                      annee: Number(btn.getAttribute('data-annee'))})
+            }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+              .then(function (res) {
+                  if (!res.ok || !res.d.ok) throw 0;
+                  retirer(ref, '📆 Préparation de paie signalée comme faite');
+              })
+              .catch(function () { btn.disabled = false; echec(); });
+
         } else if (act === 'relance') {
             fetch('/api/email/relance_validation', {
                 method: 'POST',
