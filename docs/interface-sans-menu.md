@@ -116,7 +116,14 @@ D'où la forme de toutes les familles de `dashboard_actions.py` :
 - **un tri qui dit par où commencer.** Les fiches sont classées par solde
   d'heures décroissant : plus le solde est élevé, plus il pèse sur le compteur
   de récupération, et plus la validation tarde à venir ;
-- **rien quand il n'y a rien.** Aucune famille ne produit de carte à zéro.
+- **rien quand il n'y a rien.** Aucune famille ne produit de carte à zéro ;
+- **une mission déléguée ne se sert qu'à son porteur.** Les demandes de
+  fournitures ne paraissent que dans le fil du salarié qui tient la
+  délégation « suivi des commandes ». Les servir aussi à la direction et à la
+  comptabilité doublerait le travail et diluerait la responsabilité — chacun
+  supposant que l'autre s'en charge. Sans délégué désigné, ces cartes
+  n'apparaissent à personne, et c'est voulu : la file se consulte alors sur
+  sa page, elle ne réclame personne en particulier.
 
 Une carte **dit ce qu'elle attend, elle ne juge pas**. La fiche de Marie
 Dupont attend une validation : c'est tout ce que la carte annonce. Le solde y

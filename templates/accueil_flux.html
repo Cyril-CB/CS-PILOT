@@ -129,8 +129,14 @@
         var piste = circuit.querySelector('.flx-circuit-piste');
         var courante = circuit.querySelector('.flx-etape-courant');
         if (piste && courante) {
-            piste.scrollLeft = Math.max(
-                0, courante.offsetLeft - (piste.clientWidth - courante.offsetWidth) / 2);
+            // Positions mesurées à l'écran plutôt que via offsetLeft : celui-ci
+            // se compte depuis le premier ancêtre positionné, qui n'est pas la
+            // piste — la valeur incluait le décalage de la carte dans la page
+            // et saturait le défilement tout à droite.
+            var cadre = piste.getBoundingClientRect();
+            var etape = courante.getBoundingClientRect();
+            piste.scrollLeft += (etape.left - cadre.left)
+                              - (piste.clientWidth - etape.width) / 2;
         }
     });
 

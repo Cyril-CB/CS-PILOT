@@ -4622,7 +4622,14 @@ body.flx .main-content {
 /* La carte passe en deux lignes : l'en-tête habituel, puis le circuit qui
    s'étend sous les trois colonnes. Replié, il ne coûte rien à la mise en page. */
 .flx-carte:has(> .flx-circuit:not([hidden])) { align-items: start; }
-.flx-circuit { grid-column: 1 / -1; margin-top: 18px; }
+/* Panneau teinté : il détache le circuit du corps de la carte, et sert de
+   fond sur lequel l'étape en attente ressort en blanc. Sans lui, tout est
+   blanc sur blanc et le regard n'a plus de point d'accroche. */
+.flx-circuit {
+    grid-column: 1 / -1; margin-top: 18px;
+    padding: 16px 18px 14px; border-radius: 14px;
+    background: var(--gray-100); border: 1px solid var(--gray-200);
+}
 
 .flx-pourquoi {
     background: none; border: none; padding: 0; margin-top: 2px;
@@ -4651,11 +4658,15 @@ body.flx .main-content {
     display: flex; align-items: stretch; gap: 0; overflow-x: auto;
     padding: 4px 2px 12px; scrollbar-width: thin;
 }
+/* Trois états, trois poids visuels sur le panneau teinté : une étape faite
+   s'efface (fond à peine détaché), l'étape en attente ressort en blanc plein,
+   une étape à venir n'est qu'esquissée. */
 .flx-etape {
     flex: 0 0 208px; padding: 13px 15px; border-radius: 11px;
-    border: 1px solid var(--gray-200); background: var(--gray-100);
+    border: 1px solid var(--gray-200); background: transparent;
     display: flex; flex-direction: column; gap: 5px;
 }
+.flx-etape-fait .flx-etape-titre { color: var(--gray-700); }
 .flx-etape-role {
     display: flex; align-items: center; gap: 6px;
     font-family: var(--flx-mono); font-size: 0.58rem; letter-spacing: 1.3px;
@@ -4669,7 +4680,7 @@ body.flx .main-content {
 .flx-etape-note {
     margin-top: 4px; padding: 7px 9px; border-radius: 7px;
     border: 1px solid var(--gray-300); background: var(--white);
-    font-size: 0.74rem; color: var(--gray-600); line-height: 1.4;
+    font-size: 0.74rem; color: var(--gray-700); line-height: 1.4;
 }
 .flx-etape-statut {
     margin-top: auto; padding-top: 9px;
@@ -4677,13 +4688,16 @@ body.flx .main-content {
     text-transform: uppercase; color: var(--gray-500);
 }
 .flx-etape-a_venir { background: transparent; border-style: dashed; }
-.flx-etape-a_venir .flx-etape-titre { color: var(--gray-600); }
+.flx-etape-a_venir .flx-etape-titre { color: var(--gray-500); }
 
-/* L'étape en attente : fond plein, bordure au ton de la carte. */
+/* L'étape en attente : fond blanc plein, bordure au ton de la carte, et une
+   ombre douce qui la décolle du panneau — c'est elle qu'on doit voir en
+   premier à l'ouverture. */
 .flx-etape-courant {
     background: var(--white); border-width: 1.5px;
-    border-color: var(--flx-planifier);
+    border-color: var(--flx-planifier); box-shadow: var(--shadow-sm);
 }
+.flx-etape-courant .flx-etape-titre { color: var(--gray-900); font-weight: 500; }
 .flx-etape-courant .flx-etape-statut { color: var(--flx-planifier); }
 .flx-retard .flx-etape-courant { border-color: var(--flx-retard); }
 .flx-retard .flx-etape-courant .flx-etape-statut { color: var(--flx-retard); }
