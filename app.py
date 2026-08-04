@@ -385,6 +385,30 @@ def invalidate_version_cache():
 
 
 @app.context_processor
+def inject_static_version():
+    """Empreinte des fichiers statiques, pour forcer le navigateur à relire.
+
+    La feuille de style et les scripts portaient un numéro écrit à la main
+    (`?v=20`). Personne ne pense à l'incrémenter : une modification de CSS
+    reste alors invisible chez tous ceux qui ont déjà chargé la page, et le
+    défaut se diagnostique mal — le code est juste, le rendu ne bouge pas.
+
+    L'empreinte suit la date de modification du fichier : elle change
+    d'elle-même à chaque livraison, et jamais autrement.
+    """
+    empreintes = {}
+    for nom in ('css/style.css', 'js/flux.js'):
+        chemin = os.path.join(app.static_folder, nom)
+        try:
+            empreintes[nom] = str(int(os.path.getmtime(chemin)))
+        except OSError:
+            # Fichier absent (montage incomplet) : pas de cache-busting plutôt
+            # qu'une page qui ne se rend pas.
+            empreintes[nom] = ''
+    return {'static_version': empreintes}
+
+
+@app.context_processor
 def inject_pending_counts():
     """Injecte le nombre de demandes en attente dans tous les templates."""
     if 'user_id' not in session:

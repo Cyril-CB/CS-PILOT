@@ -943,3 +943,20 @@ def test_les_trois_etats_d_etape_portent_leur_classe(admin_client, db, sample_us
     corps = admin_client.get('/accueil').get_data(as_text=True)
     for etat in ('flx-etape-fait', 'flx-etape-courant', 'flx-etape-a_venir'):
         assert etat in corps, etat
+
+
+def test_les_statiques_portent_une_empreinte_qui_change(admin_client, app):
+    """Un numéro écrit à la main ne s'incrémente jamais.
+
+    Le CSS était servi avec `?v=20` figé : toute modification restait
+    invisible chez qui avait déjà chargé la page, et le défaut se
+    diagnostiquait mal — le code est juste, le rendu ne bouge pas.
+    """
+    import os
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    assert 'style.css?v=20"' not in corps
+
+    empreinte = str(int(os.path.getmtime(
+        os.path.join(app.static_folder, 'css/style.css'))))
+    assert f'style.css?v={empreinte}' in corps
