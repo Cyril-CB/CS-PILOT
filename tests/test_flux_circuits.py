@@ -62,8 +62,19 @@ class TestConsequence:
         cdd = flux_circuits.fiche_heures('directeur', date(2026, 8, 3), est_cdd=True)
         cdi = flux_circuits.fiche_heures('directeur', date(2026, 8, 3), est_cdd=False)
         assert 'bulletin' in cdd['consequence']
-        assert 'récupération' in cdi['consequence']
+        assert 'mois reste ouvert' in cdi['consequence']
         assert cdd['consequence'] != cdi['consequence']
+
+    def test_la_consequence_ne_prete_rien_au_compteur_de_recuperation(self):
+        """Il est tenu à jour dès la saisie : la validation ne le conditionne pas.
+
+        Annoncer le contraire ferait valider pour une raison inexistante — et
+        décrédibiliserait les conséquences que le circuit annonce par ailleurs.
+        """
+        for est_cdd in (True, False):
+            circuit = flux_circuits.fiche_heures('directeur', date(2026, 8, 3),
+                                                 est_cdd=est_cdd)
+            assert 'compteur' not in circuit['consequence'], circuit['consequence']
 
     def test_une_echeance_de_facture_depassee_se_compte(self):
         circuit = flux_circuits.facture('en_attente', '2026-07-30', 'directeur',
@@ -111,3 +122,23 @@ class TestFormeDesCircuits:
         for circuit in self._tous():
             for etape in circuit['etapes'][:-1]:
                 assert etape['liaison'], (circuit['intitule'], etape['titre'])
+
+
+class TestCouleursDesRoles:
+    """Le rôle se lit à sa couleur : elle doit rester distincte et lisible."""
+
+    def test_chaque_role_a_une_couleur_distincte(self):
+        couleurs = [couleur for _, couleur in flux_circuits.ROLES.values()]
+        assert len(set(couleurs)) == len(couleurs)
+
+    def test_les_couleurs_tiennent_sur_les_deux_themes(self):
+        """Ni trop sombres ni trop claires : le thème nuit a un fond vert
+        sombre, le thème par défaut un beige clair. Un ton extrême disparaît
+        sur l'un des deux."""
+        for role, (_, couleur) in flux_circuits.ROLES.items():
+            rouge = int(couleur[1:3], 16)
+            vert = int(couleur[3:5], 16)
+            bleu = int(couleur[5:7], 16)
+            # Luminance perçue, formule usuelle.
+            luminance = (0.299 * rouge + 0.587 * vert + 0.114 * bleu) / 255
+            assert 0.28 < luminance < 0.78, (role, couleur, round(luminance, 2))

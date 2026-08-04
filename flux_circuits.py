@@ -26,14 +26,20 @@ concernée, pour montrer que l'application relie ces éléments.
 """
 from datetime import date
 
-# Rôle qui traite une étape → (libellé, couleur de pastille). « Application »
-# désigne ce que le logiciel fait seul : rien à attendre de personne.
+# Rôle qui traite une étape → (libellé, couleur). Elle teinte la pastille ET
+# le libellé : c'est ce qui permet de voir qui tient chaque étape sans lire.
+# « Application » désigne ce que le logiciel fait seul, d'où son gris — rien
+# n'est attendu de personne à cette étape.
+#
+# Tons moyens, choisis pour rester lisibles sur le beige clair du thème par
+# défaut comme sur le vert sombre du thème nuit. Un vert profond, par exemple,
+# disparaîtrait sur le second.
 ROLES = {
-    'salarie': ('Salarié', '#4a7dbf'),
-    'responsable': ('Responsable', '#7c5cbf'),
-    'direction': ('Direction', '#c56a2a'),
-    'comptabilite': ('Comptabilité', '#2f7d5d'),
-    'prestataire': ('Prestataire', '#5b6470'),
+    'salarie': ('Salarié', '#3d7fc1'),
+    'responsable': ('Responsable', '#8b5cf6'),
+    'direction': ('Direction', '#d97706'),
+    'comptabilite': ('Comptabilité', '#10a37f'),
+    'prestataire': ('Prestataire', '#6b7f95'),
     'application': ('Application', '#9aa0a6'),
 }
 
@@ -185,14 +191,19 @@ def fiche_heures(profil, today, nom=None, est_cdd=False, solde=None):
     # de la direction, après le passage du responsable.
     courante = 2
 
+    # Ce qu'une fiche non validée bloque réellement — et ce qu'elle ne bloque
+    # pas. Le compteur de récupération, lui, est tenu à jour dès la saisie :
+    # la validation ne le conditionne pas. Ce qu'elle conditionne, c'est le
+    # verrouillage du mois, donc l'existence d'une base arrêtée. Les heures
+    # n'entrent en paie que si elles sont payées — le cas du CDD.
     if est_cdd:
         consequence = ("Non validée, la fiche part sans ses heures : pour un "
                        "CDD elles se paient, et il ne restera qu'un bulletin "
                        "pour régulariser.")
     else:
-        consequence = ("Tant qu'elle n'est pas validée, la préparation de la "
-                       "paie attend, et les heures ne rejoignent pas le "
-                       "compteur de récupération.")
+        consequence = ("Tant qu'elle n'est pas validée, le mois reste ouvert : "
+                       "la fiche peut encore changer, et la préparation de la "
+                       "paie n'a pas de base arrêtée.")
     return _monter('De la fiche d\'heures au bulletin de paie.',
                    etapes, courante, profil, consequence)
 
