@@ -924,3 +924,22 @@ def test_une_carte_sans_circuit_n_affiche_pas_pourquoi(admin_client, db, sample_
     assert 'reste-fiches' in corps
     bloc_reste = corps.split('data-flx-id="reste-fiches')[1][:900]
     assert 'flx-pourquoi' not in bloc_reste
+
+
+def test_les_trois_etats_d_etape_portent_leur_classe(admin_client, db, sample_users):
+    """La feuille de style cible `flx-etape-fait|courant|a_venir`.
+
+    Un statut renommé côté modèle passerait inaperçu : les étapes perdraient
+    leur poids visuel sans qu'aucun test ne tombe, et le circuit deviendrait
+    un aplat gris où l'étape en attente ne ressort plus.
+    """
+    with db:
+        db.execute(
+            "INSERT INTO demandes_conges (user_id, type_conge, date_debut, date_fin, "
+            "nb_jours, statut, date_demande) VALUES (?, 'Congé payé', '2026-08-12', "
+            "'2026-08-19', 5, 'en_attente_direction', '2026-07-25')",
+            (sample_users['salarie_id'],))
+
+    corps = admin_client.get('/accueil').get_data(as_text=True)
+    for etat in ('flx-etape-fait', 'flx-etape-courant', 'flx-etape-a_venir'):
+        assert etat in corps, etat
