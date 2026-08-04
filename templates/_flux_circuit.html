@@ -15,7 +15,7 @@
     <div class="flx-circuit-piste">
         {% for etape in circuit.etapes %}
         <div class="flx-etape flx-etape-{{ etape.statut }}">
-            <div class="flx-etape-role">
+            <div class="flx-etape-role" style="color: {{ etape.role_couleur }};">
                 <i style="background: {{ etape.role_couleur }};"></i>{{ etape.role_label }}
             </div>
             <div class="flx-etape-titre">{{ etape.titre }}</div>
