@@ -4622,13 +4622,13 @@ body.flx .main-content {
 /* La carte passe en deux lignes : l'en-tête habituel, puis le circuit qui
    s'étend sous les trois colonnes. Replié, il ne coûte rien à la mise en page. */
 .flx-carte:has(> .flx-circuit:not([hidden])) { align-items: start; }
-/* Panneau teinté : il détache le circuit du corps de la carte, et sert de
-   fond sur lequel l'étape en attente ressort en blanc. Sans lui, tout est
-   blanc sur blanc et le regard n'a plus de point d'accroche. */
+/* Panneau légèrement teinté : il détache le circuit du corps de la carte, et
+   sert de fond aux étapes, qui sont blanches. L'écart reste léger — assez
+   pour séparer les plans, pas au point d'alourdir la carte. */
 .flx-circuit {
     grid-column: 1 / -1; margin-top: 18px;
     padding: 16px 18px 14px; border-radius: 14px;
-    background: var(--gray-100); border: 1px solid var(--gray-200);
+    background: var(--gray-50); border: 1px solid var(--gray-200);
 }
 
 .flx-pourquoi {
@@ -4658,15 +4658,19 @@ body.flx .main-content {
     display: flex; align-items: stretch; gap: 0; overflow-x: auto;
     padding: 4px 2px 12px; scrollbar-width: thin;
 }
-/* Trois états, trois poids visuels sur le panneau teinté : une étape faite
-   s'efface (fond à peine détaché), l'étape en attente ressort en blanc plein,
-   une étape à venir n'est qu'esquissée. */
+/* Trois états, trois poids visuels. Toutes les étapes sont blanches et
+   lisibles — une étape illisible ne dit rien de ce qui suivra. Ce qui les
+   sépare : la bordure, pleine pour une étape faite, pointillée pour une étape
+   à venir, colorée et ombrée pour celle qui attend. */
 .flx-etape {
     flex: 0 0 208px; padding: 13px 15px; border-radius: 11px;
-    border: 1px solid var(--gray-200); background: var(--gray-50);
+    border: 1px solid var(--gray-200); background: var(--white);
     display: flex; flex-direction: column; gap: 5px;
 }
-.flx-etape-fait .flx-etape-titre { color: var(--gray-700); }
+/* Faite ou à venir, une étape qui n'attend rien s'atténue également : seule
+   celle en cours passe au noir. */
+.flx-etape-fait .flx-etape-titre,
+.flx-etape-a_venir .flx-etape-titre { color: var(--gray-700); }
 /* Le rôle porte sa couleur sur le libellé, pas seulement sur la pastille :
    c'est ce qui permet de voir d'un coup qui tient chaque étape. */
 .flx-etape-role {
@@ -4689,8 +4693,10 @@ body.flx .main-content {
     font-family: var(--flx-mono); font-size: 0.58rem; letter-spacing: 1.2px;
     text-transform: uppercase; color: var(--gray-500);
 }
-.flx-etape-a_venir { background: transparent; border-style: dashed; }
-.flx-etape-a_venir .flx-etape-titre { color: var(--gray-500); }
+/* Une étape à venir se signale par sa bordure pointillée, pas par
+   l'effacement : sans fond, elle prenait la couleur du panneau et devenait
+   illisible. Elle doit se lire — c'est là qu'on voit ce qui suivra. */
+.flx-etape-a_venir { border-style: dashed; }
 
 /* L'étape en attente : fond blanc plein, bordure au ton de la carte, et une
    ombre douce qui la décolle du panneau — c'est elle qu'on doit voir en
