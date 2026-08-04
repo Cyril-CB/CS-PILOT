@@ -337,18 +337,29 @@ class TestCartesDuFil:
 
         assert not [a for a in actions if a['id'].startswith('budget-')]
 
+    def _deleguer_les_fournitures(self, db, sample_users, user_id):
+        from blueprints.delegations import (MISSION_SUIVI_COMMANDES_FOURNITURES,
+                                            save_delegation)
+        save_delegation(MISSION_SUIVI_COMMANDES_FOURNITURES, user_id,
+                        sample_users['directeur_id'])
+
+    def _deux_demandes(self, db, sample_users):
+        for description, urgence in (('Ramettes A4', 'peut_attendre'),
+                                     ('Cartouches encre', 'urgent')):
+            db.execute(
+                """INSERT INTO commandes_salaries
+                   (user_id, date_demande, description, quantite, urgence, groupe)
+                   VALUES (?, '2026-07-01', ?, 1, ?, 'en_cours')""",
+                (sample_users['salarie_id'], description, urgence))
+        db.commit()
+
     def test_fournitures_en_attente_classees_par_urgence(self, app, db, sample_users):
         with app.app_context():
-            for description, urgence in (('Ramettes A4', 'peut_attendre'),
-                                         ('Cartouches encre', 'urgent')):
-                db.execute(
-                    """INSERT INTO commandes_salaries
-                       (user_id, date_demande, description, quantite, urgence, groupe)
-                       VALUES (?, '2026-07-01', ?, 1, ?, 'en_cours')""",
-                    (sample_users['salarie_id'], description, urgence))
-            db.commit()
+            self._deux_demandes(db, sample_users)
+            self._deleguer_les_fournitures(db, sample_users,
+                                           sample_users['salarie_id'])
 
-            actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
+            actions = construire_actions(db, 'salarie', sample_users['salarie_id'])
 
         fournitures = [a for a in actions if a['id'].startswith('fourn-')]
         assert len(fournitures) == 2
@@ -359,16 +370,40 @@ class TestCartesDuFil:
     def test_un_salarie_sans_delegation_ne_voit_pas_les_fournitures(
             self, app, db, sample_users):
         with app.app_context():
-            db.execute(
-                """INSERT INTO commandes_salaries
-                   (user_id, date_demande, description, quantite, urgence, groupe)
-                   VALUES (?, '2026-07-01', 'Ramettes', 1, 'urgent', 'en_cours')""",
-                (sample_users['salarie_id'],))
-            db.commit()
+            self._deux_demandes(db, sample_users)
 
             actions = construire_actions(db, 'salarie', sample_users['salarie_id'])
 
         assert not [a for a in actions if a['id'].startswith('fourn-')]
+
+    def test_la_direction_ne_recoit_pas_les_fournitures(self, app, db, sample_users):
+        """La mission est confiée à quelqu'un : la doubler diluerait la
+        responsabilité, chacun supposant que l'autre s'en charge."""
+        with app.app_context():
+            self._deux_demandes(db, sample_users)
+            self._deleguer_les_fournitures(db, sample_users,
+                                           sample_users['salarie_id'])
+
+            vus_direction = construire_actions(db, 'directeur',
+                                               sample_users['directeur_id'])
+            vus_comptable = construire_actions(db, 'comptable',
+                                               sample_users['comptable_id'])
+
+        assert not [a for a in vus_direction if a['id'].startswith('fourn-')]
+        assert not [a for a in vus_comptable if a['id'].startswith('fourn-')]
+
+    def test_sans_delegue_personne_ne_recoit_les_fournitures(self, app, db,
+                                                             sample_users):
+        """La file se consulte alors sur sa page ; elle ne réclame personne."""
+        with app.app_context():
+            self._deux_demandes(db, sample_users)
+
+            for profil, uid in (('directeur', sample_users['directeur_id']),
+                                ('comptable', sample_users['comptable_id']),
+                                ('responsable', sample_users['responsable_id'])):
+                actions = construire_actions(db, profil, uid,
+                                             secteur_id=sample_users['secteur_id'])
+                assert not [a for a in actions if a['id'].startswith('fourn-')], profil
 
     def test_taches_du_jour_renvoient_au_planificateur(self, app, db, sample_users):
         from utils import aujourd_hui
@@ -650,3 +685,48 @@ class TestPerimetreEtAgregation:
         budgets = [a for a in actions if a['id'].startswith('budget-')]
         assert len(budgets) == 1
         assert '150' in budgets[0]['detail']      # 1150 réels − 1000 prévus
+
+
+class TestSoldesDeCongesEleves:
+    """Même forme que les autres familles : deux nommés, puis le total."""
+
+    def _salaries_au_dessus_du_seuil(self, db, combien, solde=12):
+        for rang in range(combien):
+            db.execute(
+                "INSERT INTO users (nom, prenom, login, password, profil, cc_solde) "
+                "VALUES (?, 'Test', ?, 'x', 'salarie', ?)",
+                (f'Solde{rang}', f'solde{rang}', solde + rang))
+        db.commit()
+
+    def _cartes(self, db, sample_users):
+        from blueprints.dashboard_direction import _lire_seuils
+        return construire_actions(db, 'directeur', sample_users['directeur_id'],
+                                  etendu=True, seuils=_lire_seuils(), surcharges=[])
+
+    def test_deux_nommes_puis_une_ligne_pour_le_reste(self, app, db, sample_users):
+        with app.app_context():
+            self._salaries_au_dessus_du_seuil(db, 5)
+            actions = self._cartes(db, sample_users)
+
+        nommes = [a for a in actions if a['id'].startswith('conge-')]
+        assert len(nommes) == 2
+        reste = [a for a in actions if a['id'] == 'reste-conges-eleves']
+        assert len(reste) == 1
+        assert 'et 3 autres' in reste[0]['titre']
+
+    def test_les_soldes_les_plus_eleves_passent_devant(self, app, db, sample_users):
+        with app.app_context():
+            self._salaries_au_dessus_du_seuil(db, 4)
+            actions = self._cartes(db, sample_users)
+
+        nommes = [a for a in actions if a['id'].startswith('conge-')]
+        assert 'Solde3' in nommes[0]['titre']      # 15 j, le plus haut
+        assert 'Solde2' in nommes[1]['titre']      # 14 j
+
+    def test_pas_de_ligne_de_reste_quand_deux_suffisent(self, app, db, sample_users):
+        with app.app_context():
+            self._salaries_au_dessus_du_seuil(db, 2)
+            actions = self._cartes(db, sample_users)
+
+        assert len([a for a in actions if a['id'].startswith('conge-')]) == 2
+        assert not [a for a in actions if a['id'] == 'reste-conges-eleves']

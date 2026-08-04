@@ -419,14 +419,17 @@ def _preparation_paie(conn, profil, user_id, secteur_id, today):
 def _fournitures_en_attente(conn, profil, user_id, today):
     """Demandes de fournitures que personne n'a encore traitées.
 
-    Servies à qui peut les traiter : direction, comptabilité, ou le salarié
-    porteur de la délégation « suivi des commandes ». Classées par urgence
-    déclarée, celle du demandeur — c'est la seule information dont on dispose
-    sur ce qui presse.
+    Réservées au **seul porteur de la délégation** « suivi des commandes ».
+    C'est une mission confiée à quelqu'un : la servir aussi à la direction et
+    à la comptabilité doublerait le travail et diluerait la responsabilité —
+    chacun supposant que l'autre s'en charge. Sans délégué désigné, ces cartes
+    n'apparaissent à personne, et c'est le comportement voulu : la file se
+    consulte alors sur sa page, elle ne réclame personne en particulier.
+
+    Classées par urgence déclarée, celle du demandeur — c'est la seule
+    information dont on dispose sur ce qui presse.
     """
-    peut_suivre = profil in ('directeur', 'comptable') or user_has_delegation(
-        user_id, MISSION_SUIVI_COMMANDES_FOURNITURES)
-    if not peut_suivre:
+    if not user_has_delegation(user_id, MISSION_SUIVI_COMMANDES_FOURNITURES):
         return []
 
     rows = conn.execute(
@@ -946,6 +949,9 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
         })
 
     # 6. Soldes de congés conventionnels au-dessus du seuil : à planifier.
+    # Même forme que les autres familles — les deux plus lourds nommés, le
+    # reste en une ligne. Cinq cartes de congés d'affilée noyaient les
+    # décisions du jour pour un sujet qui, lui, se planifie.
     seuil_conges = seuils.get('conges')
     if seuil_conges is not None:
         rows = conn.execute('''
@@ -954,11 +960,12 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
             WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
               AND COALESCE(u.cc_solde, 0) >= ?
             ORDER BY u.cc_solde DESC
-            LIMIT 5
         ''', (seuil_conges,)).fetchall()
-        for r in rows:
+
+        nommes = []
+        for r in rows[:MAX_CARTES_NOMMEES]:
             solde = f"{r['cc_solde']:g}".replace('.', ',')
-            actions.append({
+            nommes.append({
                 'id': f"conge-{r['id']}",
                 'categorie': 'conges',
                 'type': 'lien',
@@ -969,5 +976,13 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
                 'lien_texte': 'Planifier',
                 'urgence': 'normal',
             })
+        actions.extend(nommes)
+
+        reste = len(rows) - len(nommes)
+        if reste > 0:
+            actions.append(_reste(
+                reste, f"solde{'s' if reste > 1 else ''} au-dessus du seuil",
+                url_for('infos_salaries_bp.soldes_conges'), 'Soldes de congés',
+                'conges-eleves', '🏖️', 'conges'))
 
     return actions
