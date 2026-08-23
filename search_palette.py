@@ -132,6 +132,20 @@ def _score_page(query_norm, query_tokens, groupe, page):
         return 325
     if query_tokens == _tokens(label):
         return 315
+
+    # Une expression retrouvée DANS la requête désigne la page tout autant
+    # qu'une requête qui s'y réduit. « Voir mes heures », « où sont mes
+    # heures », « je veux voir mes heures » disent la même chose que « mes
+    # heures » — mais l'égalité seule les manquait toutes, et la requête
+    # retombait sur ses mots isolés : réduite à « heure », elle proposait
+    # aussi bien la demande de récupération que la fiche du mois.
+    #
+    # La plus longue des expressions trouvées l'emporte : elle est la plus
+    # spécifique, et c'est elle qui départage deux pages également citées.
+    contenues = [e for e in expressions if e and e in query_norm]
+    if contenues:
+        return 305 + min(8, len(max(contenues, key=len).split()))
+
     if len(query_norm) >= 3 and label.startswith(query_norm):
         return 300
     if len(query_norm) >= 4 and query_norm in label:
