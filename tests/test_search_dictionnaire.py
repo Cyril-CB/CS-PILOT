@@ -268,3 +268,52 @@ def test_le_corpus_ne_vise_que_des_pages_reellement_accessibles(mesures):
             if not atteignable]
     assert not hors, "Destinations attendues absentes de la carte :\n" + \
         '\n'.join(f"  [{p}] {r!r} → {a}" for p, r, a in hors)
+
+
+# ── « Mes heures » mène au mois, pas au formulaire d'une journée ────────────
+
+def _premiere_destination(app, db, profil, requete):
+    """Chemin de la première proposition précise, pour un profil donné."""
+    import navigation
+    from database import get_db
+
+    with app.test_request_context('/'):
+        carte = navigation.carte_navigation({'profil': profil, 'user_id': 1})
+        conn = get_db()
+        try:
+            verdict = analyser_recherche(conn, requete, profil, date.today(),
+                                         user_id=1)
+        finally:
+            conn.close()
+        precises = [s for s in construire_suggestions(carte, requete, verdict)
+                    if s['action'] != 'ensemble' and s.get('url')]
+    return _chemin(precises[0]['url']) if precises else None
+
+
+REQUETES_MES_HEURES = ('mes heures', "ma fiche d'heures", 'saisir mon temps',
+                       'heures du mois', 'mon temps de travail',
+                       'feuille de temps')
+
+
+@pytest.mark.parametrize('profil', ['salarie', 'responsable', 'comptable'])
+def test_mes_heures_mene_au_mois_entier(app, db, sample_users, profil):
+    """La vue mensuelle montre le solde, désigne le jour à corriger et
+    l'ouvre en saisie d'un clic. Le formulaire d'une journée, lui, ne répond
+    qu'à une question déjà précise."""
+    for requete in REQUETES_MES_HEURES:
+        assert _premiere_destination(app, db, profil, requete) == '/vue_mensuelle', (
+            profil, requete)
+
+
+def test_la_direction_arrive_sur_son_forfait_jour(app, db, sample_users):
+    """Elle est au forfait jour : elle n'a pas de fiche d'heures, et la vue
+    mensuelle lui est fermée. L'envoyer là serait l'envoyer dans le mur."""
+    for requete in REQUETES_MES_HEURES:
+        assert _premiere_destination(app, db, 'directeur', requete) == (
+            '/calendrier_forfait_jour'), requete
+
+
+def test_la_saisie_reste_atteignable_par_son_nom(app, db, sample_users):
+    """Qui demande explicitement le formulaire l'obtient."""
+    assert _premiere_destination(app, db, 'salarie',
+                                 'saisir mes heures') == '/saisie_heures'
