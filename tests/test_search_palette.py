@@ -173,3 +173,22 @@ def test_une_page_non_citee_ne_gagne_rien():
     autre = {'label': 'Bénévoles', 'resume': '', 'mots': 'benevole heure',
              'expressions': [], 'lien': '/benevoles'}
     assert _score('voir mes heures', autre) < 300
+
+
+def test_une_expression_ne_compte_pas_a_cheval_sur_un_mot():
+    """« primes heures supplémentaires » contient la chaîne « mes heures »
+    par le seul hasard de la fin de « primes ».
+
+    Comparer des caractères plutôt que des mots envoyait donc une question de
+    paie vers la fiche du mois — et, pour un directeur, vers son forfait jour.
+    """
+    for requete in ('primes heures supplémentaires', 'primes heures',
+                    'des primes heures à verser'):
+        assert _score(requete, PAGE_MOIS) < 300, requete
+
+
+def test_l_expression_compte_toujours_en_mots_entiers():
+    """Le garde-fou ne doit pas emporter le cas normal avec lui."""
+    for requete in ('voir mes heures', 'où sont mes heures',
+                    'je veux voir mes heures'):
+        assert _score(requete, PAGE_MOIS) > 300, requete

@@ -327,3 +327,16 @@ def test_la_saisie_reste_atteignable_par_son_nom(app, db, sample_users):
     """Qui demande explicitement le formulaire l'obtient."""
     assert _premiere_destination(app, db, 'salarie',
                                  'saisir mes heures') == '/saisie_heures'
+
+
+def test_une_question_de_paie_ne_part_pas_vers_la_fiche_du_mois(app, db, sample_users):
+    """« primes heures supplémentaires » contient la chaîne « mes heures ».
+
+    Sans frontières de mots, la question partait vers la vue mensuelle — et
+    vers le forfait jour pour un directeur.
+    """
+    for profil in ('salarie', 'responsable', 'comptable', 'directeur'):
+        destination = _premiere_destination(app, db, profil,
+                                            'primes heures supplémentaires')
+        assert destination not in ('/vue_mensuelle', '/calendrier_forfait_jour'), (
+            profil, destination)
