@@ -118,14 +118,21 @@ ZONES = [
         'description': "Saisie des heures, plannings, présence de l'équipe et temps annualisé.",
         'mots': 'temps heure saisie saisir planning plannings mensuelle calendrier equipe presence effectif annualise forfait jour',
         'pages': [
+            # Chercher « mes heures » mène au **mois entier**, pas au
+            # formulaire d'une journée : c'est de là qu'on voit son solde,
+            # qu'on repère le jour à corriger, et qu'on l'ouvre en saisie d'un
+            # clic. La saisie reste atteignable par son nom, pour qui la
+            # demande explicitement.
             _page('saisie_bp.saisie_heures', 'Saisir mes heures',
                   profils=('comptable', 'responsable', 'salarie'),
-                  mots='heure temps pointage pointer saisie travail fiche',
-                  expressions=('mes heures', "ma fiche d'heures", 'saisir mon temps')),
+                  mots='pointage pointer saisir journee'),
             _page('validation_bp.vue_mensuelle', 'Vue mensuelle',
                   profils=('comptable', 'responsable', 'salarie'),
-                  mots='heure temps feuille fiche mois solde historique',
-                  expressions=('feuille de temps', "fiche d'heures", 'heures du mois')),
+                  mots='heure temps feuille fiche mois solde historique '
+                       'pointage travail saisie',
+                  expressions=('feuille de temps', "fiche d'heures", 'heures du mois',
+                               'mes heures', "ma fiche d'heures", 'saisir mon temps',
+                               'mon temps de travail')),
             _page('validation_bp.vue_calendrier', 'Vue calendrier',
                   profils=('comptable', 'responsable', 'salarie'),
                   mots='heure temps calendrier jour semaine mois'),
@@ -148,9 +155,16 @@ ZONES = [
             _page('forfait_bp.dashboard_forfait_jour', 'Forfait jour',
                   profils=('directeur',),
                   mots='forfait jour jours cadre travaille repos 210'),
+            # L'équivalent du mois de travail pour la direction : elle est au
+            # forfait jour, elle n'a pas de fiche d'heures. « Mes heures »
+            # doit donc l'amener ici, et non sur une page qui lui est fermée.
             _page('forfait_bp.calendrier_forfait_jour', 'Calendrier forfait jour',
                   profils=('directeur',),
-                  mots='forfait jour calendrier absence travaille repos'),
+                  mots='forfait jour calendrier absence travaille repos '
+                       'heure temps fiche mois solde saisie pointage',
+                  expressions=('mes heures', "ma fiche d'heures", 'heures du mois',
+                               'feuille de temps', 'mon temps de travail',
+                               'saisir mon temps')),
         ],
     },
     {
