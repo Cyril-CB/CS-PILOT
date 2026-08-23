@@ -294,13 +294,23 @@ REQUETES_MES_HEURES = ('mes heures', "ma fiche d'heures", 'saisir mon temps',
                        'heures du mois', 'mon temps de travail',
                        'feuille de temps')
 
+# Personne ne tape une expression nue. Ces tournures-là contiennent
+# l'expression déclarée sans lui être égales : c'est le cas que l'égalité
+# stricte manquait, et la requête retombait alors sur ses mots isolés —
+# réduite à « heure », elle proposait la demande de récupération, voire les
+# bénévoles, avant la fiche du mois.
+REQUETES_PARLEES = ('voir mes heures', 'où sont mes heures',
+                    'je veux voir mes heures', 'consulter mes heures',
+                    'où en sont mes heures du mois',
+                    'je voudrais voir ma fiche d\'heures')
+
 
 @pytest.mark.parametrize('profil', ['salarie', 'responsable', 'comptable'])
 def test_mes_heures_mene_au_mois_entier(app, db, sample_users, profil):
     """La vue mensuelle montre le solde, désigne le jour à corriger et
     l'ouvre en saisie d'un clic. Le formulaire d'une journée, lui, ne répond
     qu'à une question déjà précise."""
-    for requete in REQUETES_MES_HEURES:
+    for requete in REQUETES_MES_HEURES + REQUETES_PARLEES:
         assert _premiere_destination(app, db, profil, requete) == '/vue_mensuelle', (
             profil, requete)
 
@@ -308,7 +318,7 @@ def test_mes_heures_mene_au_mois_entier(app, db, sample_users, profil):
 def test_la_direction_arrive_sur_son_forfait_jour(app, db, sample_users):
     """Elle est au forfait jour : elle n'a pas de fiche d'heures, et la vue
     mensuelle lui est fermée. L'envoyer là serait l'envoyer dans le mur."""
-    for requete in REQUETES_MES_HEURES:
+    for requete in REQUETES_MES_HEURES + REQUETES_PARLEES:
         assert _premiere_destination(app, db, 'directeur', requete) == (
             '/calendrier_forfait_jour'), requete
 
@@ -317,3 +327,16 @@ def test_la_saisie_reste_atteignable_par_son_nom(app, db, sample_users):
     """Qui demande explicitement le formulaire l'obtient."""
     assert _premiere_destination(app, db, 'salarie',
                                  'saisir mes heures') == '/saisie_heures'
+
+
+def test_une_question_de_paie_ne_part_pas_vers_la_fiche_du_mois(app, db, sample_users):
+    """« primes heures supplémentaires » contient la chaîne « mes heures ».
+
+    Sans frontières de mots, la question partait vers la vue mensuelle — et
+    vers le forfait jour pour un directeur.
+    """
+    for profil in ('salarie', 'responsable', 'comptable', 'directeur'):
+        destination = _premiere_destination(app, db, profil,
+                                            'primes heures supplémentaires')
+        assert destination not in ('/vue_mensuelle', '/calendrier_forfait_jour'), (
+            profil, destination)

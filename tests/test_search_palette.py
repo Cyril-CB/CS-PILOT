@@ -126,3 +126,69 @@ def test_univers_complet_est_toujours_le_dernier_recours():
     assert len(suggestions) == 1
     assert suggestions[0]['action'] == 'ensemble'
     assert suggestions[0]['titre'] == "Voir tout l'espace"
+
+
+# ── Une expression citée dans la phrase désigne sa page ─────────────────────
+
+def _score(requete, page, groupe=None):
+    from search_palette import _score_page, _tokens
+    return _score_page(normaliser(requete), _tokens(requete),
+                       groupe or {'nom': '', 'mots': ''}, page)
+
+
+PAGE_MOIS = {'label': 'Vue mensuelle', 'resume': '', 'mots': 'heure temps mois',
+             'expressions': ['mes heures', "ma fiche d'heures"], 'lien': '/vue_mensuelle'}
+
+
+def test_une_expression_citee_dans_la_phrase_compte():
+    """L'égalité stricte manquait toutes les tournures parlées."""
+    for requete in ('voir mes heures', 'où sont mes heures',
+                    'je veux voir mes heures', 'consulter mes heures'):
+        assert _score(requete, PAGE_MOIS) > 300, requete
+
+
+def test_l_egalite_exacte_reste_au_dessus_de_la_citation():
+    """Qui tape l'expression nue la vise plus sûrement qu'en l'entourant."""
+    assert _score('mes heures', PAGE_MOIS) > _score('voir mes heures', PAGE_MOIS)
+
+
+def test_le_libelle_exact_l_emporte_sur_une_expression_citee():
+    """« Saisir mes heures » cite « mes heures », mais nomme sa propre page."""
+    saisie = {'label': 'Saisir mes heures', 'resume': '', 'mots': 'pointage',
+              'expressions': [], 'lien': '/saisie_heures'}
+    assert _score('saisir mes heures', saisie) > _score('saisir mes heures', PAGE_MOIS)
+
+
+def test_l_expression_la_plus_longue_departage():
+    """La plus spécifique gagne quand deux pages sont citées."""
+    courte = {'label': 'A', 'resume': '', 'mots': '',
+              'expressions': ['mes heures'], 'lien': '/a'}
+    longue = {'label': 'B', 'resume': '', 'mots': '',
+              'expressions': ['mes heures du mois'], 'lien': '/b'}
+    requete = 'où en sont mes heures du mois'
+    assert _score(requete, longue) > _score(requete, courte)
+
+
+def test_une_page_non_citee_ne_gagne_rien():
+    autre = {'label': 'Bénévoles', 'resume': '', 'mots': 'benevole heure',
+             'expressions': [], 'lien': '/benevoles'}
+    assert _score('voir mes heures', autre) < 300
+
+
+def test_une_expression_ne_compte_pas_a_cheval_sur_un_mot():
+    """« primes heures supplémentaires » contient la chaîne « mes heures »
+    par le seul hasard de la fin de « primes ».
+
+    Comparer des caractères plutôt que des mots envoyait donc une question de
+    paie vers la fiche du mois — et, pour un directeur, vers son forfait jour.
+    """
+    for requete in ('primes heures supplémentaires', 'primes heures',
+                    'des primes heures à verser'):
+        assert _score(requete, PAGE_MOIS) < 300, requete
+
+
+def test_l_expression_compte_toujours_en_mots_entiers():
+    """Le garde-fou ne doit pas emporter le cas normal avec lui."""
+    for requete in ('voir mes heures', 'où sont mes heures',
+                    'je veux voir mes heures'):
+        assert _score(requete, PAGE_MOIS) > 300, requete

@@ -123,6 +123,21 @@ def _couverture(recherche, candidat):
     return len(trouves) / len(qualites), (sum(trouves) / len(trouves) if trouves else 0.0)
 
 
+def _citee(mots_requete, expression):
+    """L'expression apparaît-elle dans la requête, en mots entiers ?
+
+    La comparaison porte sur des suites de mots, jamais sur des caractères :
+    « primes heures supplémentaires » contient la chaîne « mes heures » par le
+    seul hasard de la fin de « primes », et enverrait la paie vers la fiche du
+    mois.
+    """
+    mots = expression.split()
+    if not mots or len(mots) > len(mots_requete):
+        return False
+    return any(mots_requete[i:i + len(mots)] == mots
+               for i in range(len(mots_requete) - len(mots) + 1))
+
+
 def _score_page(query_norm, query_tokens, groupe, page):
     label = normaliser(page.get('label'))
     expressions = [normaliser(e) for e in page.get('expressions', [])]
@@ -132,6 +147,21 @@ def _score_page(query_norm, query_tokens, groupe, page):
         return 325
     if query_tokens == _tokens(label):
         return 315
+
+    # Une expression retrouvée DANS la requête désigne la page tout autant
+    # qu'une requête qui s'y réduit. « Voir mes heures », « où sont mes
+    # heures », « je veux voir mes heures » disent la même chose que « mes
+    # heures » — mais l'égalité seule les manquait toutes, et la requête
+    # retombait sur ses mots isolés : réduite à « heure », elle proposait
+    # aussi bien la demande de récupération que la fiche du mois.
+    #
+    # La plus longue des expressions trouvées l'emporte : elle est la plus
+    # spécifique, et c'est elle qui départage deux pages également citées.
+    mots_requete = query_norm.split()
+    citees = [e for e in expressions if _citee(mots_requete, e)]
+    if citees:
+        return 305 + min(8, len(max(citees, key=len).split()))
+
     if len(query_norm) >= 3 and label.startswith(query_norm):
         return 300
     if len(query_norm) >= 4 and query_norm in label:

@@ -299,6 +299,13 @@ Tout se joue dans `navigation.py` :
   formulations qui doivent la désigner sans ambiguïté. Les mots de la zone
   servent à proposer son exploration, pas toutes ses pages.
 
+  Une expression compte aussi lorsqu'elle est **citée dans une phrase**, pas
+  seulement lorsque la requête s'y réduit : « voir mes heures », « où sont mes
+  heures » désignent la même page que « mes heures ». Déclarer les expressions
+  nues suffit donc — inutile d'énumérer les tournures parlées. Quand deux
+  pages sont citées, la plus longue expression l'emporte, étant la plus
+  spécifique.
+
 Les droits reproduisent ceux du menu latéral historique : ce fichier réorganise
 la présentation, il n'ouvre aucun accès. Les routes gardent leur propre
 contrôle. Un test (`test_tous_les_endpoints_de_la_carte_existent`) vérifie que
