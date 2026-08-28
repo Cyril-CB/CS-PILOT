@@ -130,9 +130,15 @@ ZONES = [
                   profils=('comptable', 'responsable', 'salarie'),
                   mots='heure temps feuille fiche mois solde historique '
                        'pointage travail saisie',
+                  # « Ma fiche » désigne la sienne, pas la liste de toutes.
+                  # Sans cette expression, un salarié délégué au suivi des
+                  # validations tombait sur la vue d'ensemble — qui porte
+                  # « fiche » dans son vocabulaire — au lieu de son propre
+                  # mois. Les dérivés (« voir ma fiche », « ma fiche du
+                  # mois ») la contiennent, donc la citation les couvre.
                   expressions=('feuille de temps', "fiche d'heures", 'heures du mois',
-                               'mes heures', "ma fiche d'heures", 'saisir mon temps',
-                               'mon temps de travail')),
+                               'mes heures', 'ma fiche', "ma fiche d'heures",
+                               'saisir mon temps', 'mon temps de travail')),
             _page('validation_bp.vue_calendrier', 'Vue calendrier',
                   profils=('comptable', 'responsable', 'salarie'),
                   mots='heure temps calendrier jour semaine mois'),
@@ -162,9 +168,9 @@ ZONES = [
                   profils=('directeur',),
                   mots='forfait jour calendrier absence travaille repos '
                        'heure temps fiche mois solde saisie pointage',
-                  expressions=('mes heures', "ma fiche d'heures", 'heures du mois',
-                               'feuille de temps', 'mon temps de travail',
-                               'saisir mon temps')),
+                  expressions=('mes heures', 'ma fiche', "ma fiche d'heures",
+                               'heures du mois', 'feuille de temps',
+                               'mon temps de travail', 'saisir mon temps')),
         ],
     },
     {
