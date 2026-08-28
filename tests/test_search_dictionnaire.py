@@ -340,3 +340,56 @@ def test_une_question_de_paie_ne_part_pas_vers_la_fiche_du_mois(app, db, sample_
                                             'primes heures supplémentaires')
         assert destination not in ('/vue_mensuelle', '/calendrier_forfait_jour'), (
             profil, destination)
+
+
+# ── « Ma fiche » désigne la sienne ──────────────────────────────────────────
+
+REQUETES_MA_FICHE = ('ma fiche', 'voir ma fiche', 'ma fiche du mois',
+                     'ma fiche de temps', "ma fiche d'heures",
+                     'où est ma fiche', 'je voudrais voir ma fiche')
+
+
+@pytest.mark.parametrize('profil', ['salarie', 'responsable', 'comptable'])
+def test_ma_fiche_mene_a_son_propre_mois(app, db, sample_users, profil):
+    for requete in REQUETES_MA_FICHE:
+        assert _premiere_destination(app, db, profil, requete) == '/vue_mensuelle', (
+            profil, requete)
+
+
+def test_ma_fiche_mene_la_direction_a_son_forfait_jour(app, db, sample_users):
+    for requete in REQUETES_MA_FICHE:
+        assert _premiere_destination(app, db, 'directeur', requete) == (
+            '/calendrier_forfait_jour'), requete
+
+
+def test_un_salarie_delegue_obtient_sa_fiche_et_non_la_liste(app, db, sample_users):
+    """Le cas signalé : déléguée au suivi des validations, elle tombait sur la
+    vue d'ensemble — la liste de toutes les fiches — au lieu de la sienne.
+
+    Cette page porte « fiche » dans son vocabulaire ; sans expression
+    possessive déclarée, elle l'emportait sur la vue mensuelle.
+    """
+    from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
+                                        save_delegation)
+    from interface_flux import carte_pour_utilisateur
+    uid = sample_users['salarie_id']
+
+    with app.app_context():
+        save_delegation(MISSION_SUIVI_VALIDATIONS_RELANCES, uid,
+                        sample_users['directeur_id'])
+
+    with app.test_request_context('/'):
+        carte = carte_pour_utilisateur('salarie', uid)
+        for requete in REQUETES_MA_FICHE + ('mes heures',):
+            precises = [s for s in construire_suggestions(carte, requete, None)
+                        if s['action'] != 'ensemble' and s.get('url')]
+            assert precises, requete
+            assert _chemin(precises[0]['url']) == '/vue_mensuelle', (
+                requete, precises[0]['url'])
+
+
+def test_la_liste_des_fiches_a_valider_reste_atteignable(app, db, sample_users):
+    """Le possessif fait la différence : « ma fiche » n'est pas « les fiches »."""
+    for requete in ('fiches à valider', 'fiches non validées'):
+        assert _premiere_destination(app, db, 'directeur', requete) == (
+            '/vue_ensemble_validation'), requete
