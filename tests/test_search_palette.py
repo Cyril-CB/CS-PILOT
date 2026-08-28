@@ -192,3 +192,39 @@ def test_l_expression_compte_toujours_en_mots_entiers():
     for requete in ('voir mes heures', 'où sont mes heures',
                     'je veux voir mes heures'):
         assert _score(requete, PAGE_MOIS) > 300, requete
+
+
+def test_une_expression_courte_ne_capture_pas_une_autre_fiche():
+    """« Ma fiche de poste » cite « ma fiche », mais vise la pesée.
+
+    Une expression de deux mots happerait sinon tout ce qui la contient : le
+    reste de la requête doit appartenir au vocabulaire de la page.
+    """
+    page = dict(PAGE_MOIS, expressions=['ma fiche', 'mes heures'])
+    assert _score('ma fiche', page) > 300
+    assert _score('ma fiche du mois', page) > 300      # « mois » est du sujet
+    assert _score('ma fiche de poste', page) < 300     # « poste » ne l'est pas
+    assert _score('ma fiche salarié', page) < 300
+
+
+def test_le_garde_fou_laisse_passer_les_mots_outils():
+    """« Voir », « où », « est » ne parlent de rien : ils ne doivent pas
+    faire échouer la citation."""
+    page = dict(PAGE_MOIS, expressions=['ma fiche', 'mes heures'])
+    for requete in ('voir ma fiche', 'où est ma fiche',
+                    'je veux voir ma fiche', 'où en sont mes heures du mois'):
+        assert _score(requete, page) > 300, requete
+
+
+def test_les_mots_de_conversation_filtrent_reellement():
+    """Le filtrage intervient après `_canonique`, qui retire le « s » final.
+
+    Un mot listé sous une forme non canonique passe donc au travers sans que
+    rien ne le signale : « voudrais » ne filtrait pas, la requête gardait
+    « voudrai » comme mot utile, et « je voudrais voir ma fiche » ne trouvait
+    plus rien.
+    """
+    from search_palette import _MOTS_CONVERSATION, _canonique
+
+    for mot in _MOTS_CONVERSATION:
+        assert _canonique(mot) in _MOTS_CONVERSATION, mot
