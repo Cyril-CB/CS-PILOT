@@ -9,7 +9,7 @@ from flask import (Blueprint, render_template, request, redirect,
 from datetime import datetime, timedelta
 from database import get_db, DATA_DIR
 from utils import (login_required, get_user_info, get_heures_theoriques_jour,
-                   get_type_periode, get_planning_valide_a_date)
+                   get_type_periode, get_planning_valide_a_date, maintenant)
 
 absences_bp = Blueprint('absences_bp', __name__)
 
@@ -370,11 +370,13 @@ def absences():
             if motif in ('Congé payé', 'Congé conventionnel'):
                 _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
 
-            # Historique
+            # Historique. Horodatage applicatif (cf. saisie.py) : il se compare
+            # aux dates de signature des fiches d'heures.
             conn.execute('''
                 INSERT INTO historique_modifications
-                (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-                VALUES (?, ?, ?, ?, NULL, ?)
+                (user_id_modifie, date_concernee, modifie_par, action,
+                 anciennes_valeurs, nouvelles_valeurs, date_modification)
+                VALUES (?, ?, ?, ?, NULL, ?, ?)
             ''', (user_id, date_debut, session['user_id'], 'creation_absence',
                   json.dumps({
                       'motif': motif,
@@ -382,7 +384,8 @@ def absences():
                       'date_fin': date_fin,
                       'jours_ouvres': jours_ouvres,
                       'commentaire': commentaire
-                  })))
+                  }),
+                  maintenant().strftime('%Y-%m-%d %H:%M:%S')))
 
             conn.commit()
             flash(f'Absence enregistrée avec succès ({jours_ouvres} jours ouvrés). Les jours ont été reportés sur le calendrier.', 'success')
@@ -470,18 +473,20 @@ def supprimer_absence(absence_id):
             if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
                 os.remove(chemin)
 
-        # Historique
+        # Historique. Horodatage applicatif (cf. saisie.py).
         conn.execute('''
             INSERT INTO historique_modifications
-            (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-            VALUES (?, ?, ?, ?, ?, NULL)
+            (user_id_modifie, date_concernee, modifie_par, action,
+             anciennes_valeurs, nouvelles_valeurs, date_modification)
+            VALUES (?, ?, ?, ?, ?, NULL, ?)
         ''', (absence['user_id'], absence['date_debut'], session['user_id'], 'suppression_absence',
               json.dumps({
                   'motif': absence['motif'],
                   'date_debut': absence['date_debut'],
                   'date_fin': absence['date_fin'],
                   'jours_ouvres': absence['jours_ouvres']
-              })))
+              }),
+              maintenant().strftime('%Y-%m-%d %H:%M:%S')))
 
         conn.execute('DELETE FROM absences WHERE id = ?', (absence_id,))
         conn.commit()

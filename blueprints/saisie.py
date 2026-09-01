@@ -9,7 +9,7 @@ from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                     calculer_solde_recup, est_dans_equipe_responsable,
-                    periodes_contrat, est_couvert_par_contrat)
+                    periodes_contrat, est_couvert_par_contrat, maintenant)
 from app_options import get_option_bool
 
 saisie_bp = Blueprint('saisie_bp', __name__)
@@ -318,12 +318,19 @@ def saisie_heures():
                   heure_debut_aprem, heure_fin_aprem, heure_debut_soir, heure_fin_soir,
                   commentaire, type_saisie, declaration_conforme_val, pause_remuneree_val))
             
-            # Enregistrer dans l'historique
+            # Enregistrer dans l'historique. L'horodatage est posé par
+            # l'application (`maintenant`) et non par le défaut SQLite
+            # (CURRENT_TIMESTAMP, toujours en UTC) : il se compare aux dates de
+            # signature pour savoir si une fiche a bougé depuis qu'on l'a
+            # validée, et deux horloges différentes fausseraient la comparaison.
             conn.execute('''
                 INSERT INTO historique_modifications
-                (user_id_modifie, date_concernee, modifie_par, action, anciennes_valeurs, nouvelles_valeurs)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (user_id_cible, date, session['user_id'], action, anciennes_valeurs, nouvelles_valeurs))
+                (user_id_modifie, date_concernee, modifie_par, action,
+                 anciennes_valeurs, nouvelles_valeurs, date_modification)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (user_id_cible, date, session['user_id'], action,
+                  anciennes_valeurs, nouvelles_valeurs,
+                  maintenant().strftime('%Y-%m-%d %H:%M:%S')))
             
             conn.commit()
             flash('Heures enregistrées avec succès', 'success')
