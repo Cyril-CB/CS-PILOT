@@ -204,9 +204,14 @@ ZONES = [
             _page('pesee_alisfa_bp.pesee_alisfa', 'Pesée ALISFA',
                   profils=('directeur', 'comptable'),
                   mots='pesee cotation classification alisfa emploi repere point analyse poste'),
+            # « Fiche de poste » est plus longue que « ma fiche » : la règle
+            # de citation la fait donc gagner, et une question sur les postes
+            # ne part plus vers la fiche d'heures.
             _page('pesee_alisfa_bp.postes_alisfa', 'Postes ALISFA',
                   profils=('directeur', 'comptable'),
-                  mots='poste alisfa pesee cotation emploi classification salarie'),
+                  mots='poste alisfa pesee cotation emploi classification salarie fiche',
+                  expressions=('fiche de poste', 'fiches de poste',
+                               'ma fiche de poste')),
             _page('assistant_rh_bp.assistant_rh', 'Assistant RH',
                   profils=('directeur', 'comptable'),
                   mots='assistant rh question droit convention alisfa aide'),

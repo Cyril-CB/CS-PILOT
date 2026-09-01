@@ -11,13 +11,18 @@ import unicodedata
 # Mots qui portent la formulation, pas la demande. On les écarte avant de
 # mesurer la couverture, sans quoi « qui n'a pas validé ses heures » n'aurait
 # que deux mots utiles sur sept et n'atteindrait jamais le seuil.
+#
+# Les formes sont **canoniques** : le filtrage intervient après `_canonique`,
+# qui retire le « s » final des mots de plus de quatre lettres. On écrit donc
+# « voudrai », pas « voudrais » — sinon le mot passe au travers.
 _MOTS_CONVERSATION = {
-    'a', 'aller', 'au', 'aux', 'ce', 'cette', 'chez', 'comment', 'dans', 'de',
-    'des', 'du', 'en', 'est', 'et', 'faire', 'je', 'la', 'le', 'les', 'ma',
-    'mes', 'mon', 'n', 'ne', 'ou', 'ouvrir', 'pas', 'peux', 'pour', 'qui',
-    'quel', 'quelle', 'quelles', 'quels', 'quoi', 'sa', 'se', 'ses', 'son',
-    'sont', 'sur', 'trouver', 'un', 'une', 'vais', 'vers', 'veut', 'veux',
-    'voir',
+    'a', 'acceder', 'afficher', 'aller', 'au', 'aux', 'besoin', 'ce', 'cette',
+    'chez', 'comment', 'consulter', 'dans', 'de', 'des', 'du', 'en', 'est',
+    'et', 'faire', 'je', 'la', 'le', 'les', 'ma', 'mes', 'mon', 'montrer',
+    'n', 'ne', 'ou', 'ouvrir', 'pas', 'peux', 'pour', 'qui', 'quel', 'quelle',
+    'quelles', 'quels', 'quoi', 'regarder', 'sa', 'se', 'ses', 'son', 'sont',
+    'souhaite', 'sur', 'trouver', 'un', 'une', 'vais', 'vers', 'veut', 'veux',
+    'voir', 'voudrai',
 }
 
 # Les variantes sont ramenées à un vocabulaire commun avant le calcul du score.
@@ -157,18 +162,29 @@ def _score_page(query_norm, query_tokens, groupe, page):
     #
     # La plus longue des expressions trouvées l'emporte : elle est la plus
     # spécifique, et c'est elle qui départage deux pages également citées.
+    #
+    # Encore faut-il que le reste de la requête ne parle pas d'autre chose.
+    # « Ma fiche de poste » cite « ma fiche », mais vise la pesée ; « ma fiche
+    # salarié », le dossier RH. Une expression courte capturerait tout ce qui
+    # la contient — on exige donc que les mots restants appartiennent au
+    # vocabulaire de la page. « Ma fiche du mois » le vérifie, « ma fiche de
+    # poste » non.
+    vocabulaire = _tokens(' '.join((page.get('label', ''), page.get('resume', ''),
+                                    page.get('mots', ''), ' '.join(expressions))))
     mots_requete = query_norm.split()
     citees = [e for e in expressions if _citee(mots_requete, e)]
     if citees:
-        return 305 + min(8, len(max(citees, key=len).split()))
+        expression = max(citees, key=len)
+        reste = [m for m in _tokens(query_norm, sans_outils=True)
+                 if m not in _tokens(expression, sans_outils=True)]
+        if not reste or _couverture(reste, vocabulaire)[0] == 1:
+            return 305 + min(8, len(expression.split()))
 
     if len(query_norm) >= 3 and label.startswith(query_norm):
         return 300
     if len(query_norm) >= 4 and query_norm in label:
         return 285
 
-    vocabulaire = _tokens(' '.join((page.get('label', ''), page.get('resume', ''),
-                                    page.get('mots', ''), ' '.join(expressions))))
     couverture, qualite = _couverture(query_tokens, vocabulaire)
     if couverture == 1:
         return int(225 + 55 * qualite)
