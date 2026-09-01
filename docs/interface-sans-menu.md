@@ -132,6 +132,22 @@ d'anomalies, et une fiche chargée n'en est pas une. (Rappel métier utile ici :
 les heures supplémentaires se **récupèrent**, elles ne se paient pas, sauf
 pour un CDD.)
 
+Une carte **quitte le fil de qui a fait sa part**, sans attendre la suite du
+circuit. Une fiche d'heures demande deux signatures — responsable puis
+direction — et n'est verrouillée qu'une fois les deux posées ; mais se fier au
+verrou laissait chacun devant une décision déjà prise, la direction retrouvant
+indéfiniment les fiches qu'elle avait signées faute que le responsable ait fait
+la sienne. Un fil qui redemande ce qui est fait cesse d'être cru. La
+comptabilité, qui ne signe pas, suit le circuit entier : pour elle la fiche
+reste jusqu'au verrouillage. Même lecture pour la relance groupée : elle
+s'adresse aux responsables, donc elle ne compte que les fiches qu'ils n'ont pas
+signées.
+
+La règle vaut pour le fil, pas pour les pages : le bandeau de la vue d'ensemble
+des validations continue de compter les fiches non verrouillées, parce qu'il
+décrit le tableau qu'il surmonte — lequel montre chaque signature colonne par
+colonne.
+
 Chaque constructeur décide seul de son public et s'isole des autres : une
 famille en panne (table absente, base verrouillée) est journalisée et ignorée,
 le reste du fil tient.

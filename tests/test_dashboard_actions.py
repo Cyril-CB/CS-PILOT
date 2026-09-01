@@ -289,6 +289,132 @@ class TestFichesNommees:
         assert titres and not any('Durand' in t for t in titres), titres
 
 
+def _signer(db, user_id, mois, annee, colonne):
+    """Pose une seule signature sur la fiche, sans la verrouiller."""
+    db.execute(
+        "INSERT OR IGNORE INTO validations (user_id, mois, annee) VALUES (?, ?, ?)",
+        (user_id, mois, annee)
+    )
+    db.execute(
+        f"UPDATE validations SET {colonne} = 'Signataire' "
+        "WHERE user_id = ? AND mois = ? AND annee = ?",
+        (user_id, mois, annee)
+    )
+    db.commit()
+
+
+class TestUneSignatureSortLaFicheDuFil:
+    """Le fil ne redemande pas ce que son lecteur a déjà signé.
+
+    Le verrouillage attend les deux signatures ; s'y fier laissait chacun
+    devant une décision déjà prise — la direction retrouvait indéfiniment les
+    fiches qu'elle avait validées, faute que le responsable ait fait sa part.
+    """
+
+    def test_la_direction_ne_revoit_pas_ce_qu_elle_a_signe(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            avant = [a['titre'] for a in construire_actions(
+                db, 'directeur', sample_users['directeur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+            _signer(db, salarie, mois, annee, 'validation_directeur')
+            apres = [a['titre'] for a in construire_actions(
+                db, 'directeur', sample_users['directeur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert len(avant) == 1, avant
+        assert apres == [], apres
+
+    def test_mais_le_responsable_la_voit_toujours(self, app, db, sample_users):
+        """La signature de la direction ne dispense pas le responsable."""
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_directeur')
+            titres = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert len(titres) == 1, titres
+
+    def test_le_responsable_ne_revoit_pas_ce_qu_il_a_signe(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable')
+            responsable = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+            direction = [a['titre'] for a in construire_actions(
+                db, 'directeur', sample_users['directeur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert responsable == [], responsable
+        assert len(direction) == 1, direction
+
+    def test_la_comptabilite_suit_le_circuit_jusqu_au_verrouillage(
+            self, app, db, sample_users):
+        """Elle ne signe pas : aucune signature ne la libère, seul le verrou."""
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        def fiches():
+            return [a['titre'] for a in construire_actions(
+                db, 'comptable', sample_users['comptable_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_directeur')
+            assert len(fiches()) == 1
+
+            _signer(db, salarie, mois, annee, 'validation_responsable')
+            assert len(fiches()) == 1
+
+            db.execute("UPDATE validations SET bloque = 1 "
+                       "WHERE user_id = ? AND mois = ? AND annee = ?",
+                       (salarie, mois, annee))
+            db.commit()
+            assert fiches() == []
+
+    def test_la_relance_ne_compte_que_ce_que_les_responsables_doivent(
+            self, app, db, sample_users):
+        """« Relancer les responsables » ne parle que des fiches qu'ils doivent.
+
+        Une fiche signée par le responsable et en attente de la direction
+        n'attend rien d'un rappel qui leur serait adressé.
+        """
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        def relance():
+            actions = construire_actions(db, 'directeur',
+                                         sample_users['directeur_id'], etendu=True)
+            return next((a for a in actions if a['type'] == 'relance'), None)
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            assert relance()['detail'].startswith('1 fiche')
+
+            _signer(db, salarie, mois, annee, 'validation_responsable')
+            assert relance() is None
+
+
 class TestCartesDuFil:
     """Chaque famille se tait quand elle n'a rien à dire."""
 

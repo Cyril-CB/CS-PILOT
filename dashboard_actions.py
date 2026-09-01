@@ -165,6 +165,22 @@ def _est_cdd(conn, user_id, annee, mois):
     ).fetchone() is not None
 
 
+def _deja_traite(signature=None):
+    """Condition SQL « cette fiche ne demande plus rien à ce lecteur ».
+
+    Toujours vraie quand la fiche est verrouillée. Vraie en plus, dès qu'une
+    `signature` est nommée, quand cette signature est posée : le lecteur a fait
+    sa part, la fiche appartient désormais à l'autre valideur.
+
+    `signature` vient d'un choix fermé du code appelant (jamais d'une saisie) :
+    l'interpolation dans la requête est sûre.
+    """
+    if not signature:
+        return 'v.bloque = 1'
+    return (f"v.bloque = 1 OR (v.{signature} IS NOT NULL"
+            f" AND v.{signature} != '')")
+
+
 def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     """Fiches d'heures du mois précédent encore non validées.
 
@@ -182,12 +198,24 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
 
     Un responsable ne voit que son équipe, comme la vue d'ensemble le fait
     pour lui ; la direction et la comptabilité voient tout l'effectif.
+
+    **Une fiche sort du fil de qui l'a validée**, sans attendre l'autre
+    signature. Le verrouillage demande les deux — responsable puis direction
+    — mais s'y fier laissait chacun devant une décision déjà prise : la
+    direction retrouvait indéfiniment les fiches qu'elle avait signées, faute
+    que le responsable ait fait sa part. Un fil qui redemande ce qui est fait
+    cesse d'être cru.
+
+    La comptabilité, qui ne signe pas, suit le circuit entier : pour elle la
+    fiche reste jusqu'au verrouillage.
     """
     if profil == 'responsable':
         scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
         params = (secteur_id, user_id)
+        signature = 'validation_responsable'
     elif profil in ('directeur', 'comptable'):
         scope, params = '', ()
+        signature = 'validation_directeur' if profil == 'directeur' else None
     else:
         return []
 
@@ -200,7 +228,8 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
               {scope}
               AND NOT EXISTS (
                   SELECT 1 FROM validations v
-                  WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ? AND v.bloque = 1
+                  WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
+                    AND ({_deja_traite(signature)})
               )
             ORDER BY u.nom, u.prenom''',
         params + (mois, annee)
@@ -909,12 +938,16 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     annee_prec = today.year if today.month > 1 else today.year - 1
     peut_relancer = (profil == 'directeur'
                      or user_has_delegation(user_id, MISSION_SUIVI_VALIDATIONS_RELANCES))
-    fiches = conn.execute('''
+    # On relance les responsables : ne comptent que les fiches qu'ils n'ont pas
+    # signées. Une fiche déjà signée par eux et en attente de la direction
+    # n'attend rien d'un rappel qui leur serait adressé.
+    fiches = conn.execute(f'''
         SELECT COUNT(*) AS nb FROM users u
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
           AND NOT EXISTS (
               SELECT 1 FROM validations v
-              WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ? AND v.bloque = 1
+              WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
+                AND ({_deja_traite('validation_responsable')})
           )
     ''', (mois_prec, annee_prec)).fetchone()
     if fiches['nb'] > 0 and peut_relancer:
