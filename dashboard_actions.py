@@ -165,20 +165,47 @@ def _est_cdd(conn, user_id, annee, mois):
     ).fetchone() is not None
 
 
-def _deja_traite(signature=None):
+def _deja_traite(role, mois, annee):
     """Condition SQL « cette fiche ne demande plus rien à ce lecteur ».
 
-    Toujours vraie quand la fiche est verrouillée. Vraie en plus, dès qu'une
-    `signature` est nommée, quand cette signature est posée : le lecteur a fait
-    sa part, la fiche appartient désormais à l'autre valideur.
+    Retourne le couple (fragment SQL, paramètres). Le fragment se lit à
+    l'intérieur d'un `SELECT ... FROM validations v`.
 
-    `signature` vient d'un choix fermé du code appelant (jamais d'une saisie) :
-    l'interpolation dans la requête est sûre.
+    Toujours vraie quand la fiche est verrouillée. Vraie en plus, dès qu'un
+    `role` est nommé ('responsable' ou 'directeur'), quand ce rôle a signé : le
+    lecteur a fait sa part, la fiche appartient désormais à l'autre valideur.
+
+    **Sauf si la fiche a bougé depuis.** Un salarié peut modifier ses heures
+    tant que la fiche n'est pas verrouillée : `saisie.py` l'autorise, garde la
+    signature en place et se contente d'enregistrer une anomalie. Ce qui a été
+    approuvé n'existe alors plus, et masquer la carte laisserait la direction
+    verrouiller une version que le responsable n'a jamais vue. Le journal des
+    modifications (`historique_modifications`, alimenté par la saisie des
+    heures comme par les absences) tranche : une trace postérieure à la
+    signature remet la fiche dans le fil de son signataire, jusqu'à ce qu'il
+    signe de nouveau.
+
+    La comparaison exige une horloge unique : la date de signature et celle du
+    journal sont toutes deux écrites par `utils.maintenant()`, jamais par le
+    défaut SQLite `CURRENT_TIMESTAMP` qui est en UTC.
+
+    `role` vient d'un choix fermé du code appelant (jamais d'une saisie) :
+    l'interpolation des noms de colonnes est sûre.
     """
-    if not signature:
-        return 'v.bloque = 1'
-    return (f"v.bloque = 1 OR (v.{signature} IS NOT NULL"
-            f" AND v.{signature} != '')")
+    if not role:
+        return 'v.bloque = 1', ()
+    signature, date_signature = f'validation_{role}', f'date_{role}'
+    return (
+        f"""v.bloque = 1
+            OR (v.{signature} IS NOT NULL AND v.{signature} != ''
+                AND NOT EXISTS (
+                    SELECT 1 FROM historique_modifications h
+                    WHERE h.user_id_modifie = v.user_id
+                      AND h.date_concernee LIKE ?
+                      AND h.date_modification > v.{date_signature}
+                ))""",
+        (f'{annee}-{mois:02d}-%',),
+    )
 
 
 def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
@@ -207,20 +234,22 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     cesse d'être cru.
 
     La comptabilité, qui ne signe pas, suit le circuit entier : pour elle la
-    fiche reste jusqu'au verrouillage.
+    fiche reste jusqu'au verrouillage. Et une fiche modifiée après une
+    signature revient dans le fil de son signataire — voir `_deja_traite`.
     """
     if profil == 'responsable':
         scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
         params = (secteur_id, user_id)
-        signature = 'validation_responsable'
+        role = 'responsable'
     elif profil in ('directeur', 'comptable'):
         scope, params = '', ()
-        signature = 'validation_directeur' if profil == 'directeur' else None
+        role = 'directeur' if profil == 'directeur' else None
     else:
         return []
 
     mois = today.month - 1 or 12
     annee = today.year if today.month > 1 else today.year - 1
+    traite, params_traite = _deja_traite(role, mois, annee)
 
     salaries = conn.execute(
         f'''SELECT u.id, u.nom, u.prenom FROM users u
@@ -229,10 +258,10 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
               AND NOT EXISTS (
                   SELECT 1 FROM validations v
                   WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
-                    AND ({_deja_traite(signature)})
+                    AND ({traite})
               )
             ORDER BY u.nom, u.prenom''',
-        params + (mois, annee)
+        params + (mois, annee) + params_traite
     ).fetchall()
     if not salaries:
         return []
@@ -939,17 +968,19 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     peut_relancer = (profil == 'directeur'
                      or user_has_delegation(user_id, MISSION_SUIVI_VALIDATIONS_RELANCES))
     # On relance les responsables : ne comptent que les fiches qu'ils n'ont pas
-    # signées. Une fiche déjà signée par eux et en attente de la direction
-    # n'attend rien d'un rappel qui leur serait adressé.
+    # signées — ou qui ont bougé depuis leur signature. Une fiche déjà signée
+    # par eux et en attente de la direction n'attend rien d'un rappel qui leur
+    # serait adressé.
+    traite, params_traite = _deja_traite('responsable', mois_prec, annee_prec)
     fiches = conn.execute(f'''
         SELECT COUNT(*) AS nb FROM users u
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
           AND NOT EXISTS (
               SELECT 1 FROM validations v
               WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
-                AND ({_deja_traite('validation_responsable')})
+                AND ({traite})
           )
-    ''', (mois_prec, annee_prec)).fetchone()
+    ''', (mois_prec, annee_prec) + params_traite).fetchone()
     if fiches['nb'] > 0 and peut_relancer:
         actions.append({
             'id': f"relance-{annee_prec}-{mois_prec:02d}",

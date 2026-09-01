@@ -143,6 +143,23 @@ reste jusqu'au verrouillage. Même lecture pour la relance groupée : elle
 s'adresse aux responsables, donc elle ne compte que les fiches qu'ils n'ont pas
 signées.
 
+**Sauf si la fiche a bougé depuis.** Un salarié peut modifier ses heures tant
+que la fiche n'est pas verrouillée : la saisie l'autorise, garde la signature
+en place et se contente d'enregistrer une anomalie. Ce qui avait été approuvé
+n'existe alors plus, et masquer la carte pour de bon laisserait la direction
+verrouiller une version que le responsable n'a jamais relue. Le journal des
+modifications (`historique_modifications`, alimenté par la saisie des heures
+comme par les absences) tranche : une trace postérieure à la signature remet la
+fiche dans le fil de son signataire, jusqu'à ce qu'il signe de nouveau.
+
+Cette comparaison exige **une horloge unique**. Le défaut SQLite
+`CURRENT_TIMESTAMP` est en UTC, l'application vit en heure applicative
+(`utils.maintenant`, `APP_TIMEZONE`) : deux sources différentes décaleraient la
+comparaison d'une à deux heures selon la saison — assez pour manquer
+précisément les modifications faites dans la foulée d'une signature. Les dates
+de signature et les traces du journal sont donc toutes posées par
+`maintenant()`.
+
 La règle vaut pour le fil, pas pour les pages : le bandeau de la vue d'ensemble
 des validations continue de compter les fiches non verrouillées, parce qu'il
 décrit le tableau qu'il surmonte — lequel montre chaque signature colonne par

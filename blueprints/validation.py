@@ -10,7 +10,7 @@ from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
                     total_hs_payees, est_dans_equipe_responsable,
-                    periodes_contrat, est_hors_contrat)
+                    periodes_contrat, est_hors_contrat, maintenant)
 from app_options import get_option_bool
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
                         ACTION_DEVERROUILLAGE_MOIS)
@@ -92,7 +92,10 @@ def valider_mois():
             SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
         ''', (user_id, mois, annee)).fetchone()
 
-        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Horloge applicative (cf. utils.maintenant) : la date de signature est
+        # comparée à celle des modifications du journal — les deux doivent être
+        # écrites par la même horloge, sinon un conteneur en UTC les décale.
+        now = maintenant().strftime('%Y-%m-%d %H:%M:%S')
         user_info = get_user_info(session['user_id'])
         validation_nom = f"{user_info['prenom']} {user_info['nom']}"
 

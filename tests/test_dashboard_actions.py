@@ -1,7 +1,9 @@
 """
 Panneau « Actions à faire » des tableaux de bord (dashboard_actions.py).
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
 
 from dashboard_actions import construire_actions
 
@@ -289,16 +291,28 @@ class TestFichesNommees:
         assert titres and not any('Durand' in t for t in titres), titres
 
 
-def _signer(db, user_id, mois, annee, colonne):
+def _signer(db, user_id, mois, annee, colonne, quand='2026-08-10 09:00:00'):
     """Pose une seule signature sur la fiche, sans la verrouiller."""
+    role = colonne.replace('validation_', '')
     db.execute(
         "INSERT OR IGNORE INTO validations (user_id, mois, annee) VALUES (?, ?, ?)",
         (user_id, mois, annee)
     )
     db.execute(
-        f"UPDATE validations SET {colonne} = 'Signataire' "
+        f"UPDATE validations SET {colonne} = 'Signataire', date_{role} = ? "
         "WHERE user_id = ? AND mois = ? AND annee = ?",
-        (user_id, mois, annee)
+        (quand, user_id, mois, annee)
+    )
+    db.commit()
+
+
+def _journaliser_modification(db, user_id, mois, annee, quand):
+    """Trace une modification de la fiche, comme le fait la saisie d'heures."""
+    db.execute(
+        """INSERT INTO historique_modifications
+           (user_id_modifie, date_concernee, modifie_par, action, date_modification)
+           VALUES (?, ?, ?, 'modification', ?)""",
+        (user_id, f'{annee}-{mois:02d}-15', user_id, quand)
     )
     db.commit()
 
@@ -413,6 +427,184 @@ class TestUneSignatureSortLaFicheDuFil:
 
             _signer(db, salarie, mois, annee, 'validation_responsable')
             assert relance() is None
+
+
+class TestUneFicheModifieeRevientDansLeFil:
+    """Signer ne vaut que pour la fiche signée, pas pour celle qui l'a suivie.
+
+    Un salarié peut modifier ses heures tant que la fiche n'est pas
+    verrouillée : `saisie.py` l'autorise et garde la signature en place. Sans
+    quoi la carte disparaîtrait pour de bon, et la direction verrouillerait une
+    version que le responsable n'a jamais relue.
+    """
+
+    def test_une_modification_posterieure_ramene_la_carte(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        def fiches():
+            return [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+            assert fiches() == []
+
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-10 14:00:00')
+            assert len(fiches()) == 1
+
+    def test_resigner_la_referme(self, app, db, sample_users):
+        """La carte ne s'installe pas : elle repart quand on la re-signe."""
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-10 14:00:00')
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 17:00:00')
+
+            titres = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert titres == [], titres
+
+    def test_une_modification_anterieure_ne_change_rien(self, app, db, sample_users):
+        """Ce que le signataire avait sous les yeux ne le rappelle pas."""
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-09 08:00:00')
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+
+            titres = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert titres == [], titres
+
+    def test_une_modification_d_un_autre_mois_ne_change_rien(
+            self, app, db, sample_users):
+        """Le journal est filtré sur le mois de la fiche, pas sur le salarié."""
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        autre = mois - 1 or 12
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+            _journaliser_modification(db, salarie, autre, annee,
+                                      '2026-08-10 14:00:00')
+
+            titres = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert titres == [], titres
+
+    def test_la_direction_aussi(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_directeur',
+                    quand='2026-08-10 09:00:00')
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-10 14:00:00')
+
+            titres = [a['titre'] for a in construire_actions(
+                db, 'directeur', sample_users['directeur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert len(titres) == 1, titres
+
+    def test_la_relance_recompte_la_fiche_modifiee(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        def relance():
+            actions = construire_actions(db, 'directeur',
+                                         sample_users['directeur_id'], etendu=True)
+            return next((a for a in actions if a['type'] == 'relance'), None)
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+            assert relance() is None
+
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-10 14:00:00')
+            assert relance()['detail'].startswith('1 fiche')
+
+
+class TestHorlogeUniqueDesSignatures:
+    """La comparaison signature / modification exige une seule horloge.
+
+    Le défaut SQLite `CURRENT_TIMESTAMP` est en UTC ; l'application vit en
+    heure applicative (`utils.maintenant`). Deux sources différentes
+    décaleraient la comparaison de une à deux heures selon la saison — assez
+    pour manquer précisément les modifications faites dans la foulée d'une
+    signature.
+    """
+
+    def test_le_journal_est_horodate_par_l_application(self, auth_client, app, db,
+                                                       sample_users, sample_contrat,
+                                                       monkeypatch):
+        from utils import maintenant
+        salarie = sample_users['salarie_id']
+
+        # La suite tourne en UTC, où l'horloge applicative et celle de SQLite
+        # coïncident : le test ne prouverait rien. Sous une timezone décalée,
+        # elles se séparent et l'écart devient mesurable.
+        monkeypatch.setenv('APP_TIMEZONE', 'Europe/Paris')
+        utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        if abs((maintenant() - utc).total_seconds()) < 120:
+            pytest.skip("timezone Europe/Paris indisponible (tzdata manquant)")
+
+        with app.app_context():
+            auth_client.post('/saisie_heures', data={
+                'date': '2025-01-06',
+                'heure_debut_matin': '09:00', 'heure_fin_matin': '12:00',
+                'heure_debut_aprem': '13:00', 'heure_fin_aprem': '17:00',
+            }, follow_redirects=True)
+
+            trace = db.execute(
+                'SELECT date_modification FROM historique_modifications '
+                'WHERE user_id_modifie = ? ORDER BY id DESC LIMIT 1',
+                (salarie,)
+            ).fetchone()
+
+        assert trace, "la saisie doit laisser une trace dans le journal"
+        ecart = abs((datetime.strptime(trace['date_modification'],
+                                       '%Y-%m-%d %H:%M:%S') - maintenant())
+                    .total_seconds())
+        # Une heure d'écart signerait l'horodatage UTC de SQLite.
+        assert ecart < 120, trace['date_modification']
 
 
 class TestCartesDuFil:
