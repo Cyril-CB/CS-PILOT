@@ -189,6 +189,12 @@ def _deja_traite(role, mois, annee):
     journal sont toutes deux écrites par `utils.maintenant()`, jamais par le
     défaut SQLite `CURRENT_TIMESTAMP` qui est en UTC.
 
+    Elle se fait à la seconde près — c'est la résolution des deux horodatages —
+    d'où le `>=` : à égalité on redemande la signature. Des deux erreurs
+    possibles c'est la bénigne. Un rappel de trop se referme d'une signature ;
+    une modification manquée, elle, disparaît en silence, et c'est exactement
+    le trou que ce garde-fou existe pour boucher.
+
     `role` vient d'un choix fermé du code appelant (jamais d'une saisie) :
     l'interpolation des noms de colonnes est sûre.
     """
@@ -202,7 +208,7 @@ def _deja_traite(role, mois, annee):
                     SELECT 1 FROM historique_modifications h
                     WHERE h.user_id_modifie = v.user_id
                       AND h.date_concernee LIKE ?
-                      AND h.date_modification > v.{date_signature}
+                      AND h.date_modification >= v.{date_signature}
                 ))""",
         (f'{annee}-{mois:02d}-%',),
     )

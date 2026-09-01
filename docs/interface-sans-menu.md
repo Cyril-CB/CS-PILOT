@@ -158,7 +158,9 @@ Cette comparaison exige **une horloge unique**. Le défaut SQLite
 comparaison d'une à deux heures selon la saison — assez pour manquer
 précisément les modifications faites dans la foulée d'une signature. Les dates
 de signature et les traces du journal sont donc toutes posées par
-`maintenant()`.
+`maintenant()`, et comparées à la seconde près : à égalité on redemande la
+signature, parce qu'un rappel de trop se referme d'un clic quand une
+modification manquée, elle, disparaît en silence.
 
 La règle vaut pour le fil, pas pour les pages : le bandeau de la vue d'ensemble
 des validations continue de compter les fiches non verrouillées, parce qu'il

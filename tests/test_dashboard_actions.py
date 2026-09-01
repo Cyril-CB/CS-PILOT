@@ -481,6 +481,30 @@ class TestUneFicheModifieeRevientDansLeFil:
 
         assert titres == [], titres
 
+    def test_une_modification_dans_la_meme_seconde_compte(self, app, db, sample_users):
+        """Les deux horodatages sont à la seconde : à égalité, on redemande.
+
+        Un rappel de trop se referme d'une signature ; une modification
+        manquée disparaît en silence.
+        """
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        salarie = sample_users['salarie_id']
+
+        with app.app_context():
+            _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
+            _signer(db, salarie, mois, annee, 'validation_responsable',
+                    quand='2026-08-10 09:00:00')
+            _journaliser_modification(db, salarie, mois, annee,
+                                      '2026-08-10 09:00:00')
+
+            titres = [a['titre'] for a in construire_actions(
+                db, 'responsable', sample_users['responsable_id'],
+                secteur_id=sample_users['secteur_id'])
+                if a['titre'].startswith('Fiche à valider')]
+
+        assert len(titres) == 1, titres
+
     def test_une_modification_anterieure_ne_change_rien(self, app, db, sample_users):
         """Ce que le signataire avait sous les yeux ne le rappelle pas."""
         from utils import aujourd_hui
