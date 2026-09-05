@@ -390,6 +390,10 @@ def absences():
             conn.commit()
             flash(f'Absence enregistrée avec succès ({jours_ouvres} jours ouvrés). Les jours ont été reportés sur le calendrier.', 'success')
         except Exception as e:
+            if justificatif_path:
+                chemin = os.path.join(_get_documents_dir(), justificatif_path)
+                if os.path.isfile(chemin):
+                    os.remove(chemin)
             flash(f'Erreur lors de l\'enregistrement : {str(e)}', 'error')
         finally:
             conn.close()
@@ -464,15 +468,6 @@ def supprimer_absence(absence_id):
             _actualiser_compteurs_conges(conn, absence['user_id'], absence['motif'],
                                          absence['jours_ouvres'], ajout=False)
 
-        # Supprimer le justificatif si present
-        if absence['justificatif_path']:
-            docs_dir = _get_documents_dir()
-            chemin = os.path.join(docs_dir, absence['justificatif_path'])
-            chemin_reel = os.path.realpath(chemin)
-            dossier_reel = os.path.realpath(docs_dir)
-            if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
-                os.remove(chemin)
-
         # Historique. Horodatage applicatif (cf. saisie.py).
         conn.execute('''
             INSERT INTO historique_modifications
@@ -490,6 +485,16 @@ def supprimer_absence(absence_id):
 
         conn.execute('DELETE FROM absences WHERE id = ?', (absence_id,))
         conn.commit()
+
+        # Supprimer le justificatif si present
+        if absence['justificatif_path']:
+            docs_dir = _get_documents_dir()
+            chemin = os.path.join(docs_dir, absence['justificatif_path'])
+            chemin_reel = os.path.realpath(chemin)
+            dossier_reel = os.path.realpath(docs_dir)
+            if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
+                os.remove(chemin)
+
         flash('Absence supprimée et calendrier mis à jour.', 'success')
     except Exception as e:
         flash(f'Erreur : {str(e)}', 'error')

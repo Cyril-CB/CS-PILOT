@@ -166,45 +166,14 @@ def _est_cdd(conn, user_id, annee, mois):
 
 
 def _deja_traite(role, mois, annee):
-    """Condition SQL « cette fiche ne demande plus rien à ce lecteur ».
-
-    Retourne le couple (fragment SQL, paramètres). Le fragment se lit à
-    l'intérieur d'un `SELECT ... FROM validations v`.
-
-    Toujours vraie quand la fiche est verrouillée. Vraie en plus, dès qu'un
-    `role` est nommé ('responsable' ou 'directeur'), quand ce rôle a signé : le
-    lecteur a fait sa part, la fiche appartient désormais à l'autre valideur.
-
-    **Sauf si la fiche a bougé depuis.** Un salarié peut modifier ses heures
-    tant que la fiche n'est pas verrouillée : `saisie.py` l'autorise, garde la
-    signature en place et se contente d'enregistrer une anomalie. Ce qui a été
-    approuvé n'existe alors plus, et masquer la carte laisserait la direction
-    verrouiller une version que le responsable n'a jamais vue. Le journal des
-    modifications (`historique_modifications`, alimenté par la saisie des
-    heures comme par les absences) tranche : une trace postérieure à la
-    signature remet la fiche dans le fil de son signataire, jusqu'à ce qu'il
-    signe de nouveau.
-
-    La comparaison exige une horloge unique : la date de signature et celle du
-    journal sont toutes deux écrites par `utils.maintenant()`, jamais par le
-    défaut SQLite `CURRENT_TIMESTAMP` qui est en UTC.
-
-    `role` vient d'un choix fermé du code appelant (jamais d'une saisie) :
-    l'interpolation des noms de colonnes est sûre.
-    """
+    """Une signature ne retire la carte que pour le contenu encore approuvé."""
     if not role:
         return 'v.bloque = 1', ()
-    signature, date_signature = f'validation_{role}', f'date_{role}'
+    if role not in ('responsable', 'directeur'):
+        raise ValueError('Rôle de validation inconnu')
     return (
-        f"""v.bloque = 1
-            OR (v.{signature} IS NOT NULL AND v.{signature} != ''
-                AND NOT EXISTS (
-                    SELECT 1 FROM historique_modifications h
-                    WHERE h.user_id_modifie = v.user_id
-                      AND h.date_concernee LIKE ?
-                      AND h.date_modification > v.{date_signature}
-                ))""",
-        (f'{annee}-{mois:02d}-%',),
+        f"v.bloque = 1 OR (v.version_{role}_id IS NOT NULL "
+        f"AND v.version_{role}_id = v.version_courante_id)", ()
     )
 
 

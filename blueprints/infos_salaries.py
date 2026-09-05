@@ -10,6 +10,7 @@ import sqlite3
 import unicodedata
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file)
+from fiches_versions import FicheVerrouillee
 from database import get_db, DATA_DIR
 from utils import login_required
 from access_log import (journaliser_action, ACTION_AJOUT_CONTRAT,
@@ -502,6 +503,10 @@ def ajouter_contrat():
         )
         conn.commit()
         flash(f"Contrat {type_contrat} ajoute avec succes.", 'success')
+    except FicheVerrouillee as exc:
+        conn.rollback()
+        _supprimer_fichier(fichier_path)
+        flash(str(exc), 'error')
     except Exception:
         conn.rollback()
         logger.exception(
@@ -846,6 +851,9 @@ def modifier_date_fin_contrat(contrat_id):
         else:
             flash(f"Date de fin retiree : le contrat {contrat['type_contrat']} "
                   "est desormais en cours (sans terme).", 'success')
+    except FicheVerrouillee as exc:
+        conn.rollback()
+        flash(str(exc), 'error')
     except Exception:
         conn.rollback()
         logger.exception(
@@ -880,10 +888,12 @@ def supprimer_contrat(contrat_id):
         return redirect(url_for('infos_salaries_bp.infos_salaries'))
 
     user_id = contrat['user_id']
+    try:
+        conn.execute('DELETE FROM contrats WHERE id = ?', (contrat_id,))
+        conn.commit()
+    finally:
+        conn.close()
     _supprimer_fichier(contrat['fichier_path'])
-    conn.execute('DELETE FROM contrats WHERE id = ?', (contrat_id,))
-    conn.commit()
-    conn.close()
 
     flash("Contrat supprime.", 'success')
     return redirect(url_for('infos_salaries_bp.infos_salaries', user_id=user_id))

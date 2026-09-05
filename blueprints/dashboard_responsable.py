@@ -4,6 +4,7 @@ Tableau de bord pour les responsables, scope au secteur.
 """
 from flask import Blueprint, render_template, session, redirect, url_for, flash, request
 from datetime import datetime, timedelta
+from fiches_versions import presenter_validation
 from database import get_db
 from utils import login_required, NOMS_MOIS, calculer_solde_recup
 from dashboard_actions import construire_actions
@@ -205,7 +206,7 @@ def dashboard_responsable():
           AND (u.secteur_id = ? OR u.responsable_id = ?)
     ''', (mois_validation, annee_validation, secteur_id, session['user_id'])).fetchall()
     for v in validations_rows:
-        validations_map[v['user_id']] = dict(v)
+        validations_map[v['user_id']] = presenter_validation(v)
 
     nb_total_a_valider = 0
     nb_complet = 0

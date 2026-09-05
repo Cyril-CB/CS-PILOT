@@ -1,0 +1,29 @@
+{% if validation and validation.signatures_obsoletes %}
+<div class="help-box" role="status">
+    <strong>Fiche modifiée depuis une précédente signature.</strong>
+    {% for signature in validation.signatures_obsoletes %}
+    <p>{{ signature.nom }} — {{ signature.date }} : une nouvelle signature est nécessaire.</p>
+    {% endfor %}
+</div>
+{% endif %}
+{% if validation and validation.historique_non_versionne %}
+<p class="help-text">Fiche historique conservée : le contenu repris lors de la mise à jour est figé.
+Les signatures antérieures ont été conservées ; leur contenu exact d'origine n'est pas vérifiable.</p>
+{% endif %}
+{% if evenements_fiche %}
+<details>
+    <summary>Historique de la fiche</summary>
+    <ul>
+    {% set libelles = {'signature': 'Signature', 'modification': 'Contenu modifié',
+       'verrouillage': 'Verrouillage', 'reouverture': 'Réouverture motivée',
+       'reprise_historique': 'Reprise du contenu historique'} %}
+    {% for evt in evenements_fiche %}
+        <li>{{ evt.date_evenement[:19]|replace('T', ' ') }} —
+            {{ libelles.get(evt.evenement, evt.evenement) }}
+            {% if evt.auteur_nom %}par {{ evt.auteur_nom }}{% endif %}
+            {% if evt.role %}({{ evt.role }}){% endif %}
+        </li>
+    {% endfor %}
+    </ul>
+</details>
+{% endif %}

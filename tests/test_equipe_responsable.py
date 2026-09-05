@@ -8,7 +8,7 @@ users.responsable_id doit ouvrir les mêmes suivis que l'appartenance au
 secteur : fiches d'heures (voir, saisir, valider, PDF), vue d'ensemble,
 demandes, tableaux de bord, fiche salarié, planning, mon équipe.
 """
-from tests.conftest import _login
+from tests.conftest import _login, _reference_fiche
 from utils import est_dans_equipe_responsable
 
 
@@ -93,8 +93,12 @@ def test_vue_mensuelle_refusee_sans_lien(client, db, sample_users):
 def test_valider_mois_du_rattache(resp_client, db, sample_users):
     """La responsable peut poser sa validation sur la fiche du rattaché."""
     agent_id, _ = _creer_agent_transverse(db, sample_users)
+    from tests.test_validation import _creer_saisie_mois
+    _creer_saisie_mois(db, agent_id, 5, 2026)
     resp_client.post('/valider_mois', data={
-        'user_id': agent_id, 'mois': 5, 'annee': 2026}, follow_redirects=True)
+        'user_id': agent_id, 'mois': 5, 'annee': 2026,
+        'empreinte_fiche': _reference_fiche(resp_client, agent_id, 5, 2026),
+    }, follow_redirects=True)
     v = db.execute("SELECT validation_responsable FROM validations "
                    "WHERE user_id = ? AND mois = 5 AND annee = 2026", (agent_id,)).fetchone()
     assert v is not None and v['validation_responsable']

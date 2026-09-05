@@ -5,11 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 from io import BytesIO
 from database import get_db
-from utils import (login_required, get_user_info, calculer_heures,
-                   calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
-                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                   total_hs_payees, est_dans_equipe_responsable,
-                   periodes_contrat, est_hors_contrat)
+from utils import login_required, est_dans_equipe_responsable
 
 exports_bp = Blueprint('exports_bp', __name__)
 
@@ -62,6 +58,7 @@ def export_pdf_mensuel():
         return redirect(url_for('validation_bp.vue_mensuelle'))
     
     conn = get_db()
+    conn.execute("BEGIN")
 
     if not _peut_exporter_pdf_mensuel(conn, user_id_param):
         flash('Accès non autorisé à cette fiche', 'error')
@@ -86,212 +83,41 @@ def export_pdf_mensuel():
         conn.close()
         return redirect(url_for('validation_bp.vue_mensuelle'))
     
-    # Récupérer les données du mois (même logique que vue_mensuelle)
-    premier_jour = datetime(annee, mois, 1)
-    if mois == 12:
-        dernier_jour = datetime(annee + 1, 1, 1) - timedelta(days=1)
-    else:
-        dernier_jour = datetime(annee, mois + 1, 1) - timedelta(days=1)
-    
-    # Récupérer les heures réelles
-    heures_reelles = {}
-    heures_rows = conn.execute('''
-        SELECT * FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
-    ''', (user_id_param, premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-    
-    for h in heures_rows:
-        heures_reelles[h['date']] = dict(h)
-
-    # Périodes d'emploi : le PDF est le document signé, il doit dire la même
-    # chose que la fiche qu'il reproduit. Sans cela, une journée hors contrat
-    # non saisie serait comptée « conforme » au planning — le PDF attesterait
-    # d'un mois plein pour un CDD entré ou sorti en cours de mois.
-    contrats_salarie = periodes_contrat(conn, user_id_param)
-
-    # Générer les journées
+    # Le document reproduit exactement le contenu conservé, sans second calcul.
+    from fiches_versions import lire_contenu, presenter_validation
+    contenu = lire_contenu(conn, user_id_param, mois, annee)
+    validation = presenter_validation(validation)
+    user = {**dict(user), **contenu['identite']}
     journees = []
-    jour_actuel = premier_jour
-    total_heures_theoriques = 0
-    total_heures_reelles = 0
-    
-    while jour_actuel <= dernier_jour:
-        date_str = jour_actuel.strftime('%Y-%m-%d')
-        jour_semaine = jour_actuel.weekday()
-        
-        if jour_semaine < 6:
-            if jour_semaine == 5 and date_str not in heures_reelles:
-                jour_actuel += timedelta(days=1)
-                continue
-            
-            type_periode = get_type_periode(date_str)
-            jour_hors_contrat = est_hors_contrat(contrats_salarie, date_str)
-
-            # Récupérer le planning valide à cette date (gère historisation + alternance)
-            planning = None if jour_hors_contrat else get_planning_valide_a_date(
-                user_id_param, type_periode, date_str)
-            
-            # Horaires théoriques
-            noms_jours_minuscule = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi']
-            jour_nom = noms_jours_minuscule[jour_semaine] if jour_semaine < 5 else None
-            
-            horaires_theo_str = ""
-            heures_theo_jour = 0
-            
-            if jour_hors_contrat:
-                horaires_theo_str = "Hors contrat"
-                heures_theo_jour = 0
-            elif jour_semaine == 5:
-                horaires_theo_str = "Samedi"
-                heures_theo_jour = 0
-            elif planning and jour_nom:
-                # Convertir Row en dict pour utiliser .get()
-                planning_dict = dict(planning)
-                matin_debut = planning_dict.get(f'{jour_nom}_matin_debut')
-                matin_fin = planning_dict.get(f'{jour_nom}_matin_fin')
-                aprem_debut = planning_dict.get(f'{jour_nom}_aprem_debut')
-                aprem_fin = planning_dict.get(f'{jour_nom}_aprem_fin')
-                soir_debut = planning_dict.get(f'{jour_nom}_soir_debut')
-                soir_fin = planning_dict.get(f'{jour_nom}_soir_fin')
-
-                # Formater les horaires théoriques (3 créneaux)
-                horaires_parts = []
-                if matin_debut and matin_fin:
-                    horaires_parts.append(f"{matin_debut}-{matin_fin}")
-                    heures_theo_jour += calculer_heures(matin_debut, matin_fin)
-                if aprem_debut and aprem_fin:
-                    horaires_parts.append(f"{aprem_debut}-{aprem_fin}")
-                    heures_theo_jour += calculer_heures(aprem_debut, aprem_fin)
-                if soir_debut and soir_fin:
-                    horaires_parts.append(f"{soir_debut}-{soir_fin}")
-                    heures_theo_jour += calculer_heures(soir_debut, soir_fin)
-
-                if horaires_parts:
-                    horaires_theo_str = " / ".join(horaires_parts)
-                else:
-                    horaires_theo_str = "Repos"
-            else:
-                horaires_theo_str = "Non défini"
-            
-            # Horaires réels
-            horaires_reels_str = ""
-            heures_reelles_jour = 0
-            type_saisie = ""
-            
-            if date_str in heures_reelles:
-                h = heures_reelles[date_str]
-                type_saisie = h.get('type_saisie', '')
-                
-                if type_saisie == 'recup_journee':
-                    horaires_reels_str = "🏖️ Récupération"
-                    heures_reelles_jour = 0
-                elif h.get('declaration_conforme'):
-                    horaires_reels_str = "✓ Conforme"
-                    heures_reelles_jour = heures_theo_jour
-                else:
-                    # Horaires saisis manuellement. Total via le calcul commun,
-                    # qui inclut la pause méridienne rémunérée le cas échéant
-                    # (le PDF signé doit coller à la vue mensuelle).
-                    heures_reelles_jour = calculer_heures_reelles_jour(h)
-                    horaires_parts_reelles = []
-                    if h['heure_debut_matin'] and h['heure_fin_matin']:
-                        horaires_parts_reelles.append(f"{h['heure_debut_matin']}-{h['heure_fin_matin']}")
-                    if h['heure_debut_aprem'] and h['heure_fin_aprem']:
-                        horaires_parts_reelles.append(f"{h['heure_debut_aprem']}-{h['heure_fin_aprem']}")
-                    if slot_horaire(h, 'heure_debut_soir') and slot_horaire(h, 'heure_fin_soir'):
-                        horaires_parts_reelles.append(f"{h['heure_debut_soir']}-{h['heure_fin_soir']}")
-
-                    if horaires_parts_reelles:
-                        horaires_reels_str = " / ".join(horaires_parts_reelles)
-                        if h.get('pause_remuneree') and duree_pause_meridienne(h) > 0:
-                            horaires_reels_str += " (+ pause)"
-                    else:
-                        horaires_reels_str = "Non saisi"
-            elif jour_hors_contrat:
-                # Le salarié n'était pas employé : ni dû, ni conforme, ni rien.
-                horaires_reels_str = "—"
-                heures_reelles_jour = 0
-            else:
-                # Pas de saisie = considéré conforme
-                horaires_reels_str = "✓ Conforme"
-                heures_reelles_jour = heures_theo_jour
-            
-            ecart = heures_reelles_jour - heures_theo_jour
-            
-            total_heures_theoriques += heures_theo_jour
-            total_heures_reelles += heures_reelles_jour
-            
-            noms_jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
-            
-            journees.append({
-                'date': jour_actuel.strftime('%d/%m/%Y'),
-                'jour': noms_jours[jour_semaine],
-                'horaires_theo': horaires_theo_str,
-                'heures_theo': heures_theo_jour,
-                'horaires_reels': horaires_reels_str,
-                'heures_reelles': heures_reelles_jour,
-                'ecart': ecart
-            })
-        
-        jour_actuel += timedelta(days=1)
-    
-    solde_mois = total_heures_reelles - total_heures_theoriques
-    
-    # Calculer solde antérieur — comme la vue mensuelle, on part du solde
-    # initial du salarié (le PDF signé doit coller au dashboard ; revue Codex :
-    # sans cette base, la déduction des heures payées rendrait le solde
-    # antérieur négatif à tort).
-    try:
-        solde_anterieur = user['solde_initial'] or 0
-    except (IndexError, KeyError, TypeError):
-        solde_anterieur = 0
-    heures_anterieures = conn.execute('''
-        SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme, type_saisie,
-               pause_remuneree
-        FROM heures_reelles
-        WHERE user_id = ? AND date < ?
-        ORDER BY date
-    ''', (user_id_param, premier_jour.strftime('%Y-%m-%d'))).fetchall()
-    
-    for h in heures_anterieures:
-        date_obj_ant_pdf = datetime.strptime(h['date'], '%Y-%m-%d')
-        jour_semaine_ant_pdf = date_obj_ant_pdf.weekday()
-        
-        # Ignorer weekends
-        if jour_semaine_ant_pdf >= 5:
-            continue
-        
-        type_periode = get_type_periode(h['date'])
-        
-        # Récupérer le planning valide à cette date (gère historisation + alternance)
-        planning_ant = get_planning_valide_a_date(user_id_param, type_periode, h['date'])
-        
-        total_theorique = 0
-        if planning_ant:
-            # Heures théoriques du jour (3 créneaux, gérés par le helper commun).
-            total_theorique = get_heures_theoriques_jour(planning_ant, jour_semaine_ant_pdf)
-
-        # Calculer les heures réelles
-        if h.get('type_saisie') == 'recup_journee':
-            # Récupération = 0h réelles
-            total_reel = 0
-        elif h['declaration_conforme']:
-            # Déclaration conforme = heures théoriques
-            total_reel = total_theorique
-        else:
-            # Saisie manuelle (matin + après-midi + soir)
-            total_reel = calculer_heures_reelles_jour(h)
-        
-        solde_anterieur += (total_reel - total_theorique)
-
-    # Heures supp payées (variables de paie, déduites du compteur) : mêmes
-    # règles que la vue mensuelle pour que le PDF signé colle au dashboard.
-    solde_anterieur -= total_hs_payees(conn, user_id_param,
-                                       annee=annee, mois=mois, avant=True)
-    hs_payees_mois = total_hs_payees(conn, user_id_param, annee=annee, mois=mois)
-    solde_cumule = solde_anterieur + solde_mois - hs_payees_mois
+    for jour in contenu['journees']:
+        horaires_theo = jour['horaires_theoriques']
+        if jour['hors_contrat']:
+            horaires_theo = 'Hors contrat'
+        elif jour['est_samedi']:
+            horaires_theo = 'Samedi'
+        elif jour['est_repos_habituel']:
+            horaires_theo = 'Repos'
+        horaires_reels = jour['horaires_reels']
+        if jour['type_saisie'] == 'recup_journee':
+            horaires_reels = 'Récupération'
+        elif jour['est_declare']:
+            horaires_reels = 'Conforme'
+        elif jour['hors_contrat']:
+            horaires_reels = '—'
+        if jour['pause_remuneree']:
+            horaires_reels += ' (+ pause)'
+        journees.append(dict(
+            date=jour['date_obj'].strftime('%d/%m/%Y'), jour=jour['jour_semaine'],
+            horaires_theo=horaires_theo, heures_theo=jour['heures_theoriques'],
+            horaires_reels=horaires_reels, heures_reelles=jour['heures_reelles'],
+            ecart=jour['ecart'],
+        ))
+    total_heures_theoriques = contenu['total_heures_theoriques']
+    total_heures_reelles = contenu['total_heures_reelles']
+    solde_mois = contenu['solde_mois']
+    solde_anterieur = contenu['solde_anterieur']
+    hs_payees_mois = contenu['hs_payees_mois']
+    solde_cumule = contenu['solde_cumule']
 
     conn.close()
     
@@ -411,8 +237,8 @@ def export_pdf_mensuel():
     sig_data = [
         ['Signature Salarié', 'Signature Responsable', 'Signature Directeur'],
         [f"{validation['validation_salarie'] or ''}\n{validation['date_salarie'] or ''}", 
-         f"{validation['validation_responsable']}\n{validation['date_responsable']}", 
-         f"{validation['validation_directeur']}\n{validation['date_directeur']}"]
+         f"{validation['validation_responsable'] or ''}\n{validation['date_responsable'] or ''}",
+         f"{validation['validation_directeur'] or ''}\n{validation['date_directeur'] or ''}"]
     ]
     
     sig_table = Table(sig_data, colWidths=[8*cm, 8*cm, 8*cm], rowHeights=[0.8*cm, 2.5*cm])
@@ -427,6 +253,12 @@ def export_pdf_mensuel():
     ]))
     
     bas_page.append(sig_table)
+    if validation['historique_non_versionne']:
+        bas_page.append(Paragraph(
+            "Fiche historique conservée : contenu figé lors de la mise à jour. "
+            "Le contenu exact des signatures antérieures n'est pas vérifiable.",
+            normal_style,
+        ))
     
     # Ajouter le bloc bas_page avec KeepTogether pour éviter la coupure
     elements.append(KeepTogether(bas_page))

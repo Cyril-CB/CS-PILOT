@@ -294,3 +294,12 @@ def menu_classique(app):
         from app_options import set_option_bool
         set_option_bool('interface_sans_menu_active', False)
     return True
+
+
+def _reference_fiche(client, user_id, mois, annee):
+    """Référence du contenu lu dans le vrai formulaire (protection des pages périmées)."""
+    import re
+    response = client.get(f'/vue_mensuelle?user_id={user_id}&mois={mois}&annee={annee}')
+    match = re.search(r'name="empreinte_fiche" value="([a-f0-9]+)"', response.get_data(as_text=True))
+    assert response.status_code == 200 and match, 'Une fiche complète et accessible doit proposer sa référence'
+    return match.group(1)

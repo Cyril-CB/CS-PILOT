@@ -18,6 +18,7 @@ from blueprints.delegations import (
     MISSION_SUIVI_VALIDATIONS_RELANCES, user_peut_gerer_benevoles,
 )
 from extensions import csrf, limiter
+from fiches_versions import FicheVerrouillee
 
 
 def configure_logging():
@@ -141,6 +142,14 @@ else:
 template_folder = os.path.join(base_dir, 'templates')
 static_folder = os.path.join(base_dir, 'static')
 app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+
+
+@app.errorhandler(FicheVerrouillee)
+def fiche_verrouillee_refusee(exc):
+    """Le contrôle central a déjà annulé la transaction entière."""
+    flash(str(exc), 'error')
+    return redirect(url_for('validation_bp.vue_mensuelle'), code=303)
+
 # ==================== Sécurité : SECRET_KEY ====================
 _secret_key = os.environ.get('SECRET_KEY', '')
 if not _secret_key or _secret_key == _DEFAULT_SECRET_KEY:

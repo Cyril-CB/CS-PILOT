@@ -10,6 +10,7 @@ import logging
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash)
 from datetime import datetime, date
+from fiches_versions import FicheVerrouillee
 from database import get_db
 from utils import login_required, NOMS_MOIS, calculer_solde_recup
 from access_log import (journaliser_action, ACTION_ENREG_VARIABLES_PAIE,
@@ -316,6 +317,9 @@ def enregistrer_variables_paie():
             msg += (f" {nb_devalidees} validation(s) de preparation de paie retiree(s) "
                     "suite a modification (a revalider par le prestataire).")
         flash(msg, 'success')
+    except FicheVerrouillee as exc:
+        conn.rollback()
+        flash(str(exc), 'error')
     except Exception:
         conn.rollback()
         logger.exception(

@@ -303,6 +303,12 @@ def _signer(db, user_id, mois, annee, colonne, quand='2026-08-10 09:00:00'):
         "WHERE user_id = ? AND mois = ? AND annee = ?",
         (quand, user_id, mois, annee)
     )
+    from fiches_contenu import calculer_contenu
+    from fiches_versions import enregistrer_version
+    version_id = enregistrer_version(db, calculer_contenu(db, user_id, mois, annee), 'signature')
+    db.execute(f'UPDATE validations SET version_courante_id=?, version_{role}_id=? '
+               'WHERE user_id=? AND mois=? AND annee=?',
+               (version_id, version_id, user_id, mois, annee))
     db.commit()
 
 
@@ -314,6 +320,11 @@ def _journaliser_modification(db, user_id, mois, annee, quand):
            VALUES (?, ?, ?, 'modification', ?)""",
         (user_id, f'{annee}-{mois:02d}-15', user_id, quand)
     )
+    # Une annotation de journée modifie matériellement la fiche sans changer
+    # le solde reporté aux autres mois. L'horloge n'est plus l'autorité.
+    db.execute("INSERT INTO heures_reelles (user_id, date, commentaire, declaration_conforme) "
+               "VALUES (?, ?, ?, 1) ON CONFLICT(user_id, date) DO UPDATE SET commentaire=excluded.commentaire",
+               (user_id, f'{annee}-{mois:02d}-15', 'Modification ' + quand))
     db.commit()
 
 

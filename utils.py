@@ -443,16 +443,18 @@ def calculer_recup_partielle(planning, jour_semaine, abs_debut, abs_fin):
     }
 
 
-def get_type_periode(date_str):
+def get_type_periode(date_str, conn=None):
     """Déterminer si on est en période scolaire ou vacances selon les périodes définies"""
-    conn = get_db()
+    fermer_connexion = conn is None
+    conn = conn if conn is not None else get_db()
 
     periode = conn.execute('''
         SELECT * FROM periodes_vacances
         WHERE ? >= date_debut AND ? <= date_fin
     ''', (date_str, date_str)).fetchone()
 
-    conn.close()
+    if fermer_connexion:
+        conn.close()
 
     if periode:
         return 'vacances'
@@ -460,9 +462,10 @@ def get_type_periode(date_str):
         return 'periode_scolaire'
 
 
-def get_semaine_alternance(user_id, date_str):
+def get_semaine_alternance(user_id, date_str, conn=None):
     """Détermine si on est en semaine 1 ou semaine 2 pour un salarié en alternance"""
-    conn = get_db()
+    fermer_connexion = conn is None
+    conn = conn if conn is not None else get_db()
 
     ref = conn.execute('''
         SELECT date_reference FROM alternance_reference
@@ -472,7 +475,8 @@ def get_semaine_alternance(user_id, date_str):
     ''', (user_id, date_str)).fetchone()
 
     if not ref:
-        conn.close()
+        if fermer_connexion:
+            conn.close()
         return 'fixe'
 
     # Vérifier qu'au moins un planning alterné est encore actif (non supersédé par un planning fixe
@@ -494,7 +498,8 @@ def get_semaine_alternance(user_id, date_str):
         LIMIT 1
     ''', (user_id, date_str, date_str)).fetchone()
 
-    conn.close()
+    if fermer_connexion:
+        conn.close()
 
     if not still_alternating:
         return 'fixe'
@@ -511,11 +516,12 @@ def get_semaine_alternance(user_id, date_str):
         return 'semaine_2'
 
 
-def get_planning_valide_a_date(user_id, type_periode, date_str):
+def get_planning_valide_a_date(user_id, type_periode, date_str, conn=None):
     """Récupère le planning théorique valide à une date donnée (gère historisation ET alternance)"""
-    conn = get_db()
+    fermer_connexion = conn is None
+    conn = conn if conn is not None else get_db()
 
-    semaine_type = get_semaine_alternance(user_id, date_str)
+    semaine_type = get_semaine_alternance(user_id, date_str, conn=conn)
 
     def _chercher_planning_pour_type(type_periode_recherche):
         if semaine_type == 'fixe':
@@ -558,7 +564,8 @@ def get_planning_valide_a_date(user_id, type_periode, date_str):
     if not planning and type_periode == 'vacances':
         planning = _chercher_planning_pour_type('periode_scolaire')
 
-    conn.close()
+    if fermer_connexion:
+        conn.close()
     return planning
 
 
