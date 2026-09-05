@@ -8,6 +8,7 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, current_app)
 from datetime import datetime, timedelta
 from database import get_db, DATA_DIR
+from document_files import nettoyer_document
 from utils import (login_required, get_user_info, get_heures_theoriques_jour,
                    get_type_periode, get_planning_valide_a_date, maintenant)
 
@@ -390,10 +391,8 @@ def absences():
             conn.commit()
             flash(f'Absence enregistrée avec succès ({jours_ouvres} jours ouvrés). Les jours ont été reportés sur le calendrier.', 'success')
         except Exception as e:
-            if justificatif_path:
-                chemin = os.path.join(_get_documents_dir(), justificatif_path)
-                if os.path.isfile(chemin):
-                    os.remove(chemin)
+            conn.rollback()
+            nettoyer_document(DOCUMENTS_DIR, justificatif_path)
             flash(f'Erreur lors de l\'enregistrement : {str(e)}', 'error')
         finally:
             conn.close()
@@ -486,18 +485,12 @@ def supprimer_absence(absence_id):
         conn.execute('DELETE FROM absences WHERE id = ?', (absence_id,))
         conn.commit()
 
-        # Supprimer le justificatif si present
-        if absence['justificatif_path']:
-            docs_dir = _get_documents_dir()
-            chemin = os.path.join(docs_dir, absence['justificatif_path'])
-            chemin_reel = os.path.realpath(chemin)
-            dossier_reel = os.path.realpath(docs_dir)
-            if chemin_reel.startswith(dossier_reel + os.sep) and os.path.exists(chemin):
-                os.remove(chemin)
-
-        flash('Absence supprimée et calendrier mis à jour.', 'success')
     except Exception as e:
+        conn.rollback()
         flash(f'Erreur : {str(e)}', 'error')
+    else:
+        nettoyer_document(DOCUMENTS_DIR, absence['justificatif_path'])
+        flash('Absence supprimée et calendrier mis à jour.', 'success')
     finally:
         conn.close()
 

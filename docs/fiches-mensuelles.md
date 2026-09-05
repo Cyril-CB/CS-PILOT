@@ -92,6 +92,13 @@ salariés affectés par les écritures, puis `commit()` contrôle leurs fiches
 déjà signées. Un contenu verrouillé différent provoque un rollback de toute
 la transaction, y compris compteurs, demandes et journal. Les fichiers liés
 à une absence ou un contrat ne sont supprimés qu'après un commit réussi.
+Le nettoyage refuse les chemins sortant du dossier des pièces. Un fichier
+absent est accepté ; un échec disque (droits, verrou Windows) est journalisé
+séparément et ne transforme pas une suppression SQL réussie en erreur métier.
+La pièce résiduelle peut nécessiter un nettoyage manuel ; aucune relance
+automatique du nettoyage n'est ajoutée. La même règle préserve le message
+initial lorsqu'un justificatif nouvellement téléversé doit être retiré après
+le refus d'une modification de fiche verrouillée.
 
 Les producteurs métier doivent toujours utiliser `get_db()`, conserver
 l'isolation transactionnelle par défaut et appeler `conn.commit()` une seule
