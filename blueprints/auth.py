@@ -11,6 +11,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from access_log import (
     EVT_CONNEXION_REUSSIE,
+    EVT_SESSION_REVOQUEE,
     EVT_ECHEC_CONNEXION,
     EVT_MOT_DE_PASSE_MODIFIE,
     EVT_REINITIALISATION_DEMANDEE,
@@ -20,6 +21,8 @@ from database import get_db
 from email_service import envoyer_email, is_email_configured
 from extensions import limiter
 from utils import validate_password_strength
+from sessions_securite import (actualiser_session, charger_compte, verifier_session,
+                                session_expiree)
 
 auth = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
@@ -44,12 +47,10 @@ def _verify_password(conn, user, password):
 
 def _populate_session(user):
     """Charge les informations essentielles de l'utilisateur en session."""
+    session.clear()
     session['user_id'] = user['id']
-    session['nom'] = user['nom']
-    session['prenom'] = user['prenom']
-    session['profil'] = user['profil']
-    session['secteur_id'] = user['secteur_id']
-    session['force_password_change'] = bool(user['force_password_change'])
+    session['session_version'] = user['session_version']
+    actualiser_session(user)
 
 
 def _redirect_after_login(profil):
@@ -75,6 +76,23 @@ def _generate_temporary_password(length=12):
 
 
 @auth.before_app_request
+def actualiser_compte_connecte():
+    """La base fait autorité avant les contrôles de rôle de chaque endpoint."""
+    if 'user_id' not in session:
+        return None
+    user_id = session['user_id']
+    conn = get_db()
+    try:
+        valide = verifier_session(conn)
+    finally:
+        conn.close()
+    if not valide:
+        enregistrer_acces(EVT_SESSION_REVOQUEE, user_id=user_id)
+        return session_expiree()
+    return None
+
+
+@auth.before_app_request
 def enforce_password_change():
     """Force le changement du mot de passe initial avant tout autre accès."""
     if 'user_id' not in session or not session.get('force_password_change'):
@@ -86,7 +104,7 @@ def enforce_password_change():
         'auth.logout',
         'static',
     }
-    if endpoint in allowed_endpoints or endpoint.startswith('static'):
+    if endpoint in allowed_endpoints:
         return None
 
     if endpoint != 'auth.login':
@@ -122,7 +140,7 @@ def login():
         conn = get_db()
         try:
             user = conn.execute(
-                'SELECT id, nom, prenom, profil, password, force_password_change, secteur_id '
+                'SELECT id, nom, prenom, profil, password, force_password_change, secteur_id, session_version '
                 'FROM users WHERE login = ? AND actif = 1',
                 (login_val,)
             ).fetchone()
@@ -211,6 +229,10 @@ def changer_mot_de_passe():
 
     conn = get_db()
     try:
+        if request.method == 'POST':
+            conn.execute('BEGIN IMMEDIATE')
+            if not verifier_session(conn):
+                return session_expiree()
         user = conn.execute(
             'SELECT id, nom, prenom, profil, password, force_password_change, login '
             'FROM users WHERE id = ? AND actif = 1',
@@ -247,8 +269,11 @@ def changer_mot_de_passe():
                 'UPDATE users SET password = ?, force_password_change = 0 WHERE id = ?',
                 (generate_password_hash(new_password), user['id'])
             )
+            compte_actualise = charger_compte(conn, user['id'])
             conn.commit()
-            session['force_password_change'] = False
+            # Seule la session qui vient de prouver l'ancien mot de passe
+            # reçoit la nouvelle version ; les autres doivent se reconnecter.
+            _populate_session(compte_actualise)
             enregistrer_acces(
                 EVT_MOT_DE_PASSE_MODIFIE,
                 login_saisi=user['login'],

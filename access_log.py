@@ -23,6 +23,7 @@ from utils import maintenant
 logger = logging.getLogger(__name__)
 
 # Types d'evenements journalises
+EVT_SESSION_REVOQUEE = 'session_revoquee'
 EVT_CONNEXION_REUSSIE = 'connexion_reussie'
 EVT_ECHEC_CONNEXION = 'echec_connexion'
 EVT_REINITIALISATION_DEMANDEE = 'reinitialisation_demandee'
@@ -30,6 +31,7 @@ EVT_MOT_DE_PASSE_MODIFIE = 'mot_de_passe_modifie'
 
 # Libelles lisibles pour l'affichage et l'export
 EVENEMENTS_LABELS = {
+    EVT_SESSION_REVOQUEE: 'Session révoquée',
     EVT_CONNEXION_REUSSIE: 'Connexion réussie',
     EVT_ECHEC_CONNEXION: 'Échec de connexion',
     EVT_REINITIALISATION_DEMANDEE: 'Réinitialisation demandée',

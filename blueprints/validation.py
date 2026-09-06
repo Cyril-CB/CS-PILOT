@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 import json
 from database import get_db
+from sessions_securite import verifier_action
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, est_dans_equipe_responsable,
                    maintenant)
@@ -43,6 +44,9 @@ def valider_mois():
 
     try:
         conn.execute("BEGIN IMMEDIATE")
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
         # Vérifier les droits
         # Un même utilisateur peut cumuler plusieurs rôles de validation.
         # Cas notable : un directeur qui est aussi responsable du secteur du
@@ -201,6 +205,12 @@ def deverrouiller_mois():
 
     try:
         conn.execute("BEGIN IMMEDIATE")
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') != 'directeur':
+            flash('Accès non autorisé', 'error')
+            return redirect(url_for('dashboard_bp.dashboard'))
         # Vérifier que la fiche est bien verrouillée
         validation = conn.execute('''
             SELECT * FROM validations

@@ -11,11 +11,14 @@ ANNEE, MOIS = 2026, 8
 
 def client_role(app, users, role):
     client = app.test_client()
-    with client.session_transaction() as sess:
-        sess['user_id'] = users[f'{role}_id']
-        sess['profil'] = role
-        sess['nom'] = role
-        sess['prenom'] = 'Test'
+    from tests.conftest import _login
+    conn = get_db()
+    try:
+        login = conn.execute('SELECT login FROM users WHERE id=?', (users[f'{role}_id'],)).fetchone()[0]
+    finally:
+        conn.close()
+    passwords = {'admin': 'Admin1234', 'resp_test': 'resp123', 'salarie_test': 'sal123', 'compta_test': 'compta123'}
+    _login(client, login, passwords[login])
     return client
 
 
@@ -241,12 +244,15 @@ def test_reference_manquante_refuse_meme_si_complet(app, sample_users, fiche_com
 @pytest.mark.parametrize('role', ['salarie', 'comptable', 'prestataire', 'responsable_tiers', 'anonyme'])
 def test_signature_et_reouverture_respectent_les_droits(app, db, sample_users, fiche_complete, role):
     uid = fiche_complete
-    user_id = sample_users['comptable_id'] if role != 'salarie' else sample_users['responsable_id']
     client = app.test_client()
     if role != 'anonyme':
-        with client.session_transaction() as sess:
-            sess['user_id'] = user_id
-            sess['profil'] = 'responsable' if role == 'responsable_tiers' else role
+        from werkzeug.security import generate_password_hash
+        from tests.conftest import _login
+        profil = 'responsable' if role == 'responsable_tiers' else role
+        db.execute("INSERT INTO users (nom, prenom, login, password, profil) VALUES ('Tiers', 'Test', 'tiers', ?, ?)",
+                   (generate_password_hash('tiers123'), profil))
+        db.commit()
+        _login(client, 'tiers', 'tiers123')
     signer(client, uid)
     assert validation(uid) is None
     verrouiller(app, sample_users, uid)
@@ -620,3 +626,24 @@ def test_fiche_personnelle_responsable_et_signature_salarie_obsolete_dans_pdf(
     with pdfplumber.open(BytesIO(response.data)) as pdf:
         texte = '\n'.join(page.extract_text() for page in pdf.pages)
     assert '2001-02-03' not in texte
+
+
+def test_revocation_compte_avec_fiche_verrouillee(app, db, sample_users, fiche_complete):
+    """Le verrou métier ne doit pas empêcher une révocation de sécurité."""
+    from tests.conftest import _login
+    uid = fiche_complete
+    verrouiller(app, sample_users, uid)
+    avant = etat_metier(uid)
+    avant.pop('users')
+    compte_avant = dict(db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone())
+    sal = app.test_client()
+    _login(sal, 'salarie_test', 'sal123')
+    direction = client_role(app, sample_users, 'directeur')
+    direction.post(f'/toggle_user/{uid}')
+    assert db.execute('SELECT actif FROM users WHERE id=?', (uid,)).fetchone()[0] == 0
+    assert sal.get('/vue_mensuelle').headers['Location'] == '/login'
+    apres = etat_metier(uid)
+    apres.pop('users')
+    assert apres == avant
+    compte_apres = dict(db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone())
+    assert compte_apres == {**compte_avant, 'actif': 0, 'session_version': compte_avant['session_version'] + 1}
