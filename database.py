@@ -28,7 +28,8 @@ DATABASE = os.path.join(DATA_DIR, 'cspilot.db')
 
 def get_db():
     """Connexion à la base de données"""
-    conn = sqlite3.connect(DATABASE)
+    from fiches_db import ConnexionFiches
+    conn = sqlite3.connect(DATABASE, factory=ConnexionFiches)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.execute("PRAGMA journal_mode=WAL")
@@ -82,6 +83,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0062', 'Charte du benevolat signee'),
     ('0063', 'Delegation de la gestion des benevoles'),
     ('0064', 'Fonction du salarie'),
+    ('0065', 'Versions et integrite des fiches mensuelles'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2078,6 +2080,10 @@ def init_db():
         cursor.execute("SELECT charte_signee FROM benevoles LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE benevoles ADD COLUMN charte_signee INTEGER DEFAULT 0")
+
+    # Même schéma et même reprise que la migration 0065.
+    from fiches_versions import creer_schema
+    creer_schema(conn)
 
     conn.commit()
     conn.close()

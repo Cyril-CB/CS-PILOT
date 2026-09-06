@@ -168,6 +168,7 @@ classique depuis « Mon espace ».
 
 ## Documentation
 
+- **[Fiches mensuelles : signatures et réouverture](docs/fiches-mensuelles.md)** — contenu approuvé, corrections après signature, verrouillage et reprise de l'historique (migration 0065).
 - **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
 - **[Interface sans menu](docs/interface-sans-menu.md)** — l'accueil en fil d'actions, la barre intelligente, la vue d'ensemble par zones, et comment revenir au menu classique.
 

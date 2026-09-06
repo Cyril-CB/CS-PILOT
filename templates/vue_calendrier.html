@@ -458,6 +458,8 @@
             </div>
             {% endif %}
 
+            {% include '_fiche_signatures.html' %}
+
             {% if not mois_est_termine %}
             <div class="help-box cal-box-warning">
                 <h4>⏳ Mois en cours</h4>
@@ -465,6 +467,7 @@
             </div>
             {% elif peut_valider_mois and not (validation and validation.bloque) %}
             <form method="POST" action="{{ url_for('validation_bp.valider_mois') }}" onsubmit="return confirm('Etes-vous sur de vouloir valider ce mois ?');">
+                <input type="hidden" name="empreinte_fiche" value="{{ empreinte_fiche }}">
                 <input type="hidden" name="user_id" value="{{ user_id_a_afficher }}">
                 <input type="hidden" name="mois" value="{{ mois }}">
                 <input type="hidden" name="annee" value="{{ annee }}">

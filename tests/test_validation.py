@@ -9,7 +9,7 @@ from datetime import datetime
 
 from blueprints.validation import _get_vue_mensuelle_data_impl
 from database import get_db
-from tests.conftest import _login
+from tests.conftest import _login, _reference_fiche
 
 
 def _creer_saisie_mois(db, user_id, mois, annee):
@@ -105,6 +105,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(auth_client, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
             assert response.status_code == 200
 
@@ -126,6 +127,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(resp_client, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
             assert response.status_code == 200
 
@@ -149,6 +151,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_resp, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
 
             # Client 2 : directeur (session séparée)
@@ -158,6 +161,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_dir, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
 
             validation = db.execute(
@@ -192,6 +196,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_dir, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
 
             validation = db.execute(
@@ -233,6 +238,7 @@ class TestValidationMois:
                 'user_id': sample_users['salarie_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_dir, sample_users['salarie_id'], mois, annee),
             }, follow_redirects=True)
 
             validation = db.execute(
@@ -269,6 +275,7 @@ class TestValidationMois:
                 'user_id': sample_users['comptable_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_dir, sample_users['comptable_id'], mois, annee),
             }, follow_redirects=True)
 
             validation = db.execute(
@@ -299,6 +306,7 @@ class TestValidationMois:
                 'user_id': sample_users['responsable_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_resp, sample_users['responsable_id'], mois, annee),
             }, follow_redirects=True)
 
             # Le directeur valide la fiche du responsable
@@ -308,6 +316,7 @@ class TestValidationMois:
                 'user_id': sample_users['responsable_id'],
                 'mois': mois,
                 'annee': annee,
+                'empreinte_fiche': _reference_fiche(client_dir, sample_users['responsable_id'], mois, annee),
             }, follow_redirects=True)
 
             validation = db.execute(
@@ -441,6 +450,10 @@ class TestVueEnsembleResponsable:
         db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie) "
                    "VALUES (?, 3, 2026, 'Marie Dupont', '2026-04-02')",
                    (sample_users['responsable_id'],))
+        db.commit()
+        # Ce test décrit une approbation actuelle, pas une signature historique.
+        db.execute('UPDATE validations SET version_salarie_id=version_courante_id '
+                   'WHERE user_id=? AND mois=3 AND annee=2026', (sample_users['responsable_id'],))
         db.commit()
         html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
         ligne = self._ligne(html, 'Marie Dupont')

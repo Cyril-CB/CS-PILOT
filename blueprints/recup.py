@@ -3,6 +3,7 @@ Blueprint recup_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, make_response
 from datetime import datetime, timedelta
+from fiches_versions import FicheVerrouillee
 from database import get_db
 from utils import (login_required, get_user_info, calculer_heures,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
@@ -39,8 +40,9 @@ def _reporter_recup_partielle(conn, demande, demande_id):
     travaillés (planning théorique moins le créneau d'absence). Le solde de
     récupération est ainsi diminué du volume d'heures absentes.
 
-    Retourne True si la journée a été reportée, False sinon (mois verrouillé,
-    planning absent ou créneau hors horaires).
+    Refuse par exception un mois verrouillé pour annuler toute la transaction.
+    Retourne True si la journée a été reportée, False sinon
+    (planning absent ou créneau hors horaires).
     """
     user_id = demande['user_id']
     date_str = demande['date_debut']
@@ -56,7 +58,7 @@ def _reporter_recup_partielle(conn, demande, demande_id):
         WHERE user_id = ? AND mois = ? AND annee = ?
     ''', (user_id, date_obj.month, date_obj.year)).fetchone()
     if validation and validation['bloque']:
-        return False
+        raise FicheVerrouillee('Le mois est verrouillé. La direction doit le réouvrir avec un motif avant de valider cette récupération.')
 
     type_periode = get_type_periode(date_str)
     planning = get_planning_valide_a_date(user_id, type_periode, date_str)
@@ -540,7 +542,7 @@ def validation_demandes_recup():
                                       f'({demande["heure_debut"]}-{demande["heure_fin"]})', 'success')
                             else:
                                 flash('Demande validée, mais la journée n\'a pas pu être reportée '
-                                      '(mois verrouillé ou planning absent)', 'warning')
+                                      '(planning absent ou créneau hors horaires)', 'warning')
                         else:
                             # Créer automatiquement les entrées de récupération dans heures_reelles
                             date_debut = datetime.strptime(demande['date_debut'], '%Y-%m-%d')
@@ -564,6 +566,8 @@ def validation_demandes_recup():
                                         WHERE user_id = ? AND mois = ? AND annee = ?
                                     ''', (demande['user_id'], mois, annee)).fetchone()
 
+                                    if validation and validation['bloque']:
+                                        raise FicheVerrouillee('Un mois concerné est verrouillé. La direction doit le réouvrir avec un motif avant de valider cette récupération.')
                                     if not validation or not validation['bloque']:
                                         # Supprimer entrée existante si présente
                                         conn.execute('DELETE FROM heures_reelles WHERE user_id = ? AND date = ?',

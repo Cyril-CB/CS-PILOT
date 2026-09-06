@@ -161,7 +161,8 @@ def relance_validation():
             AND (u.secteur_id = ? OR u.responsable_id = ?)
             AND u.id NOT IN (
                 SELECT v.user_id FROM validations v
-                WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
+                WHERE v.mois = ? AND v.annee = ? AND (v.bloque = 1 OR (v.version_responsable_id IS NOT NULL
+                      AND v.version_responsable_id = v.version_courante_id))
             )
         ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
 
@@ -237,7 +238,8 @@ def relance_responsable_unique():
         AND (u.secteur_id = ? OR u.responsable_id = ?)
         AND u.id NOT IN (
             SELECT v.user_id FROM validations v
-            WHERE v.mois = ? AND v.annee = ? AND v.validation_responsable IS NOT NULL
+            WHERE v.mois = ? AND v.annee = ? AND (v.bloque = 1 OR (v.version_responsable_id IS NOT NULL
+                      AND v.version_responsable_id = v.version_courante_id))
         )
     ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
 

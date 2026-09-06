@@ -6,29 +6,16 @@ from datetime import datetime, timedelta
 import json
 from database import get_db
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
-from utils import (login_required, get_user_info, calculer_heures,
-                    calculer_heures_reelles_jour, duree_pause_meridienne, slot_horaire,
-                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date, NOMS_MOIS,
-                    total_hs_payees, est_dans_equipe_responsable,
-                    periodes_contrat, est_hors_contrat, maintenant)
+from utils import (login_required, get_user_info, est_dans_equipe_responsable,
+                   maintenant)
 from app_options import get_option_bool
+from fiches_contenu import calculer_contenu
+from fiches_versions import (enregistrer_version, empreinte, evenement,
+                             lire_contenu, presenter_validation)
 from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
                         ACTION_DEVERROUILLAGE_MOIS)
 
 validation_bp = Blueprint('validation_bp', __name__)
-
-
-def _formater_horaires(matin_debut=None, matin_fin=None, aprem_debut=None, aprem_fin=None,
-                       soir_debut=None, soir_fin=None):
-    """Formate les horaires d'une journée pour l'affichage (3 créneaux)."""
-    plages = []
-    if matin_debut and matin_fin:
-        plages.append(f"{matin_debut} - {matin_fin}")
-    if aprem_debut and aprem_fin:
-        plages.append(f"{aprem_debut} - {aprem_fin}")
-    if soir_debut and soir_fin:
-        plages.append(f"{soir_debut} - {soir_fin}")
-    return ' / '.join(plages) if plages else '-'
 
 
 @validation_bp.route('/valider_mois', methods=['POST'])
@@ -39,7 +26,7 @@ def valider_mois():
     mois = request.form.get('mois', type=int)
     annee = request.form.get('annee', type=int)
     
-    if not user_id or not mois or not annee:
+    if not user_id or user_id < 1 or not mois or not annee or not 1 <= mois <= 12 or not 1 <= annee <= 9998:
         flash('Paramètres invalides', 'error')
         return redirect(url_for('validation_bp.vue_mensuelle'))
     
@@ -55,6 +42,7 @@ def valider_mois():
     conn = get_db()
 
     try:
+        conn.execute("BEGIN IMMEDIATE")
         # Vérifier les droits
         # Un même utilisateur peut cumuler plusieurs rôles de validation.
         # Cas notable : un directeur qui est aussi responsable du secteur du
@@ -92,11 +80,26 @@ def valider_mois():
             SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
         ''', (user_id, mois, annee)).fetchone()
 
-        # Horloge applicative (cf. utils.maintenant) : la date de signature est
-        # comparée à celle des modifications du journal — les deux doivent être
-        # écrites par la même horloge, sinon un conteneur en UTC les décale.
+        if validation and validation['bloque']:
+            flash('Cette fiche est déjà verrouillée. Une réouverture motivée est nécessaire.', 'info')
+            return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
+
+        if not conn.execute('SELECT 1 FROM users WHERE id=?', (user_id,)).fetchone():
+            flash('Salarié introuvable.', 'error')
+            return redirect(url_for('validation_bp.vue_mensuelle'))
+        contenu = calculer_contenu(conn, user_id, mois, annee)
+        if contenu['nb_jours_non_declares']:
+            flash(f"Fiche incomplète : {contenu['nb_jours_non_declares']} journée(s) "
+                  "attendue(s) restent à renseigner. Aucune signature enregistrée.", 'error')
+            return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
+        reference_affichee = request.form.get('empreinte_fiche')
+        if not reference_affichee or reference_affichee != empreinte(contenu):
+            flash('La fiche a changé ou sa référence manque. Relisez la fiche actualisée avant de signer.', 'warning')
+            return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
+
+        version_id = enregistrer_version(conn, contenu, 'signature')
         now = maintenant().strftime('%Y-%m-%d %H:%M:%S')
-        user_info = get_user_info(session['user_id'])
+        user_info = conn.execute('SELECT prenom, nom FROM users WHERE id=?', (session['user_id'],)).fetchone()
         validation_nom = f"{user_info['prenom']} {user_info['nom']}"
 
         # Champs (colonne validation, colonne date) par type de validation.
@@ -114,13 +117,16 @@ def valider_mois():
                 VALUES (?, ?, ?)
             ''', (user_id, mois, annee))
 
-        set_clauses = []
-        params = []
+        set_clauses = ['version_courante_id = ?']
+        params = [version_id]
         for type_validation in types_validation:
             col_validation, col_date = champs_validation[type_validation]
             set_clauses.append(f'{col_validation} = ?')
             set_clauses.append(f'{col_date} = ?')
-            params.extend([validation_nom, now])
+            set_clauses.append(f'version_{type_validation}_id = ?')
+            params.extend([validation_nom, now, version_id])
+            evenement(conn, user_id, annee, mois, 'signature', version_id,
+                      role=type_validation, auteur_id=session['user_id'], auteur_nom=validation_nom)
 
         params.extend([user_id, mois, annee])
         conn.execute(f'''
@@ -145,8 +151,8 @@ def valider_mois():
 
         doit_verrouiller = bool(
             validation_updated
-            and validation_updated['validation_directeur']
-            and (validation_updated['validation_responsable'] or valide_est_responsable)
+            and validation_updated['version_directeur_id'] == version_id
+            and (validation_updated['version_responsable_id'] == version_id or valide_est_responsable)
         )
 
         if doit_verrouiller:
@@ -154,6 +160,7 @@ def valider_mois():
                 UPDATE validations SET bloque = 1
                 WHERE user_id = ? AND mois = ? AND annee = ?
             ''', (user_id, mois, annee))
+            evenement(conn, user_id, annee, mois, 'verrouillage', version_id)
             flash('Fiche validée et verrouillée définitivement', 'success')
         else:
             flash('Validation enregistrée', 'success')
@@ -182,7 +189,7 @@ def deverrouiller_mois():
     annee = request.form.get('annee', type=int)
     motif = request.form.get('motif', '').strip()
     
-    if not user_id or not mois or not annee:
+    if not user_id or user_id < 1 or not mois or not annee or not 1 <= mois <= 12 or not 1 <= annee <= 9998:
         flash('Paramètres invalides', 'error')
         return redirect(url_for('validation_bp.vue_mensuelle'))
     
@@ -193,6 +200,7 @@ def deverrouiller_mois():
     conn = get_db()
 
     try:
+        conn.execute("BEGIN IMMEDIATE")
         # Vérifier que la fiche est bien verrouillée
         validation = conn.execute('''
             SELECT * FROM validations
@@ -213,6 +221,9 @@ def deverrouiller_mois():
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (user_id, f"{annee}-{mois:02d}-01", session['user_id'], 'deverrouillage',
               json.dumps({'motif': motif, 'date': now, 'par': f"{user_info['prenom']} {user_info['nom']}"}), None))
+
+        evenement(conn, user_id, annee, mois, 'reouverture',
+                  validation['version_courante_id'], details={'motif': motif})
 
         # Supprimer la validation (réinitialisation complète)
         conn.execute('''
@@ -301,7 +312,7 @@ def vue_ensemble_validation():
 
             users_validation.append({
                 'user': dict(user),
-                'validation': dict(validation) if validation else None
+                'validation': presenter_validation(validation)
             })
     finally:
         conn.close()
@@ -364,6 +375,9 @@ def _get_vue_mensuelle_data(redirect_route='validation_bp.vue_mensuelle'):
 
 def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_route):
     """Implementation interne de _get_vue_mensuelle_data (connexion geree par l'appelant)."""
+    # La page et sa référence proviennent de la même lecture SQLite.
+    if not conn.in_transaction:
+        conn.execute("BEGIN")
     user_id_a_afficher = user_id_param if user_id_param else session['user_id']
 
     # Controle d'acces
@@ -404,233 +418,12 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
             ORDER BY nom, prenom
         ''', (secteur_resp, session['user_id'], session['user_id'])).fetchall()
 
-    # Premier et dernier jour du mois
+    contenu = lire_contenu(conn, user_id_a_afficher, mois, annee,
+                           aujourdhui=datetime.now().date())
     premier_jour = datetime(annee, mois, 1)
-    if mois == 12:
-        dernier_jour = datetime(annee + 1, 1, 1) - timedelta(days=1)
-    else:
-        dernier_jour = datetime(annee, mois + 1, 1) - timedelta(days=1)
-
-    # Plannings theoriques
-    plannings = {}
-    planning_rows = conn.execute('''
-        SELECT * FROM planning_theorique
-        WHERE user_id = ?
-    ''', (user_id_a_afficher,)).fetchall()
-
-    # Heures reelles du mois
-    heures_reelles = {}
-    heures_rows = conn.execute('''
-        SELECT * FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
-    ''', (user_id_a_afficher, premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-
-    for h in heures_rows:
-        heures_reelles[h['date']] = dict(h)
-
-    jours_feries_rows = conn.execute('''
-        SELECT date, libelle FROM jours_feries
-        WHERE date >= ? AND date <= ?
-    ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-    jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
-
-    # Périodes d'emploi : hors contrat, une journée n'est ni due ni à saisir.
-    # Le planning théorique ne peut pas en tenir lieu — il n'a pas de fin de
-    # validité, celui d'un CDD reste donc « valide » longtemps après son
-    # terme, et il n'existe pas avant son premier jour. C'est ce qui faisait
-    # réclamer la saisie de journées où le salarié n'était pas employé.
-    contrats_salarie = periodes_contrat(conn, user_id_a_afficher)
-
-    # Generer toutes les journees du mois
-    journees = []
-    jour_actuel = premier_jour
-    total_heures_theoriques = 0
-    total_heures_reelles = 0
+    dernier_jour = (datetime(annee + (mois == 12), mois % 12 + 1, 1) - timedelta(days=1))
+    nb_jours_non_declares = contenu['nb_jours_non_declares']
     afficher_horaires_vue_mensuelle = get_option_bool('vue_mensuelle_afficher_horaires')
-
-    while jour_actuel <= dernier_jour:
-        date_str = jour_actuel.strftime('%Y-%m-%d')
-        jour_semaine = jour_actuel.weekday()  # 0=lundi, 6=dimanche
-        est_ferie = date_str in jours_feries
-        libelle_ferie = jours_feries.get(date_str)
-
-        if jour_semaine < 6:
-            if jour_semaine == 5 and date_str not in heures_reelles and not est_ferie:
-                jour_actuel += timedelta(days=1)
-                continue
-
-            type_periode = get_type_periode(date_str)
-            jour_hors_contrat = est_hors_contrat(contrats_salarie, date_str)
-
-            heures_theo_jour = 0
-            horaires_theoriques = '-'
-            planning_existe = False
-            if jour_semaine == 5 or jour_hors_contrat:
-                heures_theo_jour = 0
-            else:
-                planning = get_planning_valide_a_date(user_id_a_afficher, type_periode, date_str)
-                if planning:
-                    planning_existe = True
-                    heures_theo_jour = get_heures_theoriques_jour(planning, jour_semaine)
-                    jour_nom = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi'][jour_semaine]
-                    horaires_theoriques = _formater_horaires(
-                        planning[f'{jour_nom}_matin_debut'],
-                        planning[f'{jour_nom}_matin_fin'],
-                        planning[f'{jour_nom}_aprem_debut'],
-                        planning[f'{jour_nom}_aprem_fin'],
-                    )
-
-            heures_reelles_jour = 0
-            horaires_reels = '-'
-            est_saisi = False
-            est_declare = False
-            type_saisie = None
-            commentaire = None
-            non_declare = False
-            pause_remuneree_jour = False
-
-            if date_str in heures_reelles:
-                h = heures_reelles[date_str]
-                est_declare = bool(h.get('declaration_conforme', 0))
-
-                if est_declare:
-                    heures_reelles_jour = heures_theo_jour
-                    est_saisi = True
-                    horaires_reels = horaires_theoriques
-                else:
-                    est_saisi = True
-                    heures_reelles_jour = calculer_heures_reelles_jour(h)
-                    pause_remuneree_jour = bool(h.get('pause_remuneree')) and duree_pause_meridienne(h) > 0
-                    horaires_reels = _formater_horaires(
-                        h['heure_debut_matin'],
-                        h['heure_fin_matin'],
-                        h['heure_debut_aprem'],
-                        h['heure_fin_aprem'],
-                        slot_horaire(h, 'heure_debut_soir'),
-                        slot_horaire(h, 'heure_fin_soir'),
-                    )
-
-                type_saisie = h['type_saisie']
-                commentaire = h['commentaire']
-            elif est_ferie and jour_semaine < 5 and not jour_hors_contrat:
-                heures_reelles_jour = heures_theo_jour
-                horaires_reels = horaires_theoriques
-                est_declare = True
-                type_saisie = 'ferie'
-                commentaire = libelle_ferie
-            else:
-                # Jour de repos planifié : un planning est défini et fixe des
-                # heures théoriques nulles ce jour-là (ex. un mercredi non
-                # travaillé). La déclaration y est facultative et ne bloque pas
-                # la validation du mois.
-                # À l'inverse, si AUCUN planning n'est défini (heures théoriques
-                # nulles faute de configuration), on continue de réclamer la
-                # déclaration afin de ne pas masquer ce manque et permettre la
-                # validation d'une fiche entièrement vide.
-                jour_repos_planifie = planning_existe and heures_theo_jour == 0
-                if (jour_actuel.date() < datetime.now().date()
-                        and jour_semaine < 5
-                        and not jour_repos_planifie
-                        and not jour_hors_contrat):
-                    non_declare = True
-                heures_reelles_jour = heures_theo_jour
-
-            ecart = heures_reelles_jour - heures_theo_jour
-
-            # Jour de repos habituel : jour ouvré (lun-ven) avec un planning
-            # défini mais sans heures théoriques, ni férié, ni saisi. Permet
-            # d'afficher un statut clair (« Repos ») au lieu d'une journée vide
-            # à compléter. Un jour sans planning n'est PAS un repos habituel.
-            est_repos_habituel = (
-                jour_semaine < 5
-                and planning_existe
-                and heures_theo_jour == 0
-                and not est_ferie
-                and not est_saisi
-            )
-
-            total_heures_theoriques += heures_theo_jour
-            total_heures_reelles += heures_reelles_jour
-
-            noms_jours = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
-
-            journees.append({
-                'date': date_str,
-                'date_obj': jour_actuel,
-                'jour_semaine': noms_jours[jour_semaine],
-                'jour_semaine_idx': jour_semaine,
-                'est_samedi': jour_semaine == 5,
-                'heures_theoriques': heures_theo_jour,
-                'heures_reelles': heures_reelles_jour,
-                'horaires_theoriques': horaires_theoriques,
-                'horaires_reels': horaires_reels,
-                'ecart': ecart,
-                'est_saisi': est_saisi,
-                'est_declare': est_declare,
-                'non_declare': non_declare,
-                # Une saisie existante l'emporte sur l'affichage « hors
-                # contrat » : des heures enregistrées se montrent toujours,
-                # quitte à révéler un contrat oublié au dossier.
-                'hors_contrat': jour_hors_contrat and not est_saisi,
-                'est_repos_habituel': est_repos_habituel,
-                'type_saisie': type_saisie,
-                'commentaire': commentaire,
-                'type_periode': type_periode,
-                'est_ferie': est_ferie,
-                'libelle_ferie': libelle_ferie,
-                'pause_remuneree': pause_remuneree_jour,
-            })
-
-        jour_actuel += timedelta(days=1)
-
-    # Solde du mois
-    solde_mois = total_heures_reelles - total_heures_theoriques
-
-    # Solde anterieur
-    try:
-        user_data = conn.execute('SELECT solde_initial FROM users WHERE id = ?', (user_id_a_afficher,)).fetchone()
-        solde_anterieur = user_data['solde_initial'] if user_data and user_data['solde_initial'] else 0
-    except (Exception,):
-        solde_anterieur = 0
-
-    heures_anterieures = conn.execute('''
-        SELECT date, heure_debut_matin, heure_fin_matin,
-               heure_debut_aprem, heure_fin_aprem,
-               heure_debut_soir, heure_fin_soir, declaration_conforme,
-               pause_remuneree
-        FROM heures_reelles
-        WHERE user_id = ? AND date < ?
-        ORDER BY date
-    ''', (user_id_a_afficher, premier_jour.strftime('%Y-%m-%d'))).fetchall()
-
-    for h in heures_anterieures:
-        date_obj_ant = datetime.strptime(h['date'], '%Y-%m-%d')
-        jour_semaine_ant = date_obj_ant.weekday()
-
-        type_periode = get_type_periode(h['date'])
-        total_theorique = 0
-
-        if jour_semaine_ant < 5:
-            planning_ant = get_planning_valide_a_date(user_id_a_afficher, type_periode, h['date'])
-            if planning_ant:
-                total_theorique = get_heures_theoriques_jour(planning_ant, jour_semaine_ant)
-
-        if h['declaration_conforme']:
-            total_reel = total_theorique
-        else:
-            total_reel = calculer_heures_reelles_jour(h)
-
-        solde_anterieur += (total_reel - total_theorique)
-
-    # Heures supp payées (variables de paie, déduites du compteur) : les paies
-    # antérieures au mois affiché sortent du solde antérieur, celle du mois
-    # affiché sort du cumul — la fiche reste alignée sur le solde du dashboard.
-    solde_anterieur -= total_hs_payees(conn, user_id_a_afficher,
-                                       annee=annee, mois=mois, avant=True)
-    hs_payees_mois = total_hs_payees(conn, user_id_a_afficher, annee=annee, mois=mois)
-    solde_cumule = solde_anterieur + solde_mois - hs_payees_mois
-
-    nb_jours_non_declares = sum(1 for j in journees if j.get('non_declare', False))
 
     validation = conn.execute('''
         SELECT * FROM validations
@@ -639,7 +432,7 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
 
     today = datetime.now()
     mois_demande = datetime(annee, mois, 1)
-    mois_est_termine = not (mois_demande.year == today.year and mois_demande.month >= today.month)
+    mois_est_termine = (annee, mois) < (today.year, today.month)
 
     peut_valider_mois = False
     if not validation or not validation['bloque']:
@@ -686,32 +479,36 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
     template_data = dict(
-        journees=journees,
+        empreinte_fiche=empreinte(calculer_contenu(conn, user_id_a_afficher, mois, annee)),
+        evenements_fiche=conn.execute(
+            'SELECT * FROM fiches_evenements WHERE user_id=? AND annee=? AND mois=? ORDER BY id',
+            (user_id_a_afficher, annee, mois)).fetchall(),
+        journees=contenu['journees'],
         mois=mois,
         annee=annee,
         nom_mois=noms_mois[mois],
-        total_heures_theoriques=total_heures_theoriques,
-        total_heures_reelles=total_heures_reelles,
-        solde_mois=solde_mois,
-        solde_anterieur=solde_anterieur,
-        solde_cumule=solde_cumule,
-        hs_payees_mois=hs_payees_mois,
+        total_heures_theoriques=contenu['total_heures_theoriques'],
+        total_heures_reelles=contenu['total_heures_reelles'],
+        solde_mois=contenu['solde_mois'],
+        solde_anterieur=contenu['solde_anterieur'],
+        solde_cumule=contenu['solde_cumule'],
+        hs_payees_mois=contenu['hs_payees_mois'],
         mois_precedent=mois_precedent,
         annee_precedente=annee_precedente,
         mois_suivant=mois_suivant,
         annee_suivante=annee_suivante,
-        user_affiche=dict(user_affiche),
+        user_affiche={**dict(user_affiche), **contenu['identite']},
         users_accessibles=users_accessibles,
         user_id_a_afficher=user_id_a_afficher,
         peut_modifier=peut_modifier,
-        validation=dict(validation) if validation else None,
+        validation=presenter_validation(validation),
         peut_valider_mois=peut_valider_mois,
         mois_est_termine=mois_est_termine,
         nb_jours_non_declares=nb_jours_non_declares,
         # Sans contrat au dossier, la fiche réclame ses journées mais la
         # saisie les refuse : il faut dire pourquoi, et à qui s'adresser.
-        aucun_contrat=not contrats_salarie,
-        jours_feries=jours_feries,
+        aucun_contrat=contenu['aucun_contrat'],
+        jours_feries=contenu['jours_feries'],
         premier_jour_semaine=premier_jour.weekday(),
         nb_jours_mois=dernier_jour.day,
         afficher_horaires_vue_mensuelle=afficher_horaires_vue_mensuelle,

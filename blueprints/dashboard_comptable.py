@@ -4,6 +4,7 @@ Tableau de bord specifique pour le comptable.
 """
 from flask import Blueprint, render_template, session, redirect, url_for, flash
 from datetime import datetime
+from fiches_versions import presenter_validation
 from database import get_db
 from utils import (login_required, NOMS_MOIS, get_user_info, calculer_heures,
                    calculer_heures_reelles_jour,
@@ -166,7 +167,7 @@ def dashboard_comptable():
         WHERE mois = ? AND annee = ?
     ''', (mois_cloture, annee_cloture)).fetchall()
 
-    val_map = {v['user_id']: dict(v) for v in validations_cloture}
+    val_map = {v['user_id']: presenter_validation(v) for v in validations_cloture}
 
     nb_total_cloture = len(users_a_valider)
     nb_valide_cloture = 0

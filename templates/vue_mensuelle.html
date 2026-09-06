@@ -540,6 +540,8 @@
             </div>
             {% endif %}
             
+            {% include '_fiche_signatures.html' %}
+
             <!-- Bouton de validation -->
             {% if not mois_est_termine %}
             <div class="help-box" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
@@ -549,6 +551,7 @@
             </div>
             {% elif peut_valider_mois and not (validation and validation.bloque) %}
             <form method="POST" action="{{ url_for('validation_bp.valider_mois') }}" onsubmit="return confirm('Êtes-vous sûr de vouloir valider ce mois ?');">
+                <input type="hidden" name="empreinte_fiche" value="{{ empreinte_fiche }}">
                 <input type="hidden" name="user_id" value="{{ user_id_a_afficher }}">
                 <input type="hidden" name="mois" value="{{ mois }}">
                 <input type="hidden" name="annee" value="{{ annee }}">
