@@ -84,6 +84,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0063', 'Delegation de la gestion des benevoles'),
     ('0064', 'Fonction du salarie'),
     ('0065', 'Versions et integrite des fiches mensuelles'),
+    ('0066', 'Revocation des sessions'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2080,6 +2081,10 @@ def init_db():
         cursor.execute("SELECT charte_signee FROM benevoles LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE benevoles ADD COLUMN charte_signee INTEGER DEFAULT 0")
+
+    # Même schéma de sessions que la migration 0066.
+    from sessions_securite import creer_schema as creer_schema_sessions
+    creer_schema_sessions(conn)
 
     # Même schéma et même reprise que la migration 0065.
     from fiches_versions import creer_schema

@@ -7,6 +7,7 @@ import logging
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import generate_password_hash
 from datetime import datetime
+from sessions_securite import verifier_action
 from database import get_db
 from blueprints.delegations import (
     MISSIONS, MISSIONS_MAP, save_delegation,
@@ -274,6 +275,17 @@ def modifier_user(user_id):
 
     try:
         if request.method == 'POST':
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                return refus
+            if session.get('profil') not in ('directeur', 'comptable'):
+                flash('Accès non autorisé', 'error')
+                return redirect(url_for('dashboard_bp.dashboard'))
+            avant = conn.execute('SELECT profil FROM users WHERE id=?', (user_id,)).fetchone()
+            if avant is None:
+                flash('Utilisateur introuvable', 'error')
+                return redirect(url_for('admin_bp.gestion_users'))
             nom = request.form.get('nom')
             prenom = request.form.get('prenom')
             login = request.form.get('login')
@@ -330,7 +342,9 @@ def modifier_user(user_id):
                 journaliser_action(
                     conn, ACTION_MODIF_USER,
                     cible_type='user', cible_id=user_id,
-                    details=f"profil={profil}, mdp_modifie={'oui' if nouveau_password else 'non'}",
+                    details=(f"profil_avant={avant['profil']}, profil={profil}, "
+                             f"sessions_revoquees={'oui' if nouveau_password else 'non'}, "
+                             f"mdp_modifie={'oui' if nouveau_password else 'non'}"),
                 )
                 conn.commit()
                 flash(f'Utilisateur {prenom} {nom} modifié avec succès', 'success')
@@ -371,6 +385,13 @@ def toggle_user(user_id):
 
     conn = get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in ('directeur', 'comptable'):
+            flash('Accès non autorisé', 'error')
+            return redirect(url_for('dashboard_bp.dashboard'))
         user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
 
         if user:
@@ -380,7 +401,7 @@ def toggle_user(user_id):
             journaliser_action(
                 conn, ACTION_STATUT_USER,
                 cible_type='user', cible_id=user_id,
-                details=f"statut={statut_texte}",
+                details=f"statut={statut_texte}, sessions_revoquees=oui",
             )
             conn.commit()
             flash(f'Utilisateur {user["prenom"]} {user["nom"]} {statut_texte}', 'success')

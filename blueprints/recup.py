@@ -5,7 +5,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 from fiches_versions import FicheVerrouillee
 from database import get_db
-from utils import (login_required, get_user_info, calculer_heures,
+from sessions_securite import verifier_action
+from utils import (login_required, get_user_info, calculer_heures, est_dans_equipe_responsable,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
                    calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
                    slot_horaire, NOMS_MOIS)
@@ -423,7 +424,7 @@ def validation_demandes_recup():
         demande_type = request.form.get('demande_type', 'recup')  # 'recup' ou 'conge'
         libelle_demande = 'congé' if demande_type == 'conge' else 'récupération'
 
-        if not demande_id or not action:
+        if not demande_id or action not in ('valider', 'refuser') or demande_type not in ('recup', 'conge'):
             flash('Paramètres invalides', 'error')
             return redirect(url_for('recup_bp.validation_demandes_recup'))
 
@@ -432,14 +433,27 @@ def validation_demandes_recup():
         conn = get_db()
 
         try:
+            # Compte, équipe, cible et état sont lus sous le même verrou que
+            # la mutation : aucun changement concurrent ne peut s'intercaler.
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                return refus
             # Récupérer la demande
             demande = conn.execute(f'SELECT * FROM {table} WHERE id = ?', (demande_id,)).fetchone()
 
-            if not demande:
-                flash('Demande introuvable', 'error')
+            profil = session.get('profil')
+            autorise = profil in ('directeur', 'comptable') or (
+                profil == 'responsable' and demande is not None
+                and est_dans_equipe_responsable(conn, session['user_id'], demande['user_id'])
+            )
+            etats = ('en_attente_responsable',) if profil == 'responsable' else (
+                'en_attente_responsable', 'en_attente_direction')
+            if not demande or not autorise or demande['statut'] not in etats:
+                flash('Cette demande ne peut pas être traitée avec vos droits actuels.', 'error')
                 return redirect(url_for('recup_bp.validation_demandes_recup'))
 
-            user_info = get_user_info(session['user_id'])
+            user_info = conn.execute('SELECT prenom, nom FROM users WHERE id=?', (session['user_id'],)).fetchone()
             now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             if action == 'refuser':
