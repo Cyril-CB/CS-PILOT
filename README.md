@@ -66,7 +66,7 @@ classique depuis « Mon espace ».
 
 ### Preparation de la paie
 - Module de preparation de paie avec statut par salarie
-- Toute modification des variables de paie d'un mois retire automatiquement la validation "traite" du salarie concerne en preparation de paie : le prestataire revalide apres verification
+- Le statut « traité » référence les données vérifiées : contrats, absences, justificatifs liés et variables affichés. Une modification pertinente impose une nouvelle vérification ; les anciennes pages sont refusées.
 - Variables de paie configurables
 - Informations complementaires salaries
 - Generation de contrats de travail a partir de modeles DOCX
@@ -74,6 +74,8 @@ classique depuis « Mon espace ».
 
 ### Gestion des absences
 - Suivi des absences par type et par salarie
+- Conflits refusés, origine des reports conservée et récupérations appliquées atomiquement
+- [Fonctionnement, migration et limites du lot B7/B8/B9](docs/coherence-rh.md)
 
 ### Forfait jours
 - Calendrier forfait jour (jours ouvres pre-remplis en "travaille", hors feries)

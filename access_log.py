@@ -43,6 +43,7 @@ EVENEMENTS_LABELS = {
 ACTION_CLOTURE_CONGES = 'cloture_conges'
 ACTION_ENREG_VARIABLES_PAIE = 'enregistrement_variables_paie'
 ACTION_MAJ_STATUT_PREPA_PAIE = 'maj_statut_prepa_paie'
+ACTION_PREPA_PAIE_OBSOLETE = 'prepa_paie_obsolete'
 ACTION_AJOUT_CONTRAT = 'ajout_contrat'
 ACTION_MODIF_DATE_FIN_CONTRAT = 'modif_date_fin_contrat'
 ACTION_AJOUT_PDF_CONTRAT = 'ajout_pdf_contrat'
@@ -60,6 +61,7 @@ ACTION_RETRAIT_MEMBRE_CSE = 'retrait_membre_cse'
 ACTIONS_LABELS = {
     ACTION_CLOTURE_CONGES: 'Clôture mensuelle des congés',
     ACTION_ENREG_VARIABLES_PAIE: 'Enregistrement des variables de paie',
+    ACTION_PREPA_PAIE_OBSOLETE: 'Préparation de paie à vérifier après modification',
     ACTION_MAJ_STATUT_PREPA_PAIE: 'Mise à jour du statut de préparation de paie',
     ACTION_AJOUT_CONTRAT: 'Ajout d\'un contrat',
     ACTION_MODIF_DATE_FIN_CONTRAT: 'Modification de la date de fin d\'un contrat',

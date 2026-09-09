@@ -55,12 +55,16 @@
                     <tr class="{% if row.traite %}row-traite{% elif loop.index is odd %}row-odd{% else %}row-even{% endif %} row-separator">
                         <td class="pp-col-traite" style="text-align: center;">
                             <input type="hidden" name="user_ids" value="{{ row.user_id }}">
-                            <input type="checkbox" name="traite_{{ row.user_id }}" value="1"
+                            <input type="hidden" name="reference_{{ row.user_id }}" value="{{ row.reference }}">
+                            <input type="checkbox" aria-label="Traité : {{ row.prenom }} {{ row.nom }}" name="traite_{{ row.user_id }}" value="1"
                                    {% if row.traite %}checked{% endif %}
                                    style="width: 18px; height: 18px; cursor: pointer;">
                         </td>
                         <td class="pp-col-nom">
                             <strong>{{ row.nom }}</strong> {{ row.prenom }}
+                            <div class="pp-etat">{{ row.etat }}</div>
+                            {% if row.verifie_le %}<small>Dernière vérification : {{ row.verifie_le }}</small>{% endif %}
+                            {% if row.modifie_le %}<br><small>Modification constatée : {{ row.modifie_le }}</small>{% endif %}
                         </td>
                         <td style="font-size: 0.85rem;">{{ row.secteur }}</td>
                         <td>
@@ -150,6 +154,7 @@
 </div>
 
 <style>
+.pp-etat { white-space: normal; max-width: 19rem; font-size: .82rem; }
 /* ── Conteneur scrollable : permet de figer l'en-tete au defilement ── */
 .prepa-paie-scroll {
     max-height: calc(100vh - 300px);

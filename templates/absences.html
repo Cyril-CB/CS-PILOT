@@ -3,6 +3,16 @@
 {% block title %}Saisie des absences{% endblock %}
 
 {% block content %}
+{% if conflits %}
+<div class="alert alert-warning" role="status">
+    <strong>Chevauchements historiques à examiner</strong>
+    <p>Ces données sont conservées. Aucun motif prioritaire ni compteur corrigé n’a été déduit automatiquement.</p>
+    <ul>{% for c in conflits %}<li>Absences n°{{ c.premiere }} et n°{{ c.seconde }} — salarié n°{{ c.user_id }}.</li>{% endfor %}</ul>
+    <p>Liste limitée à 100 paires ; filtrez par salarié pour poursuivre la revue.</p>
+</div>
+{% endif %}
+<p>Une absence occupe une journée entière dans ce calendrier. En cas de conflit, corrigez l’absence existante avant d’en saisir une autre.</p>
+
 <div class="absences-page">
     <h1>Saisie des arrêts et congés</h1>
     <p class="subtitle">Enregistrement des absences (arrêts maladie, congés, etc.)</p>

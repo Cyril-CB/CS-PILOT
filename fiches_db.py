@@ -11,7 +11,7 @@ import sqlite3
 TABLES_CONTENU = frozenset({
     'heures_reelles', 'planning_theorique', 'alternance_reference', 'contrats',
     'periodes_vacances', 'jours_feries', 'users', 'variables_paie', 'validations',
-    'absences', 'fiches_a_recalculer',
+    'absences', 'fiches_a_recalculer', 'paie_a_recalculer', 'rh_projections_a_verifier',
 })
 
 
@@ -44,6 +44,12 @@ class ConnexionFiches(sqlite3.Connection):
                     ids = [r[0] for r in self.execute('SELECT user_id FROM fiches_a_recalculer')]
                     actualiser_versions(self, ids)
                     self.execute('DELETE FROM fiches_a_recalculer')
+                if self.execute("SELECT 1 FROM sqlite_master WHERE name='rh_projections'").fetchone():
+                    from absences_coherence import verifier_projections
+                    verifier_projections(self)
+                if self.execute("SELECT 1 FROM sqlite_master WHERE name='paie_a_recalculer'").fetchone():
+                    from prepa_paie_donnees import actualiser_statuts
+                    actualiser_statuts(self)
             self._commit_controle = True
             return super().commit()
         except Exception:
