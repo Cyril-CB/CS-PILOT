@@ -91,10 +91,7 @@
                     <!-- Validation responsable (sans objet pour les responsables :
                          leur fiche est validée directement par la direction) -->
                     <td style="text-align: center;">
-                        {% if u.profil == 'responsable' %}
-                        <span style="color: var(--gray-500, #9ca3af);"
-                              title="Étape sans objet : la fiche d'un responsable est validée directement par la direction">✗</span>
-                        {% elif v and v.validation_responsable %}
+                        {% if v and v.validation_responsable %}
                         <span title="{{ v.validation_responsable }} - {{ v.date_responsable }}">✅</span>
                         {% else %}
                         <span style="opacity: 0.3;">⬜</span>
@@ -114,20 +111,12 @@
                     <td>
                         {% if v and v.bloque %}
                         <span class="badge badge-success">🔒 Verrouillé</span>
-                        {% elif u.profil == 'responsable' %}
-                        {# Pas d'étape responsable : dès que le responsable a validé
-                           sa propre fiche, elle attend la direction. #}
-                        {% if v and (v.validation_salarie or v.validation_responsable) %}
-                        <span class="badge" style="background: #ffc107; color: #000;">⏳ Attente directeur</span>
                         {% else %}
-                        <span class="badge" style="background: #dc3545; color: white;">❌ Non validé</span>
+                        <span class="badge">{{ item.etape_libelle }}</span>
                         {% endif %}
-                        {% elif v and v.validation_responsable %}
-                        <span class="badge" style="background: #ffc107; color: #000;">⏳ Attente directeur</span>
-                        {% elif v %}
-                        <span class="badge" style="background: #17a2b8; color: white;">⏳ Attente responsable</span>
-                        {% else %}
-                        <span class="badge" style="background: #dc3545; color: white;">❌ Non validé</span>
+                        {% if v and v.bloque and v.circuit_version == 1 %}
+                        <small>Circuit historique — verrouillage acquis.</small>
+                        {% if item.confirmation %}<small>Confirmation salarié a posteriori le {{ item.confirmation.date_evenement[:10] }}.</small>{% endif %}
                         {% endif %}
                     </td>
                     
@@ -151,7 +140,7 @@
         {% if peut_relancer_validation and en_attente > 0 %}
         <button class="btn" id="relanceBtn" onclick="relancerResponsables()"
                 style="background:#7c3aed;color:white;border:none;padding:8px 18px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">
-            &#128233; Relancer les responsables par email
+            &#128233; Relancer les acteurs attendus par email
         </button>
         <span id="relanceResult" style="font-size:13px;"></span>
         {% endif %}
@@ -161,14 +150,13 @@
     <div class="help-box">
         <h4>📖 Légende des statuts</h4>
         <ul>
-            <li><strong>🔒 Verrouillé</strong> : Validé par responsable ET directeur - Fiche définitivement verrouillée</li>
-            <li><strong>⏳ Attente directeur</strong> : Validé par le responsable, en attente de validation directeur</li>
-            <li><strong>⏳ Attente responsable</strong> : Salarié validé (optionnel), en attente du responsable</li>
-            <li><strong>❌ Non validé</strong> : Aucune validation effectuée pour ce mois</li>
-            <li><strong>✗</strong> : Étape sans objet — la fiche d'un responsable est validée directement
-                par la direction (dès qu'il a validé sa fiche, elle passe en « Attente directeur »)</li>
+            <li><strong>Verrouillé</strong> : circuit terminé, contenu figé.</li>
+            <li><strong>En attente salarié</strong> : son approbation de la version courante est obligatoire.</li>
+            <li><strong>En attente responsable</strong> : le salarié a approuvé la version courante.</li>
+            <li><strong>En attente direction</strong> : salarié et responsable ont approuvé la version courante.</li>
+            <li><strong>Circuit historique</strong> : le verrouillage ancien reste acquis, même sans approbation salarié.</li>
         </ul>
-        <p><strong>Rappel :</strong> Une fiche est définitivement verrouillée après validation du responsable ET du directeur.</p>
+        <p><strong>Rappel :</strong> Une nouvelle fiche est verrouillée après validation salarié, responsable puis direction sur la même version.</p>
     </div>
 </div>
 
@@ -214,7 +202,7 @@
 {% if peut_relancer_validation %}
 <script>
 async function relancerResponsables() {
-    if (!confirm('Envoyer un email de relance a tous les responsables ayant des fiches non validees pour {{ nom_mois }} {{ annee }} ?')) return;
+    if (!confirm('Envoyer un email de relance aux personnes dont la validation est attendue pour {{ nom_mois }} {{ annee }} ?')) return;
 
     var btn = document.getElementById('relanceBtn');
     var result = document.getElementById('relanceResult');
@@ -243,7 +231,7 @@ async function relancerResponsables() {
     }
 
     btn.disabled = false;
-    btn.innerHTML = '&#128233; Relancer les responsables par email';
+    btn.innerHTML = '&#128233; Relancer les acteurs attendus par email';
 }
 </script>
 {% endif %}

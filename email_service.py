@@ -505,3 +505,19 @@ def notifier_publication_cse(destinataires, titre, contenu, date_validite=None, 
     """
     sujet = f"Message du CSE : {titre}" if titre else "Nouveau message du CSE"
     return envoyer_email_multiple(destinataires, sujet, contenu_html)
+
+
+def notifier_relance_fiche(email, prenom, mois, annee, salarie_nom, user_id, etape, historique=False):
+    """Un rappel décrit la qualité attendue et renvoie au contenu à consulter."""
+    from fiches_circuit import LIBELLES_ETAPES
+    titre = 'Confirmation d’une ancienne fiche verrouillée' if historique else 'Validation de fiche mensuelle'
+    texte = ('Cette fiche reste valablement verrouillée selon le circuit historique. '
+             'Votre confirmation a posteriori est souhaitée et sera datée du jour ; '
+             'elle ne modifie pas la clôture initiale.' if historique else
+             LIBELLES_ETAPES[etape] + '. Chaque étape approuve la même version du contenu.')
+    lien = f"{get_base_url().rstrip('/')}/vue_mensuelle?user_id={int(user_id)}&mois={int(mois)}&annee={int(annee)}"
+    contenu = (f'<h3>{html_module.escape(titre)}</h3>'
+               f'<p>{html_module.escape(salarie_nom)} — {int(mois):02d}/{int(annee)}</p>'
+               f'<p>{html_module.escape(texte)}</p>'
+               f'<p><a href="{html_module.escape(lien, quote=True)}">Consulter la fiche</a></p>')
+    return envoyer_email(email, titre, contenu, prenom)

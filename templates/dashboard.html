@@ -3,6 +3,7 @@
 {% block title %}Tableau de bord{% endblock %}
 
 {% block content %}
+{% include '_fiches_personnelles.html' %}
 <div class="dashboard">
     <h1>📊 Tableau de bord</h1>
     <p class="subtitle">Bienvenue {{ session.prenom }} {{ session.nom }}</p>

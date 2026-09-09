@@ -165,15 +165,15 @@ def demande_recup(statut, date_demande, profil, today):
                    etapes, courante, profil, consequence)
 
 
-def fiche_heures(profil, today, nom=None, est_cdd=False, solde=None):
+def fiche_heures(profil, today, nom=None, est_cdd=False, solde=None, etape='directeur'):
     """De la fiche d'heures au bulletin de paie."""
     heures = None
     if solde and solde > 0:
         heures = f"{solde:g} h au-delà du contrat".replace('.', ',')
 
     etapes = [
-        _etape('salarie', 'Saisie du mois',
-               'Journées saisies ou déclarées conformes', liaison='alerte'),
+        _etape('salarie', 'Validation salarié',
+               'Lit et approuve sa fiche complète', liaison='alerte'),
         _etape('responsable', 'Validation responsable',
                'Confirme ou corrige la fiche', liaison='transmet'),
         _etape('direction', 'Validation direction',
@@ -187,9 +187,8 @@ def fiche_heures(profil, today, nom=None, est_cdd=False, solde=None):
         _etape('prestataire', 'Transmission au prestataire',
                'Export des variables de paie'),
     ]
-    # La fiche n'est pas encore verrouillée : la décision attendue est celle
-    # de la direction, après le passage du responsable.
-    courante = 2
+    # L'étape affichée est fournie par le circuit de la version courante.
+    courante = {'salarie': 0, 'responsable': 1, 'directeur': 2, 'termine': 3}[etape]
 
     # Ce qu'une fiche non validée bloque réellement — et ce qu'elle ne bloque
     # pas. Le compteur de récupération, lui, est tenu à jour dès la saisie :

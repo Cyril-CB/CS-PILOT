@@ -140,7 +140,7 @@ classique depuis « Mon espace ».
 ### Notifications par email
 - Envoi de notifications via Gmail (SMTP)
 - Notifications automatiques sur les demandes de recuperation (creation, validation, refus)
-- Relance manuelle des responsables pour les fiches d'heures non validees
+- Relance manuelle de l’acteur attendu : salarié, responsable puis direction
 - Configuration via l'interface d'administration (identifiants chiffres en base)
 
 ### Outils specifiques
@@ -168,7 +168,7 @@ classique depuis « Mon espace ».
 
 ## Documentation
 
-- **[Fiches mensuelles : signatures et réouverture](docs/fiches-mensuelles.md)** — contenu approuvé, corrections après signature, verrouillage et reprise de l'historique (migration 0065).
+- **[Fiches mensuelles : signatures et réouverture](docs/fiches-mensuelles.md)** — contenu approuvé, corrections après signature, circuit ordonné, confirmation historique et migrations 0065/0067.
 - **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
 - **[Interface sans menu](docs/interface-sans-menu.md)** — l'accueil en fil d'actions, la barre intelligente, la vue d'ensemble par zones, et comment revenir au menu classique.
 
@@ -341,7 +341,7 @@ Pour que les notifications fonctionnent, chaque utilisateur concerne doit avoir 
 | Demande validee par responsable | Responsable valide | Direction |
 | Demande validee definitivement | Direction valide | Salarie |
 | Demande refusee | Responsable ou direction refuse | Salarie |
-| Relance validation fiches | Directeur clique sur "Relancer" | Responsable(s) concerne(s) |
+| Relance validation fiches | Directeur clique sur "Relancer" | Acteur(s) de l’étape courante |
 
 Les 4 premieres notifications sont envoyees automatiquement lors de l'action correspondante. La relance est declenchee manuellement via un bouton sur la page "Vue ensemble validation".
 

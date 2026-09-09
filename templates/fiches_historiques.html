@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Confirmation des anciennes fiches{% endblock %}
+{% block content %}
+<h1>Confirmation des anciennes fiches</h1>
+<p>Ces fiches restent valablement verrouillées selon le circuit historique.
+La confirmation salarié souhaitée aujourd'hui ne modifie ni leur contenu ni leur clôture initiale.</p>
+{% for fiche in fiches %}
+<div class="card" style="margin-bottom:1rem;padding:1rem;">
+    <h2>{{ fiche.prenom }} {{ fiche.nom }} — {{ '%02d'|format(fiche.mois) }}/{{ fiche.annee }}</h2>
+    <p>Circuit historique : Responsable → Direction. Date de validation direction conservée : {{ fiche.date_directeur or 'non renseignée' }}.</p>
+    <a class="btn" href="{{ url_for('validation_bp.vue_mensuelle', user_id=fiche.user_id, mois=fiche.mois, annee=fiche.annee) }}">Consulter le contenu verrouillé</a>
+    {% if peut_relancer %}
+    <form method="POST" action="{{ url_for('notifications_bp.relancer_fiche_historique') }}" style="display:inline-block;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="user_id" value="{{ fiche.user_id }}">
+        <input type="hidden" name="mois" value="{{ fiche.mois }}">
+        <input type="hidden" name="annee" value="{{ fiche.annee }}">
+        <button class="btn" type="submit">Inviter le salarié à confirmer</button>
+    </form>
+    {% endif %}
+</div>
+{% else %}<p>Aucune confirmation historique en attente.</p>{% endfor %}
+{% endblock %}

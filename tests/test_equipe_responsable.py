@@ -90,11 +90,17 @@ def test_vue_mensuelle_refusee_sans_lien(client, db, sample_users):
     assert 'Accès non autorisé' in r.get_data(as_text=True)
 
 
-def test_valider_mois_du_rattache(resp_client, db, sample_users):
+def test_valider_mois_du_rattache(app, resp_client, db, sample_users):
     """La responsable peut poser sa validation sur la fiche du rattaché."""
     agent_id, _ = _creer_agent_transverse(db, sample_users)
     from tests.test_validation import _creer_saisie_mois
     _creer_saisie_mois(db, agent_id, 5, 2026)
+    salarie = app.test_client()
+    _login(salarie, 'agent_test', 'agent123')
+    salarie.post('/valider_mois', data={
+        'user_id': agent_id, 'mois': 5, 'annee': 2026,
+        'empreinte_fiche': _reference_fiche(salarie, agent_id, 5, 2026),
+    })
     resp_client.post('/valider_mois', data={
         'user_id': agent_id, 'mois': 5, 'annee': 2026,
         'empreinte_fiche': _reference_fiche(resp_client, agent_id, 5, 2026),

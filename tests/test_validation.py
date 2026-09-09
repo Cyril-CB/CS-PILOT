@@ -35,6 +35,21 @@ def _creer_saisie_mois(db, user_id, mois, annee):
     db.commit()
 
 
+def _validation_personnelle(app, db, user_id, mois, annee):
+    """Précondition réelle du circuit pour les tests des autres étapes."""
+    login = db.execute('SELECT login FROM users WHERE id=?', (user_id,)).fetchone()[0]
+    passwords = {'salarie_test': 'sal123', 'compta_test': 'compta123', 'resp_test': 'resp123'}
+    client = app.test_client()
+    _login(client, login, passwords[login])
+    response = client.post('/valider_mois', data={
+        'user_id': user_id, 'mois': mois, 'annee': annee,
+        'empreinte_fiche': _reference_fiche(client, user_id, mois, annee),
+    })
+    assert response.status_code == 302
+    assert db.execute('SELECT version_salarie_id FROM validations WHERE user_id=? AND mois=? AND annee=?',
+                      (user_id, mois, annee)).fetchone()[0]
+
+
 def _ajouter_jour_ferie(db, date_str, libelle):
     """Helper : ajoute un jour férié en base."""
     db.execute(
@@ -122,6 +137,7 @@ class TestValidationMois:
         mois, annee = 11, 2024
         with app.app_context():
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _validation_personnelle(app, db, sample_users['salarie_id'], mois, annee)
 
             response = resp_client.post('/valider_mois', data={
                 'user_id': sample_users['salarie_id'],
@@ -138,11 +154,12 @@ class TestValidationMois:
             assert validation is not None
             assert validation['validation_responsable'] is not None
 
-    def test_verrouillage_double_validation(self, app, db, sample_users):
-        """La fiche est verrouillée quand responsable ET directeur ont validé."""
+    def test_verrouillage_triple_validation(self, app, db, sample_users):
+        """La fiche est verrouillée quand salarié, responsable ET directeur ont validé."""
         mois, annee = 10, 2024
         with app.app_context():
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _validation_personnelle(app, db, sample_users['salarie_id'], mois, annee)
 
             # Client 1 : responsable
             client_resp = app.test_client()
@@ -189,6 +206,7 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _validation_personnelle(app, db, sample_users['salarie_id'], mois, annee)
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -231,6 +249,7 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _validation_personnelle(app, db, sample_users['salarie_id'], mois, annee)
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -268,6 +287,7 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['comptable_id'], mois, annee)
+            _validation_personnelle(app, db, sample_users['comptable_id'], mois, annee)
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -287,14 +307,8 @@ class TestValidationMois:
             assert validation['validation_directeur'] is not None
             assert validation['bloque'] == 1
 
-    def test_fiche_responsable_verrouillee_par_directeur_seul(self, app, db, sample_users):
-        """La fiche d'un responsable (pas de supérieur au-dessus de lui) est
-        verrouillée par la seule validation du directeur.
-
-        Régression : le verrouillage exigeait validation_responsable ET
-        directeur. Un responsable n'ayant pas de responsable assigné, sa fiche
-        ne se verrouillait jamais même après validation du directeur.
-        """
+    def test_fiche_responsable_double_approbation_puis_directeur(self, app, db, sample_users):
+        """Le responsable approuve explicitement sa fiche dans les deux rôles."""
         mois, annee = 6, 2024
         with app.app_context():
             _creer_saisie_mois(db, sample_users['responsable_id'], mois, annee)
@@ -325,7 +339,8 @@ class TestValidationMois:
             ).fetchone()
             assert validation is not None
             assert validation['validation_directeur'] is not None
-            assert validation['bloque'] == 1  # Verrouillée par le directeur seul
+            assert validation['bloque'] == 1
+            assert validation['version_salarie_id'] == validation['version_responsable_id'] == validation['version_directeur_id']
 
     def test_refus_validation_mois_en_cours(self, auth_client, app, db, sample_users):
         """On ne peut pas valider le mois en cours."""
@@ -418,56 +433,37 @@ class TestDeverrouillage:
 
 
 class TestVueEnsembleResponsable:
-    """Lignes des responsables : pas d'étape « responsable » (validés par la
-    direction) — croix dans la colonne et statut global adapté."""
+    """La vue affiche trois rôles, y compris pour la fiche d'un responsable."""
 
     def _ligne(self, html, nom):
-        """Extrait la ligne (tr) du tableau contenant le nom donné."""
         for tr in html.split('<tr')[1:]:
             tr = tr.split('</tr>')[0]
             if nom in tr:
                 return tr
         raise AssertionError(f"ligne « {nom} » introuvable")
 
-    def test_croix_colonne_responsable(self, admin_client, sample_users):
-        html = admin_client.get('/vue_ensemble_validation').get_data(as_text=True)
-        ligne = self._ligne(html, 'Marie Dupont')     # profil responsable
-        assert '✗' in ligne
-        assert 'Étape sans objet' in ligne
-        # Un salarié classique garde sa case à cocher, pas de croix.
-        ligne_salarie = self._ligne(html, 'Jean Martin')
-        assert '✗' not in ligne_salarie
+    def test_trois_etapes_explicites(self, admin_client, sample_users):
+        ligne = self._ligne(admin_client.get('/vue_ensemble_validation').get_data(as_text=True), 'Marie Dupont')
+        assert 'Étape sans objet' not in ligne
+        assert 'En attente de validation du salarié' in ligne
 
-    def test_statut_global_sans_validation_reste_non_valide(self, admin_client, db, sample_users):
-        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
-        ligne = self._ligne(html, 'Marie Dupont')
-        assert 'Non validé' in ligne
-        assert 'Attente responsable' not in ligne
+    def test_statut_global_sans_validation(self, admin_client, db, sample_users):
+        ligne = self._ligne(admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True), 'Marie Dupont')
+        assert 'En attente de validation du salarié' in ligne
 
-    def test_statut_global_apres_validation_salarie_attend_directeur(self, admin_client, db, sample_users):
-        """Dès que le responsable a validé SA fiche, le statut passe en
-        « Attente directeur » (jamais « Attente responsable »)."""
-        db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie) "
-                   "VALUES (?, 3, 2026, 'Marie Dupont', '2026-04-02')",
-                   (sample_users['responsable_id'],))
-        db.commit()
-        # Ce test décrit une approbation actuelle, pas une signature historique.
-        db.execute('UPDATE validations SET version_salarie_id=version_courante_id '
-                   'WHERE user_id=? AND mois=3 AND annee=2026', (sample_users['responsable_id'],))
-        db.commit()
-        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
-        ligne = self._ligne(html, 'Marie Dupont')
-        assert 'Attente directeur' in ligne
-        assert 'Attente responsable' not in ligne
+    def test_double_role_attend_directeur(self, app, admin_client, db, sample_users):
+        uid = sample_users['responsable_id']
+        _creer_saisie_mois(db, uid, 3, 2026)
+        _validation_personnelle(app, db, uid, 3, 2026)
+        ligne = self._ligne(admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True), 'Marie Dupont')
+        assert 'En attente de validation de la direction' in ligne
 
-    def test_salarie_classique_garde_attente_responsable(self, admin_client, db, sample_users):
-        db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, date_salarie) "
-                   "VALUES (?, 3, 2026, 'Jean Martin', '2026-04-02')",
-                   (sample_users['salarie_id'],))
-        db.commit()
-        html = admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True)
-        ligne = self._ligne(html, 'Jean Martin')
-        assert 'Attente responsable' in ligne
+    def test_salarie_classique_attend_responsable(self, app, admin_client, db, sample_users):
+        uid = sample_users['salarie_id']
+        _creer_saisie_mois(db, uid, 3, 2026)
+        _validation_personnelle(app, db, uid, 3, 2026)
+        ligne = self._ligne(admin_client.get('/vue_ensemble_validation?mois=3&annee=2026').get_data(as_text=True), 'Jean Martin')
+        assert 'En attente de validation du responsable' in ligne
 
 
 class TestVueEnsembleAcces:
@@ -526,7 +522,7 @@ class TestRelanceValidationDelegation:
 
         assert response.status_code == 403
         assert response.get_json() == {
-            'error': 'Acces reserve a la direction ou aux utilisateurs delegues'
+            'error': 'Accès réservé à la direction ou aux utilisateurs délégués'
         }
 
     def test_salarie_delegue_peut_appeler_api_relance(self, app, sample_users):
@@ -550,7 +546,7 @@ class TestRelanceValidationDelegation:
             json={'mois': 5, 'annee': 2024},
         )
         assert res.status_code == 400
-        assert 'service email non configure' in res.get_data(as_text=True).lower()
+        assert 'service email non configuré' in res.get_json()['error'].lower()
 
 
 class TestVueMensuelleJoursFeries:

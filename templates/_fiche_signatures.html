@@ -1,8 +1,32 @@
+{% if validation and validation.circuit_version == 1 and validation.bloque %}
+<p class="help-text"><strong>Circuit historique : Responsable → Direction.</strong>
+Le verrouillage initial reste acquis ; la validation salarié n'était pas obligatoire.</p>
+{% if confirmation_historique %}
+<p class="help-text">Validation salarié a posteriori par {{ confirmation_historique.auteur_nom }}
+le {{ confirmation_historique.date_evenement[:19]|replace('T', ' ') }}.
+Cette confirmation ne faisait pas partie du verrouillage initial.</p>
+{% elif peut_confirmer_historique %}
+<form method="POST" action="{{ url_for('validation_bp.confirmer_fiche_historique') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="user_id" value="{{ user_id_a_afficher }}">
+    <input type="hidden" name="mois" value="{{ mois }}">
+    <input type="hidden" name="annee" value="{{ annee }}">
+    <input type="hidden" name="version_id" value="{{ validation.version_courante_id }}">
+    <input type="hidden" name="empreinte_fiche" value="{{ empreinte_fiche }}">
+    <p>Vous confirmez aujourd'hui le contenu figé affiché, sans modifier sa clôture.</p>
+    <button class="btn btn-primary" type="submit">Confirmer cette ancienne fiche verrouillée</button>
+</form>
+{% endif %}
+{% else %}
+<p class="help-text"><strong>Salarié → Responsable → Direction</strong> — {{ etape_libelle }}.</p>
+{% endif %}
 {% if validation and validation.signatures_obsoletes %}
 <div class="help-box" role="status">
-    <strong>Fiche modifiée depuis une précédente signature.</strong>
+    {% if validation.bloque and validation.circuit_version == 1 %}
+    <strong>Anciennes approbations conservées dans l'historique.</strong>
+    {% else %}<strong>Fiche modifiée depuis une précédente signature.</strong>{% endif %}
     {% for signature in validation.signatures_obsoletes %}
-    <p>{{ signature.nom }} — {{ signature.date }} : une nouvelle signature est nécessaire.</p>
+    <p>{{ signature.nom }} — {{ signature.date }} : {% if validation.bloque and validation.circuit_version == 1 %}cet accord ne référence pas le contenu figé courant ; le verrouillage historique reste acquis.{% else %}une nouvelle signature est nécessaire.{% endif %}</p>
     {% endfor %}
 </div>
 {% endif %}
@@ -16,12 +40,16 @@ Les signatures antérieures ont été conservées ; leur contenu exact d'origine
     <ul>
     {% set libelles = {'signature': 'Signature', 'modification': 'Contenu modifié',
        'verrouillage': 'Verrouillage', 'reouverture': 'Réouverture motivée',
-       'reprise_historique': 'Reprise du contenu historique'} %}
+       'reprise_historique': 'Reprise du contenu historique',
+       'approbations_obsoletes': 'Approbations devenues obsolètes après modification',
+       'confirmation_historique': 'Validation salarié a posteriori du contenu verrouillé',
+       'bascule_circuit': 'Circuit applicable enregistré à la migration'} %}
     {% for evt in evenements_fiche %}
         <li>{{ evt.date_evenement[:19]|replace('T', ' ') }} —
             {{ libelles.get(evt.evenement, evt.evenement) }}
             {% if evt.auteur_nom %}par {{ evt.auteur_nom }}{% endif %}
-            {% if evt.role %}({{ evt.role }}){% endif %}
+            {% if evt.role %}({{ {'salarie':'salarié', 'responsable':'responsable', 'directeur':'direction'}.get(evt.role, evt.role) }}){% endif %}
+            {% if evt.version_id %}— instantané {{ evt.version_id }}{% endif %}
         </li>
     {% endfor %}
     </ul>

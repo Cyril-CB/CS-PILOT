@@ -215,7 +215,7 @@ class TestFichesNommees:
             titres = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])]
 
-        nommees = [t for t in titres if t.startswith('Fiche à valider')]
+        nommees = [t for t in titres if t.startswith(('Fiche à valider', 'En attente de validation'))]
         assert len(nommees) == 2, titres
         # sample_users crée trois salariés non validés : un doit rester en file.
         assert any(t.startswith('et 1 autre') for t in titres), titres
@@ -238,7 +238,7 @@ class TestFichesNommees:
 
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
 
-        fiches = [a for a in actions if a['titre'].startswith('Fiche à valider')]
+        fiches = [a for a in actions if a['id'].startswith('fiche-')]
         assert len(fiches) == 2
         assert 'Martin' in fiches[0]['titre'], [f['titre'] for f in fiches]
         assert fiches[0]['detail'] == 'heures supplémentaires sur le mois : +1 h'
@@ -262,7 +262,7 @@ class TestFichesNommees:
             _saisir_journee(db, salarie, jour.isoformat())
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
 
-        fiches = [a for a in actions if a['titre'].startswith('Fiche à valider')]
+        fiches = [a for a in actions if a['id'].startswith('fiche-')]
         assert fiches
         for fiche in fiches:
             assert 'sur le mois' in fiche['detail'] or 'équilibre' in fiche['detail']
@@ -277,22 +277,25 @@ class TestFichesNommees:
             _valider_tout_le_monde(db, mois, annee)
             actions = construire_actions(db, 'directeur', sample_users['directeur_id'])
 
-        assert not [a for a in actions if a['titre'].startswith('Fiche à valider')]
+        assert not [a for a in actions if a['id'].startswith('fiche-')]
         assert not [a for a in actions if a['id'].startswith('reste-fiches')]
 
     def test_un_responsable_ne_voit_que_son_equipe(self, app, db, sample_users):
+        from utils import aujourd_hui
+        mois, annee = _mois_precedent(aujourd_hui())
+        _signer(db, sample_users['salarie_id'], mois, annee, 'validation_salarie')
         with app.app_context():
             actions = construire_actions(db, 'responsable',
                                          sample_users['responsable_id'],
                                          secteur_id=sample_users['secteur_id'])
 
-        titres = [a['titre'] for a in actions if a['titre'].startswith('Fiche à valider')]
+        titres = [a['titre'] for a in actions if a['id'].startswith('fiche-')]
         # Le comptable est hors secteur : il ne doit pas apparaître.
         assert titres and not any('Durand' in t for t in titres), titres
 
 
 def _signer(db, user_id, mois, annee, colonne, quand='2026-08-10 09:00:00'):
-    """Pose une seule signature sur la fiche, sans la verrouiller."""
+    """Fixture cohérente : inscrit les étapes précédentes et verrouille à la fin."""
     role = colonne.replace('validation_', '')
     db.execute(
         "INSERT OR IGNORE INTO validations (user_id, mois, annee) VALUES (?, ?, ?)",
@@ -306,9 +309,13 @@ def _signer(db, user_id, mois, annee, colonne, quand='2026-08-10 09:00:00'):
     from fiches_contenu import calculer_contenu
     from fiches_versions import enregistrer_version
     version_id = enregistrer_version(db, calculer_contenu(db, user_id, mois, annee), 'signature')
-    db.execute(f'UPDATE validations SET version_courante_id=?, version_{role}_id=? '
-               'WHERE user_id=? AND mois=? AND annee=?',
-               (version_id, version_id, user_id, mois, annee))
+    roles = ('salarie', 'responsable', 'directeur')
+    for etape in roles[:roles.index(role) + 1]:
+        db.execute(f"UPDATE validations SET version_courante_id=?, version_{etape}_id=?, "
+                   f"validation_{etape}='Signataire', date_{etape}=? WHERE user_id=? AND mois=? AND annee=?",
+                   (version_id, version_id, quand, user_id, mois, annee))
+    if role == 'directeur':
+        db.execute('UPDATE validations SET bloque=1 WHERE user_id=? AND mois=? AND annee=?', (user_id, mois, annee))
     db.commit()
 
 
@@ -331,9 +338,8 @@ def _journaliser_modification(db, user_id, mois, annee, quand):
 class TestUneSignatureSortLaFicheDuFil:
     """Le fil ne redemande pas ce que son lecteur a déjà signé.
 
-    Le verrouillage attend les deux signatures ; s'y fier laissait chacun
-    devant une décision déjà prise — la direction retrouvait indéfiniment les
-    fiches qu'elle avait validées, faute que le responsable ait fait sa part.
+    Chaque rôle ne voit une action de validation que lorsque son étape arrive.
+    La direction suit aussi les étapes qui précèdent sa décision finale.
     """
 
     def test_la_direction_ne_revoit_pas_ce_qu_elle_a_signe(self, app, db, sample_users):
@@ -345,18 +351,18 @@ class TestUneSignatureSortLaFicheDuFil:
             _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
             avant = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
             _signer(db, salarie, mois, annee, 'validation_directeur')
             apres = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert len(avant) == 1, avant
         assert apres == [], apres
 
-    def test_mais_le_responsable_la_voit_toujours(self, app, db, sample_users):
-        """La signature de la direction ne dispense pas le responsable."""
+    def test_la_fiche_verrouillee_disparait_aussi_pour_le_responsable(self, app, db, sample_users):
+        """La signature finale clôture les actions de chaque rôle."""
         from utils import aujourd_hui
         mois, annee = _mois_precedent(aujourd_hui())
         salarie = sample_users['salarie_id']
@@ -367,9 +373,9 @@ class TestUneSignatureSortLaFicheDuFil:
             titres = [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
-        assert len(titres) == 1, titres
+        assert titres == []
 
     def test_le_responsable_ne_revoit_pas_ce_qu_il_a_signe(self, app, db, sample_users):
         from utils import aujourd_hui
@@ -382,10 +388,10 @@ class TestUneSignatureSortLaFicheDuFil:
             responsable = [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
             direction = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert responsable == [], responsable
         assert len(direction) == 1, direction
@@ -400,29 +406,22 @@ class TestUneSignatureSortLaFicheDuFil:
         def fiches():
             return [a['titre'] for a in construire_actions(
                 db, 'comptable', sample_users['comptable_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         with app.app_context():
             _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
-            _signer(db, salarie, mois, annee, 'validation_directeur')
+            _signer(db, salarie, mois, annee, 'validation_salarie')
             assert len(fiches()) == 1
 
             _signer(db, salarie, mois, annee, 'validation_responsable')
             assert len(fiches()) == 1
 
-            db.execute("UPDATE validations SET bloque = 1 "
-                       "WHERE user_id = ? AND mois = ? AND annee = ?",
-                       (salarie, mois, annee))
-            db.commit()
+            _signer(db, salarie, mois, annee, 'validation_directeur')
             assert fiches() == []
 
-    def test_la_relance_ne_compte_que_ce_que_les_responsables_doivent(
+    def test_la_relance_suit_toutes_les_etapes_ouvertes(
             self, app, db, sample_users):
-        """« Relancer les responsables » ne parle que des fiches qu'ils doivent.
-
-        Une fiche signée par le responsable et en attente de la direction
-        n'attend rien d'un rappel qui leur serait adressé.
-        """
+        """La relance reste proposée jusqu'au verrouillage, pour l'acteur attendu."""
         from utils import aujourd_hui
         mois, annee = _mois_precedent(aujourd_hui())
         salarie = sample_users['salarie_id']
@@ -437,7 +436,7 @@ class TestUneSignatureSortLaFicheDuFil:
             assert relance()['detail'].startswith('1 fiche')
 
             _signer(db, salarie, mois, annee, 'validation_responsable')
-            assert relance() is None
+            assert relance()['detail'].startswith('1 fiche')
 
 
 class TestUneFicheModifieeRevientDansLeFil:
@@ -458,7 +457,7 @@ class TestUneFicheModifieeRevientDansLeFil:
             return [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         with app.app_context():
             _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
@@ -468,6 +467,8 @@ class TestUneFicheModifieeRevientDansLeFil:
 
             _journaliser_modification(db, salarie, mois, annee,
                                       '2026-08-10 14:00:00')
+            assert fiches() == []  # Le salarié doit d’abord relire la nouvelle version.
+            _signer(db, salarie, mois, annee, 'validation_salarie')
             assert len(fiches()) == 1
 
     def test_resigner_la_referme(self, app, db, sample_users):
@@ -488,7 +489,7 @@ class TestUneFicheModifieeRevientDansLeFil:
             titres = [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert titres == [], titres
 
@@ -508,7 +509,7 @@ class TestUneFicheModifieeRevientDansLeFil:
             titres = [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert titres == [], titres
 
@@ -530,7 +531,7 @@ class TestUneFicheModifieeRevientDansLeFil:
             titres = [a['titre'] for a in construire_actions(
                 db, 'responsable', sample_users['responsable_id'],
                 secteur_id=sample_users['secteur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert titres == [], titres
 
@@ -543,12 +544,17 @@ class TestUneFicheModifieeRevientDansLeFil:
             _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
             _signer(db, salarie, mois, annee, 'validation_directeur',
                     quand='2026-08-10 09:00:00')
+            # Réouverture explicite avant correction d'une fiche verrouillée.
+            from tests.conftest import _login
+            direction = app.test_client()
+            _login(direction, 'admin', 'Admin1234')
+            direction.post('/deverrouiller_mois', data={'user_id': salarie, 'mois': mois, 'annee': annee, 'motif': 'Correction'})
             _journaliser_modification(db, salarie, mois, annee,
                                       '2026-08-10 14:00:00')
 
             titres = [a['titre'] for a in construire_actions(
                 db, 'directeur', sample_users['directeur_id'])
-                if a['titre'].startswith('Fiche à valider')]
+                if a['id'].startswith('fiche-')]
 
         assert len(titres) == 1, titres
 
@@ -566,7 +572,7 @@ class TestUneFicheModifieeRevientDansLeFil:
             _valider_tout_le_monde(db, mois, annee, sauf=(salarie,))
             _signer(db, salarie, mois, annee, 'validation_responsable',
                     quand='2026-08-10 09:00:00')
-            assert relance() is None
+            assert relance()['detail'].startswith('1 fiche')
 
             _journaliser_modification(db, salarie, mois, annee,
                                       '2026-08-10 14:00:00')

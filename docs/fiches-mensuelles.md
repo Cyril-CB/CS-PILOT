@@ -13,23 +13,40 @@ journées attendues restent à renseigner. Les repos planifiés, jours fériés,
 limites inclusives et interruptions de contrat gardent leurs règles existantes.
 Une ancienne saisie manuelle reste visible même hors contrat.
 
-Le responsable et la direction peuvent signer dans les deux ordres. Le
-verrouillage exige leurs approbations du même contenu. Un directeur également
-responsable du salarié signe les deux rôles en une action. Pour la fiche
-personnelle d'un responsable, l'approbation de la direction suffit toujours.
-La signature du salarié reste facultative pour le verrouillage, conformément
-à la règle existante ; une ancienne signature facultative n'est pas affichée
-comme une approbation actuelle.
+Le circuit est obligatoirement **Salarié → Responsable → Direction**.
+Chaque étape approuve la même version métier. Le salarié utilise **Valider ma
+fiche** après lecture. Sans son accord courant, aucune approbation responsable
+ou direction n'est possible, y compris par POST manuel. La direction verrouille
+uniquement après les deux accords précédents.
 
-Si quelqu'un modifie la fiche ouverte, l'interface indique les anciennes
-signatures et demande une nouvelle approbation. Les actions des responsables
-et de la direction tiennent compte de cet état. Une page restée ouverte avant
-une modification doit être relue avant de pouvoir signer.
+Un responsable qui valide sa propre fiche enregistre deux approbations :
+**salarié** et **responsable**, sur la même version, avec le même acteur et le
+même horodatage. Deux événements identifient ces qualités. Cette règle remplace
+l'ancienne dispense sur sa fiche personnelle, y compris sans secteur configuré.
+Un directeur également responsable applicable peut de même enregistrer les
+approbations **responsable** et **direction** en une action, après l'accord du
+salarié. Il n'y a jamais de signature générique valant implicitement deux rôles.
+
+Pour les autres personnes, le périmètre reste **même secteur OU rattachement
+direct** (`est_dans_equipe_responsable`). La fonction textuelle d'un utilisateur
+n'ajoute aucun droit : les profils et rattachements existants restent l'autorité.
+La fiche personnelle d'un directeur conserve le traitement existant (forfait
+jour dans l'interface) ; aucun pouvoir supplémentaire d'auto-clôture n'est créé.
+
+Si personne n'est habilité à l'étape responsable, la fiche attend cette étape.
+La relance signale l'absence de responsable applicable ; la direction doit faire
+vérifier le rattachement habituel. Aucun contournement ni nouveau remplaçant
+n'est introduit. Ce cas est couvert avec des données fictives ; aucune donnée
+RH de production n'a été consultée pour déduire une nouvelle règle.
+
+Si le contenu change après un ou deux accords, les approbations antérieures
+restent tracées mais deviennent obsolètes. Le circuit repart du salarié.
+Une page restée ouverte sur un contenu périmé doit être relue avant de signer.
 
 Pour corriger une fiche verrouillée, la direction doit d'abord utiliser
 **Déverrouiller** et saisir un motif. Cette action conserve l'historique et
-retire les approbations actives. Après correction, les signatures nécessaires
-doivent être recueillies à nouveau. Être directeur ne dispense jamais de cette
+retire les approbations actives. Après réouverture, les trois approbations du nouveau circuit
+doivent être recueillies à nouveau, même si le contenu reste identique. Être directeur ne dispense jamais de cette
 réouverture explicite.
 
 Une correction portant sur plusieurs mois est annulée entièrement si elle
@@ -147,41 +164,106 @@ ne commite pas elle-même. Un échec permet le rollback du schéma et de la
 reprise. Il n'existe pas de downgrade destructif automatique : un retour
 nécessite la sauvegarde précédente et le code correspondant.
 
+## Migration 0067 : circuit applicable et date de bascule
+
+`validations.circuit_version` rend le circuit explicite :
+
+| État lors de la première application du schéma 0067 | Circuit et effet |
+| --- | --- |
+| Fiche déjà verrouillée | `1` : verrou, noms, dates et références de versions conservés intégralement |
+| Fiche ouverte, même partiellement approuvée | `2` : retour à l'étape salarié ; anciennes références d'approbation retirées, noms/dates et événements conservés |
+| Nouvelle fiche | `2` par défaut |
+| Fiche historique réouverte explicitement | Nouveau circuit `2`, avec l'ancien circuit tracé dans l'événement de réouverture |
+
+La bascule correspond au premier démarrage de ce code via `init_db()` ou à
+l'application de la migration 0067 par le gestionnaire, selon lequel intervient
+en premier. Il ne s'agit pas d'une date de mois choisie a posteriori. Un événement
+`bascule_circuit` conserve la date effective, les anciennes approbations et le
+circuit attribué. L'existence de la colonne empêche une seconde bascule : un
+nouveau verrou en circuit 2 ne devient pas historique au redémarrage.
+
+Cette migration ne recalcule pas les instantanés créés par 0065, ne modifie pas
+leurs versions et ne fabrique aucune signature salarié. Les fiches ouvertes
+repartent volontairement du salarié : on ne peut pas supposer que leurs anciens
+accords avaient respecté le nouvel ordre. L'opération est transactionnelle et
+idempotente, commune à la base neuve et à la base existante. Aucun changement de
+session ni reconnexion spécifique n'est nécessaire ; les pages ouvertes avant
+la bascule doivent être relues. Pas de downgrade destructif automatique.
+
+Pour la mise en service future : arrêter les écritures, sauvegarder selon la
+procédure habituelle, appliquer sur une copie représentative, puis installer
+le code et appliquer les migrations par le circuit habituel. Vérifier le
+maintien d'un verrou ancien et le retour au salarié d'une fiche ouverte. Cette
+PR ne déclenche ni déploiement ni migration sur la production.
+
+## Confirmation des anciennes fiches verrouillées
+
+Ces fiches restent valablement clôturées selon le **circuit historique :
+Responsable → Direction**. L'absence d'accord salarié ne constitue pas une
+anomalie. Le salarié peut ouvrir **Confirmer mes anciennes fiches verrouillées**,
+lire le contenu figé puis confirmer aujourd'hui ce contenu. La direction dispose
+d'une liste distincte et d'une action **Inviter le salarié à confirmer**.
+
+La confirmation est un événement `confirmation_historique`, rôle `salarie`, avec
+son véritable auteur, sa véritable date et l'identifiant exact de l'instantané
+verrouillé. Elle ne remplit pas rétroactivement `validation_salarie`, ne participe
+pas au verrouillage d'origine et ne modifie ni contenu, ni version, ni signatures,
+ni date de clôture. La référence et l'empreinte sont vérifiées avec la propriété
+de la fiche dans une transaction. Une répétition ne crée aucun doublon.
+
+Le PDF lit toujours l'instantané verrouillé. Il peut ajouter une mention datée
+**a posteriori**, séparée des signatures initiales. Pour les fiches antérieures
+au versionnement 0065, la limite de preuve d'origine reste affichée : le salarié
+confirme l'état figé lors de cette reprise, sans reconstitution impossible.
+
+Une confirmation déjà acquise sur l'instantané courant ne produit pas de rappel.
+Après confirmation tardive, les invitations salarié et direction disparaissent.
+Les anciens verrous restent exclus des relances et des blocages du mois courant.
+
+## Actions, relances et historique
+
+Les actions normales gardent le périmètre M−1 ; les autres mois restent
+consultables depuis la navigation et la vue d'ensemble. Les confirmations
+historiques souhaitées regroupent tous les mois verrouillés historiques.
+Le responsable ne reçoit une action que lorsque le salarié a approuvé la version
+courante. La direction voit successivement l'attente salarié, l'attente responsable
+et sa propre action finale. La comptabilité conserve sa visibilité de suivi.
+
+La relance groupée vise l'acteur de l'étape courante : salarié, responsable ou
+direction. La relance individuelle responsable reste limitée à son périmètre et
+aux fiches effectivement à son étape. Les réglages et le consentement email
+existants restent respectés. Les invitations historiques sont distinctes et
+n'envoient jamais de rappel responsable/direction pour un verrou déjà acquis.
+
+L'historique distingue les trois rôles d'approbation, l'obsolescence des accords,
+les changements de contenu, le verrouillage, la réouverture motivée, la bascule
+de circuit et la confirmation salarié tardive. Les anciennes confirmations
+ne satisfont jamais une étape du circuit après réouverture.
+
 ## Vérifications avant fusion
 
-Les tests d'intégration de `tests/test_fiches_versions.py` exercent les vrais
-calculs et la base SQLite : signatures périmées, ordres de signature, rôles,
-contrats, refus de POST incomplet, mutations indirectes, absence multi-mois,
-congé approuvé, réouverture motivée, rollback complet, concurrence,
-migration relançable/interrompue et contenu PDF.
-
-Les fixtures existantes de signatures ont été adaptées pour envoyer la
-référence réellement affichée. Celles du dashboard modifient désormais le
-contenu métier au lieu de déduire l'obsolescence d'une date de journal.
-Un ancien test d'autorisation signait une fiche vide : il renseigne maintenant
-les heures afin de continuer à tester l'autorisation avec une fiche complète.
-
-Commandes à exécuter avec les dépendances du projet et des données fictives :
+`tests/test_circuit_fiches.py` couvre T1–T6, les refus sans écriture, la migration,
+les doubles rôles, les références invalides et les accès à autrui, les relances,
+les actions, le PDF figé, les sessions révoquées, CSRF et les opérations concurrentes.
+Les tests de versions continuent de vérifier les sources indirectes de modification,
+les périodes de contrat, les refus de modification verrouillée et le rollback.
+Les anciens scénarios d'ordre libre sont remplacés par le nouvel ordre métier.
 
 ```sh
-pytest tests/test_fiches_versions.py tests/test_validation.py tests/test_equipe_responsable.py
+pytest tests/test_circuit_fiches.py tests/test_fiches_versions.py tests/test_validation.py
+pytest tests/test_equipe_responsable.py tests/test_perimetres_sessions.py tests/test_dashboard_actions.py
 pytest
 python -m compileall -q app.py blueprints migrations tests fiches_*.py
 git diff --check
 ```
 
-Compléter sur un environnement navigateur accessible, en ordinateur et mobile :
+À vérifier en navigateur ordinateur et mobile sur un environnement accessible :
+le parcours salarié → responsable → direction ; la double approbation personnelle ;
+la réouverture motivée ; la consultation et confirmation d'un ancien instantané,
+avec disparition des invitations et séparation des dates dans le PDF.
 
-1. Responsable signe → l'action disparaît → salarié modifie → l'action revient
-   → direction signe sans clôturer sur l'ancien accord → responsable signe à
-   nouveau → verrouillage. Vérifier en base que les deux références requises
-   égalent `version_courante_id` et que le contenu PDF correspond à l'instantané.
-2. Fiche verrouillée → modifier rétroactivement le planning ou créer une
-   absence → refus lisible et base inchangée → direction réouvre avec motif
-   → modification acceptée → nouvelles signatures → nouveau verrouillage.
-   Vérifier les événements de réouverture, signatures et verrouillage.
-
-Lors du contrôle du 5 septembre 2026, le navigateur distant a refusé l'accès
-au serveur local (`ERR_BLOCKED_BY_CLIENT`). Ces deux parcours visuels restent
-à effectuer ; les parcours HTTP automatisés et leurs assertions en base sont
-couverts. Aucun déploiement n'a été effectué pour contourner cette limite.
+Contrôle du 9 septembre 2026 : le navigateur distant refuse le serveur local
+(`ERR_BLOCKED_BY_CLIENT`). Le rendu visuel ordinateur/mobile reste à vérifier
+sur l'environnement de recette ; les parcours HTTP, le HTML utile et les PDF
+sont contrôlés par les tests. Aucun déploiement n'a été effectué pour cette
+vérification.

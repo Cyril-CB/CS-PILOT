@@ -375,6 +375,29 @@ app.register_blueprint(contrats_bp)
 app.register_blueprint(recherche_bp)
 
 
+@app.context_processor
+def inject_fiches_personnelles():
+    """Raccourcis personnels dans les espaces classiques, sans nouveau menu."""
+    if request.endpoint not in ('dashboard_bp.dashboard', 'accueil_bp.mon_espace',
+                                'dashboard_responsable_bp.dashboard_responsable',
+                                'dashboard_comptable_bp.dashboard_comptable') or 'user_id' not in session:
+        return {}
+    from fiches_circuit import etape_courante, fiches_historiques_a_confirmer
+    from utils import maintenant
+    today = maintenant()
+    mois = today.month - 1 or 12
+    annee = today.year if today.month > 1 else today.year - 1
+    conn = get_db()
+    try:
+        v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
+                         (session['user_id'], mois, annee)).fetchone()
+        return {'fiche_personnelle_attendue': etape_courante(v) == 'salarie',
+                'fiche_personnelle_mois': mois, 'fiche_personnelle_annee': annee,
+                'nb_fiches_historiques_personnelles': len(fiches_historiques_a_confirmer(conn, session['user_id']))}
+    finally:
+        conn.close()
+
+
 # ==================== Context Processors ====================
 _cached_app_version = None
 

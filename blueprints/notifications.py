@@ -9,7 +9,7 @@ from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_
 from utils import login_required, get_setting, NOMS_MOIS
 from email_service import (
     get_email_config, save_email_config, set_email_enabled,
-    is_email_configured, envoyer_email, notifier_relance_validation,
+    is_email_configured, envoyer_email,
     get_base_url, save_base_url,
 )
 
@@ -115,151 +115,97 @@ def test_email():
         return jsonify({'error': msg}), 400
 
 
+def _relances_fiches(responsable_id=None):
+    """Relance uniquement l'acteur de l'étape courante, jamais les anciens verrous."""
+    if session.get('profil') != 'directeur' and not user_has_delegation(
+            session.get('user_id'), MISSION_SUIVI_VALIDATIONS_RELANCES):
+        return jsonify({'error': 'Accès réservé à la direction ou aux utilisateurs délégués'}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        mois, annee = int(data.get('mois')), int(data.get('annee'))
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Mois et année requis'}), 400
+    from utils import maintenant
+    if not 1 <= mois <= 12 or not 1 <= annee <= 9998 or (annee, mois) >= (maintenant().year, maintenant().month):
+        return jsonify({'error': 'Choisissez un mois terminé'}), 400
+    if responsable_id is not None:
+        try:
+            responsable_id = int(responsable_id)
+        except (ValueError, TypeError):
+            return jsonify({'error': 'Responsable invalide'}), 400
+    if not is_email_configured():
+        return jsonify({'error': 'Service email non configuré'}), 400
+    from fiches_circuit import destinataires_etape
+    from email_service import peut_envoyer_email, notifier_relance_fiche
+    conn = get_db()
+    envoyes, echecs, sans_destinataire = 0, 0, 0
+    try:
+        salaries = conn.execute("SELECT id, prenom, nom FROM users WHERE actif=1 AND profil NOT IN ('directeur','prestataire')").fetchall()
+        for sal in salaries:
+            v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
+                             (sal['id'], mois, annee)).fetchone()
+            etape, acteurs = destinataires_etape(conn, sal['id'], v)
+            if etape == 'termine':
+                continue
+            if not acteurs:
+                sans_destinataire += 1
+            for acteur in acteurs:
+                if responsable_id is not None and (etape != 'responsable' or acteur['id'] != responsable_id):
+                    continue
+                peut, email = peut_envoyer_email(acteur['id'])
+                if not peut:
+                    continue
+                ok, _ = notifier_relance_fiche(email, acteur['prenom'], mois, annee,
+                                               f"{sal['prenom']} {sal['nom']}", sal['id'], etape)
+                envoyes += int(ok)
+                echecs += int(not ok)
+    finally:
+        conn.close()
+    return jsonify({'success': not echecs, 'nb_envoyes': envoyes, 'nb_echecs': echecs,
+                    'sans_responsable': sans_destinataire,
+                    'message': f'{envoyes} relance(s) envoyée(s) aux acteurs attendus. '
+                               f'{sans_destinataire} fiche(s) sans responsable applicable.'}), (500 if echecs else 200)
+
+
 @notifications_bp.route('/api/email/relance_validation', methods=['POST'])
 @login_required
 def relance_validation():
-    """Envoie une relance aux responsables pour les fiches d'heures non validees."""
-    if session.get('profil') != 'directeur' and not user_has_delegation(
-        session.get('user_id'),
-        MISSION_SUIVI_VALIDATIONS_RELANCES,
-    ):
-        return jsonify({'error': 'Acces reserve a la direction ou aux utilisateurs delegues'}), 403
-
-    if not is_email_configured():
-        return jsonify({'error': 'Service email non configure'}), 400
-
-    data = request.get_json()
-    mois = data.get('mois')
-    annee = data.get('annee')
-
-    if not mois or not annee:
-        return jsonify({'error': 'Mois et annee requis'}), 400
-
-    conn = get_db()
-
-    # Trouver les responsables qui ont des fiches non validees dans leur secteur
-    responsables = conn.execute('''
-        SELECT DISTINCT r.id, r.nom, r.prenom, r.email, r.secteur_id
-        FROM users r
-        WHERE r.profil = 'responsable' AND r.actif = 1 AND r.email IS NOT NULL AND r.email != ''
-    ''').fetchall()
-
-    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
-                              (session['user_id'],)).fetchone()
-    expediteur_nom = f"{expediteur['prenom']} {expediteur['nom']}" if expediteur else 'La direction'
-
-    nb_envoyes = 0
-    nb_echecs = 0
-    erreurs = []
-
-    for resp in responsables:
-        # Compter les fiches non validees par ce responsable dans son equipe
-        # (secteur + rattaches directs, meme d'un autre secteur analytique)
-        fiches_en_attente = conn.execute('''
-            SELECT COUNT(*) as nb FROM users u
-            WHERE u.actif = 1 AND u.profil = 'salarie'
-            AND (u.secteur_id = ? OR u.responsable_id = ?)
-            AND u.id NOT IN (
-                SELECT v.user_id FROM validations v
-                WHERE v.mois = ? AND v.annee = ? AND (v.bloque = 1 OR (v.version_responsable_id IS NOT NULL
-                      AND v.version_responsable_id = v.version_courante_id))
-            )
-        ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
-
-        nb_fiches = fiches_en_attente['nb'] if fiches_en_attente else 0
-
-        if nb_fiches > 0:
-            ok, msg = notifier_relance_validation(
-                resp['email'], resp['prenom'],
-                NOMS_MOIS[int(mois)], annee, nb_fiches, expediteur_nom
-            )
-            if ok:
-                nb_envoyes += 1
-            else:
-                nb_echecs += 1
-                erreurs.append(f"{resp['prenom']} {resp['nom']}: {msg}")
-
-    conn.close()
-
-    if nb_envoyes == 0 and nb_echecs == 0:
-        return jsonify({'success': True, 'message': 'Aucun responsable a relancer (toutes les fiches sont validees)'})
-
-    success = nb_envoyes > 0
-    result = {'success': success, 'nb_envoyes': nb_envoyes, 'nb_echecs': nb_echecs}
-    if nb_envoyes > 0:
-        result['message'] = f'Relance envoyee a {nb_envoyes} responsable(s)'
-    elif nb_echecs > 0:
-        result['message'] = "Echec de l'envoi des relances"
-    if erreurs:
-        result['erreurs'] = erreurs
-    return jsonify(result), 200 if success else 500
+    return _relances_fiches()
 
 
 @notifications_bp.route('/api/email/relance_responsable', methods=['POST'])
 @login_required
-def relance_responsable_unique():
-    """Envoie une relance a un responsable specifique pour les fiches non validees."""
-    if session.get('profil') != 'directeur' and not user_has_delegation(
-        session.get('user_id'),
-        MISSION_SUIVI_VALIDATIONS_RELANCES,
-    ):
-        return jsonify({'error': 'Acces reserve au directeur'}), 403
+def relance_responsable():
+    data = request.get_json(silent=True) or {}
+    # Une valeur absente ne doit pas transformer une relance individuelle en lot.
+    return _relances_fiches(data.get('responsable_id', ''))
 
-    if not is_email_configured():
-        return jsonify({'error': 'Service email non configure'}), 400
 
-    data = request.get_json()
-    responsable_id = data.get('responsable_id')
-    mois = data.get('mois')
-    annee = data.get('annee')
-
-    if not responsable_id or not mois or not annee:
-        return jsonify({'error': 'Parametres manquants'}), 400
-
+@notifications_bp.route('/relancer_fiche_historique', methods=['POST'])
+@login_required
+def relancer_fiche_historique():
+    if session.get('profil') != 'directeur':
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+    from fiches_circuit import historique_a_confirmer
+    from email_service import peut_envoyer_email, notifier_relance_fiche
+    uid = request.form.get('user_id', type=int)
+    mois, annee = request.form.get('mois', type=int), request.form.get('annee', type=int)
     conn = get_db()
-
-    resp = conn.execute('''
-        SELECT id, nom, prenom, email, secteur_id FROM users
-        WHERE id = ? AND profil = 'responsable' AND actif = 1
-    ''', (responsable_id,)).fetchone()
-
-    if not resp:
+    try:
+        v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?', (uid, mois, annee)).fetchone()
+        sal = conn.execute('SELECT * FROM users WHERE id=? AND actif=1', (uid,)).fetchone()
+        if not sal or not historique_a_confirmer(conn, v):
+            flash('Aucune confirmation historique à relancer pour cette fiche.', 'info')
+        else:
+            peut, email = peut_envoyer_email(uid)
+            if not peut or not is_email_configured():
+                flash('Invitation non envoyée : vérifiez les notifications du salarié et la configuration email.', 'warning')
+            else:
+                ok, _ = notifier_relance_fiche(email, sal['prenom'], mois, annee,
+                                               f"{sal['prenom']} {sal['nom']}", uid, 'salarie', historique=True)
+                flash('Invitation à confirmer envoyée.' if ok else "L'invitation n'a pas pu être envoyée.",
+                      'success' if ok else 'warning')
+    finally:
         conn.close()
-        return jsonify({'error': 'Responsable introuvable'}), 404
-
-    if not resp['email']:
-        conn.close()
-        return jsonify({'error': f"{resp['prenom']} {resp['nom']} n'a pas d'adresse email configuree"}), 400
-
-    # Compter les fiches en attente (equipe : secteur + rattaches directs)
-    fiches_en_attente = conn.execute('''
-        SELECT COUNT(*) as nb FROM users u
-        WHERE u.actif = 1 AND u.profil = 'salarie'
-        AND (u.secteur_id = ? OR u.responsable_id = ?)
-        AND u.id NOT IN (
-            SELECT v.user_id FROM validations v
-            WHERE v.mois = ? AND v.annee = ? AND (v.bloque = 1 OR (v.version_responsable_id IS NOT NULL
-                      AND v.version_responsable_id = v.version_courante_id))
-        )
-    ''', (resp['secteur_id'], resp['id'], mois, annee)).fetchone()
-
-    nb_fiches = fiches_en_attente['nb'] if fiches_en_attente else 0
-
-    expediteur = conn.execute('SELECT nom, prenom FROM users WHERE id = ?',
-                              (session['user_id'],)).fetchone()
-    expediteur_nom = f"{expediteur['prenom']} {expediteur['nom']}" if expediteur else 'La direction'
-
-    conn.close()
-
-    if nb_fiches == 0:
-        return jsonify({'success': True, 'message': f"Toutes les fiches sont deja validees pour le secteur de {resp['prenom']} {resp['nom']}"})
-
-    ok, msg = notifier_relance_validation(
-        resp['email'], resp['prenom'],
-        NOMS_MOIS[int(mois)], annee, nb_fiches, expediteur_nom
-    )
-
-    if ok:
-        return jsonify({'success': True, 'message': f"Relance envoyee a {resp['prenom']} {resp['nom']}"})
-    else:
-        return jsonify({'error': msg}), 400
+    return redirect(url_for('validation_bp.fiches_historiques'))
