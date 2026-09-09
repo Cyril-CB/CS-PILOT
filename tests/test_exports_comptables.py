@@ -252,6 +252,45 @@ def test_modification_validee_redevient_brouillon_revisionnee(piece, db, comptab
     assert db.execute('SELECT revision FROM export_lignes WHERE ecriture_id=?', (ids[0],)).fetchone()[0] == 2
 
 
+def test_historique_validation_conserve_etat_valide_et_revision(piece, db, comptable_client):
+    import json
+    fid, ids = piece
+    db.execute("UPDATE ecritures_comptables SET statut='brouillon' WHERE facture_id=?", (fid,))
+    db.commit()
+    response = comptable_client.post('/ecritures/valider', data={
+        'ecriture_ids': ids, **references(comptable_client)}, follow_redirects=True)
+    assert response.status_code == 200
+    assert '2 écriture(s) validée(s).' in response.get_data(as_text=True)
+    evenements = db.execute(
+        "SELECT * FROM comptabilite_evenements WHERE action='validation' ORDER BY id").fetchall()
+    assert len(evenements) == 2
+    for evenement, eid in zip(evenements, ids):
+        row = db.execute('SELECT * FROM ecritures_comptables WHERE id=?', (eid,)).fetchone()
+        details = json.loads(evenement['details'])
+        assert evenement['ecriture_id'] == eid and evenement['facture_id'] == fid
+        assert details['source']['id'] == fid
+        assert details['ecriture']['statut'] == row['statut'] == 'validee'
+        assert details['ecriture']['revision'] == row['revision'] == 1
+        assert details['ecriture']['id'] == eid
+        assert details['ecriture']['debit'] == row['debit']
+        assert details['ecriture']['credit'] == row['credit']
+
+    # Une nouvelle révision n'altère pas l'état attesté par la validation précédente.
+    premier = dict(evenements[0])
+    modifier(comptable_client, ids[0], libelle='NOUVELLE REVISION')
+    assert db.execute('SELECT statut FROM ecritures_comptables WHERE id=?', (ids[0],)).fetchone()[0] == 'brouillon'
+    comptable_client.post('/ecritures/valider', data={
+        'ecriture_ids': [ids[0]], **references(comptable_client)})
+    assert dict(db.execute('SELECT * FROM comptabilite_evenements WHERE id=?', (premier['id'],)).fetchone()) == premier
+    validations = db.execute(
+        "SELECT details FROM comptabilite_evenements WHERE action='validation' AND ecriture_id=? ORDER BY id",
+        (ids[0],)).fetchall()
+    assert len(validations) == 2
+    nouvelle = json.loads(validations[1]['details'])['ecriture']
+    assert nouvelle['statut'] == 'validee'
+    assert nouvelle['revision'] == 2 and nouvelle['libelle'] == 'NOUVELLE REVISION'
+
+
 @pytest.mark.parametrize('champ,valeur', [('libelle', 'X\tINJECTION'), ('compte', 'X\nLIGNE'), ('code_analytique', 'A\rB'), ('debit', 120.001), ('date_ecriture', '2026-02-30'), ('echeance', '31022026')])
 def test_colonnes_export_invalides(piece, db, comptable_client, champ, valeur):
     _, ids = piece

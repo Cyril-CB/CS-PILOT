@@ -414,7 +414,8 @@ def valider_ecritures():
             lignes.append((row, source))
         for row, source in lignes:
             conn.execute("UPDATE ecritures_comptables SET statut='validee', updated_at=CURRENT_TIMESTAMP WHERE id=?", (row['id'],))
-            evenement(conn, 'validation', contenu_ecriture(row, source),
+            validee = conn.execute('SELECT * FROM ecritures_comptables WHERE id=?', (row['id'],)).fetchone()
+            evenement(conn, 'validation', contenu_ecriture(validee, source),
                       ecriture_id=row['id'], facture_id=row['facture_id'])
         conn.commit()
         flash(f'{len(lignes)} écriture(s) validée(s).', 'success')
