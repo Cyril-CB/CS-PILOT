@@ -625,7 +625,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
           '<td>' + escapeHtml(r.compte_num) + '</td>' +
           '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) +
           (r.mode ? '<small style="display:block;">' + escapeHtml(r.mode === 'base' ? 'Brut de base' : r.mode === 'mensuel' ? 'Projection mensuelle' : r.mode === 'proportionnel' ? 'Proportionnel au brut' : 'Montant manuel') + '</small>' : '') +
-          (r.taux != null ? '<small style="display:block;">Réf. ' + salaryMeta.parametres.annee_reference + ' : ' + fmt(r.reference_montant) + ' / ' + fmt(r.reference_brut) + ' = ' + fmt(r.taux * 100) + ' %</small>' : '') +
+          (r.taux != null ? '<small style="display:block;">Réf. ' + escapeHtml(salaryMeta.parametres.annee_reference) + ' : ' + fmt(r.reference_montant) + ' / ' + fmt(r.reference_brut) + ' = ' + fmt(r.taux * 100) + ' %</small>' : '') +
           (r.calcul_erreur ? '<small style="display:block;color:var(--danger,#b00);">' + escapeHtml(r.calcul_erreur) + '</small>' : '') + '</span>' +
           (boutons ? '<span class="bp-btns">' + boutons + '</span>' : '') + '</div></td>' +
           comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], null) +
@@ -790,7 +790,7 @@ function renderBudgetParametres(data){
             noms.map((nom,m) => '<option value="' + m + '"' + (p.mois_arrete === m ? ' selected' : '') + '>' + nom + '</option>').join('') + '</select>';
     }
     html += '<label for="budgetAnneeReference">Année complète de référence des proportions</label><select class="form-select" id="budgetAnneeReference"' + dis + '><option value="">Aucune référence confirmée</option>' +
-        (data.annees_reference || []).map(a => '<option value="' + a + '"' + (p.annee_reference === a ? ' selected' : '') + '>' + a + '</option>').join('') + '</select>';
+        (data.annees_reference || []).map(a => '<option value="' + escapeHtml(a) + '"' + (p.annee_reference === a ? ' selected' : '') + '>' + escapeHtml(a) + '</option>').join('') + '</select>';
     html += '<label style="display:block;margin:8px 0;"><input id="budgetReferenceComplete" type="checkbox"' + dis + '> Je confirme que l’import de cette année couvre l’exercice complet, avec ses régularisations.</label>';
     html += '<p>' + (p.reference_valide ? 'Référence annuelle confirmée pour cet import.' : 'Aucune référence annuelle complète confirmée pour les données actuelles.') +
         ' Une réimportation ou une modification du périmètre impose une nouvelle vérification. Un compte annuel peut ne comporter qu’un seul mois de mouvement.</p>';
