@@ -503,7 +503,7 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
     const charges = rows.filter(r => r.nature === 'charges');
     const produits = rows.filter(r => r.nature === 'produits');
     const type = document.getElementById('typeBudget').value;
-    const annee = document.getElementById('anneeBudget').value;
+    const annee = parseInt(document.getElementById('anneeBudget').value, 10);
     const nTemp = 'Proposition ' + annee;
     const nDef = 'Budget ' + annee;
     // Contexte de « drill-down » : les colonnes compta (N-2/N-1/N) deviennent
@@ -572,7 +572,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
       '</colgroup><thead><tr>' +
       '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th>' +
       (actualise ? '<th class="bp-col-num" title="Valeur définitive du budget initial de l\'année">Initial</th>' : '') +
-      '<th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th>' +
+      '<th class="bp-col-num">' + escapeHtml(labelTemp) + '</th><th class="bp-col-num">' + escapeHtml(labelDef) + '</th>' +
       (actualise ? '<th class="bp-col-num" title="Définitif (sinon Temporaire) − Budget initial">Écart</th>' : '') +
       '<th>Commentaire</th>' +
       '</tr></thead><tbody>';
