@@ -1,0 +1,10 @@
+{% if fiche_personnelle_attendue or nb_fiches_historiques_personnelles %}
+<div class="help-box" style="margin-bottom:1rem;">
+    {% if fiche_personnelle_attendue %}
+    <p><a href="{{ url_for('validation_bp.vue_mensuelle', mois=fiche_personnelle_mois, annee=fiche_personnelle_annee) }}">Valider ma fiche — {{ '%02d'|format(fiche_personnelle_mois) }}/{{ fiche_personnelle_annee }}</a></p>
+    {% endif %}
+    {% if nb_fiches_historiques_personnelles %}
+    <p><a href="{{ url_for('validation_bp.fiches_historiques') }}">Confirmer mes anciennes fiches verrouillées ({{ nb_fiches_historiques_personnelles }})</a> — confirmation souhaitée, sans modification de leur clôture.</p>
+    {% endif %}
+</div>
+{% endif %}

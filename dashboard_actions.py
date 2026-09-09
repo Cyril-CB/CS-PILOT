@@ -26,6 +26,8 @@ import logging
 from datetime import date, timedelta
 
 from flask import url_for
+from fiches_circuit import (planifier_signature, etape_courante, LIBELLES_ETAPES,
+                            fiches_historiques_a_confirmer)
 
 from blueprints.delegations import (MISSION_SUIVI_COMMANDES_FOURNITURES,
                                     MISSION_SUIVI_VALIDATIONS_RELANCES,
@@ -169,7 +171,7 @@ def _deja_traite(role, mois, annee):
     """Une signature ne retire la carte que pour le contenu encore approuvé."""
     if not role:
         return 'v.bloque = 1', ()
-    if role not in ('responsable', 'directeur'):
+    if role not in ('salarie', 'responsable', 'directeur'):
         raise ValueError('Rôle de validation inconnu')
     return (
         f"v.bloque = 1 OR (v.version_{role}_id IS NOT NULL "
@@ -195,24 +197,22 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     Un responsable ne voit que son équipe, comme la vue d'ensemble le fait
     pour lui ; la direction et la comptabilité voient tout l'effectif.
 
-    **Une fiche sort du fil de qui l'a validée**, sans attendre l'autre
-    signature. Le verrouillage demande les deux — responsable puis direction
-    — mais s'y fier laissait chacun devant une décision déjà prise : la
-    direction retrouvait indéfiniment les fiches qu'elle avait signées, faute
-    que le responsable ait fait sa part. Un fil qui redemande ce qui est fait
-    cesse d'être cru.
-
-    La comptabilité, qui ne signe pas, suit le circuit entier : pour elle la
-    fiche reste jusqu'au verrouillage. Et une fiche modifiée après une
-    signature revient dans le fil de son signataire — voir `_deja_traite`.
+    Une action de validation attend le rôle actuellement habilité : salarié,
+    puis responsable, puis direction. La direction et la comptabilité suivent
+    aussi les fiches attendant un acteur précédent. Une modification renvoie
+    à l'étape salarié ; les confirmations historiques sont séparées.
     """
     if profil == 'responsable':
-        scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?)'
-        params = (secteur_id, user_id)
+        scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?) AND u.id != ?'
+        params = (secteur_id, user_id, user_id)
         role = 'responsable'
-    elif profil in ('directeur', 'comptable'):
-        scope, params = '', ()
-        role = 'directeur' if profil == 'directeur' else None
+    elif profil == 'directeur':
+        scope, params, role = '', (), 'directeur'
+    elif profil == 'comptable':
+        # Sa décision personnelle est déjà portée par _ma_fiche_a_valider.
+        scope, params, role = 'AND u.id != ?', (user_id,), None
+    elif profil == 'salarie':
+        scope, params, role = 'AND u.id=?', (user_id,), 'salarie'
     else:
         return []
 
@@ -232,6 +232,18 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
             ORDER BY u.nom, u.prenom''',
         params + (mois, annee) + params_traite
     ).fetchall()
+    etapes = {}
+    actionnables = {}
+    selection = []
+    for salarie in salaries:
+        v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
+                         (salarie['id'], mois, annee)).fetchone()
+        plan, _ = planifier_signature(conn, user_id, profil, salarie['id'], v)
+        etapes[salarie['id']] = etape_courante(v)
+        actionnables[salarie['id']] = bool(plan)
+        if plan or profil in ('directeur', 'comptable'):
+            selection.append(salarie)
+    salaries = selection
     if not salaries:
         return []
 
@@ -261,7 +273,7 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
             'categorie': 'validation',
             'type': 'lien',
             'icone': '✅',
-            'titre': (f"Fiche à valider — {salarie['prenom']} {salarie['nom']}, "
+            'titre': (f"{'Fiche à valider' if actionnables[salarie['id']] else LIBELLES_ETAPES[etapes[salarie['id']]]} — {salarie['prenom']} {salarie['nom']}, "
                       f"{nom_mois}"),
             'detail': detail,
             'lien': url_for('validation_bp.vue_mensuelle', user_id=salarie['id'],
@@ -270,7 +282,7 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
             'urgence': urgence,
             'circuit': flux_circuits.fiche_heures(
                 profil, today, est_cdd=_est_cdd(conn, salarie['id'], annee, mois),
-                solde=arrondi),
+                solde=arrondi, etape=etapes[salarie['id']]),
         })
 
     reste = len(classees) - len(actions)
@@ -861,6 +873,8 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     # rien à dire : une famille sans objet ne laisse aucune trace dans le fil.
     for constructeur, arguments in (
         (_fiches_a_valider, (profil, user_id, secteur_id, today)),
+        (_confirmations_historiques, (profil, user_id)),
+        (_ma_fiche_a_valider, (profil, user_id, today)),
         (_factures_a_valider, (profil, user_id, secteur_id, today)),
         (_preparation_paie, (profil, user_id, secteur_id, today)),
         (_fournitures_en_attente, (profil, user_id, today)),
@@ -928,7 +942,7 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
             'urgence': _urgence_echeance(ech, today),
         })
 
-    # 4. Relance des responsables sur les fiches du mois précédent.
+    # 4. Relance des acteurs attendus sur les fiches ouvertes du mois précédent.
     # Les fiches elles-mêmes sont désormais nommées une à une par
     # `_fiches_a_valider` : il ne reste ici que le geste collectif — l'envoi
     # groupé d'un rappel — qui n'a pas d'équivalent carte par carte.
@@ -936,11 +950,7 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     annee_prec = today.year if today.month > 1 else today.year - 1
     peut_relancer = (profil == 'directeur'
                      or user_has_delegation(user_id, MISSION_SUIVI_VALIDATIONS_RELANCES))
-    # On relance les responsables : ne comptent que les fiches qu'ils n'ont pas
-    # signées — ou qui ont bougé depuis leur signature. Une fiche déjà signée
-    # par eux et en attente de la direction n'attend rien d'un rappel qui leur
-    # serait adressé.
-    traite, params_traite = _deja_traite('responsable', mois_prec, annee_prec)
+    traite, params_traite = _deja_traite(None, mois_prec, annee_prec)
     fiches = conn.execute(f'''
         SELECT COUNT(*) AS nb FROM users u
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
@@ -956,7 +966,7 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
             'categorie': 'validation',
             'type': 'relance',
             'icone': '📧',
-            'titre': f"Relancer les responsables — {NOMS_MOIS[mois_prec].lower()}",
+            'titre': f"Relancer les acteurs attendus — {NOMS_MOIS[mois_prec].lower()}",
             'detail': f"{fiches['nb']} fiche(s) encore non validée(s)",
             'lien': url_for('validation_bp.vue_ensemble_validation'),
             'lien_texte': 'Vue ensemble',
@@ -1019,3 +1029,28 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
                 'conges-eleves', '🏖️', 'conges'))
 
     return actions
+
+
+def _confirmations_historiques(conn, profil, user_id):
+    fiches = fiches_historiques_a_confirmer(conn, None if profil in ('directeur', 'comptable') else user_id)
+    if not fiches:
+        return []
+    return [{'id': 'confirmations-historiques', 'categorie': 'historique', 'type': 'lien',
+             'icone': '📖', 'titre': 'Anciennes fiches : confirmation salarié souhaitée',
+             'detail': f"{len(fiches)} fiche(s) valablement verrouillée(s) selon le circuit historique. Rappel non bloquant.",
+             'lien': url_for('validation_bp.fiches_historiques'), 'lien_texte': 'Consulter les anciennes fiches',
+             'urgence': 'normal'}]
+
+
+def _ma_fiche_a_valider(conn, profil, user_id, today):
+    if profil not in ('responsable', 'comptable'):
+        return []
+    mois = today.month - 1 or 12
+    annee = today.year if today.month > 1 else today.year - 1
+    v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?', (user_id, mois, annee)).fetchone()
+    if etape_courante(v) != 'salarie':
+        return []
+    return [{'id': f'ma-fiche-{annee}-{mois}', 'categorie': 'validation', 'type': 'lien', 'icone': '✅',
+             'titre': 'Valider ma fiche', 'detail': f'{mois:02d}/{annee} — mon approbation salarié est attendue.',
+             'lien': url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee),
+             'lien_texte': 'Lire ma fiche', 'urgence': 'normal'}]

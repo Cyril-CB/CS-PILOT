@@ -6,6 +6,9 @@ from datetime import datetime, timedelta
 import json
 from database import get_db
 from sessions_securite import verifier_action
+from fiches_circuit import (planifier_signature, roles_applicables, etape_courante,
+                            LIBELLES_ETAPES, confirmation_historique, historique_a_confirmer,
+                            fiches_historiques_a_confirmer)
 from blueprints.delegations import MISSION_SUIVI_VALIDATIONS_RELANCES, user_has_delegation
 from utils import (login_required, get_user_info, est_dans_equipe_responsable,
                    maintenant)
@@ -47,36 +50,8 @@ def valider_mois():
         refus = verifier_action(conn)
         if refus is not None:
             return refus
-        # Vérifier les droits
-        # Un même utilisateur peut cumuler plusieurs rôles de validation.
-        # Cas notable : un directeur qui est aussi responsable du secteur du
-        # salarié doit poser à la fois la validation responsable ET directeur,
-        # sinon la fiche ne se verrouille jamais (cf. verrouillage plus bas).
-        types_validation = []
-        profil = session.get('profil')
-
-        if user_id == session['user_id']:
-            types_validation.append('salarie')
-        else:
-            # Validation responsable : le valideur est responsable du salarié.
-            # Deux façons d'être responsable d'un salarié (helper commun
-            # est_dans_equipe_responsable, utilisé par toutes les vues) :
-            #  - être responsable de son secteur (même secteur_id) ;
-            #  - être son responsable hiérarchique direct (responsable_id).
-            # Le second cas couvre un salarié rattaché hors de son secteur
-            # analytique (ex. entretien en logistique, encadré par la
-            # responsable crèche) et un directeur désigné comme responsable
-            # hiérarchique (le champ liste aussi les directeurs, cf. admin.py).
-            if profil in ('responsable', 'directeur'):
-                if est_dans_equipe_responsable(conn, session['user_id'], user_id):
-                    types_validation.append('responsable')
-
-            # Validation directeur : un directeur peut valider toute fiche.
-            if profil == 'directeur':
-                types_validation.append('directeur')
-
-        if not types_validation:
-            flash('Vous n\'avez pas le droit de valider cette fiche', 'error')
+        if not roles_applicables(conn, session['user_id'], session.get('profil'), user_id):
+            flash("Vous n'avez pas le droit de valider cette fiche", 'error')
             return redirect(url_for('validation_bp.vue_mensuelle'))
 
         # Récupérer ou créer la validation
@@ -101,8 +76,19 @@ def valider_mois():
             flash('La fiche a changé ou sa référence manque. Relisez la fiche actualisée avant de signer.', 'warning')
             return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
 
+        # Ne créer ni version ni événement en cas de refus. Une source modifiée
+        # hors connexion applicative ne rend pas les anciens accords recevables.
+        version = conn.execute('SELECT empreinte FROM fiches_versions WHERE id=?',
+                               (validation['version_courante_id'],)).fetchone() if validation else None
+        accords = validation if version and version['empreinte'] == empreinte(contenu) else None
+        types_validation, message = planifier_signature(
+            conn, session['user_id'], session.get('profil'), user_id, accords)
+        if not types_validation:
+            flash(message, 'warning')
+            return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
+
         version_id = enregistrer_version(conn, contenu, 'signature')
-        now = maintenant().strftime('%Y-%m-%d %H:%M:%S')
+        now = maintenant().isoformat(timespec='microseconds')
         user_info = conn.execute('SELECT prenom, nom FROM users WHERE id=?', (session['user_id'],)).fetchone()
         validation_nom = f"{user_info['prenom']} {user_info['nom']}"
 
@@ -130,7 +116,8 @@ def valider_mois():
             set_clauses.append(f'version_{type_validation}_id = ?')
             params.extend([validation_nom, now, version_id])
             evenement(conn, user_id, annee, mois, 'signature', version_id,
-                      role=type_validation, auteur_id=session['user_id'], auteur_nom=validation_nom)
+                      role=type_validation, auteur_id=session['user_id'], auteur_nom=validation_nom,
+                      details={'circuit_version': 2}, date_evenement=now)
 
         params.extend([user_id, mois, annee])
         conn.execute(f'''
@@ -139,32 +126,20 @@ def valider_mois():
             WHERE user_id = ? AND mois = ? AND annee = ?
         ''', params)
 
-        # Vérifier si la fiche doit être verrouillée.
-        # Cas général : validation responsable ET directeur.
-        # Cas des responsables : ils n'ont pas de supérieur au-dessus d'eux
-        # (hormis le directeur), donc la validation directeur suffit à
-        # verrouiller leur fiche.
-        validation_updated = conn.execute('''
-            SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
-        ''', (user_id, mois, annee)).fetchone()
-
-        user_valide = conn.execute(
-            'SELECT profil FROM users WHERE id = ?', (user_id,)
-        ).fetchone()
-        valide_est_responsable = bool(user_valide and user_valide['profil'] == 'responsable')
-
-        doit_verrouiller = bool(
-            validation_updated
-            and validation_updated['version_directeur_id'] == version_id
-            and (validation_updated['version_responsable_id'] == version_id or valide_est_responsable)
-        )
+        validation_updated = conn.execute(
+            'SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
+            (user_id, mois, annee)).fetchone()
+        doit_verrouiller = ('directeur' in types_validation and all(
+            validation_updated[f'version_{r}_id'] == version_id
+            for r in ('salarie', 'responsable', 'directeur')))
 
         if doit_verrouiller:
             conn.execute('''
                 UPDATE validations SET bloque = 1
                 WHERE user_id = ? AND mois = ? AND annee = ?
             ''', (user_id, mois, annee))
-            evenement(conn, user_id, annee, mois, 'verrouillage', version_id)
+            evenement(conn, user_id, annee, mois, 'verrouillage', version_id,
+                      details={'circuit_version': 2}, date_evenement=now)
             flash('Fiche validée et verrouillée définitivement', 'success')
         else:
             flash('Validation enregistrée', 'success')
@@ -233,7 +208,8 @@ def deverrouiller_mois():
               json.dumps({'motif': motif, 'date': now, 'par': f"{user_info['prenom']} {user_info['nom']}"}), None))
 
         evenement(conn, user_id, annee, mois, 'reouverture',
-                  validation['version_courante_id'], details={'motif': motif})
+                  validation['version_courante_id'], details={'motif': motif, 'circuit_version': validation['circuit_version'],
+                           'prochain_circuit_version': 2})
 
         # Supprimer la validation (réinitialisation complète)
         conn.execute('''
@@ -322,7 +298,9 @@ def vue_ensemble_validation():
 
             users_validation.append({
                 'user': dict(user),
-                'validation': presenter_validation(validation)
+                'validation': presenter_validation(validation),
+                'etape_libelle': LIBELLES_ETAPES[etape_courante(validation)],
+                'confirmation': confirmation_historique(conn, validation),
             })
     finally:
         conn.close()
@@ -444,21 +422,12 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     mois_demande = datetime(annee, mois, 1)
     mois_est_termine = (annee, mois) < (today.year, today.month)
 
-    peut_valider_mois = False
-    if not validation or not validation['bloque']:
-        if not mois_est_termine:
-            peut_valider_mois = False
-        elif nb_jours_non_declares > 0:
-            peut_valider_mois = False
-        elif user_id_a_afficher == session['user_id'] and session.get('profil') != 'directeur':
-            peut_valider_mois = True
-        elif session.get('profil') == 'directeur':
-            peut_valider_mois = True
-        elif session.get('profil') == 'responsable':
-            # Même règle que l'action de validation : secteur commun OU
-            # rattachement hiérarchique direct.
-            if est_dans_equipe_responsable(conn, session['user_id'], user_id_a_afficher):
-                peut_valider_mois = True
+    roles, attente = planifier_signature(conn, session['user_id'], session.get('profil'),
+                                        user_id_a_afficher, validation)
+    peut_valider_mois = bool(roles and mois_est_termine and not nb_jours_non_declares)
+    confirmation = confirmation_historique(conn, validation)
+    peut_confirmer_historique = (user_id_a_afficher == session['user_id']
+                                and historique_a_confirmer(conn, validation))
 
     peut_modifier = False
     if not (validation and validation['bloque']):
@@ -489,7 +458,14 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
                  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre']
 
     template_data = dict(
-        empreinte_fiche=empreinte(calculer_contenu(conn, user_id_a_afficher, mois, annee)),
+        empreinte_fiche=(conn.execute('SELECT empreinte FROM fiches_versions WHERE id=?',
+                                      (validation['version_courante_id'],)).fetchone()[0]
+                         if validation and validation['bloque'] else
+                         empreinte(calculer_contenu(conn, user_id_a_afficher, mois, annee))),
+        roles_a_signer=roles,
+        etape_libelle=LIBELLES_ETAPES[etape_courante(validation)],
+        confirmation_historique=confirmation,
+        peut_confirmer_historique=peut_confirmer_historique,
         evenements_fiche=conn.execute(
             'SELECT * FROM fiches_evenements WHERE user_id=? AND annee=? AND mois=? ORDER BY id',
             (user_id_a_afficher, annee, mois)).fetchall(),
@@ -584,3 +560,53 @@ def vue_calendrier():
     data['jours_calendrier'] = jours_calendrier
 
     return render_template('vue_calendrier.html', **data)
+
+
+@validation_bp.route('/confirmer_fiche_historique', methods=['POST'])
+@login_required
+def confirmer_fiche_historique():
+    """Confirmation personnelle datée de l'instantané, sans modifier le verrou."""
+    user_id = request.form.get('user_id', type=int)
+    mois = request.form.get('mois', type=int)
+    annee = request.form.get('annee', type=int)
+    version_id = request.form.get('version_id', type=int)
+    conn = get_db()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
+                         (user_id, mois, annee)).fetchone()
+        version = conn.execute('''SELECT empreinte FROM fiches_versions
+                                 WHERE id=? AND user_id=? AND mois=? AND annee=?''',
+                               (version_id, user_id, mois, annee)).fetchone()
+        if (user_id != session['user_id'] or not v or not v['bloque']
+                or v['circuit_version'] != 1 or version_id != v['version_courante_id']
+                or not version or request.form.get('empreinte_fiche') != version['empreinte']):
+            flash('Confirmation impossible. Ouvrez votre fiche historique avant de confirmer son contenu.', 'error')
+            return redirect(url_for('validation_bp.vue_mensuelle'))
+        if not historique_a_confirmer(conn, v):
+            flash('Votre confirmation est déjà enregistrée pour ce contenu.', 'info')
+        else:
+            evenement(conn, user_id, annee, mois, 'confirmation_historique', version_id,
+                      role='salarie', details={'circuit_version': 1, 'verrouillage_initial_inchange': True})
+            conn.commit()
+            flash('Validation salarié a posteriori enregistrée. Le verrouillage initial reste inchangé.', 'success')
+    finally:
+        conn.close()
+    return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
+
+
+@validation_bp.route('/fiches_historiques')
+@login_required
+def fiches_historiques():
+    """Incitation distincte des étapes bloquant les fiches du nouveau circuit."""
+    direction = session.get('profil') in ('directeur', 'comptable')
+    conn = get_db()
+    try:
+        fiches = fiches_historiques_a_confirmer(conn, None if direction else session['user_id'])
+        return render_template('fiches_historiques.html', fiches=fiches,
+                               peut_relancer=session.get('profil') == 'directeur')
+    finally:
+        conn.close()

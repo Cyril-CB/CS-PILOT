@@ -137,11 +137,12 @@ def test_relance_sans_bouton_pour_comptable_sans_delegation(comptable_client, db
     informatif « N fiches non validées ».
     """
     html = comptable_client.get('/dashboard_direction').get_data(as_text=True)
-    assert 'Fiche à valider' in html                # l'information reste visible
+    assert 'En attente de validation du salarié' in html  # suivi des autres fiches
+    assert 'Valider ma fiche' in html                      # décision personnelle distincte
     # … mais pas de bouton un clic (data-mois n'est rendu qu'avec le bouton ;
     # la chaîne data-cc-act="relance" existe aussi dans le JS statique).
     assert 'data-mois=' not in html
-    assert 'Vue ensemble' in html
+    assert 'Ouvrir la fiche' in html  # les deux autres fiches sont nommées, sans agrégat
 
 
 def test_demande_en_attente_valider_refuser(admin_client, db, sample_users):

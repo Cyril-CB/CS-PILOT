@@ -85,6 +85,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0064', 'Fonction du salarie'),
     ('0065', 'Versions et integrite des fiches mensuelles'),
     ('0066', 'Revocation des sessions'),
+    ('0067', 'Circuit ordonne des fiches mensuelles'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2089,6 +2090,8 @@ def init_db():
     # Même schéma et même reprise que la migration 0065.
     from fiches_versions import creer_schema
     creer_schema(conn)
+    from fiches_circuit import creer_schema as creer_schema_circuit
+    creer_schema_circuit(conn)
 
     conn.commit()
     conn.close()

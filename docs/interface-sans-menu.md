@@ -132,33 +132,17 @@ d'anomalies, et une fiche chargée n'en est pas une. (Rappel métier utile ici :
 les heures supplémentaires se **récupèrent**, elles ne se paient pas, sauf
 pour un CDD.)
 
-Une carte **quitte le fil de qui a fait sa part**, sans attendre la suite du
-circuit. Une fiche d'heures demande deux signatures — responsable puis
-direction — et n'est verrouillée qu'une fois les deux posées ; mais se fier au
-verrou laissait chacun devant une décision déjà prise, la direction retrouvant
-indéfiniment les fiches qu'elle avait signées faute que le responsable ait fait
-la sienne. Un fil qui redemande ce qui est fait cesse d'être cru. La
-comptabilité, qui ne signe pas, suit le circuit entier : pour elle la fiche
-reste jusqu'au verrouillage. Même lecture pour la relance groupée : elle
-s'adresse aux responsables, donc elle ne compte que les fiches qu'ils n'ont pas
-signées.
+Les fiches suivent **Salarié → Responsable → Direction**. Une action de validation
+n'est proposée qu'à l'étape de son lecteur. La direction et la comptabilité
+suivent aussi l'attente des acteurs précédents, avec un libellé explicite.
+Une modification du contenu rend les anciennes approbations obsolètes et renvoie
+la fiche au salarié ; les références d'instantanés, et non les dates du journal,
+déterminent l'accord courant. La relance groupée cible l'acteur réellement attendu.
 
-**Sauf si la fiche a bougé depuis.** Un salarié peut modifier ses heures tant
-que la fiche n'est pas verrouillée : la saisie l'autorise, garde la signature
-en place et se contente d'enregistrer une anomalie. Ce qui avait été approuvé
-n'existe alors plus, et masquer la carte pour de bon laisserait la direction
-verrouiller une version que le responsable n'a jamais relue. Le journal des
-modifications (`historique_modifications`, alimenté par la saisie des heures
-comme par les absences) tranche : une trace postérieure à la signature remet la
-fiche dans le fil de son signataire, jusqu'à ce qu'il signe de nouveau.
-
-Cette comparaison exige **une horloge unique**. Le défaut SQLite
-`CURRENT_TIMESTAMP` est en UTC, l'application vit en heure applicative
-(`utils.maintenant`, `APP_TIMEZONE`) : deux sources différentes décaleraient la
-comparaison d'une à deux heures selon la saison — assez pour manquer
-précisément les modifications faites dans la foulée d'une signature. Les dates
-de signature et les traces du journal sont donc toutes posées par
-`maintenant()`.
+Les anciennes fiches verrouillées restent clôturées. Leur confirmation salarié
+souhaitée apparaît séparément, sans urgence ni blocage du mois courant. Voir
+[le circuit des fiches mensuelles](fiches-mensuelles.md) pour la bascule, les
+doubles rôles et les confirmations tardives.
 
 La règle vaut pour le fil, pas pour les pages : le bandeau de la vue d'ensemble
 des validations continue de compter les fiches non verrouillées, parce qu'il

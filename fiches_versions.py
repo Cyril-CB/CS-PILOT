@@ -88,7 +88,7 @@ def contenu_version(conn, version_id):
 
 
 def evenement(conn, user_id, annee, mois, type_evenement, version_id=None,
-              role=None, auteur_id=None, auteur_nom=None, details=None):
+              role=None, auteur_id=None, auteur_nom=None, details=None, date_evenement=None):
     # Hors requête (migration/tests/CLI), l'auteur reste explicitement inconnu.
     from flask import has_request_context, session
     if auteur_id is None and has_request_context():
@@ -103,7 +103,7 @@ def evenement(conn, user_id, annee, mois, type_evenement, version_id=None,
          date_evenement, details)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (user_id, annee, mois, version_id, type_evenement, role, auteur_id,
-          auteur_nom, maintenant().isoformat(timespec='microseconds'),
+          auteur_nom, date_evenement or maintenant().isoformat(timespec='microseconds'),
           json.dumps(details, ensure_ascii=False) if details is not None else None))
 
 
@@ -170,6 +170,12 @@ def actualiser_versions(conn, user_ids=None):
                 {'role': role, 'nom': v[f'validation_{role}'], 'date': v[f'date_{role}']}
                 for role in ROLES if v[f'validation_{role}']
             ]
+        if precedente:
+            obsoletes = [r for r in ROLES if v[f'version_{r}_id'] == v['version_courante_id']
+                         and v[f'validation_{r}']]
+            if obsoletes:
+                evenement(conn, v['user_id'], v['annee'], v['mois'], 'approbations_obsoletes',
+                          v['version_courante_id'], details={'roles': obsoletes, 'nouvelle_version_id': version_id})
         evenement(conn, v['user_id'], v['annee'], v['mois'], origine,
                   version_id=version_id, details=details)
 
@@ -190,6 +196,9 @@ def presenter_validation(row):
     if row is None:
         return None
     v = dict(row)
+    from fiches_circuit import etape_courante, LIBELLES_ETAPES
+    v['etape'] = etape_courante(v)
+    v['etape_libelle'] = LIBELLES_ETAPES[v['etape']]
     v['signatures_obsoletes'] = []
     v['historique_non_versionne'] = False
     verrou_historique = (v['bloque'] and v.get('version_directeur_id') is None

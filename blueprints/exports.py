@@ -86,6 +86,8 @@ def export_pdf_mensuel():
     # Le document reproduit exactement le contenu conservé, sans second calcul.
     from fiches_versions import lire_contenu, presenter_validation
     contenu = lire_contenu(conn, user_id_param, mois, annee)
+    from fiches_circuit import confirmation_historique
+    confirmation = confirmation_historique(conn, validation)
     validation = presenter_validation(validation)
     user = {**dict(user), **contenu['identite']}
     journees = []
@@ -253,6 +255,17 @@ def export_pdf_mensuel():
     ]))
     
     bas_page.append(sig_table)
+    if validation['circuit_version'] == 1:
+        bas_page.append(Paragraph('Circuit historique : Responsable → Direction. Verrouillage initial conservé.', normal_style))
+    else:
+        bas_page.append(Paragraph('Circuit : Salarié → Responsable → Direction.', normal_style))
+    if confirmation:
+        from html import escape
+        bas_page.append(Paragraph(
+            'Validation salarié a posteriori du contenu verrouillé : '
+            + escape(confirmation['auteur_nom'] or '') + ', le '
+            + escape(confirmation['date_evenement'][:19].replace('T', ' '))
+            + '. Cette confirmation ne faisait pas partie du verrouillage initial.', normal_style))
     if validation['historique_non_versionne']:
         bas_page.append(Paragraph(
             "Fiche historique conservée : contenu figé lors de la mise à jour. "

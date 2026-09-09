@@ -472,13 +472,7 @@
                 <input type="hidden" name="mois" value="{{ mois }}">
                 <input type="hidden" name="annee" value="{{ annee }}">
                 <button type="submit" class="btn btn-primary">
-                    {% if session.profil == 'directeur' %}
-                    ✅ Valider (Directeur)
-                    {% elif session.profil == 'responsable' %}
-                    ✅ Valider (Responsable)
-                    {% else %}
-                    ✅ Valider le mois
-                    {% endif %}
+                    ✅ Valider ({{ roles_a_signer|join(' + ') }})
                 </button>
             </form>
             {% elif validation and validation.bloque %}
