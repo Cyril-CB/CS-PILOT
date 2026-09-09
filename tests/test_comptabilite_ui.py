@@ -69,8 +69,10 @@ def test_pages_comptables_utilisent_des_icones_pour_actions(admin_client, db, sa
     assert ">Éditer<" not in ecritures_html
 
     exportation_html = admin_client.get("/exportation").get_data(as_text=True)
-    assert 'title="Supprimer"' in exportation_html
-    assert ">Supprimer<" not in exportation_html
+    # B3 : une archive est une preuve conservée, plus une action destructrice.
+    assert 'title="Supprimer"' not in exportation_html
+    assert 'Consulter le lot' in exportation_html
+    assert 'Export historique — preuve limitée' in exportation_html
 
 
 def test_profil_comptable_peut_etre_assigne_secteur_et_responsable_ui(admin_client, db, sample_users):

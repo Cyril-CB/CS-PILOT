@@ -18,6 +18,8 @@
         </div>
     </div>
 
+    <p><a href="{{ url_for('factures_bp.liste_factures', archives='0' if archives else '1') }}">{{ 'Voir les factures actives' if archives else 'Voir les factures archivées' }}</a></p>
+    {% if archives %}<p>Factures archivées : documents, écritures et historiques conservés.</p>{% endif %}
     {# ── Tableau des factures ── #}
     <div class="section">
         <table class="data-table" style="width:100%;">
@@ -66,10 +68,11 @@
                     <td style="white-space:nowrap;">
                         <button type="button" class="btn-icon" title="Assigner" aria-label="Assigner" onclick="openAssigner({{ f.id }}, '{{ (f.fournisseur_nom or '')|e }}', '{{ (f.numero_facture or '')|e }}', '{{ f.montant_ttc or 0 }}')">📌</button>
                         <a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}" class="btn-icon" title="Détail" aria-label="Détail">👁️</a>
+                        {% if f.exportee %}<a href="{{ url_for('factures_bp.detail_facture', facture_id=f.id) }}">Suivi / archivage</a>{% else %}
                         <form method="POST" action="{{ url_for('factures_bp.supprimer_facture', facture_id=f.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette facture et son fichier ?')">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="btn-icon" title="Supprimer" aria-label="Supprimer">🗑️</button>
-                        </form>
+                        </form>{% endif %}
                     </td>
                 </tr>
                 {% endfor %}

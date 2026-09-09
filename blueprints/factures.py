@@ -17,6 +17,8 @@ from datetime import datetime
 from flask import (Blueprint, render_template, request, session, flash,
                    redirect, url_for, jsonify, send_file)
 from database import get_db, DATA_DIR
+from sessions_securite import verifier_action
+from exports_comptables import ExportRefuse, evenement, facture_exportee, presenter_evenements
 from utils import login_required, get_setting
 from blueprints.pesee_alisfa import call_ai, _extract_json_from_response
 from blueprints.api_keys import get_available_models
@@ -83,20 +85,24 @@ def liste_factures():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
+    archives = request.args.get('archives') == '1'
     factures = conn.execute('''
-        SELECT f.*, fr.nom as fournisseur_nom, s.nom as secteur_nom
+        SELECT f.*, fr.nom as fournisseur_nom, s.nom as secteur_nom,
+               EXISTS(SELECT 1 FROM ecritures_comptables e
+                      WHERE e.facture_id=f.id AND e.statut='exportee') AS exportee
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
         LEFT JOIN secteurs s ON f.secteur_id = s.id
+        WHERE f.archivee=?
         ORDER BY f.created_at DESC
-    ''').fetchall()
+    ''', (int(archives),)).fetchall()
     secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY nom').fetchall()
     conn.close()
 
     models = get_available_models()
     has_key = len(models) > 0
 
-    return render_template('factures.html', factures=factures, secteurs=secteurs,
+    return render_template('factures.html', factures=factures, secteurs=secteurs, archives=archives,
                            available_models=models, has_api_key=has_key)
 
 
@@ -352,10 +358,15 @@ def detail_facture(facture_id):
     ''', (facture_id,)).fetchall()
 
     secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY nom').fetchall()
+    exportee = facture_exportee(conn, facture_id)
+    lots = conn.execute('''SELECT DISTINCT a.id, a.nom_fichier FROM archives_export a
+        JOIN export_lignes l ON l.archive_id=a.id WHERE l.facture_id=? ORDER BY a.id''', (facture_id,)).fetchall()
+    evenements = conn.execute('SELECT * FROM comptabilite_evenements WHERE facture_id=? ORDER BY id DESC',
+                             (facture_id,)).fetchall()
     conn.close()
 
     return render_template('facture_detail.html', facture=facture, historique=historique,
-                           commentaires=commentaires, secteurs=secteurs)
+                           commentaires=commentaires, secteurs=secteurs, exportee=exportee, lots=lots, evenements=presenter_evenements(evenements))
 
 
 @factures_bp.route('/factures/<int:facture_id>/commenter', methods=['POST'])
@@ -434,19 +445,91 @@ def supprimer_facture(facture_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    facture = conn.execute('SELECT fichier_path FROM factures WHERE id=?', (facture_id,)).fetchone()
-    if facture and facture['fichier_path'] and os.path.exists(facture['fichier_path']):
-        os.unlink(facture['fichier_path'])
-
-    conn.execute('DELETE FROM facture_historique WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM facture_commentaires WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM ecritures_comptables WHERE facture_id=?', (facture_id,))
-    conn.execute('DELETE FROM factures WHERE id=?', (facture_id,))
-    conn.commit()
-    conn.close()
-
-    flash('Facture supprimée.', 'success')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in PROFILS_GESTION:
+            raise ExportRefuse('Accès non autorisé.')
+        facture = conn.execute('SELECT * FROM factures WHERE id=?', (facture_id,)).fetchone()
+        if not facture:
+            raise ExportRefuse('Facture introuvable.')
+        if facture_exportee(conn, facture_id):
+            evenement(conn, 'suppression_facture_refusee', {'motif': 'Facture déjà exportée'}, facture_id=facture_id)
+            conn.commit()
+            flash('Cette facture a participé à un export. Vous pouvez l’archiver depuis son détail ; ses écritures et son historique seront conservés.', 'warning')
+            return redirect(url_for('factures_bp.detail_facture', facture_id=facture_id))
+        evenement(conn, 'suppression_facture', {'source': dict(facture)}, facture_id=facture_id)
+        conn.execute('DELETE FROM facture_historique WHERE facture_id=?', (facture_id,))
+        conn.execute('DELETE FROM facture_commentaires WHERE facture_id=?', (facture_id,))
+        conn.execute('DELETE FROM ecritures_comptables WHERE facture_id=?', (facture_id,))
+        conn.execute('DELETE FROM factures WHERE id=?', (facture_id,))
+        conn.commit()
+        # Un échec SQL conserve le PDF. Un échec du nettoyage après commit
+        # conserve seulement un fichier résiduel, jamais une fausse preuve d'export.
+        if facture['fichier_path'] and os.path.isfile(facture['fichier_path']):
+            try:
+                os.unlink(facture['fichier_path'])
+            except OSError:
+                flash('Facture supprimée ; le fichier résiduel n’a pas pu être nettoyé.', 'warning')
+        flash('Facture supprimée.', 'success')
+    except ExportRefuse as exc:
+        conn.rollback()
+        flash(str(exc), 'warning')
+    finally:
+        conn.close()
     return redirect(url_for('factures_bp.liste_factures'))
+
+
+@factures_bp.route('/factures/<int:facture_id>/archiver', methods=['POST'])
+@login_required
+def archiver_facture(facture_id):
+    return _action_apres_export(facture_id, archiver=True)
+
+
+@factures_bp.route('/factures/<int:facture_id>/signaler-correction', methods=['POST'])
+@login_required
+def signaler_correction(facture_id):
+    return _action_apres_export(facture_id, archiver=False)
+
+
+def _action_apres_export(facture_id, *, archiver):
+    if session.get('profil') not in PROFILS_GESTION:
+        flash('Accès non autorisé', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+    conn = get_db()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in PROFILS_GESTION:
+            raise ExportRefuse('Accès non autorisé.')
+        facture = conn.execute('SELECT * FROM factures WHERE id=?', (facture_id,)).fetchone()
+        if not facture or not facture_exportee(conn, facture_id):
+            raise ExportRefuse('Cette action concerne uniquement une facture ayant participé à un export.')
+        motif = request.form.get('motif', '').strip()
+        if not motif or len(motif) > 2000:
+            raise ExportRefuse('Indiquez un motif entre 1 et 2 000 caractères.')
+        if archiver:
+            if facture['archivee']:
+                raise ExportRefuse('Cette facture est déjà archivée.')
+            conn.execute('UPDATE factures SET archivee=1 WHERE id=?', (facture_id,))
+        action = 'archivage_facture' if archiver else 'correction_signalee'
+        lots = conn.execute('SELECT DISTINCT archive_id FROM export_lignes WHERE facture_id=?', (facture_id,)).fetchall()
+        for lot in lots or [None]:
+            evenement(conn, action, {'motif': motif}, facture_id=facture_id, archive_id=lot[0] if lot else None)
+        _add_historique(conn, facture_id, 'Facture archivée' if archiver else 'Correction après export signalée', motif)
+        conn.commit()
+        flash('Facture archivée, preuve d’export conservée.' if archiver else
+              'Correction signalée. Le fichier et les écritures restent inchangés ; le traitement comptable est à décider avec la comptabilité.', 'success')
+    except ExportRefuse as exc:
+        conn.rollback()
+        flash(str(exc), 'warning')
+    finally:
+        conn.close()
+    return redirect(url_for('factures_bp.detail_facture', facture_id=facture_id))
 
 
 @factures_bp.route('/factures/<int:facture_id>/approuver', methods=['POST'])
@@ -506,7 +589,7 @@ def approbation_factures():
                 FROM factures f
                 LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
                 LEFT JOIN secteurs s ON f.secteur_id = s.id
-                WHERE f.secteur_id = ? AND f.approbation = 'en_attente'
+                WHERE f.archivee=0 AND f.secteur_id = ? AND f.approbation = 'en_attente'
                 ORDER BY f.created_at DESC
             ''', (user['secteur_id'],)).fetchall()
         else:
@@ -518,7 +601,7 @@ def approbation_factures():
             FROM factures f
             LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
             LEFT JOIN secteurs s ON f.secteur_id = s.id
-            WHERE f.approbation = 'en_attente'
+            WHERE f.archivee=0 AND f.approbation = 'en_attente'
                AND (f.secteur_id IS NOT NULL OR f.assigned_direction = 1)
             ORDER BY f.created_at DESC
         ''').fetchall()
@@ -546,14 +629,14 @@ def relancer_secteurs():
         SELECT f.secteur_id, s.nom as secteur_nom, COUNT(*) as nb
         FROM factures f
         JOIN secteurs s ON f.secteur_id = s.id
-        WHERE f.approbation = 'en_attente' AND f.secteur_id IS NOT NULL
+        WHERE f.archivee=0 AND f.approbation = 'en_attente' AND f.secteur_id IS NOT NULL
         GROUP BY f.secteur_id
     ''').fetchall()
 
     # Factures en attente assignées à la direction
     nb_direction = conn.execute('''
         SELECT COUNT(*) as nb FROM factures
-        WHERE approbation = 'en_attente' AND assigned_direction = 1
+        WHERE archivee=0 AND approbation = 'en_attente' AND assigned_direction = 1
     ''').fetchone()['nb']
 
     nb_envoyes = 0

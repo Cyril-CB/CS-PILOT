@@ -6,7 +6,7 @@
 <div class="factures-page">
     <div style="margin-bottom:1.5rem;">
         <h1>Exportation des écritures</h1>
-        <p class="subtitle">Sélectionnez les écritures validées à exporter en fichier tabulé (.txt)</p>
+        <p class="subtitle">Sélectionnez toutes les lignes validées de chaque facture. Chaque pièce doit être équilibrée. Le fichier produit est conservé ; son import dans AIGA n’est pas confirmé par CS PILOT.</p>
     </div>
 
     <form method="POST" action="{{ url_for('exportation_bp.exporter') }}" id="exportForm">
@@ -19,7 +19,7 @@
             </button>
         </div>
 
-        <div class="section">
+        <div class="section" style="overflow-x:auto;">
             <table class="data-table" style="width:100%;">
                 <thead>
                     <tr>
@@ -38,7 +38,7 @@
                 <tbody>
                     {% for e in ecritures %}
                     <tr>
-                        <td><input type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="exp-cb" onchange="expUpdateSelection()"></td>
+                        <td><input type="hidden" name="reference_{{ e.id }}" value="{{ e.reference }}"><input aria-label="Sélectionner l’écriture {{ e.id }}" type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="exp-cb" onchange="expUpdateSelection()"></td>
                         <td>{% if e.date_ecriture %}{{ e.date_ecriture[8:10] }}/{{ e.date_ecriture[5:7] }}/{{ e.date_ecriture[0:4] }}{% else %}—{% endif %}</td>
                         <td><code>{{ e.compte }}</code></td>
                         <td>{{ e.code_analytique or '—' }}</td>
@@ -57,7 +57,7 @@
     </form>
 
     {# ── Archives des exports ── #}
-    <div class="section" style="margin-top:2rem;">
+    <div class="section" style="margin-top:2rem; overflow-x:auto;">
         <h2 style="margin-bottom:1rem;">Archives des exportations</h2>
         <table class="data-table" style="width:100%;">
             <thead>
@@ -66,7 +66,7 @@
                     <th>Écritures</th>
                     <th>Exporté par</th>
                     <th>Date</th>
-                    <th>Actions</th>
+                    <th>Débit / Crédit</th><th>État</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -74,19 +74,15 @@
                 <tr>
                     <td><strong>{{ a.nom_fichier }}</strong></td>
                     <td>{{ a.nb_ecritures }}</td>
-                    <td>{% if a.prenom %}{{ a.prenom }} {{ a.user_nom }}{% else %}—{% endif %}</td>
+                    <td>{% if a.auteur_nom %}{{ a.auteur_nom }}{% elif a.prenom %}{{ a.prenom }} {{ a.user_nom }}{% else %}—{% endif %}</td>
                     <td>{{ a.created_at[8:10] }}/{{ a.created_at[5:7] }}/{{ a.created_at[0:4] }} {{ a.created_at[11:16] }}</td>
-                    <td style="white-space:nowrap;">
-                        <a href="{{ url_for('exportation_bp.telecharger_archive', archive_id=a.id) }}" class="btn btn-sm btn-primary">Télécharger</a>
-                        <form method="POST" action="{{ url_for('exportation_bp.supprimer_archive', archive_id=a.id) }}" style="display:inline;" onsubmit="return confirm('Supprimer cette archive ?')">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <button type="submit" class="btn-icon" title="Supprimer" aria-label="Supprimer">🗑️</button>
-                        </form>
-                    </td>
+                    <td>{% if a.preuve_version %}{{ '%.2f'|format(a.total_debit_centimes / 100) }} / {{ '%.2f'|format(a.total_credit_centimes / 100) }}{% else %}Non établis{% endif %}</td>
+                    <td>{{ 'Exportée — fichier conservé' if a.preuve_version else 'Export historique — preuve limitée' }}</td>
+                    <td><a href="{{ url_for('exportation_bp.detail_archive', archive_id=a.id) }}" class="btn btn-sm btn-primary">Consulter le lot {{ a.id }}</a></td>
                 </tr>
                 {% endfor %}
                 {% if not archives %}
-                <tr><td colspan="5" style="text-align:center; padding:2rem; color:var(--gray-500);">Aucune archive d'export.</td></tr>
+                <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--gray-500);">Aucune archive d'export.</td></tr>
                 {% endif %}
             </tbody>
         </table>

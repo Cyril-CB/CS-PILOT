@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Lot comptable {{ archive.id }} - CS-PILOT{% endblock %}
+{% block content %}
+<div class="factures-page">
+    <h1>Lot comptable {{ archive.id }}</h1>
+    <p><a href="{{ url_for('exportation_bp.liste_exportation') }}">Retour aux exports</a></p>
+    <div class="section" style="overflow-wrap:anywhere;">
+        <p>{{ archive.nom_fichier }} — {{ archive.created_at }} UTC{% if archive.auteur_nom %} — {{ archive.auteur_nom }}{% endif %}</p>
+        {% if archive.preuve_version %}
+        <p>Exportée par CS PILOT — {{ archive.nb_ecritures }} lignes conservées. Débit : {{ '%.2f'|format(archive.total_debit_centimes / 100) }} € ; crédit : {{ '%.2f'|format(archive.total_credit_centimes / 100) }} €.</p>
+        <p>Le contenu ci-dessous est celui du fichier produit. CS PILOT ne confirme pas son import dans AIGA.</p>
+        <form method="POST" action="{{ url_for('exportation_bp.telecharger_archive', archive_id=archive.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label><input type="checkbox" name="confirmer" value="1" required> Je souhaite télécharger à nouveau ce fichier déjà exporté. Je vérifierai qu’il n’a pas déjà été importé dans AIGA.</label>
+            <button type="submit" class="btn btn-primary">Télécharger à nouveau le même fichier</button>
+        </form>
+        {% else %}
+        <p>Export historique antérieur au nouveau système — contenu exact non garanti par CS PILOT. Le fichier ancien reste disponible s’il a été conservé ; aucun rapprochement avec les écritures actuelles n’est reconstruit.</p>
+        <a class="btn btn-primary" href="{{ url_for('exportation_bp.telecharger_archive', archive_id=archive.id) }}">Télécharger le fichier historique</a>
+        {% endif %}
+    </div>
+    {% if archive.preuve_version %}
+    <div class="section" style="overflow-x:auto; margin-top:1rem;">
+        <table class="data-table">
+            <caption>Contenu effectivement exporté</caption>
+            <thead><tr><th>Source / version</th>{% for titre in colonnes %}<th>{{ titre }}</th>{% endfor %}</tr></thead>
+            <tbody>{% for l in lignes %}<tr>
+                <td><a href="{{ url_for('factures_bp.detail_facture', facture_id=l.source.id) }}">Facture {{ l.source.numero_facture or l.source.id }}</a><br>{{ l.source.fournisseur_nom or 'Fournisseur non renseigné' }}<br>Écriture {{ l.ecriture.id }}, version {{ l.ecriture.revision }}</td>
+                {% for valeur in l.colonnes %}<td>{{ valeur }}</td>{% endfor %}
+            </tr>{% endfor %}</tbody>
+        </table>
+    </div>
+    {% endif %}
+    <div class="section" style="margin-top:1rem;">
+        <h2>Historique du lot</h2>
+        {% for e in historique %}<p>{{ e.created_at }} UTC — {{ e.auteur_nom }} — {{ e.libelle }}{% if e.details.motif %} : {{ e.details.motif }}{% endif %}</p>{% else %}<p>Aucun événement détaillé conservé pour cet ancien export.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}
