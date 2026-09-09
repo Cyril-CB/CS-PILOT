@@ -515,7 +515,8 @@ def notifier_relance_fiche(email, prenom, mois, annee, salarie_nom, user_id, eta
              'Votre confirmation a posteriori est souhaitée et sera datée du jour ; '
              'elle ne modifie pas la clôture initiale.' if historique else
              LIBELLES_ETAPES[etape] + '. Chaque étape approuve la même version du contenu.')
-    lien = f"{get_base_url().rstrip('/')}/vue_mensuelle?user_id={int(user_id)}&mois={int(mois)}&annee={int(annee)}"
+    lien = construire_lien('validation_bp.vue_mensuelle', user_id=int(user_id),
+                           mois=int(mois), annee=int(annee))
     contenu = (f'<h3>{html_module.escape(titre)}</h3>'
                f'<p>{html_module.escape(salarie_nom)} — {int(mois):02d}/{int(annee)}</p>'
                f'<p>{html_module.escape(texte)}</p>'

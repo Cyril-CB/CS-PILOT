@@ -519,3 +519,44 @@ def test_actions_normales_suivent_ordre_et_version(app, db, sample_users, fiche_
     for c in (sal, resp, direction):
         signer(c, uid)
     assert all(fiche(r) is None for r in ('salarie','responsable','directeur'))
+
+
+@pytest.mark.parametrize('historique', [False, True])
+@pytest.mark.parametrize('base_url', ['', 'https://centre.example.invalid'])
+@pytest.mark.parametrize('racine', ['', '/cspilot'])
+def test_relances_liens_sans_adresse_publique_et_sous_repertoire(
+        app, db, sample_users, fiche_complete, monkeypatch, historique, base_url, racine):
+    """Exerce les routes et le constructeur réel ; seul l'envoi SMTP est simulé."""
+    import re
+    from html import unescape
+    from urllib.parse import urlsplit, parse_qs
+    import email_service
+    from tests.test_email_notifications import _capturer
+    from tests.test_dashboard_actions import _valider_tout_le_monde
+    uid = fiche_complete
+    if historique:
+        _historique(db, uid)
+    _valider_tout_le_monde(db, MOIS, ANNEE, sauf=(uid,))
+    db.execute("UPDATE users SET email='sal@example.invalid', email_notifications_enabled=1 WHERE id=?", (uid,))
+    db.commit()
+    with app.app_context():
+        email_service.save_email_config('smtp.example.invalid', '587', 'test@example.invalid', 'fictif-test', 'Test')
+        email_service.save_base_url(base_url)
+    envois = _capturer(monkeypatch)
+    direction = client_role(app, sample_users, 'directeur')
+    params = dict(user_id=uid, mois=MOIS, annee=ANNEE)
+    if historique:
+        response = direction.post('/relancer_fiche_historique', data=params, environ_overrides={'SCRIPT_NAME': racine})
+        assert response.status_code == 302
+    else:
+        response = direction.post('/api/email/relance_validation', json=params, environ_overrides={'SCRIPT_NAME': racine})
+        assert response.status_code == 200 and response.get_json()['nb_envoyes'] == 1
+    assert len(envois) == 1
+    sujet, contenu = envois[0]
+    assert ('ancienne' in sujet) == historique
+    lien = unescape(re.search(r'href="([^"]+)"', contenu)[1])
+    url = urlsplit(lien)
+    assert url.scheme == ('https' if base_url else 'http')
+    assert url.netloc == ('centre.example.invalid' if base_url else 'localhost')
+    assert url.path == racine + '/vue_mensuelle'
+    assert parse_qs(url.query) == {'user_id': [str(uid)], 'mois': [str(MOIS)], 'annee': [str(ANNEE)]}

@@ -206,9 +206,11 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
         scope = 'AND (u.secteur_id = ? OR u.responsable_id = ?) AND u.id != ?'
         params = (secteur_id, user_id, user_id)
         role = 'responsable'
-    elif profil in ('directeur', 'comptable'):
-        scope, params = '', ()
-        role = 'directeur' if profil == 'directeur' else None
+    elif profil == 'directeur':
+        scope, params, role = '', (), 'directeur'
+    elif profil == 'comptable':
+        # Sa décision personnelle est déjà portée par _ma_fiche_a_valider.
+        scope, params, role = 'AND u.id != ?', (user_id,), None
     elif profil == 'salarie':
         scope, params, role = 'AND u.id=?', (user_id,), 'salarie'
     else:

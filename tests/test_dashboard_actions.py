@@ -1065,3 +1065,30 @@ class TestSoldesDeCongesEleves:
 
         assert len([a for a in actions if a['id'].startswith('conge-')]) == 2
         assert not [a for a in actions if a['id'] == 'reste-conges-eleves']
+
+
+@pytest.mark.parametrize('autres_fiches,solde_personnel', [(0, 1000), (4, 1000), (4, -1000)])
+def test_fiche_comptable_comptee_une_seule_fois(app, db, sample_users, monkeypatch, autres_fiches, solde_personnel):
+    """La décision personnelle ne rejoint ni les cartes nommées ni leur agrégat."""
+    from datetime import date
+    from werkzeug.security import generate_password_hash
+    uid = sample_users['comptable_id']
+    db.execute('UPDATE users SET actif=0 WHERE id != ?', (uid,))
+    for i in range(autres_fiches):
+        db.execute("INSERT INTO users (nom, prenom, login, password, profil) VALUES (?, 'Test', ?, ?, 'salarie')",
+                   (f'Collègue {i}', f'fiche_test_{i}', generate_password_hash('fictif-test')))
+    db.commit()
+    monkeypatch.setattr('dashboard_actions.aujourd_hui', lambda: date(2026, 9, 9))
+    monkeypatch.setattr('dashboard_actions._solde_du_mois', lambda conn, cible, *args: solde_personnel if cible == uid else 0)
+    with app.test_request_context():
+        actions = construire_actions(db, 'comptable', uid)
+    personnelles = [a for a in actions if a['id'].startswith('ma-fiche-')]
+    nommees = [a for a in actions if a['id'].startswith('fiche-')]
+    reste = [a for a in actions if a['id'].startswith('reste-fiches-')]
+    assert len(personnelles) == 1 and personnelles[0]['titre'] == 'Valider ma fiche'
+    assert all(a['id'] != f'fiche-{uid}-2026-08' for a in nommees)
+    assert len(nommees) == min(autres_fiches, 2)
+    if autres_fiches > 2:
+        assert len(reste) == 1 and reste[0]['titre'].startswith(f'et {autres_fiches - 2} autres')
+    else:
+        assert reste == []
