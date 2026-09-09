@@ -20,7 +20,12 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 
 ### Circuit de validation
 - Demandes de recuperation avec workflow hierarchique (responsable puis direction)
-- Validation mensuelle par responsable et directeur
+- Validation mensuelle des fiches d'heures dans un ordre impose : le salarie
+  declare, le responsable controle, la direction arrete. Chaque signature
+  atteste de la precedente ; aucune ne peut etre posee par-dessus une etape
+  manquante, et la fiche se verrouille quand le circuit est complet. La fiche
+  d'un responsable n'a pas d'etape responsable : il signe comme salarie, la
+  direction prend la suite
 - Historique complet des demandes et modifications
 - Suivi des anomalies
 

@@ -484,6 +484,10 @@
             <div class="help-box cal-box-danger" style="margin: 0;">
                 <p><strong>{{ nb_jours_non_declares }} jour(s)</strong> a declarer avant validation.</p>
             </div>
+            {% elif attente_validation %}
+            <div class="help-box cal-box-warning" style="margin: 0;">
+                <p>Cette fiche attend la validation par <strong>{{ attente_validation }}</strong>.</p>
+            </div>
             {% endif %}
         </div>
     </div>

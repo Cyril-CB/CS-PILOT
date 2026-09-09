@@ -569,6 +569,12 @@
                 <h4>⚠️ Déclarations incomplètes</h4>
                 <p><strong>{{ nb_jours_non_declares }} jour(s)</strong> doit être déclaré(s) ou saisi(s) avant de pouvoir valider le mois.</p>
             </div>
+            {% elif attente_validation %}
+            <div class="help-box" style="background: #fef3c7; border-left: 4px solid #f59e0b;">
+                <h4>⏳ Ce n'est pas encore votre tour</h4>
+                <p>La validation suit un ordre : le salarié, puis le responsable, puis la direction.</p>
+                <p><strong>Cette fiche attend la validation par {{ attente_validation }}.</strong></p>
+            </div>
             {% endif %}
         </div>
     </div>

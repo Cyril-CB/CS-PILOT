@@ -93,6 +93,11 @@ def test_vue_mensuelle_refusee_sans_lien(client, db, sample_users):
 def test_valider_mois_du_rattache(resp_client, db, sample_users):
     """La responsable peut poser sa validation sur la fiche du rattaché."""
     agent_id, _ = _creer_agent_transverse(db, sample_users)
+    # La validation suit un ordre imposé : le salarié signe en premier.
+    db.execute("INSERT INTO validations (user_id, mois, annee, validation_salarie, "
+               "date_salarie) VALUES (?, 5, 2026, 'Agent Transverse', "
+               "'2026-06-01 09:00:00')", (agent_id,))
+    db.commit()
     resp_client.post('/valider_mois', data={
         'user_id': agent_id, 'mois': 5, 'annee': 2026}, follow_redirects=True)
     v = db.execute("SELECT validation_responsable FROM validations "
