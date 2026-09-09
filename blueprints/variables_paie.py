@@ -298,7 +298,8 @@ def enregistrer_variables_paie():
             placeholders = ','.join('?' for _ in uids_modifies)
             cur = conn.execute(f'''
                 UPDATE prepa_paie_statut
-                SET traite = 0, updated_at = CURRENT_TIMESTAMP
+                SET traite = 0, updated_at = CURRENT_TIMESTAMP,
+                    modifie_le = CURRENT_TIMESTAMP, revision = revision + 1
                 WHERE mois = ? AND annee = ? AND traite = 1
                   AND user_id IN ({placeholders})
             ''', (mois, annee, *uids_modifies))

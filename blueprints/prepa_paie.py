@@ -10,27 +10,14 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, make_response)
 from datetime import datetime
 from database import get_db
+from sessions_securite import verifier_action
+from prepa_paie_donnees import donnees_salarie, empreinte, reference, MOTIFS_ABSENCE_PAIE
 from utils import login_required, NOMS_MOIS
 from access_log import journaliser_action, ACTION_MAJ_STATUT_PREPA_PAIE
 
 logger = logging.getLogger(__name__)
 
 prepa_paie_bp = Blueprint('prepa_paie_bp', __name__)
-
-# Motifs d'absence affiches dans la prepa paie (hors recuperations)
-MOTIFS_ABSENCE_PAIE = [
-    'Arrêt maladie',
-    'Congé payé',
-    'Congé conventionnel',
-    'Congé parental',
-    'Jour enfant malade',
-    'Accident du travail',
-    'Evènement familial',
-    'Sans solde',
-    'Mi-temps thérapeutique',
-    'Forfait jour',
-    'Autre',
-]
 
 
 def _peut_acceder_prepa_paie():
@@ -96,75 +83,26 @@ def _get_salaries_avec_contrat_actif(conn, mois, annee):
 
 
 def _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mois):
-    """Construit les donnees de la grille prepa paie."""
+    """Grille et références issues de la même lecture SQLite cohérente."""
+    statuts = {r['user_id']: dict(r) for r in conn.execute(
+        'SELECT * FROM prepa_paie_statut WHERE mois=? AND annee=?', (mois, annee))}
     grille = []
-
-    # Recuperer les statuts traite
-    statuts_rows = conn.execute('''
-        SELECT user_id, traite FROM prepa_paie_statut
-        WHERE mois = ? AND annee = ?
-    ''', (mois, annee)).fetchall()
-    statuts = {r['user_id']: r['traite'] for r in statuts_rows}
-
-    # Recuperer les variables paie du mois
-    vp_rows = conn.execute('''
-        SELECT * FROM variables_paie
-        WHERE mois = ? AND annee = ?
-    ''', (mois, annee)).fetchall()
-    variables = {r['user_id']: dict(r) for r in vp_rows}
-
     for sal in salaries:
-        uid = sal['id']
-
-        # Contrats actifs sur le mois
-        contrats = conn.execute('''
-            SELECT id, type_contrat, date_debut, date_fin, forfait, nbr_jours,
-                   temps_hebdo, fichier_path, fichier_nom
-            FROM contrats
-            WHERE user_id = ?
-            AND date_debut <= ?
-            AND (date_fin IS NULL OR date_fin >= ?)
-            ORDER BY date_debut DESC
-        ''', (uid, date_fin_mois, date_debut_mois)).fetchall()
-
-        # Variables de paie
-        vp = variables.get(uid, {})
-
-        # Absences du mois (hors recuperations)
-        placeholders = ','.join('?' for _ in MOTIFS_ABSENCE_PAIE)
-        absences = conn.execute(f'''
-            SELECT id, motif, date_debut, date_fin, date_reprise, commentaire, jours_ouvres,
-                   justificatif_path
-            FROM absences
-            WHERE user_id = ?
-            AND motif IN ({placeholders})
-            AND date_debut <= ?
-            AND date_fin >= ?
-            ORDER BY date_debut
-        ''', (uid, *MOTIFS_ABSENCE_PAIE, date_fin_mois, date_debut_mois)).fetchall()
-
-        grille.append({
-            'user_id': uid,
-            'nom': sal['nom'],
-            'prenom': sal['prenom'],
-            'secteur': sal['secteur_nom'],
-            'traite': statuts.get(uid, 0),
-            'contrats': [dict(c) for c in contrats],
-            # int() : sur les bases anterieures a la migration 0038, la
-            # colonne TEXT renvoie '0'/'1' et '0' serait affiche "Oui".
-            'mutuelle': int(vp.get('mutuelle') or 0),
-            'nb_enfants': vp.get('nb_enfants', 0),
-            'heures_reelles': vp.get('heures_reelles'),
-            'heures_supps': vp.get('heures_supps'),
-            'transport': vp.get('transport', 0),
-            'acompte': vp.get('acompte', 0),
-            'saisie_salaire': vp.get('saisie_salaire', 0),
-            'pret_avance': vp.get('pret_avance', 0),
-            'autres_regularisation': vp.get('autres_regularisation', 0),
-            'commentaire': vp.get('commentaire', ''),
-            'absences': [dict(a) for a in absences],
-        })
-
+        d = donnees_salarie(conn, sal['id'], mois, annee)
+        statut = statuts.get(sal['id'], {})
+        ref = reference(d, mois, annee, statut)
+        courant = bool(statut.get('traite') and statut.get('empreinte_verifiee') == empreinte(d))
+        if courant:
+            etat = 'Traité'
+        elif statut.get('modifie_le'):
+            etat = 'Modifié depuis la dernière vérification'
+        elif statut.get('verifie_le') and not statut.get('empreinte_verifiee'):
+            etat = 'À vérifier — traitement historique sans référence de données'
+        else:
+            etat = 'À vérifier'
+        d.update(traite=courant, etat=etat, reference=ref,
+                 verifie_le=statut.get('verifie_le'), modifie_le=statut.get('modifie_le'))
+        grille.append(d)
     return grille
 
 
@@ -188,6 +126,7 @@ def prepa_paie():
         annee += 1
 
     conn = get_db()
+    conn.execute('BEGIN')
 
     salaries, date_debut_mois, date_fin_mois = _get_salaries_avec_contrat_actif(conn, mois, annee)
     grille = _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mois)
@@ -228,31 +167,45 @@ def enregistrer_statut():
     annee = request.form.get('annee', type=int)
     user_ids = request.form.getlist('user_ids', type=int)
 
-    if not mois or not annee:
+    if not mois or not 1 <= mois <= 12 or not annee or not 1 <= annee <= 9999:
         flash("Mois ou annee invalide.", 'error')
         return redirect(url_for('prepa_paie_bp.prepa_paie'))
 
     conn = get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if not _peut_acceder_prepa_paie():
+            flash('Accès non autorisé.', 'error')
+            return redirect(url_for('dashboard_bp.dashboard'))
+        salaries, _, _ = _get_salaries_avec_contrat_actif(conn, mois, annee)
+        eligibles = {r['id'] for r in salaries}
+        if not user_ids or len(user_ids) != len(set(user_ids)) or not set(user_ids) <= eligibles:
+            raise ValueError('Dossier absent de la préparation de ce mois. Rechargez la page.')
+        # Vérifier toutes les lignes avant toute écriture, y compris une case décochée.
+        lignes = []
         for uid in user_ids:
+            row = conn.execute('SELECT * FROM prepa_paie_statut WHERE user_id=? AND mois=? AND annee=?', (uid, mois, annee)).fetchone()
+            statut = dict(row) if row else {}
+            donnees = donnees_salarie(conn, uid, mois, annee)
+            if request.form.get(f'reference_{uid}') != reference(donnees, mois, annee, statut):
+                raise ValueError('Les données ou le statut ont changé depuis l’ouverture de cette page. Rechargez et vérifiez les nouvelles informations avant de marquer traité.')
+            lignes.append((uid, donnees))
+        for uid, donnees in lignes:
             traite = 1 if request.form.get(f'traite_{uid}') else 0
-
-            existing = conn.execute(
-                'SELECT id FROM prepa_paie_statut WHERE user_id = ? AND mois = ? AND annee = ?',
-                (uid, mois, annee)
-            ).fetchone()
-
-            if existing:
-                conn.execute('''
-                    UPDATE prepa_paie_statut
-                    SET traite = ?, traite_par = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                ''', (traite, session['user_id'], existing['id']))
-            else:
-                conn.execute('''
-                    INSERT INTO prepa_paie_statut (user_id, mois, annee, traite, traite_par)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (uid, mois, annee, traite, session['user_id']))
+            conn.execute("""INSERT INTO prepa_paie_statut
+                (user_id,mois,annee,traite,traite_par,empreinte_verifiee,verifie_le,revision)
+                VALUES (?,?,?,?,?,?,CASE WHEN ?=1 THEN CURRENT_TIMESTAMP END,1)
+                ON CONFLICT(user_id,mois,annee) DO UPDATE SET
+                    traite=excluded.traite,
+                    traite_par=CASE WHEN excluded.traite=1 THEN excluded.traite_par ELSE prepa_paie_statut.traite_par END,
+                    empreinte_verifiee=CASE WHEN excluded.traite=1 THEN excluded.empreinte_verifiee ELSE prepa_paie_statut.empreinte_verifiee END,
+                    verifie_le=CASE WHEN excluded.traite=1 THEN excluded.verifie_le ELSE prepa_paie_statut.verifie_le END,
+                    modifie_le=CASE WHEN excluded.traite=1 THEN NULL ELSE prepa_paie_statut.modifie_le END,
+                    revision=prepa_paie_statut.revision+1, updated_at=CURRENT_TIMESTAMP""",
+                (uid,mois,annee,traite,session['user_id'],empreinte(donnees) if traite else None,traite))
 
         journaliser_action(
             conn, ACTION_MAJ_STATUT_PREPA_PAIE,
@@ -261,6 +214,9 @@ def enregistrer_statut():
         )
         conn.commit()
         flash(f"Statuts enregistres pour {NOMS_MOIS[mois]} {annee}.", 'success')
+    except ValueError as exc:
+        conn.rollback()
+        flash(str(exc), 'error')
     except Exception:
         conn.rollback()
         logger.exception(
@@ -287,6 +243,7 @@ def export_excel():
     annee = request.args.get('annee', now.year, type=int)
 
     conn = get_db()
+    conn.execute('BEGIN')
     salaries, date_debut_mois, date_fin_mois = _get_salaries_avec_contrat_actif(conn, mois, annee)
     grille = _get_donnees_prepa(conn, salaries, mois, annee, date_debut_mois, date_fin_mois)
     conn.close()
@@ -349,7 +306,7 @@ def export_excel():
             absences_txt += "\n"
 
         row_data = [
-            'Oui' if item['traite'] else 'Non',
+            item['etat'],
             item['nom'],
             item['prenom'],
             item['secteur'],

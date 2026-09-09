@@ -8,6 +8,9 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, flash, send_file, current_app)
 from datetime import datetime, timedelta
 from database import get_db, DATA_DIR
+from sessions_securite import verifier_action
+from absences_coherence import (verifier_disponibilite, memoriser_projection,
+                               retirer_projection, conflits_historiques)
 from document_files import nettoyer_document
 from utils import (login_required, get_user_info, get_heures_theoriques_jour,
                    get_type_periode, get_planning_valide_a_date, maintenant)
@@ -76,7 +79,7 @@ def _get_documents_dir():
     return DOCUMENTS_DIR
 
 
-def _calculer_jours_ouvres_sans_feries(date_debut_str, date_fin_str):
+def _calculer_jours_ouvres_sans_feries(date_debut_str, date_fin_str, conn=None):
     """Calcule le nombre de jours ouvres entre deux dates, en excluant weekends ET jours feries."""
     date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
     date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
@@ -84,13 +87,16 @@ def _calculer_jours_ouvres_sans_feries(date_debut_str, date_fin_str):
     if date_debut > date_fin:
         return 0
 
-    # Recuperer tous les jours feries entre les deux dates
-    conn = get_db()
+    # Utiliser la transaction de l'appelant lors d'une création.
+    fermer = conn is None
+    if fermer:
+        conn = get_db()
     feries_rows = conn.execute('''
         SELECT date FROM jours_feries
         WHERE date >= ? AND date <= ?
     ''', (date_debut_str, date_fin_str)).fetchall()
-    conn.close()
+    if fermer:
+        conn.close()
 
     jours_feries = {row['date'] for row in feries_rows}
 
@@ -204,6 +210,7 @@ def _reporter_absence_sur_forfait_jour(conn, absence_id, user_id, date_debut_str
                 (user_id, date, type_journee, commentaire)
                 VALUES (?, ?, ?, ?)
             ''', (user_id, date_str, type_journee, commentaire))
+            memoriser_projection(conn, 'presence_forfait_jour', user_id, date_str, absence_id=absence_id)
         jour_actuel += timedelta(days=1)
 
 
@@ -244,35 +251,13 @@ def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, 
                  heure_debut_aprem, heure_fin_aprem, commentaire, type_saisie, declaration_conforme)
                 VALUES (?, ?, NULL, NULL, NULL, NULL, ?, 'absence', 1)
             ''', (user_id, date_str, commentaire))
+            memoriser_projection(conn, 'heures_reelles', user_id, date_str, absence_id=absence_id)
 
         jour_actuel += timedelta(days=1)
 
 
 def _supprimer_absence_du_calendrier(conn, absence_id, user_id, date_debut_str, date_fin_str):
-    """Retire du calendrier les jours poses par une absence.
-
-    - Salarie : supprime les entrees heures_reelles de l'absence.
-    - Direction (forfait jours) : repasse en « travaille » les jours ENCORE
-      marques par cette absence (on ne touche pas a une saisie manuelle faite
-      depuis), et efface horaires/commentaire residuels.
-    """
-    if _est_forfait_jour(conn, user_id):
-        conn.execute('''
-            UPDATE presence_forfait_jour
-            SET type_journee = 'travaille', commentaire = NULL,
-                matin_debut = NULL, matin_fin = NULL,
-                aprem_debut = NULL, aprem_fin = NULL
-            WHERE user_id = ? AND date >= ? AND date <= ?
-              AND commentaire LIKE ?
-        ''', (user_id, date_debut_str, date_fin_str, f"Absence #{absence_id}%"))
-        return
-
-    conn.execute('''
-        DELETE FROM heures_reelles
-        WHERE user_id = ? AND date >= ? AND date <= ?
-        AND type_saisie = 'absence'
-        AND commentaire LIKE ?
-    ''', (user_id, date_debut_str, date_fin_str, f"Absence #{absence_id}%"))
+    return retirer_projection(conn, absence_id, user_id, date_debut_str, date_fin_str)
 
 
 @absences_bp.route('/absences', methods=['GET', 'POST'])
@@ -304,16 +289,18 @@ def absences():
             conn.close()
             return redirect(url_for('absences_bp.absences'))
 
-        if date_debut > date_fin:
-            flash('La date de fin doit être postérieure ou égale à la date de début.', 'error')
+        try:
+            date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date().isoformat()
+            date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date().isoformat()
+            if date_reprise:
+                date_reprise = datetime.strptime(date_reprise, '%Y-%m-%d').date().isoformat()
+        except ValueError:
             conn.close()
+            flash('Dates invalides. Utilisez le format année-mois-jour.', 'error')
             return redirect(url_for('absences_bp.absences'))
 
-        # Calculer jours ouvres (sans feries)
-        jours_ouvres = _calculer_jours_ouvres_sans_feries(date_debut, date_fin)
-
-        if jours_ouvres == 0:
-            flash('Aucun jour ouvré dans la période sélectionnée.', 'error')
+        if date_debut > date_fin:
+            flash('La date de fin doit être postérieure ou égale à la date de début.', 'error')
             conn.close()
             return redirect(url_for('absences_bp.absences'))
 
@@ -354,6 +341,21 @@ def absences():
                 justificatif_nom = fichier.filename
 
         try:
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                nettoyer_document(DOCUMENTS_DIR, justificatif_path)
+                return refus
+            if not _peut_gerer_absences():
+                nettoyer_document(DOCUMENTS_DIR, justificatif_path)
+                flash('Accès non autorisé.', 'error')
+                return redirect(url_for('dashboard_bp.dashboard'))
+            if not conn.execute("SELECT 1 FROM users WHERE id=? AND actif=1 AND profil!='prestataire'", (user_id,)).fetchone():
+                raise ValueError('Salarié introuvable ou inactif.')
+            verifier_disponibilite(conn, user_id, date_debut, date_fin)
+            jours_ouvres = _calculer_jours_ouvres_sans_feries(date_debut, date_fin, conn=conn)
+            if not jours_ouvres:
+                raise ValueError('Aucun jour ouvré dans la période sélectionnée.')
             cursor = conn.execute('''
                 INSERT INTO absences
                 (user_id, motif, date_debut, date_fin, date_reprise, commentaire,
@@ -380,6 +382,8 @@ def absences():
                 VALUES (?, ?, ?, ?, NULL, ?, ?)
             ''', (user_id, date_debut, session['user_id'], 'creation_absence',
                   json.dumps({
+                      'absence_id': absence_id,
+                      'origine': 'saisie_manuelle',
                       'motif': motif,
                       'date_debut': date_debut,
                       'date_fin': date_fin,
@@ -432,9 +436,10 @@ def absences():
             LIMIT 20
         ''').fetchall()
 
+    conflits = conflits_historiques(conn, search_user_id)
     conn.close()
 
-    return render_template('absences.html',
+    return render_template('absences.html', conflits=conflits,
                            salaries=salaries,
                            motifs=MOTIFS_ABSENCE,
                            absences_list=absences_list,
@@ -450,16 +455,20 @@ def supprimer_absence(absence_id):
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
-    absence = conn.execute('SELECT * FROM absences WHERE id = ?', (absence_id,)).fetchone()
-
-    if not absence:
-        flash('Absence introuvable.', 'error')
-        conn.close()
-        return redirect(url_for('absences_bp.absences'))
-
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if not _peut_gerer_absences():
+            flash('Accès non autorisé.', 'error')
+            return redirect(url_for('dashboard_bp.dashboard'))
+        absence = conn.execute('SELECT * FROM absences WHERE id=?', (absence_id,)).fetchone()
+        if not absence:
+            flash('Absence introuvable.', 'error')
+            return redirect(url_for('absences_bp.absences'))
         # Supprimer du calendrier
-        _supprimer_absence_du_calendrier(conn, absence_id, absence['user_id'],
+        restaurations = _supprimer_absence_du_calendrier(conn, absence_id, absence['user_id'],
                                          absence['date_debut'], absence['date_fin'])
 
         # Actualiser les compteurs de conges si applicable
@@ -472,14 +481,17 @@ def supprimer_absence(absence_id):
             INSERT INTO historique_modifications
             (user_id_modifie, date_concernee, modifie_par, action,
              anciennes_valeurs, nouvelles_valeurs, date_modification)
-            VALUES (?, ?, ?, ?, ?, NULL, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ''', (absence['user_id'], absence['date_debut'], session['user_id'], 'suppression_absence',
               json.dumps({
                   'motif': absence['motif'],
                   'date_debut': absence['date_debut'],
                   'date_fin': absence['date_fin'],
-                  'jours_ouvres': absence['jours_ouvres']
+                  'jours_ouvres': absence['jours_ouvres'],
+                  'absence_id': absence_id,
+                  'demande_conge_id': absence['demande_conge_id'],
               }),
+              json.dumps({'projections_restaurees': restaurations}),
               maintenant().strftime('%Y-%m-%d %H:%M:%S')))
 
         conn.execute('DELETE FROM absences WHERE id = ?', (absence_id,))

@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 from fiches_versions import FicheVerrouillee
 from database import get_db
+from absences_coherence import ConflitAbsence, verifier_disponibilite, memoriser_projection
 from sessions_securite import verifier_action
 from utils import (login_required, get_user_info, calculer_heures, est_dans_equipe_responsable,
                    get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
@@ -42,8 +43,7 @@ def _reporter_recup_partielle(conn, demande, demande_id):
     récupération est ainsi diminué du volume d'heures absentes.
 
     Refuse par exception un mois verrouillé pour annuler toute la transaction.
-    Retourne True si la journée a été reportée, False sinon
-    (planning absent ou créneau hors horaires).
+    Planning absent ou créneau devenu inapplicable : exception et rollback.
     """
     user_id = demande['user_id']
     date_str = demande['date_debut']
@@ -51,7 +51,7 @@ def _reporter_recup_partielle(conn, demande, demande_id):
     jour_semaine = date_obj.weekday()
 
     if jour_semaine > 4:
-        return False
+        raise ConflitAbsence('La récupération ne concerne aucun jour ouvré.')
 
     # Refuser si le mois est verrouillé
     validation = conn.execute('''
@@ -61,13 +61,15 @@ def _reporter_recup_partielle(conn, demande, demande_id):
     if validation and validation['bloque']:
         raise FicheVerrouillee('Le mois est verrouillé. La direction doit le réouvrir avec un motif avant de valider cette récupération.')
 
-    type_periode = get_type_periode(date_str)
-    planning = get_planning_valide_a_date(user_id, type_periode, date_str)
+    type_periode = get_type_periode(date_str, conn=conn)
+    planning = get_planning_valide_a_date(user_id, type_periode, date_str, conn=conn)
     calcul = calculer_recup_partielle(
         planning, jour_semaine, demande['heure_debut'], demande['heure_fin']
     )
     if not calcul or calcul['heures_recup'] <= 0:
-        return False
+        raise ConflitAbsence('Report impossible : planning absent ou créneau hors horaires. Corrigez le planning puis relancez la validation ; la demande reste en attente.')
+    if abs(calcul['heures_recup'] - (demande['nb_heures'] or 0)) > .01:
+        raise ConflitAbsence('Le planning a changé depuis la demande : le volume de récupération diffère. Corrigez la demande avant validation.')
 
     commentaire = (f"Récup. partielle {demande['heure_debut']}-{demande['heure_fin']} "
                    f"({calcul['heures_recup']:.2f}h) - Demande #{demande_id} validée")
@@ -85,6 +87,7 @@ def _reporter_recup_partielle(conn, demande, demande_id):
           calcul['matin_debut'], calcul['matin_fin'],
           calcul['aprem_debut'], calcul['aprem_fin'],
           calcul.get('soir_debut'), calcul.get('soir_fin')))
+    memoriser_projection(conn, 'heures_reelles', user_id, date_str, demande_recup_id=demande_id)
     return True
 
 
@@ -105,13 +108,14 @@ def _creer_absence_depuis_conge(conn, demande, demande_id, saisi_par):
     date_fin = demande['date_fin']
     nb_jours = demande['nb_jours']
 
+    verifier_disponibilite(conn, user_id, date_debut, date_fin)
     # Insérer dans la table absences
     conn.execute('''
         INSERT INTO absences
-        (user_id, motif, date_debut, date_fin, commentaire, jours_ouvres, saisi_par)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (user_id, motif, date_debut, date_fin, commentaire, jours_ouvres, saisi_par, demande_conge_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (user_id, type_conge, date_debut, date_fin,
-          f"Congé validé - Demande #{demande_id}", nb_jours, saisi_par))
+          f"Congé validé - Demande #{demande_id}", nb_jours, saisi_par, demande_id))
     absence_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
     # Reporter sur le calendrier
@@ -119,6 +123,15 @@ def _creer_absence_depuis_conge(conn, demande, demande_id, saisi_par):
 
     # Actualiser les compteurs de congés
     _actualiser_compteurs_conges(conn, user_id, type_conge, nb_jours, ajout=True)
+
+
+def _journaliser_application(conn, demande, demande_id, type_demande, date_application):
+    import json
+    conn.execute("""INSERT INTO historique_modifications
+        (user_id_modifie,date_concernee,modifie_par,action,nouvelles_valeurs,date_modification)
+        VALUES (?,?,?,?,?,?)""", (demande['user_id'], demande['date_debut'], session['user_id'],
+        'application_' + type_demande, json.dumps({'demande_id': demande_id,
+        'date_fin': demande['date_fin'], 'statut': 'validee'}), date_application))
 
 
 def _creer_demande_recup_partielle(motif_demande):
@@ -142,6 +155,7 @@ def _creer_demande_recup_partielle(motif_demande):
         flash('Date invalide', 'error')
         return redirect(url_for('recup_bp.demande_recup'))
 
+    date_jour = date_obj.date().isoformat()
     jour_semaine = date_obj.weekday()
     if jour_semaine > 4:
         flash('La récupération partielle ne concerne que les jours ouvrés (lundi-vendredi)', 'error')
@@ -249,6 +263,12 @@ def demande_recup():
             return redirect(url_for('recup_bp.demande_recup'))
 
         # Calculer le nombre de jours ouvrés
+        try:
+            date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date().isoformat()
+            date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date().isoformat()
+        except ValueError:
+            flash('Dates invalides.', 'error')
+            return redirect(url_for('recup_bp.demande_recup'))
         nb_jours = calculer_jours_ouvres(date_debut, date_fin)
 
         if nb_jours <= 0:
@@ -524,6 +544,7 @@ def validation_demandes_recup():
                                 )
 
                 elif session.get('profil') in ['directeur', 'comptable']:
+                    verifier_disponibilite(conn, demande['user_id'], demande['date_debut'], demande['date_fin'])
                     # Direction valide → statut = validee
                     # Restriction idempotente : seulement si statut en attente
                     cursor = conn.execute(f'''
@@ -543,20 +564,16 @@ def validation_demandes_recup():
                             type_conge = demande['type_conge']
                             nb_jours = demande['nb_jours']
                             _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
+                            _journaliser_application(conn, demande, demande_id, demande_type, now)
                             conn.commit()
                             flash(f'Demande de congé validée définitivement - {nb_jours:.0f} jour(s) ajouté(s) à l\'historique des absences', 'success')
                         elif _get_type_demande(demande) == 'partielle':
                             # Récupération partielle : reporter la journée avec les
                             # horaires réellement travaillés (planning - créneau d'absence)
-                            ok = _reporter_recup_partielle(conn, demande, demande_id)
+                            _reporter_recup_partielle(conn, demande, demande_id)
+                            _journaliser_application(conn, demande, demande_id, demande_type, now)
                             conn.commit()
-                            if ok:
-                                flash(f'Demande de récupération partielle validée définitivement - '
-                                      f'journée du {demande["date_debut"]} reportée au calendrier '
-                                      f'({demande["heure_debut"]}-{demande["heure_fin"]})', 'success')
-                            else:
-                                flash('Demande validée, mais la journée n\'a pas pu être reportée '
-                                      '(planning absent ou créneau hors horaires)', 'warning')
+                            flash('Récupération partielle validée et appliquée au calendrier.', 'success')
                         else:
                             # Créer automatiquement les entrées de récupération dans heures_reelles
                             date_debut = datetime.strptime(demande['date_debut'], '%Y-%m-%d')
@@ -571,6 +588,10 @@ def validation_demandes_recup():
                                 # Ne créer que pour les jours ouvrés (lundi-vendredi)
                                 if jour_semaine < 5:
                                     date_str = jour_actuel.strftime('%Y-%m-%d')
+                                    periode = get_type_periode(date_str, conn=conn)
+                                    planning = get_planning_valide_a_date(demande['user_id'], periode, date_str, conn=conn)
+                                    if not planning:
+                                        raise ConflitAbsence('Report impossible : planning absent. Complétez le planning puis relancez la validation ; la demande reste en attente.')
 
                                     # Vérifier si le mois n'est pas verrouillé
                                     mois = jour_actuel.month
@@ -595,10 +616,14 @@ def validation_demandes_recup():
                                             VALUES (?, ?, 'recup_journee', ?, 0, NULL, NULL, NULL, NULL)
                                         ''', (demande['user_id'], date_str, f"Récupération - Demande #{demande_id} validée"))
 
+                                        memoriser_projection(conn, 'heures_reelles', demande['user_id'], date_str, demande_recup_id=demande_id)
                                         nb_jours_crees += 1
 
                                 jour_actuel += timedelta(days=1)
 
+                            if not nb_jours_crees:
+                                raise ConflitAbsence('Aucun jour ouvré à reporter ; la demande reste en attente.')
+                            _journaliser_application(conn, demande, demande_id, demande_type, now)
                             conn.commit()
                             flash(f'Demande validée définitivement - {nb_jours_crees} jour(s) de récupération ajouté(s) automatiquement au calendrier', 'success')
                     else:
@@ -619,6 +644,9 @@ def validation_demandes_recup():
                                     demande['nb_jours'],
                                     type_libelle=libelle_demande
                                 )
+        except ConflitAbsence as exc:
+            conn.rollback()
+            flash(str(exc), 'error')
         finally:
             conn.close()
         return redirect(url_for('recup_bp.validation_demandes_recup'))
@@ -800,6 +828,12 @@ def demande_conge():
             flash('Les dates sont obligatoires', 'error')
             return redirect(url_for('recup_bp.demande_conge'))
 
+        try:
+            date_debut = datetime.strptime(date_debut, '%Y-%m-%d').date().isoformat()
+            date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date().isoformat()
+        except ValueError:
+            flash('Dates invalides.', 'error')
+            return redirect(url_for('recup_bp.demande_conge'))
         nb_jours = calculer_jours_ouvres(date_debut, date_fin)
 
         if nb_jours <= 0:
@@ -822,16 +856,18 @@ def demande_conge():
             flash(f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
                   f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.', 'warning')
 
-        # Déterminer le statut initial selon le profil
-        if session.get('profil') == 'directeur':
-            # Forfait jours : pas de responsable au-dessus → auto-validation.
-            statut_initial = 'validee'
-        elif session.get('profil') == 'responsable':
-            statut_initial = 'en_attente_direction'
-        else:
-            statut_initial = 'en_attente_responsable'
-
         try:
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                return refus
+            if type_conge not in _types_conge_pour(session.get('profil')):
+                raise ConflitAbsence('Type de congé non autorisé avec vos droits actuels.')
+            # Relire le rôle sous le verrou, notamment avant l'auto-validation.
+            profil = session.get('profil')
+            statut_initial = ('validee' if profil == 'directeur' else
+                              'en_attente_direction' if profil == 'responsable' else
+                              'en_attente_responsable')
             cur = conn.execute('''
                 INSERT INTO demandes_conges
                 (user_id, type_conge, date_debut, date_fin, nb_jours, motif_demande, statut)
@@ -854,6 +890,7 @@ def demande_conge():
                     'date_debut': date_debut, 'date_fin': date_fin, 'nb_jours': nb_jours,
                 }
                 _creer_absence_depuis_conge(conn, demande, demande_id, session['user_id'])
+                _journaliser_application(conn, demande, demande_id, 'conge', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
             conn.commit()
             if statut_initial == 'validee':
