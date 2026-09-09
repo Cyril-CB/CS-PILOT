@@ -3,6 +3,8 @@ import json
 import os
 from datetime import datetime
 
+import pytest
+
 from blueprints.budget import (
     _compute_ps_eaje, _compute_ps_alsh_extrasco, _compute_ps_alsh_perisco
 )
@@ -2051,6 +2053,35 @@ def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
     texte = _texte_pdf_budget(r.data)
     assert b'Temp.' in texte
     assert b'Initial N' not in texte
+
+
+@pytest.mark.parametrize('typ', ['initial', 'actualise'])
+@pytest.mark.parametrize('global_mode', [False, True])
+def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, global_mode):
+    """Le PDF reste exportable, mais sans résultat ni écart faussement exacts."""
+    sid = sample_users['secteur_id']
+    for compte, valeur in [('641100', 100), ('641200', None), ('706100', 250)]:
+        db.execute('''INSERT INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def)
+            VALUES (?, 2026, ?, ?, ?, ?)''', (typ, sid, compte, valeur, valeur))
+    db.commit()
+    scope = 'global=1' if global_mode else f'secteur_id={sid}'
+    url = f'/api/budget-previsionnel/export-pdf?type_budget={typ}&annee=2026&{scope}'
+    response = admin_client.get(url)
+    assert response.status_code == 200
+    texte = _texte_pdf_budget(response.data)
+    # Les deux résumés (résultat + écart, ou proposition + définitif) sont incomplets.
+    assert texte.count(b' : \\300 compl\\351ter') == 2
+    assert b'150.00' not in texte
+
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
+        'type_budget': typ, 'annee': 2026, 'secteur_id': sid,
+        'compte_num': '641200', 'valeur_def': 0})
+    response = admin_client.get(url)
+    assert response.status_code == 200
+    texte = _texte_pdf_budget(response.data)
+    assert b' : \\300 compl\\351ter' not in texte
+    assert b'150.00' in texte
 
 
 def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):

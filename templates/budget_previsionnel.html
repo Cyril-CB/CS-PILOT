@@ -561,7 +561,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
             ' onclick="bpVoirDetail(this)">' + fmt(value) + '</span></td>';
     }
     // En actualisé : colonnes « Budget initial » (définitif du budget initial de
-    // la même année) et « Écart » = (Définitif si saisi, sinon Temporaire) − initial.
+    // la même année) et « Écart » = Définitif − Initial, si le définitif est saisi.
     const actualise = !!ctx.actualise;
     let html = '<div class="bp-table-scroll"><table class="data-table budget-prev-table"><colgroup>' +
       '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value">' +
@@ -573,7 +573,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
       '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th>' +
       (actualise ? '<th class="bp-col-num" title="Valeur définitive du budget initial de l\'année">Initial</th>' : '') +
       '<th class="bp-col-num">' + escapeHtml(labelTemp) + '</th><th class="bp-col-num">' + escapeHtml(labelDef) + '</th>' +
-      (actualise ? '<th class="bp-col-num" title="Définitif (sinon Temporaire) − Budget initial">Écart</th>' : '') +
+      (actualise ? '<th class="bp-col-num" title="Définitif − Budget initial, si le définitif est saisi">Écart</th>' : '') +
       '<th>Commentaire</th>' +
       '</tr></thead><tbody>';
     let currentCat = null, catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
@@ -585,8 +585,8 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
           '<td class="bp-col-num">' + fmt(catTotals.n2) + '</td><td class="bp-col-num">' + fmt(catTotals.n1) + '</td>' +
           '<td class="bp-col-num">' + fmt(catTotals.n) + '</td>' +
           (actualise ? '<td class="bp-col-num">' + fmt(catTotals.initial) + '</td>' : '') +
-          '<td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
-          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmt(catTotals.def) + '</td>' +
+          '<td class="bp-col-num">' + fmtTotalBudget(catTotals.temp) + '</td>' +
+          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmtTotalBudget(catTotals.def) + '</td>' +
           (actualise ? '<td class="bp-col-num" data-bp-cat-ecart="' + escapeHtml(currentCat) + '">' + fmtEcart(catTotals.ecart) + '</td>' : '') +
           '<td></td></tr>';
     }
@@ -596,8 +596,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
             currentCat = r.categorie;
             catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
         }
-        catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
-        if (actualise){ catTotals.initial += Number(r.initial || 0); catTotals.ecart += ecartValue(r); }
+        catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N'];
+        catTotals.temp = additionBudget(catTotals.temp, r.temp);
+        catTotals.def = additionBudget(catTotals.def, r.def);
+        if (actualise){
+            catTotals.initial += Number(r.initial || 0);
+            catTotals.ecart = additionBudget(catTotals.ecart, ecartValue(r));
+        }
         const isBrut = ctx.brutBase === r.compte_num;
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
         const tempInput = '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
@@ -656,6 +661,13 @@ function fmtEcart(ecart){
     const style = Math.abs(ecart) < 0.005 ? 'color:var(--text-muted);' : 'font-weight:600;';
     return '<span style="' + style + '">' + signe + fmt(ecart) + '</span>';
 }
+// Comme les totaux serveur, une somme reste inconnue si un montant manque.
+function additionBudget(total, valeur){
+    return total == null || valeur == null ? null : total + Number(valeur);
+}
+function fmtTotalBudget(valeur, euros=false){
+    return valeur == null ? 'À compléter' : fmt(valeur) + (euros ? ' €' : '');
+}
 // Rafraîchit en direct, après édition d'une valeur définitive : l'écart de la
 // ligne, les totaux Déf./Écart de sa catégorie et le compte de résultat.
 // Scopé sur #budgetTables : l'onglet global (lecture seule) a ses propres
@@ -672,10 +684,10 @@ function updateEcartCell(compte){
     }
     const rowsCat = currentRows.filter(r => r.categorie === row.categorie);
     const defCell = root.querySelector('[data-bp-cat-def="' + row.categorie + '"]');
-    if (defCell) defCell.textContent = fmt(rowsCat.reduce((s, r) => s + Number(r.def || 0), 0));
+    if (defCell) defCell.textContent = fmtTotalBudget(rowsCat.reduce((s, r) => additionBudget(s, r.def), 0));
     if (row.initial !== undefined){
         const ecartCell = root.querySelector('[data-bp-cat-ecart="' + row.categorie + '"]');
-        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => s + ecartValue(r), 0));
+        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => additionBudget(s, ecartValue(r)), 0));
     }
     renderResultFromRows();
 }
@@ -683,10 +695,10 @@ function updateEcartCell(compte){
 function renderResult(targetId, totaux){
     document.getElementById(targetId).innerHTML =
       '<strong>Compte de résultat</strong><br>' +
-      'Temporaire : Produits ' + fmt(totaux.produits_temp) + ' € - Charges ' + fmt(totaux.charges_temp) +
-      ' € = <strong>' + fmt(totaux.resultat_temp) + ' €</strong><br>' +
-      'Définitif : Produits ' + fmt(totaux.produits_def) + ' € - Charges ' + fmt(totaux.charges_def) +
-      ' € = <strong>' + fmt(totaux.resultat_def) + ' €</strong>';
+      'Temporaire : Produits ' + fmtTotalBudget(totaux.produits_temp, true) + ' - Charges ' + fmtTotalBudget(totaux.charges_temp, true) +
+      ' = <strong>' + fmtTotalBudget(totaux.resultat_temp, true) + '</strong><br>' +
+      'Définitif : Produits ' + fmtTotalBudget(totaux.produits_def, true) + ' - Charges ' + fmtTotalBudget(totaux.charges_def, true) +
+      ' = <strong>' + fmtTotalBudget(totaux.resultat_def, true) + '</strong>';
 }
 
 // Détail d'une somme compta : ouvre la fenêtre et liste les opérations (FEC).
@@ -880,13 +892,13 @@ function renderResultFromRows(){
     if (!salaryMeta) return;
     var ch = currentRows.filter(function(r){ return r.nature === 'charges'; });
     var pr = currentRows.filter(function(r){ return r.nature === 'produits'; });
-    var sum = function(arr, key){ return arr.reduce(function(s, r){ return s + Number(r[key] || 0); }, 0); };
+    var sum = function(arr, key){ return arr.reduce(function(s, r){ return additionBudget(s, r[key]); }, 0); };
     var tot = {
         charges_temp: sum(ch, 'temp'), produits_temp: sum(pr, 'temp'),
         charges_def: sum(ch, 'def'), produits_def: sum(pr, 'def')
     };
-    tot.resultat_temp = tot.produits_temp - tot.charges_temp;
-    tot.resultat_def = tot.produits_def - tot.charges_def;
+    tot.resultat_temp = tot.produits_temp == null || tot.charges_temp == null ? null : tot.produits_temp - tot.charges_temp;
+    tot.resultat_def = tot.produits_def == null || tot.charges_def == null ? null : tot.produits_def - tot.charges_def;
     renderResult('budgetResultat', tot);
 }
 

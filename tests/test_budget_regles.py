@@ -57,6 +57,66 @@ def test_aucun_arrete_ni_reference_invente(cadre, admin_client):
     assert data['salary_brut_account'] == '641100'
     assert all(r['mode'] == 'manuel' for r in data['rows'] if r['compte_num'] != '641100')
     assert all(r['def'] is None for r in data['rows'])
+    assert data['totaux']['charges_def'] is None
+    assert data['totaux']['resultat_def'] is None
+
+
+@pytest.mark.parametrize('typ', ['initial', 'actualise'])
+@pytest.mark.parametrize('nature', ['charges', 'produits'])
+@pytest.mark.parametrize('global_mode', [False, True])
+def test_totaux_conservent_montants_inconnus(db, sample_users, admin_client, typ, nature, global_mode):
+    """Une ligne non saisie empêche un faux résultat, sans masquer l'autre total."""
+    sid = sample_users['secteur_id']
+    manquant = '606200' if nature == 'charges' else '706200'
+    valeurs = {'606100': 120, '606200': -20, '706100': 200, '706200': 50}
+    for compte, valeur in valeurs.items():
+        if compte != manquant:
+            db.execute('''INSERT INTO budget_prev_saisies
+                (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def)
+                VALUES (?, 2026, ?, ?, ?, ?)''', (typ, sid, compte, valeur, valeur))
+    db.commit()
+    ajout = admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
+        'type_budget': typ, 'annee': 2026, 'secteur_id': sid, 'compte_num': manquant})
+    assert ajout.status_code == 200
+    scope = 'global=1' if global_mode else f'secteur_id={sid}'
+
+    def donnees():
+        response = admin_client.get(f'/api/budget-previsionnel/donnees?type_budget={typ}&annee=2026&{scope}')
+        assert response.status_code == 200
+        return response.get_json()
+
+    data = donnees()
+    assert next(r for r in data['rows'] if r['compte_num'] == manquant)['def'] is None
+    assert data['incomplet']
+    assert data['totaux']['charges_def'] == (None if nature == 'charges' else 100)
+    assert data['totaux']['produits_def'] == (None if nature == 'produits' else 250)
+    assert data['totaux']['resultat_def'] is None
+
+    # Zéro est une saisie complète ; les montants négatifs restent additionnés.
+    assert saisir(admin_client, sid, {manquant: 0}, typ).status_code == 200
+    data = donnees()
+    assert not data['incomplet']
+    assert data['totaux']['charges_def'] == (120 if nature == 'charges' else 100)
+    assert data['totaux']['produits_def'] == (200 if nature == 'produits' else 250)
+    assert data['totaux']['resultat_def'] == (130 if nature == 'charges' else 100)
+
+    # Effacer une saisie ne doit pas conserver le résultat complet précédent.
+    assert saisir(admin_client, sid, {manquant: None}, typ).status_code == 200
+    data = donnees()
+    assert data['totaux'][f'{nature}_def'] is None
+    assert data['totaux']['resultat_def'] is None
+
+
+@pytest.mark.parametrize('typ', ['initial', 'actualise'])
+def test_totaux_proposition_incalculable_preservent_definitif(cadre, admin_client, typ):
+    sid, _ = cadre
+    assert saisir(admin_client, sid, {'641100': 120000, '641200': 10000, '645100': 50000,
+                                     '635120': 0, '649100': -1200}, typ).status_code == 200
+    assert config(admin_client, sid, typ=typ, confirmer=False).status_code == 200
+    data = lire(admin_client, sid, typ)
+    assert data['totaux'] == {'charges_temp': None, 'produits_temp': 0, 'resultat_temp': None,
+                              'charges_def': 178800, 'produits_def': 0, 'resultat_def': -178800}
+    assert data['incomplet']  # Calcul à revoir, ancien montant conservé.
 
 
 def test_brut_global_et_reference_annuelle_commune(cadre, admin_client):

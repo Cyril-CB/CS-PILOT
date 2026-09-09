@@ -774,6 +774,23 @@ def _code_allowed(code_analytique, compte_num, allowed_codes):
     return False
 
 
+def _totaux_budget(rows):
+    """Un montant inconnu rend son total et le résultat inconnus, pas nuls."""
+    totaux = {}
+    for suffix in ('temp', 'def'):
+        for nature in ('charges', 'produits'):
+            valeurs = [r[suffix] for r in rows if r['nature'] == nature]
+            totaux[f'{nature}_{suffix}'] = (
+                None if any(v is None for v in valeurs) else round(sum(valeurs), 2)
+            )
+        charges = totaux[f'charges_{suffix}']
+        produits = totaux[f'produits_{suffix}']
+        totaux[f'resultat_{suffix}'] = (
+            None if charges is None or produits is None else round(produits - charges, 2)
+        )
+    return totaux
+
+
 def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, inflation=0, global_mode=False):
     if global_mode:
         return _budget_global(conn, type_budget, annee, inflation)
@@ -964,10 +981,6 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
 
     accounts.sort(key=lambda r: r['compte_num'])
     calculs = appliquer_calculs(conn, type_budget, annee, secteur_id, accounts)
-    total_charges_temp = round(sum(r['temp'] or 0 for r in accounts if r['nature'] == 'charges'), 2)
-    total_produits_temp = round(sum(r['temp'] or 0 for r in accounts if r['nature'] == 'produits'), 2)
-    total_charges_def = round(sum(r['def'] or 0 for r in accounts if r['nature'] == 'charges'), 2)
-    total_produits_def = round(sum(r['def'] or 0 for r in accounts if r['nature'] == 'produits'), 2)
 
     return {
         'rows': accounts,
@@ -975,14 +988,7 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         'last_month_label': NOMS_MOIS[last_month] if 1 <= last_month <= 12 else '',
         **calculs,
         'incomplet': any(r['def'] is None or r['a_recalculer'] for r in accounts),
-        'totaux': {
-            'charges_temp': total_charges_temp,
-            'produits_temp': total_produits_temp,
-            'resultat_temp': round(total_produits_temp - total_charges_temp, 2),
-            'charges_def': total_charges_def,
-            'produits_def': total_produits_def,
-            'resultat_def': round(total_produits_def - total_charges_def, 2),
-        }
+        'totaux': _totaux_budget(accounts),
     }
 
 
@@ -1088,14 +1094,9 @@ def _budget_global(conn, type_budget, annee, inflation):
     if len(arretes) > 1:
         alerts.append('Les secteurs utilisent des mois d’arrêté différents. Harmonisez-les avant de présenter le budget global.')
     rows = sorted(result.values(), key=lambda r: r['compte_num'])
-    totaux = {}
-    for suffix in ('temp', 'def'):
-        for nature in ('charges', 'produits'):
-            totaux[f'{nature}_{suffix}'] = round(sum(r[suffix] or 0 for r in rows if r['nature'] == nature), 2)
-        totaux[f'resultat_{suffix}'] = round(totaux[f'produits_{suffix}'] - totaux[f'charges_{suffix}'], 2)
     m = next(iter(arretes)) if len(arretes) == 1 else 0
     return {'rows': rows, 'last_month': m or 0, 'last_month_label': NOMS_MOIS[m] if m else '',
-            'salary_brut_account': None, 'salary_ratios': {}, 'totaux': totaux, 'alertes': alerts,
+            'salary_brut_account': None, 'salary_ratios': {}, 'totaux': _totaux_budget(rows), 'alertes': alerts,
             'incomplet': any(r['def'] is None or r['a_recalculer'] for r in rows)}
 
 
@@ -1615,17 +1616,24 @@ def api_budget_previsionnel_export_pdf():
         elements.append(t)
         elements.append(Spacer(1, 0.4 * cm))
         tot = data['totaux']
+
+        def resultat_pdf(montant, signe=False):
+            if montant is None:
+                return 'À compléter'
+            return f'{montant:+.2f} €' if signe else f'{montant:.2f} €'
+
         if actualise:
             resultat_initial = initial_produits - initial_charges
+            ecart = tot['resultat_def'] - resultat_initial if tot['resultat_def'] is not None else None
             elements.append(Paragraph(
                 f"Résultat initial : {resultat_initial:.2f} € | "
-                f"Résultat actualisé : {tot['resultat_def']:.2f} € | "
-                f"Écart : {tot['resultat_def'] - resultat_initial:+.2f} €",
+                f"Résultat actualisé : {resultat_pdf(tot['resultat_def'])} | "
+                f"Écart : {resultat_pdf(ecart, signe=True)}",
                 styles['Heading3']
             ))
         else:
             elements.append(Paragraph(
-                f"Résultat Temp. : {tot['resultat_temp']:.2f} € | Résultat Déf. : {tot['resultat_def']:.2f} €",
+                f"Résultat Temp. : {resultat_pdf(tot['resultat_temp'])} | Résultat Déf. : {resultat_pdf(tot['resultat_def'])}",
                 styles['Heading3']
             ))
         doc.build(elements)

@@ -55,6 +55,52 @@ element('anneeBudget').value = '2026';
 const escaped = context.buildTable([{...data.rows[0], libelle:'<script>danger</script>'}], 'Proposition', 'Budget', false, {annee:2026});
 assert(escaped.includes('&lt;script&gt;danger&lt;/script&gt;'));
 assert(!escaped.includes('<script>danger</script>'));
+
+// Totaux incomplets au chargement, en consolidation et pendant une saisie.
+const partialRows = data.rows.map((r, i) => ({...r, def:[100,null,-10][i], temp:[100,null,-10][i]}));
+partialRows.push({...data.rows[0], compte_num:'706100', categorie:'70', nature:'produits', mode:null,
+  is_salary:false, def:200, temp:200});
+context.currentRows = partialRows;
+for (const globalMode of [false, true]) {
+  context.renderBudgetTable('budgetTables', partialRows, data, globalMode);
+  const table = element('budgetTables').innerHTML;
+  const category = table.match(/<tr class="bp-cat-total"><td colspan="2">Total catégorie 64<\/td>(.*?)<\/tr>/)[1];
+  assert(category.includes('data-bp-cat-def="64">À compléter</td>'));
+  assert(category.includes('data-bp-cat-ecart="64">—</td>'));
+  assert.equal(category.match(/À compléter/g).length, 2, 'Proposition et définitif de la catégorie incomplets');
+}
+const partialTotals = {charges_temp:null, produits_temp:200, resultat_temp:null,
+  charges_def:null, produits_def:200, resultat_def:null};
+context.renderResult('globalResultat', partialTotals);
+context.renderResultFromRows();
+assert.equal(element('budgetResultat').innerHTML, element('globalResultat').innerHTML);
+assert(element('budgetResultat').innerHTML.includes('Charges À compléter = <strong>À compléter</strong>'));
+assert(element('budgetResultat').innerHTML.includes('Produits 200,00 €'));
+assert(!element('budgetResultat').innerHTML.includes('110,00'), 'Aucun faux excédent partiel');
+
+const tableRoot = element('budgetTables');
+tableRoot.querySelector = selector => ({
+  '[data-bp-cat-def="64"]':element('catDef64'),
+  '[data-bp-cat-ecart="64"]':element('catEcart64')
+}[selector] || null);
+context.queueSave('641200', '0', null);
+context.updateEcartCell('641200');
+assert.equal(element('catDef64').textContent, '90,00');
+assert(element('catEcart64').innerHTML.includes('+90,00'));
+assert(element('budgetResultat').innerHTML.includes('Charges 90,00 € = <strong>110,00 €</strong>'));
+assert(element('budgetResultat').innerHTML.includes('Temporaire : Produits 200,00 € - Charges À compléter'));
+context.queueSave('641200', '', null);
+context.updateEcartCell('641200');
+assert.equal(element('catDef64').textContent, 'À compléter');
+assert.equal(element('catEcart64').innerHTML, '—');
+assert.equal(element('budgetResultat').innerHTML, element('globalResultat').innerHTML);
+partialRows[1].def = 0;
+partialRows[1].temp = 0;
+context.queueSave('706100', '', null);
+context.updateEcartCell('706100');
+assert(element('budgetResultat').innerHTML.includes('Définitif : Produits À compléter - Charges 90,00 € = <strong>À compléter</strong>'));
+context.currentRows = data.rows;
+tableRoot.querySelector = () => null;
 (async () => {
   let readBudget;
   context.fetch = (_, options) => options ? Promise.resolve({ok:true, json:() => Promise.resolve({success:true})})

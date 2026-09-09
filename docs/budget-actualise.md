@@ -86,6 +86,13 @@ Le budget général additionne les budgets sectoriels et signale les arrêtés
 différents. Le PDF utilise les valeurs enregistrées ; il indique les montants
 non saisis et avertit lorsqu'un budget reste à compléter ou recalculer.
 
+Un montant manquant rend le total de sa catégorie, le total des charges ou des
+produits concerné et le résultat **À compléter**. Les totaux entièrement
+renseignés restent visibles ; un zéro saisi compte comme une valeur connue.
+Cette règle s'applique aux propositions et aux montants définitifs, dans le
+secteur, la consolidation et le PDF. Aucun écart de résultat n'est calculé
+tant que le résultat actualisé est incomplet.
+
 ## Simulateur de paie
 
 Les valeurs saisies et les scénarios restent dans le budget. **Enregistrer une
