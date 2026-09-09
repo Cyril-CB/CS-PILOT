@@ -88,6 +88,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0067', 'Circuit ordonne des fiches mensuelles'),
     ('0068', 'Coherence absences recuperations et preparation paie'),
     ('0069', 'Preuves des exports comptables'),
+    ('0070', 'Référence annuelle et modes des comptes du budget'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -1716,6 +1717,9 @@ def init_db():
             UNIQUE(annee, secteur_id, type_budget)
         )
     ''')
+
+    from budget_calculs import creer_schema as creer_schema_budget
+    creer_schema_budget(conn)
 
     # Fiches de travail du budget actualisé (comptes non paramétrés PS / paie,
     # migration 0056) : construction du définitif = réel à date + projection

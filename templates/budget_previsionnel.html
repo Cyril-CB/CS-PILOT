@@ -288,6 +288,18 @@
 
 <div id="tab-budget">
     <div id="budgetInfos" style="margin:10px 0;color:var(--text-muted);"></div>
+    <details id="budgetParametres" style="margin:12px 0;">
+        <summary>Référence annuelle, arrêté du réalisé et modes des comptes 63/64</summary>
+        <div id="budgetParametresContenu" style="padding:12px 0;"></div>
+    </details>
+    {% if profil in ['directeur', 'comptable'] %}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;">
+        <button type="button" class="btn btn-primary" id="budgetSaveSaisies" onclick="saveBudgetSaisies()" disabled>Enregistrer les saisies et recalculer</button>
+        <button type="button" class="btn btn-secondary" onclick="chargerBudget()">Annuler les saisies non enregistrées</button>
+        <button type="button" class="btn btn-secondary" onclick="recalculerBudget()">Recalculer et reporter les comptes automatiques</button>
+        <span id="budgetSaveEtat" role="status"></span>
+    </div>
+    {% endif %}
     <div id="budgetTables"></div>
     <div id="budgetResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
 </div>
@@ -413,8 +425,13 @@ var canEditPs = {{ 'true' if profil in ['directeur', 'comptable'] else 'false' }
 var salaryMeta = null;
 var currentRows = [];
 var psComptes = {};   // { compte_num: 'eaje' | 'alsh_perisco' | 'alsh_extrasco' }
+var budgetDirty = {};
+var budgetLoading = 0;
+var globalLoading = 0;
+var budgetSaving = false;
+var budgetFetching = false;
 
-function fmt(n){ return (Number(n || 0)).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function fmt(n){ return n === null || n === undefined ? '—' : Number(n).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function escapeHtml(value){
     return String(value || '')
       .replace(/&/g, '&amp;')
@@ -441,25 +458,44 @@ function getParams(globalMode){
 }
 
 function chargerBudget(){
+    if (budgetSaving) return;
+    closePaieSimulator(); closeFicheTravail(); closePsSimulator();
+    ++globalLoading;
+    const loadId = ++budgetLoading;
+    budgetFetching = true;
+    marquerBudgetSale();
     fetch(getParams(false)).then(r => r.json()).then(data => {
+        if (loadId !== budgetLoading) return;
         if (data.error) { alert(data.error); return; }
+        budgetDirty = {};
+        marquerBudgetSale();
         salaryMeta = data;
         currentRows = (data.rows || []).map(r => Object.assign({}, r));
         renderBudgetTable('budgetTables', currentRows, data, false);
         renderResult('budgetResultat', data.totaux);
         const type = document.getElementById('typeBudget').value;
-        const info = (type === 'actualise' && data.last_month)
-            ? ('Données année N disponibles jusqu\'à <strong>' + data.last_month_label + '</strong>.')
-            : '';
-        document.getElementById('budgetInfos').innerHTML = info;
-    });
+        const info = type === 'actualise' ? (data.parametres.mois_arrete === null ? 'Arrêté du réalisé à choisir.' : 'Réalisé retenu : ' + (data.last_month ? 'fin ' + data.last_month_label : 'aucun mois') + '.') : '';
+        document.getElementById('budgetInfos').innerHTML = escapeHtml(info) +
+            '<p>Brut global prévu (ensemble des 641) : <strong>' + fmt(data.brut_global) + ' €</strong></p>' +
+            (data.incomplet ? '<p>Budget en cours : les montants non renseignés restent à compléter.</p>' : '') +
+            (data.alertes || []).map(a => '<div role="status">' + escapeHtml(a) + '</div>').join('');
+        renderBudgetParametres(data);
+        const tg = document.getElementById('tab-global');
+        if (tg && tg.style.display !== 'none') chargerGlobal();
+    }).catch(() => { if (loadId === budgetLoading) alert('Chargement du budget impossible. Réessayez.'); })
+      .finally(() => { if (loadId === budgetLoading) { budgetFetching = false; marquerBudgetSale(); } });
 }
 
 function chargerGlobal(){
+    const loadId = ++globalLoading;
     fetch(getParams(true)).then(r => r.json()).then(data => {
+        if (loadId !== globalLoading) return;
         if (data.error) { alert(data.error); return; }
         renderBudgetTable('globalTables', data.rows || [], data, true);
         renderResult('globalResultat', data.totaux);
+        document.getElementById('globalResultat').insertAdjacentHTML('beforeend',
+            (data.incomplet ? '<p>Consolidation en cours : des montants restent à renseigner.</p>' : '') +
+            (data.alertes || []).map(a => '<div>' + escapeHtml(a) + '</div>').join(''));
     });
 }
 
@@ -467,8 +503,9 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
     const charges = rows.filter(r => r.nature === 'charges');
     const produits = rows.filter(r => r.nature === 'produits');
     const type = document.getElementById('typeBudget').value;
-    const nTemp = type === 'initial' ? 'N+1 Temp.' : 'N Temp.';
-    const nDef = type === 'initial' ? 'N+1 Déf.' : 'N Déf.';
+    const annee = parseInt(document.getElementById('anneeBudget').value, 10);
+    const nTemp = 'Proposition ' + annee;
+    const nDef = 'Budget ' + annee;
     // Contexte de « drill-down » : les colonnes compta (N-2/N-1/N) deviennent
     // cliquables et affichent les opérations sous-jacentes. En « actualisé », la
     // colonne N est un cumul partiel (mois <= last_month) : on passe ce plafond.
@@ -476,7 +513,8 @@ function renderBudgetTable(targetId, rows, meta, globalMode){
         annee: parseInt(document.getElementById('anneeBudget').value),
         secteur: document.getElementById('secteurBudget').value,
         global: globalMode,
-        moisMax: (type === 'actualise' && meta && meta.last_month) ? meta.last_month : 0,
+        moisMax: type === 'actualise' ? (meta.last_month || 0) : null,
+        brutBase: meta.salary_brut_account,
         actualise: type === 'actualise'
     };
     const hint = ' <span class="bp-detail-hint">(Cliquez les sommes pour afficher le détail)</span>';
@@ -492,11 +530,6 @@ function bindBudgetInputHandlers(targetId){
     const root = document.getElementById(targetId);
     if (!root) return;
 
-    root.querySelectorAll('input[data-bp-temp-compte]').forEach((input) => {
-        input.addEventListener('change', function(){
-            updateBrutTemp(this, this.dataset.bpTempCompte || '');
-        });
-    });
     root.querySelectorAll('input[data-bp-def-compte]').forEach((input) => {
         input.addEventListener('input', function(){
             queueSave(this.dataset.bpDefCompte || '', this.value, null);
@@ -522,12 +555,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
     function comptaCell(compte, anneeCol, value, moisMax){
         const attrs = 'data-compte="' + escapeHtml(compte) + '" data-annee-col="' + anneeCol + '"' +
             (ctx.global ? ' data-global="1"' : ' data-secteur="' + escapeHtml(ctx.secteur || '') + '"') +
-            (moisMax ? ' data-mois-max="' + moisMax + '"' : '');
+            (ctx.global && ctx.actualise && anneeCol === ctx.annee ? ' data-arretes-budget="1"' : '') +
+            (moisMax != null ? ' data-mois-max="' + moisMax + '"' : '');
         return '<td class="bp-col-num"><span class="bp-detail" ' + attrs +
             ' onclick="bpVoirDetail(this)">' + fmt(value) + '</span></td>';
     }
     // En actualisé : colonnes « Budget initial » (définitif du budget initial de
-    // la même année) et « Écart » = (Définitif si saisi, sinon Temporaire) − initial.
+    // la même année) et « Écart » = Définitif − Initial, si le définitif est saisi.
     const actualise = !!ctx.actualise;
     let html = '<div class="bp-table-scroll"><table class="data-table budget-prev-table"><colgroup>' +
       '<col class="bp-col-compte"><col class="bp-col-libelle"><col class="bp-col-value"><col class="bp-col-value"><col class="bp-col-value">' +
@@ -538,8 +572,8 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
       '</colgroup><thead><tr>' +
       '<th>Compte</th><th>Libellé</th><th class="bp-col-num">N-2</th><th class="bp-col-num">N-1</th><th class="bp-col-num">N</th>' +
       (actualise ? '<th class="bp-col-num" title="Valeur définitive du budget initial de l\'année">Initial</th>' : '') +
-      '<th class="bp-col-num">' + labelTemp + '</th><th class="bp-col-num">' + labelDef + '</th>' +
-      (actualise ? '<th class="bp-col-num" title="Définitif (sinon Temporaire) − Budget initial">Écart</th>' : '') +
+      '<th class="bp-col-num">' + escapeHtml(labelTemp) + '</th><th class="bp-col-num">' + escapeHtml(labelDef) + '</th>' +
+      (actualise ? '<th class="bp-col-num" title="Définitif − Budget initial, si le définitif est saisi">Écart</th>' : '') +
       '<th>Commentaire</th>' +
       '</tr></thead><tbody>';
     let currentCat = null, catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
@@ -551,8 +585,8 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
           '<td class="bp-col-num">' + fmt(catTotals.n2) + '</td><td class="bp-col-num">' + fmt(catTotals.n1) + '</td>' +
           '<td class="bp-col-num">' + fmt(catTotals.n) + '</td>' +
           (actualise ? '<td class="bp-col-num">' + fmt(catTotals.initial) + '</td>' : '') +
-          '<td class="bp-col-num">' + fmt(catTotals.temp) + '</td>' +
-          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmt(catTotals.def) + '</td>' +
+          '<td class="bp-col-num">' + fmtTotalBudget(catTotals.temp) + '</td>' +
+          '<td class="bp-col-num" data-bp-cat-def="' + escapeHtml(currentCat) + '">' + fmtTotalBudget(catTotals.def) + '</td>' +
           (actualise ? '<td class="bp-col-num" data-bp-cat-ecart="' + escapeHtml(currentCat) + '">' + fmtEcart(catTotals.ecart) + '</td>' : '') +
           '<td></td></tr>';
     }
@@ -562,15 +596,19 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
             currentCat = r.categorie;
             catTotals = {n2:0,n1:0,n:0,initial:0,temp:0,def:0,ecart:0};
         }
-        catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N']; catTotals.temp += r.temp; catTotals.def += r.def;
-        if (actualise){ catTotals.initial += Number(r.initial || 0); catTotals.ecart += ecartValue(r); }
-        const isBrut = (salaryMeta && salaryMeta.salary_brut_account === r.compte_num);
+        catTotals.n2 += r['N-2']; catTotals.n1 += r['N-1']; catTotals.n += r['N'];
+        catTotals.temp = additionBudget(catTotals.temp, r.temp);
+        catTotals.def = additionBudget(catTotals.def, r.def);
+        if (actualise){
+            catTotals.initial += Number(r.initial || 0);
+            catTotals.ecart = additionBudget(catTotals.ecart, ecartValue(r));
+        }
+        const isBrut = ctx.brutBase === r.compte_num;
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
-        const tempInput = (!globalMode && !isReadOnly && isBrut)
-            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.temp + '" data-bp-temp-compte="' + escapeHtml(r.compte_num) + '">'
-            : '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
+        const tempInput = '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
+        const auto = r.mode === 'proportionnel' || r.mode === 'mensuel';
         const defInput = (!globalMode && !isReadOnly)
-            ? '<input class="form-control bp-input-def" type="number" step="0.01" value="' + r.def + '" data-bp-def-compte="' + escapeHtml(r.compte_num) + '">'
+            ? '<input class="form-control bp-input-def" aria-label="Budget du compte ' + escapeHtml(r.compte_num) + '" placeholder="Non renseigné" type="number" step="0.01" value="' + (r.def == null ? '' : r.def) + '" data-bp-def-compte="' + escapeHtml(r.compte_num) + '"' + (auto ? ' readonly title="Compte calculé : modifier son mode pour une saisie manuelle"' : '') + '>'
             : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
         const commentInput = (!globalMode && !isReadOnly)
             ? '<input class="form-control bp-input-comment" value="' + escapeHtml(r.commentaire || '') + '" data-bp-comment-compte="' + escapeHtml(r.compte_num) + '">'
@@ -581,7 +619,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const paieBtn = (!globalMode && canEditPs && salaryMeta && salaryMeta.salary_brut_account === r.compte_num)
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-paie-compte="' + escapeHtml(r.compte_num) + '" title="Ouvrir le simulateur de paie">🧮 Paie</button>'
             : '';
-        const ficheBtn = (actualise && !globalMode && !psComptes[r.compte_num] && !r.is_salary)
+        const ficheBtn = (!globalMode && !psComptes[r.compte_num] && ((actualise && !r.is_salary) || r.mode === 'mensuel'))
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements" aria-label="Fiche de travail">📋</button>'
             : '';
         const retirerBtn = (!globalMode && canEditPs && r.manuel)
@@ -590,10 +628,13 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const boutons = psBtn + paieBtn + ficheBtn + retirerBtn;
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td>' +
-          '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) + '</span>' +
+          '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) +
+          (r.mode ? '<small style="display:block;">' + escapeHtml(r.mode === 'base' ? 'Brut de base' : r.mode === 'mensuel' ? 'Projection mensuelle' : r.mode === 'proportionnel' ? 'Proportionnel au brut' : 'Montant manuel') + '</small>' : '') +
+          (r.taux != null ? '<small style="display:block;">Réf. ' + escapeHtml(salaryMeta.parametres.annee_reference) + ' : ' + fmt(r.reference_montant) + ' / ' + fmt(r.reference_brut) + ' = ' + fmt(r.taux * 100) + ' %</small>' : '') +
+          (r.calcul_erreur ? '<small style="display:block;color:var(--danger,#b00);">' + escapeHtml(r.calcul_erreur) + '</small>' : '') + '</span>' +
           (boutons ? '<span class="bp-btns">' + boutons + '</span>' : '') + '</div></td>' +
-          comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], 0) +
-          comptaCell(r.compte_num, ctx.annee - 1, r['N-1'], 0) +
+          comptaCell(r.compte_num, ctx.annee - 2, r['N-2'], null) +
+          comptaCell(r.compte_num, ctx.annee - 1, r['N-1'], null) +
           comptaCell(r.compte_num, ctx.annee, r['N'], ctx.moisMax) +
           (actualise ? '<td class="bp-col-num">' + fmt(r.initial) + '</td>' : '') +
           '<td class="bp-col-num">' + tempInput + '</td><td class="bp-col-num">' + defInput + '</td>' +
@@ -609,14 +650,23 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
 // colonne Initial, sans repli sur le Temporaire. L'écart se lit ainsi
 // directement entre les deux colonnes affichées, et l'écran donne le même
 // chiffre que le PDF. Un compte dont le définitif n'est pas encore saisi
-// affiche donc l'opposé de son budget initial.
+// ne présente pas d'écart calculé.
 function ecartValue(r){
+    if (r.def == null) return null;
     return Number(r.def || 0) - Number(r.initial || 0);
 }
 function fmtEcart(ecart){
+    if (ecart === null) return '—';
     const signe = ecart > 0 ? '+' : '';
     const style = Math.abs(ecart) < 0.005 ? 'color:var(--text-muted);' : 'font-weight:600;';
     return '<span style="' + style + '">' + signe + fmt(ecart) + '</span>';
+}
+// Comme les totaux serveur, une somme reste inconnue si un montant manque.
+function additionBudget(total, valeur){
+    return total == null || valeur == null ? null : total + Number(valeur);
+}
+function fmtTotalBudget(valeur, euros=false){
+    return valeur == null ? 'À compléter' : fmt(valeur) + (euros ? ' €' : '');
 }
 // Rafraîchit en direct, après édition d'une valeur définitive : l'écart de la
 // ligne, les totaux Déf./Écart de sa catégorie et le compte de résultat.
@@ -634,10 +684,10 @@ function updateEcartCell(compte){
     }
     const rowsCat = currentRows.filter(r => r.categorie === row.categorie);
     const defCell = root.querySelector('[data-bp-cat-def="' + row.categorie + '"]');
-    if (defCell) defCell.textContent = fmt(rowsCat.reduce((s, r) => s + Number(r.def || 0), 0));
+    if (defCell) defCell.textContent = fmtTotalBudget(rowsCat.reduce((s, r) => additionBudget(s, r.def), 0));
     if (row.initial !== undefined){
         const ecartCell = root.querySelector('[data-bp-cat-ecart="' + row.categorie + '"]');
-        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => s + ecartValue(r), 0));
+        if (ecartCell) ecartCell.innerHTML = fmtEcart(rowsCat.reduce((s, r) => additionBudget(s, ecartValue(r)), 0));
     }
     renderResultFromRows();
 }
@@ -645,10 +695,10 @@ function updateEcartCell(compte){
 function renderResult(targetId, totaux){
     document.getElementById(targetId).innerHTML =
       '<strong>Compte de résultat</strong><br>' +
-      'Temporaire : Produits ' + fmt(totaux.produits_temp) + ' € - Charges ' + fmt(totaux.charges_temp) +
-      ' € = <strong>' + fmt(totaux.resultat_temp) + ' €</strong><br>' +
-      'Définitif : Produits ' + fmt(totaux.produits_def) + ' € - Charges ' + fmt(totaux.charges_def) +
-      ' € = <strong>' + fmt(totaux.resultat_def) + ' €</strong>';
+      'Temporaire : Produits ' + fmtTotalBudget(totaux.produits_temp, true) + ' - Charges ' + fmtTotalBudget(totaux.charges_temp, true) +
+      ' = <strong>' + fmtTotalBudget(totaux.resultat_temp, true) + '</strong><br>' +
+      'Définitif : Produits ' + fmtTotalBudget(totaux.produits_def, true) + ' - Charges ' + fmtTotalBudget(totaux.charges_def, true) +
+      ' = <strong>' + fmtTotalBudget(totaux.resultat_def, true) + '</strong>';
 }
 
 // Détail d'une somme compta : ouvre la fenêtre et liste les opérations (FEC).
@@ -660,6 +710,7 @@ function bpVoirDetail(el){
     if (d.global === '1') url += '&global=1';
     else if (d.secteur) url += '&secteur_id=' + encodeURIComponent(d.secteur);
     if (d.moisMax) url += '&mois_max=' + encodeURIComponent(d.moisMax);
+    if (d.arretesBudget === '1') url += '&arretes_budget=1';
 
     document.getElementById('bpDetailTitle').textContent = 'Détail du compte ' + compte + ' — ' + annee;
     document.getElementById('bpDetailContent').innerHTML = '<p>Chargement…</p>';
@@ -687,7 +738,6 @@ function bpVoirDetail(el){
     });
 }
 
-const saveTimers = {};
 function getCurrentBudgetContext(){
     return {
         type_budget: document.getElementById('typeBudget').value,
@@ -695,62 +745,97 @@ function getCurrentBudgetContext(){
         secteur_id: parseInt(document.getElementById('secteurBudget').value),
     };
 }
-
-function getSaveKey(compte, context){
-    return [context.type_budget, context.annee, context.secteur_id, compte].join(':');
+function marquerBudgetSale(){
+    const dirty = Object.keys(budgetDirty).length > 0;
+    ['typeBudget','anneeBudget','secteurBudget','inflation'].forEach(id => { document.getElementById(id).disabled = dirty || budgetSaving || budgetFetching; });
+    document.querySelectorAll('#budgetTables input').forEach(el => { el.disabled = budgetSaving || budgetFetching; });
+    const btn = document.getElementById('budgetSaveSaisies');
+    if (btn) btn.disabled = !dirty || budgetSaving || budgetFetching;
+    const etat = document.getElementById('budgetSaveEtat');
+    if (etat) etat.textContent = budgetSaving ? 'Enregistrement…' : budgetFetching ? 'Chargement…' : dirty ? 'Saisies non enregistrées' : '';
 }
-
 function queueSave(compte, valeurDef, commentaire){
-    if (isReadOnly) return;
-    const context = getCurrentBudgetContext();
+    if (isReadOnly || budgetSaving || budgetFetching) return;
     const row = currentRows.find(r => r.compte_num === compte);
     if (!row) return;
-    if (valeurDef !== null) row.def = Number(valeurDef || 0);
+    if (valeurDef !== null) row.def = valeurDef === '' ? null : Number(valeurDef);
     if (commentaire !== null) row.commentaire = commentaire || '';
-    const saveKey = getSaveKey(compte, context);
-    clearTimeout(saveTimers[saveKey]);
-    saveTimers[saveKey] = setTimeout(() => saveLine(row, context, saveKey), 300);
+    budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: row.temp, commentaire: row.commentaire || ''};
+    marquerBudgetSale();
 }
-
-function saveLine(row, context, saveKey){
-    if (!context) return;
-    fetch('/api/budget-previsionnel/save-line', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        type_budget: context.type_budget,
-        annee: context.annee,
-        secteur_id: context.secteur_id,
-        compte_num: row.compte_num,
-        valeur_temp: row.temp,
-        valeur_def: row.def,
-        commentaire: row.commentaire || ''
-      })
-    }).then(r => r.json()).then(data => {
-        if (saveKey) delete saveTimers[saveKey];
-        if (!data.success) alert(data.error || 'Erreur sauvegarde');
+function budgetSansSaisie(){
+    if (budgetFetching) { alert('Attendez la fin du chargement du budget.'); return false; }
+    if (budgetSaving || Object.keys(budgetDirty).length){ alert('Enregistrez ou annulez les saisies du tableau avant cette action.'); return false; }
+    return true;
+}
+async function budgetPost(url, payload){
+    if (budgetSaving || budgetFetching) return false;
+    budgetSaving = true; marquerBudgetSale();
+    document.querySelectorAll('#budgetTables input').forEach(el => { el.disabled = true; });
+    try {
+        const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(Object.assign({}, getCurrentBudgetContext(), {reference_budget: salaryMeta.reference_budget}, payload))});
+        const data = await response.json();
+        if (!response.ok || !data.success){ alert(data.error || 'Enregistrement refusé. Rechargez le budget.'); return false; }
+        budgetSaving = false;
+        chargerBudget();
+        return true;
+    } catch(e) { alert('Enregistrement non confirmé. Rechargez le budget pour vérifier son état.'); return false; }
+    finally { budgetSaving = false; marquerBudgetSale(); }
+}
+function saveBudgetSaisies(){
+    if (!Object.keys(budgetDirty).length) return;
+    return budgetPost('/api/budget-previsionnel/save-lines', {lignes: Object.values(budgetDirty)});
+}
+function recalculerBudget(){
+    if (!budgetSansSaisie()) return;
+    return budgetPost('/api/budget-previsionnel/recalculer', {});
+}
+function renderBudgetParametres(data){
+    const p = data.parametres || {};
+    const ctx = getCurrentBudgetContext();
+    const dis = canEditPs ? '' : ' disabled';
+    const noms = ['Aucun réalisé', 'Fin janvier','Fin février','Fin mars','Fin avril','Fin mai','Fin juin','Fin juillet','Fin août','Fin septembre','Fin octobre','Fin novembre','Fin décembre'];
+    let html = '<p>Le premier 641 est le brut de base. Les autres 641 complètent le brut global. Un complément proportionnel utilise le brut de base ; une charge proportionnelle utilise le total des 641. Les références portent sur la même année complète et le même secteur.</p>';
+    if (ctx.type_budget === 'actualise') {
+        html += '<label for="budgetMoisArrete">Réalisé retenu pour ce budget</label><select class="form-select" id="budgetMoisArrete"' + dis + '><option value="">Choisir un arrêté</option>' +
+            noms.map((nom,m) => '<option value="' + m + '"' + (p.mois_arrete === m ? ' selected' : '') + '>' + nom + '</option>').join('') + '</select>';
+    }
+    html += '<label for="budgetAnneeReference">Année complète de référence des proportions</label><select class="form-select" id="budgetAnneeReference"' + dis + '><option value="">Aucune référence confirmée</option>' +
+        (data.annees_reference || []).map(a => '<option value="' + escapeHtml(a) + '"' + (p.annee_reference === a ? ' selected' : '') + '>' + escapeHtml(a) + '</option>').join('') + '</select>';
+    html += '<label style="display:block;margin:8px 0;"><input id="budgetReferenceComplete" type="checkbox"' + dis + '> Je confirme que l’import de cette année couvre l’exercice complet, avec ses régularisations.</label>';
+    html += '<p>' + (p.reference_valide ? 'Référence annuelle confirmée pour cet import.' : 'Aucune référence annuelle complète confirmée pour les données actuelles.') +
+        ' Une réimportation ou une modification du périmètre impose une nouvelle vérification. Un compte annuel peut ne comporter qu’un seul mois de mouvement.</p>';
+    html += '<div style="overflow-x:auto;"><table class="table"><thead><tr><th>Compte</th><th>Mode de calcul</th></tr></thead><tbody>';
+    (data.rows || []).filter(r => r.is_salary).forEach(r => {
+        html += '<tr><td>' + escapeHtml(r.compte_num + ' — ' + r.libelle) + '</td><td>';
+        if (r.mode === 'base') html += 'Brut de base : saisie directe ou simulateur de paie';
+        else html += '<select class="form-select" aria-label="Mode du compte ' + escapeHtml(r.compte_num) + '" data-budget-mode="' + escapeHtml(r.compte_num) + '"' + dis + '>' +
+            [['manuel','Montant manuel'],['proportionnel','Proportionnel au brut'],['mensuel','Projection mensuelle']].map(([v,label]) => '<option value="' + v + '"' + (r.mode === v ? ' selected' : '') + '>' + label + '</option>').join('') + '</select>';
+        html += '</td></tr>';
+    });
+    html += '</tbody></table></div><p>Le mode manuel préserve vos montants, y compris zéro. Choisir un mode automatique autorise le remplacement du montant de ce compte par son calcul. Une référence manquante ne transforme jamais une charge en zéro.</p>';
+    if (canEditPs) html += '<button type="button" class="btn btn-primary" onclick="saveBudgetParametres()">Enregistrer les paramètres et recalculer</button>';
+    document.getElementById('budgetParametresContenu').innerHTML = html;
+}
+function saveBudgetParametres(){
+    if (!budgetSansSaisie()) return;
+    const ctx = getCurrentBudgetContext();
+    const mois = document.getElementById('budgetMoisArrete');
+    if (ctx.type_budget === 'actualise' && mois.value === '') { alert('Choisissez le mois d’arrêté.'); return; }
+    const annee = document.getElementById('budgetAnneeReference').value;
+    const modes = {};
+    document.querySelectorAll('[data-budget-mode]').forEach(el => { modes[el.dataset.budgetMode] = el.value; });
+    return budgetPost('/api/budget-previsionnel/parametres', {
+        mois_arrete: ctx.type_budget === 'initial' ? 0 : Number(mois.value),
+        annee_reference: annee ? Number(annee) : null,
+        confirmer_reference_complete: document.getElementById('budgetReferenceComplete').checked,
+        modes: modes
     });
 }
 
-function updateBrutTemp(input, compteNum){
-    const scrollY = window.scrollY || window.pageYOffset || 0;
-    const brut = Number(input.value || 0);
-    const ratios = (salaryMeta && salaryMeta.salary_ratios) || {};
-    for (const r of currentRows){
-        if (r.compte_num === compteNum) r.temp = brut;
-        else if (ratios[r.compte_num] !== undefined) r.temp = Number((brut * ratios[r.compte_num]).toFixed(2));
-    }
-    const brutRow = currentRows.find(r => r.compte_num === compteNum);
-    if (brutRow && !isReadOnly) saveLine(brutRow, getCurrentBudgetContext());
-    renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
-    window.scrollTo(0, scrollY);
-    const ch = currentRows.filter(r => r.nature === 'charges').reduce((s, r) => s + Number(r.temp || 0), 0);
-    const pr = currentRows.filter(r => r.nature === 'produits').reduce((s, r) => s + Number(r.temp || 0), 0);
-    const tot = Object.assign({}, salaryMeta.totaux, {charges_temp: ch, produits_temp: pr, resultat_temp: pr - ch});
-    renderResult('budgetResultat', tot);
-}
-
 function exporterPdf(globalMode){
+    if (!budgetSansSaisie()) return;
     let url = '/api/budget-previsionnel/export-pdf?type_budget=' + document.getElementById('typeBudget').value +
       '&annee=' + document.getElementById('anneeBudget').value +
       '&inflation=' + (document.getElementById('inflation').value || '0');
@@ -807,18 +892,19 @@ function renderResultFromRows(){
     if (!salaryMeta) return;
     var ch = currentRows.filter(function(r){ return r.nature === 'charges'; });
     var pr = currentRows.filter(function(r){ return r.nature === 'produits'; });
-    var sum = function(arr, key){ return arr.reduce(function(s, r){ return s + Number(r[key] || 0); }, 0); };
+    var sum = function(arr, key){ return arr.reduce(function(s, r){ return additionBudget(s, r[key]); }, 0); };
     var tot = {
         charges_temp: sum(ch, 'temp'), produits_temp: sum(pr, 'temp'),
         charges_def: sum(ch, 'def'), produits_def: sum(pr, 'def')
     };
-    tot.resultat_temp = tot.produits_temp - tot.charges_temp;
-    tot.resultat_def = tot.produits_def - tot.charges_def;
+    tot.resultat_temp = tot.produits_temp == null || tot.charges_temp == null ? null : tot.produits_temp - tot.charges_temp;
+    tot.resultat_def = tot.produits_def == null || tot.charges_def == null ? null : tot.produits_def - tot.charges_def;
     renderResult('budgetResultat', tot);
 }
 
 // ---- Étape 2 : paramétrage des comptes PS ----
 function openPsConfig(){
+    if (!budgetSansSaisie()) return;
     var modal = document.getElementById('psConfigModal');
     if (!modal) return;
     modal.style.display = 'flex';
@@ -883,6 +969,7 @@ function removePsCompte(compte){
 
 // ---- Ajout manuel d'un compte au budget ----
 function openAjoutCompte(){
+    if (!budgetSansSaisie()) return;
     var modal = document.getElementById('ajoutCompteModal');
     if (!modal) return;
     var ctxEl = document.getElementById('ajoutCompteContexte');
@@ -921,6 +1008,7 @@ function loadAjoutCompteOptions(){
         });
 }
 function ajouterCompteBudget(){
+    if (!budgetSansSaisie()) return;
     var compte = (document.getElementById('ajoutCompteSelect') || {}).value || '';
     if (!compte){ alert('Sélectionnez un compte.'); return; }
     var context = getCurrentBudgetContext();
@@ -939,6 +1027,7 @@ function ajouterCompteBudget(){
     });
 }
 function retirerCompteBudget(compte){
+    if (!budgetSansSaisie()) return;
     if (!confirm('Retirer le compte ' + compte + ' de ce budget ?\n' +
                  'Les montants et le commentaire saisis sur cette ligne seront supprimés.')) return;
     var context = getCurrentBudgetContext();
@@ -971,21 +1060,25 @@ function psSimTitle(type){
 }
 
 function openPsSimulator(compteNum){
+    if (!budgetSansSaisie()) return;
     var type = psComptes[compteNum] || 'eaje';
     var rowMeta = currentRows.find(function(r){ return r.compte_num === compteNum; });
     var libelle = rowMeta ? rowMeta.libelle : '';
     var ctx = getCurrentBudgetContext();
     psSim = {compte: compteNum, type_ps: type, libelle: libelle, ctx: ctx, state: null, alshCtx: null};
+    var instance = psSim;
     document.getElementById('psSimTitle').textContent =
         psSimTitle(type) + ' — ' + compteNum + (libelle ? ' (' + libelle + ')' : '');
     if (type === 'eaje'){
         fetchPsSimulation().then(function(saved){
+            if (psSim !== instance) return;
             psSim.state = mergeEajeState(saved);
             renderEajeSimulator(); showPsModal(); psRecompute();
         });
         return;
     }
     Promise.all([fetchAlshContext(ctx.annee), fetchPsSimulation()]).then(function(res){
+        if (psSim !== instance) return;
         psSim.alshCtx = res[0] || {tranches:[], periodes:[], mercredis_dates:[]};
         var saved = res[1];
         if (type === 'alsh_extrasco') psSim.state = mergeExtrascoState(saved, psSim.alshCtx);
@@ -1629,6 +1722,7 @@ function psRecompute(){
 
 function savePsSimulator(){
     if (!psSim || !canEditPs) return;
+    if (!budgetSansSaisie()) return;
     var ctx = psSim.ctx || getCurrentBudgetContext();
     var payload = {
         compte_num: psSim.compte,
@@ -1645,13 +1739,7 @@ function savePsSimulator(){
         body:JSON.stringify(payload)
     }).then(r => r.json()).then(data => {
         if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
-        var row = currentRows.find(function(r){ return r.compte_num === psSim.compte; });
-        if (row){
-            row.def = Number(data.total || 0);
-            renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
-            renderResultFromRows();
-        }
-        if (msg) msg.textContent = '✓ Enregistré · total reporté : ' + fmt(data.total) + ' €';
+        chargerBudget();
     }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
 }
 
@@ -1676,16 +1764,20 @@ var FICHE_METHODES_HINTS = {
 };
 
 function openFicheTravail(compteNum){
+    if (!budgetSansSaisie()) return;
     var ctx = getCurrentBudgetContext();
     var rowMeta = currentRows.find(function(r){ return r.compte_num === compteNum; });
     ficheSim = {compte: compteNum, libelle: rowMeta ? rowMeta.libelle : '', ctx: ctx, state: null, contexte: null};
+    const instance = ficheSim;
     document.getElementById('ficheTitle').textContent =
         'Fiche de travail — ' + compteNum + (ficheSim.libelle ? ' (' + ficheSim.libelle + ')' : '') +
-        ' — budget actualisé ' + ctx.annee;
+        ' — budget ' + ctx.type_budget + ' ' + ctx.annee;
     var url = '/api/budget-previsionnel/fiche-travail?compte_num=' + encodeURIComponent(compteNum) +
         '&annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id + '&type_budget=' + encodeURIComponent(ctx.type_budget);
     fetch(url).then(r => r.json()).then(function(d){
+        if (ficheSim !== instance) return;
         if (d && d.error){ alert(d.error); return; }
+        ficheSim.reference_budget = d.reference_budget;
         ficheSim.contexte = (d && d.contexte) || {reel_mensuel:{}, n1_mensuel:{}, n2_mensuel:{}, last_month:0, budget_initial:0};
         ficheSim.state = mergeFicheState(d && d.found ? d.donnees : null);
         renderFicheTravail();
@@ -1914,18 +2006,12 @@ function saveFicheTravail(){
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
             compte_num: ficheSim.compte, annee: ctx.annee, secteur_id: ctx.secteur_id,
-            type_budget: ctx.type_budget, donnees: ficheSim.state
+            type_budget: ctx.type_budget, donnees: ficheSim.state, reference_budget: ficheSim.reference_budget
         })
     }).then(r => r.json()).then(function(data){
         if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
-        var row = currentRows.find(function(r){ return r.compte_num === ficheSim.compte; });
-        if (row){
-            row.def = Number(data.total || 0);
-            if (data.commentaire) row.commentaire = data.commentaire;
-            renderBudgetTable('budgetTables', currentRows, salaryMeta, false);
-            renderResultFromRows();
-        }
-        if (msg) msg.textContent = '✓ Enregistré · reporté en définitif : ' + fmt(data.total) + ' €';
+        closeFicheTravail();
+        chargerBudget();
     }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
 }
 
@@ -1934,8 +2020,10 @@ var paieSim = null;  // { ctx, compte, state, context }
 var MOIS_COURT = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
 
 function openPaieSimulator(compteNum){
+    if (!budgetSansSaisie()) return;
     var ctx = getCurrentBudgetContext();
     paieSim = {ctx: ctx, compte: compteNum, state: null, context: null};
+    const instance = paieSim;
     document.getElementById('paieSimTitle').textContent =
         'Simulateur de paie — ' + (ctx.type_budget === 'actualise' ? 'budget actualisé' : 'budget initial') +
         ' ' + ctx.annee + ' — compte ' + compteNum;
@@ -1944,12 +2032,13 @@ function openPaieSimulator(compteNum){
     var surl = '/api/budget-previsionnel/paie-simulation?annee=' + ctx.annee + '&secteur_id=' + ctx.secteur_id +
         '&type_budget=' + encodeURIComponent(ctx.type_budget);
     Promise.all([
-        fetch(curl).then(function(r){ return r.ok ? r.json() : {__error: true}; }).catch(function(){ return {__error: true}; }),
+        fetch(curl).then(function(r){ return r.json().then(d => r.ok ? d : {__error:true, message:d.error}); }).catch(function(){ return {__error: true}; }),
         fetch(surl).then(r => r.json()).then(function(d){ return (d && d.found) ? d.donnees : null; }).catch(function(){ return null; })
     ]).then(function(res){
+        if (paieSim !== instance) return;
         if (res[0] && res[0].__error){
             document.getElementById('paieSimBody').innerHTML =
-                '<p class="ps-legend" style="color:#b00;">Impossible de charger les salariés. Vérifiez que les mises à jour de la base sont appliquées (Administration → Mises à jour BDD), puis réessayez.</p>';
+                '<p class="ps-legend" style="color:#b00;">' + escapeHtml(res[0].message || 'Impossible de charger les salariés. Rechargez le budget.') + '</p>';
             document.getElementById('paieSimFooter').innerHTML =
                 '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Fermer</button>';
             document.getElementById('paieSimulatorModal').classList.add('open');
@@ -2086,7 +2175,7 @@ function renderPaieSimulator(){
         '<div class="ps-field"><label>Valeur du point</label>' + paieInput('data-paie-top="valeur_point"', st.valeur_point, '0.01') + '</div>' +
         '<div class="ps-field"><label>Temps plein (h/sem.)</label>' + paieInput('data-paie-top="temps_plein"', st.temps_plein, '0.5') + '</div>' +
         '</div>';
-    html += '<div class="ps-legend">Brut mensuel = [(socle + pesée × valeur du point) × prorata + (ancienneté + compétences) × valeur du point] / 12. Le prorata (h.hebdo / temps plein) ne s\'applique qu\'au socle et à la pesée : ancienneté et compétences sont dues à temps plein. Les mois d\'entrée et de sortie sont comptés au prorata des jours du contrat (un CDD d\'une semaine en juillet ne coûte pas un mois entier) : survolez le montant du mois pour voir la part retenue. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
+    html += '<div class="ps-legend">Brut mensuel = [(socle + pesée × valeur du point) × prorata + (ancienneté + compétences) × valeur du point] / 12. Le prorata (h.hebdo / temps plein) ne s\'applique qu\'au socle et à la pesée : ancienneté et compétences sont dues à temps plein. Les mois d\'entrée et de sortie sont comptés au prorata des jours du contrat (un CDD d\'une semaine en juillet ne coûte pas un mois entier) : survolez le montant du mois pour voir la part retenue. Colonnes <span class="bp-ps-calc">surlignées</span> = calculées. Toutes les saisies restent dans cette simulation et ne modifient jamais les fiches salariés. Les colonnes « Nv » (nouvelle pesée, ancienneté, compétences) simulent une évolution : renseignées, elles prennent le pas sur la valeur actuelle sans modifier la fiche du salarié. Survolez les en-têtes pour les libellés complets.';
     if (actualise){
         html += ' Budget actualisé : seuls les mois après <strong>' + (ctx.last_real_month ? MOIS_COURT[ctx.last_real_month-1] : '—') +
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
@@ -2257,11 +2346,12 @@ function savePaieSimulator(){
     fetch('/api/budget-previsionnel/paie-simulation', {
         method:'POST', headers:{'Content-Type':'application/json'},
         body:JSON.stringify({annee: ctx.annee, secteur_id: ctx.secteur_id, type_budget: ctx.type_budget,
-            compte_num: paieSim.compte, donnees: paieSim.state})
+            compte_num: paieSim.compte, donnees: paieSim.state, reference_budget: paieSim.context.reference_budget})
     }).then(r => r.json()).then(function(data){
         if (!data.success){ if (msg) msg.textContent = ''; alert(data.error || 'Erreur lors de l\'enregistrement'); return; }
         var nb = data.reports ? Object.keys(data.reports).length : 1;
         if (msg) msg.textContent = '✓ Reporté : ' + fmt(data.total) + ' € sur ' + nb + ' compte(s)';
+        closePaieSimulator();
         chargerBudget();
     }).catch(function(){ if (msg) msg.textContent = ''; alert('Erreur réseau lors de l\'enregistrement'); });
 }

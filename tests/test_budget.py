@@ -3,11 +3,32 @@ import json
 import os
 from datetime import datetime
 
+import pytest
+
 from blueprints.budget import (
     _compute_ps_eaje, _compute_ps_alsh_extrasco, _compute_ps_alsh_perisco
 )
 
 TEST_SECTOR_TYPE_HIGH_ORDER = 999
+
+
+def _post_budget(client, url, *, json):
+    """Parcours de formulaire : ajouter une ligne si nécessaire, lire sa référence."""
+    data = dict(json)
+    params = f"type_budget={data['type_budget']}&annee={data['annee']}&secteur_id={data['secteur_id']}"
+    page = client.get('/api/budget-previsionnel/donnees?' + params).get_json()
+    if url.endswith('/save-line') and data['compte_num'] not in {r['compte_num'] for r in page.get('rows', [])}:
+        client.post('/api/budget-previsionnel/ajouter-compte', json={
+            'type_budget': data['type_budget'], 'annee': data['annee'],
+            'secteur_id': data['secteur_id'], 'compte_num': data['compte_num']})
+        page = client.get('/api/budget-previsionnel/donnees?' + params).get_json()
+    data['reference_budget'] = page.get('reference_budget')
+    return client.post(url, json=data)
+
+
+def _arrete_test(db, sid, annee, mois):
+    db.execute("INSERT OR REPLACE INTO budget_parametres (type_budget, annee, secteur_id, mois_arrete) VALUES ('actualise', ?, ?, ?)", (annee, sid, mois))
+    db.commit()
 
 def test_gestion_postes_depense_affiche_types_secteur_dynamiques(app, db, admin_client):
     """Les nouveaux types de secteur doivent être sélectionnables pour les postes de dépense."""
@@ -85,15 +106,12 @@ def test_budget_previsionnel_entete_fige_sans_repetition(admin_client):
 
 
 def test_budget_previsionnel_sauvegarde_liee_au_contexte_edite(admin_client):
-    response = admin_client.get('/budget-previsionnel')
-    html = response.get_data(as_text=True)
-    assert response.status_code == 200
+    html = admin_client.get('/budget-previsionnel').get_data(as_text=True)
     assert 'function getCurrentBudgetContext()' in html
-    assert 'const saveKey = getSaveKey(compte, context);' in html
-    assert 'saveTimers[saveKey] = setTimeout(() => saveLine(row, context, saveKey), 300);' in html
-    assert 'type_budget: context.type_budget' in html
-    assert 'annee: context.annee' in html
-    assert 'secteur_id: context.secteur_id' in html
+    assert 'reference_budget: salaryMeta.reference_budget' in html
+    assert "document.getElementById(id).disabled = dirty || budgetSaving" in html
+    assert "'/api/budget-previsionnel/save-lines'" in html
+    assert 'lignes: Object.values(budgetDirty)' in html
 
 
 def test_budget_previsionnel_responsable_sans_onglet_global(resp_client):
@@ -218,6 +236,7 @@ def test_api_budget_previsionnel_actualise_combine_n_partiel_et_n_1(app, db, adm
         )
         db.commit()
 
+    _arrete_test(db, secteur_id, n, 2)
     response = admin_client.get(
         f'/api/budget-previsionnel/donnees?type_budget=actualise&annee={n}&secteur_id={secteur_id}'
     )
@@ -324,13 +343,13 @@ def test_api_budget_previsionnel_sauvegarde_separee_par_type_et_annee(app, db, a
         'valeur_def': 120
     }
 
-    admin_client.post('/api/budget-previsionnel/save-line', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         **payload_base, 'type_budget': 'initial', 'annee': annee
     })
-    admin_client.post('/api/budget-previsionnel/save-line', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         **payload_base, 'type_budget': 'actualise', 'annee': annee, 'valeur_temp': 200, 'valeur_def': 220
     })
-    admin_client.post('/api/budget-previsionnel/save-line', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         **payload_base, 'type_budget': 'initial', 'annee': annee + 1, 'valeur_temp': 300, 'valeur_def': 320
     })
 
@@ -881,6 +900,13 @@ def _setup_paie_secteur(db, annee):
     db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('641000',?,1,100000,?)", (annee - 1, imp))
     db.execute("INSERT INTO bilan_fec_donnees (compte_num,annee,mois,montant,import_id) VALUES ('645000',?,1,40000,?)", (annee - 1, imp))
     db.commit()
+    from budget_calculs import donnees_reference
+    # Le jeu fictif représente un exercice annuel confirmé explicitement.
+    h = donnees_reference(db, annee - 1, sid)['empreinte']
+    for typ, mois in (('initial', 0), ('actualise', 1)):
+        db.execute("INSERT INTO budget_parametres (type_budget, annee, secteur_id, mois_arrete, annee_reference, reference_empreinte) VALUES (?, ?, ?, ?, ?, ?)", (typ, annee, sid, mois, annee - 1, h))
+        db.execute("INSERT INTO budget_modes_comptes VALUES (?, ?, ?, '645000', 'proportionnel')", (typ, annee, sid))
+    db.commit()
     return sid, uid
 
 
@@ -904,7 +930,7 @@ def test_paie_simulation_calcule_et_reporte(app, db, admin_client):
     donnees = {'salaire_socle': 23000, 'valeur_point': 55,
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0, 'competence': 0}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -941,7 +967,7 @@ def test_paie_report_actualise_utilise_le_ratio_de_n_moins_1(app, db, admin_clie
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
                                        'anciennete': 0, 'competence': 0}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'actualise',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -954,9 +980,9 @@ def test_paie_report_actualise_utilise_le_ratio_de_n_moins_1(app, db, admin_clie
             (c, annee, sid)).fetchone() for c in ('641000', '645000')}
     assert lu['641000'] and abs(lu['641000']['valeur_def'] - total) < 0.01
     assert lu['645000']
-    assert abs(lu['645000']['valeur_def'] - total * 0.40) < 0.01, \
+    assert abs(lu['645000']['valeur_def'] - (6000 + (total - 30000) * 0.40)) < 0.01, \
         "le ratio doit venir de l'année N-1 complète (40 %)"
-    assert abs(lu['645000']['valeur_def'] - total * 0.20) > 1.0, \
+    assert abs(lu['645000']['valeur_def'] - (6000 + (total - 30000) * 0.20)) > 1.0, \
         "le réel partiel de l'année en cours (20 %) ne doit plus servir de référence"
 
 
@@ -969,7 +995,7 @@ def test_paie_report_initial_inchange(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
                                        'anciennete': 0, 'competence': 0}},
                'ajouts': [], 'fermetures': []}
-    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     with app.app_context():
@@ -979,31 +1005,33 @@ def test_paie_report_initial_inchange(app, db, admin_client):
     assert d645 and abs(d645['valeur_def'] - 9200.0) < 0.01   # 23000 × 40 000/100 000
 
 
-def test_paie_simulation_persiste_pesee_competence(app, db, admin_client):
+def test_paie_simulation_preserve_pesee_competence(app, db, admin_client):
     annee = 2026
     with app.app_context():
         sid, uid = _setup_paie_secteur(db, annee)
     donnees = {'employes': {str(uid): {'pesee': 120, 'competence': 5, 'anciennete': 3, 'nouvelle_pesee': ''}},
                'ajouts': [], 'fermetures': []}
-    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     with app.app_context():
         u = db.execute("SELECT pesee, competence FROM users WHERE id=?", (uid,)).fetchone()
-    assert u['pesee'] == 120 and u['competence'] == 5
+    assert u['pesee'] == 0 and u['competence'] is None
 
 
-def test_paie_simulation_persiste_competence_decimale(app, db, admin_client):
+def test_paie_simulation_conserve_competence_decimale_dans_scenario(app, db, admin_client):
     """Les points de compétence acceptent 2 décimales (ex. 4,25) sans troncature."""
     annee = 2026
     with app.app_context():
         sid, uid = _setup_paie_secteur(db, annee)
     donnees = {'employes': {str(uid): {'pesee': 120, 'competence': 4.25, 'anciennete': 3, 'nouvelle_pesee': ''}},
                'ajouts': [], 'fermetures': []}
-    admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     with app.app_context():
         u = db.execute("SELECT competence FROM users WHERE id=?", (uid,)).fetchone()
-    assert u['competence'] == 4.25
+    assert u['competence'] is None
+    saved = db.execute('SELECT donnees FROM budget_paie_simulations WHERE secteur_id=?', (sid,)).fetchone()
+    assert json.loads(saved['donnees'])['employes'][str(uid)]['competence'] == 4.25
 
 
 def test_paie_simulation_refuse_responsable(resp_client, sample_users):
@@ -1030,7 +1058,7 @@ def test_budget_649_exclu_du_prorata_salaire(app, db, admin_client):
         data = _compute_budget_previsionnel(db, 'initial', annee, sid)
     rows = {r['compte_num']: r for r in data['rows']}
     assert rows['641000']['is_salary'] is True
-    assert rows['649000']['is_salary'] is False
+    assert rows['649000']['mode'] == 'manuel'
     assert '649000' not in data['salary_ratios']
 
 
@@ -1055,6 +1083,8 @@ def test_paie_reel_641_restreint_au_secteur(app, db):
             db.execute("INSERT INTO bilan_fec_donnees (compte_num,code_analytique,annee,mois,montant,import_id) "
                        "VALUES ('641000','ANA-B',?,?,2000,?)", (annee, m, imp))
         db.commit()
+        _arrete_test(db, sa, annee, 3)
+        _arrete_test(db, sb, annee, 6)
         la, ta = _paie_reel_641(db, sa, '641000', annee)
         lb, tb = _paie_reel_641(db, sb, '641000', annee)
     assert (la, ta) == (3, 3000.0)
@@ -1134,7 +1164,7 @@ def test_paie_direction_assignee_a_son_secteur(app, db):
 
 
 def test_paie_maintien_ajoute_au_brut(app, db, admin_client):
-    """Le maintien de salaire s'ajoute au brut mensuel et est persisté sur la fiche."""
+    """Le maintien simulé s'ajoute au brut sans modifier la fiche salarié."""
     annee = 2026
     with app.app_context():
         sid, uid = _setup_paie_secteur(db, annee)
@@ -1142,13 +1172,13 @@ def test_paie_maintien_ajoute_au_brut(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
                                        'competence': 0, 'maintien': 100}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 24200.0) < 0.01  # 23000 + 12 × 100
     with app.app_context():
         u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
-    assert abs(u['maintien'] - 100) < 0.01
+    assert (u['maintien'] or 0) == 0  # La fiche reste inchangée.
 
 
 def test_paie_maintien_vide_coherent(app, db, admin_client):
@@ -1163,13 +1193,13 @@ def test_paie_maintien_vide_coherent(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
                                        'competence': 0, 'maintien': ''}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 23000.0) < 0.01  # maintien vidé -> 0
     with app.app_context():
         u = db.execute("SELECT maintien FROM users WHERE id=?", (uid,)).fetchone()
-    assert abs((u['maintien'] or 0) - 0) < 0.01
+    assert u['maintien'] == 200  # Seule la simulation applique le zéro saisi.
 
 
 def test_init_db_reajoute_colonnes_paie_si_absentes(app, db):
@@ -1251,7 +1281,7 @@ def test_paie_simulation_proratise_temps_partiel(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
                                        'competence': 0, 'maintien': 0, 'temps_hebdo': 28}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 18400.0) < 0.01  # 23000 × 28/35
@@ -1266,7 +1296,7 @@ def test_paie_temps_hebdo_absent_temps_plein(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '', 'anciennete': 0,
                                        'competence': 0, 'maintien': 0, 'temps_hebdo': ''}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial', 'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
     assert abs(r.get_json()['total'] - 23000.0) < 0.01
@@ -1296,6 +1326,7 @@ def _setup_fiche_secteur(db, annee):
     db.execute("INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_def) "
                "VALUES ('initial', ?, ?, '606000', 1500)", (annee, sid))
     db.commit()
+    _arrete_test(db, sid, annee, 3)
     return sid
 
 
@@ -1326,7 +1357,7 @@ def test_fiche_travail_methodes_et_report(app, db, admin_client):
         db.commit()
 
     def poster(donnees):
-        r = admin_client.post('/api/budget-previsionnel/fiche-travail', json={
+        r = _post_budget(admin_client, '/api/budget-previsionnel/fiche-travail', json={
             'compte_num': '606000', 'annee': annee, 'secteur_id': sid,
             'type_budget': 'actualise', 'donnees': donnees})
         assert r.status_code == 200
@@ -1365,18 +1396,19 @@ def test_fiche_travail_methodes_et_report(app, db, admin_client):
     assert d['total'] == 700.0
 
 
-def test_fiche_travail_reservee_actualise(app, db, admin_client):
+def test_fiche_travail_initiale_sur_douze_mois(app, db, admin_client):
     annee = datetime.now().year
     with app.app_context():
         sid = _setup_fiche_secteur(db, annee)
     r = admin_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
                          f'&annee={annee}&secteur_id={sid}&type_budget=initial')
-    assert r.status_code == 400
-    r = admin_client.post('/api/budget-previsionnel/fiche-travail', json={
+    assert r.status_code == 200
+    r = _post_budget(admin_client, '/api/budget-previsionnel/fiche-travail', json={
         'compte_num': '606000', 'annee': annee, 'secteur_id': sid,
         'type_budget': 'initial', 'donnees': {'methode': 'n1'}})
-    assert r.status_code == 400
+    assert r.status_code == 200
 
+    assert r.get_json()['total'] == 600
 
 def test_fiche_travail_responsable_lecture_seule_et_secteur_force(app, db, resp_client, sample_users):
     """Un responsable consulte la fiche de SON secteur uniquement (le secteur
@@ -1384,6 +1416,7 @@ def test_fiche_travail_responsable_lecture_seule_et_secteur_force(app, db, resp_
     annee = datetime.now().year
     with app.app_context():
         sid = _setup_fiche_secteur(db, annee)   # secteur étranger au responsable
+    _arrete_test(db, sample_users['secteur_id'], annee, 0)
     r = resp_client.get(f'/api/budget-previsionnel/fiche-travail?compte_num=606000'
                         f'&annee={annee}&secteur_id={sid}&type_budget=actualise')
     assert r.status_code == 200
@@ -1431,7 +1464,7 @@ def test_api_comptes_disponibles_refuse_responsable(resp_client):
     assert resp_client.get('/api/budget-previsionnel/comptes-disponibles').status_code == 403
 
 
-def test_api_ajouter_compte_cree_une_ligne_a_zero(app, db, admin_client, sample_users):
+def test_api_ajouter_compte_cree_une_ligne_non_renseignee(app, db, admin_client, sample_users):
     secteur_id = sample_users['secteur_id']
     annee = datetime.now().year
     resp = admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
@@ -1446,14 +1479,14 @@ def test_api_ajouter_compte_cree_une_ligne_a_zero(app, db, admin_client, sample_
             WHERE type_budget = 'initial' AND annee = ? AND secteur_id = ? AND compte_num = '606300'
         ''', (annee, secteur_id)).fetchone()
     assert row is not None
-    assert row['valeur_def'] == 0
+    assert row['valeur_def'] is None
 
 
 def test_api_ajouter_compte_ne_touche_pas_une_ligne_existante(app, db, admin_client, sample_users):
     """Ré-ajouter un compte déjà budgété ne doit pas écraser les montants saisis."""
     secteur_id = sample_users['secteur_id']
     annee = datetime.now().year
-    admin_client.post('/api/budget-previsionnel/save-line', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         'type_budget': 'initial', 'annee': annee, 'secteur_id': secteur_id,
         'compte_num': '606300', 'valeur_def': 850, 'commentaire': 'déjà budgété',
     })
@@ -1540,7 +1573,7 @@ def test_compte_avec_fec_n_est_pas_marque_manuel(app, db, admin_client, sample_u
                    'VALUES (?, ?, ?, ?, ?, ?, ?)',
                    ('601000', 'Charges test', 'ANA-MAN', n - 1, 1, 1000, imp))
         db.commit()
-    admin_client.post('/api/budget-previsionnel/save-line', json={
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         'type_budget': 'initial', 'annee': n, 'secteur_id': secteur_id,
         'compte_num': '601000', 'valeur_def': 1200,
     })
@@ -1618,7 +1651,7 @@ def test_budget_global_consolide_les_valeurs_definitives(app, db, admin_client, 
             'type_budget': 'initial', 'annee': annee, 'secteur_id': sid,
             'compte_num': '606300',
         })
-        admin_client.post('/api/budget-previsionnel/save-line', json={
+        _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
             'type_budget': 'initial', 'annee': annee, 'secteur_id': sid,
             'compte_num': '606300', 'valeur_def': montant,
         })
@@ -1663,7 +1696,7 @@ def test_paie_simulation_nouvelle_anciennete_et_competences(app, db, admin_clien
                                        'anciennete': 3, 'nouvelle_anciennete': 10,
                                        'competence': 5, 'nouvelle_competence': 20}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -1676,8 +1709,8 @@ def test_paie_simulation_nouvelle_anciennete_et_competences(app, db, admin_clien
     # La fiche du salarié garde les valeurs ACTUELLES (les « Nv » sont pure simulation).
     with app.app_context():
         u = db.execute("SELECT pesee, competence FROM users WHERE id=?", (uid,)).fetchone()
-    assert u['pesee'] == 100
-    assert u['competence'] == 5
+    assert u['pesee'] == 0
+    assert u['competence'] is None
 
 
 def test_paie_simulation_nouvelle_valeur_vide_sans_effet(app, db, admin_client):
@@ -1690,7 +1723,7 @@ def test_paie_simulation_nouvelle_valeur_vide_sans_effet(app, db, admin_client):
                                        'anciennete': 3, 'nouvelle_anciennete': '',
                                        'competence': 5, 'nouvelle_competence': ''}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     # 23000 + (100 + 3 + 5) × 55 = 28940 €
@@ -1724,7 +1757,7 @@ def test_paie_simulation_prorata_seulement_socle_et_pesee(app, db, admin_client)
                                        'anciennete': 10, 'competence': 20,
                                        'temps_hebdo': 17.5}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -1771,7 +1804,7 @@ def test_paie_simulation_compte_les_autres_contrats(app, db, admin_client):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
                                        'anciennete': 0, 'competence': 0}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -1818,7 +1851,7 @@ def _total_paie(admin_client, annee, sid, uid):
                'employes': {str(uid): {'pesee': 0, 'nouvelle_pesee': '',
                                        'anciennete': 0, 'competence': 0}},
                'ajouts': [], 'fermetures': []}
-    r = admin_client.post('/api/budget-previsionnel/paie-simulation', json={
+    r = _post_budget(admin_client, '/api/budget-previsionnel/paie-simulation', json={
         'annee': annee, 'secteur_id': sid, 'type_budget': 'initial',
         'compte_num': '641000', 'donnees': donnees})
     assert r.status_code == 200
@@ -2020,6 +2053,35 @@ def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
     texte = _texte_pdf_budget(r.data)
     assert b'Temp.' in texte
     assert b'Initial N' not in texte
+
+
+@pytest.mark.parametrize('typ', ['initial', 'actualise'])
+@pytest.mark.parametrize('global_mode', [False, True])
+def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, global_mode):
+    """Le PDF reste exportable, mais sans résultat ni écart faussement exacts."""
+    sid = sample_users['secteur_id']
+    for compte, valeur in [('641100', 100), ('641200', None), ('706100', 250)]:
+        db.execute('''INSERT INTO budget_prev_saisies
+            (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def)
+            VALUES (?, 2026, ?, ?, ?, ?)''', (typ, sid, compte, valeur, valeur))
+    db.commit()
+    scope = 'global=1' if global_mode else f'secteur_id={sid}'
+    url = f'/api/budget-previsionnel/export-pdf?type_budget={typ}&annee=2026&{scope}'
+    response = admin_client.get(url)
+    assert response.status_code == 200
+    texte = _texte_pdf_budget(response.data)
+    # Les deux résumés (résultat + écart, ou proposition + définitif) sont incomplets.
+    assert texte.count(b' : \\300 compl\\351ter') == 2
+    assert b'150.00' not in texte
+
+    _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
+        'type_budget': typ, 'annee': 2026, 'secteur_id': sid,
+        'compte_num': '641200', 'valeur_def': 0})
+    response = admin_client.get(url)
+    assert response.status_code == 200
+    texte = _texte_pdf_budget(response.data)
+    assert b' : \\300 compl\\351ter' not in texte
+    assert b'150.00' in texte
 
 
 def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):

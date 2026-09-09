@@ -171,6 +171,7 @@ classique depuis « Mon espace ».
 
 ## Documentation
 
+- **[Budget initial et actualisé](docs/budget-actualise.md)** — arrêté explicite, référence annuelle complète, modes par compte 63/64 et simulateur sans modification des fiches salariés.
 - **[Fiches mensuelles : signatures et réouverture](docs/fiches-mensuelles.md)** — contenu approuvé, corrections après signature, circuit ordonné, confirmation historique et migrations 0065/0067.
 - **[Guide de démarrage rapide](docs/quick-start.md)** — installation, premier lancement, configuration initiale, création des salariés et de leur fiche RH.
 - **[Interface sans menu](docs/interface-sans-menu.md)** — l'accueil en fil d'actions, la barre intelligente, la vue d'ensemble par zones, et comment revenir au menu classique.
