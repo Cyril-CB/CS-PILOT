@@ -268,7 +268,7 @@ def demande_recup():
             date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date().isoformat()
         except ValueError:
             flash('Dates invalides.', 'error')
-            return redirect(request.path)
+            return redirect(url_for('recup_bp.demande_recup'))
         nb_jours = calculer_jours_ouvres(date_debut, date_fin)
 
         if nb_jours <= 0:
@@ -833,7 +833,7 @@ def demande_conge():
             date_fin = datetime.strptime(date_fin, '%Y-%m-%d').date().isoformat()
         except ValueError:
             flash('Dates invalides.', 'error')
-            return redirect(request.path)
+            return redirect(url_for('recup_bp.demande_conge'))
         nb_jours = calculer_jours_ouvres(date_debut, date_fin)
 
         if nb_jours <= 0:

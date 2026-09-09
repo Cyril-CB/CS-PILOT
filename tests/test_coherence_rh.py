@@ -419,3 +419,11 @@ def test_b7_demande_historique_date_invalide_reste_en_attente(admin_client,db,sa
     response=approuver(admin_client,did,'conge')
     assert 'Dates de la demande' in response.get_data(as_text=True)
     assert etat(db)==avant
+
+
+@pytest.mark.parametrize('route',['demande_conge','demande_recup'])
+def test_dates_invalides_redirection_vers_route_canonique(admin_client,db,sample_users,route):
+    avant=etat(db)
+    response=admin_client.post('/'+route,data={'type_conge':'Congé payé','date_debut':'invalide','date_fin':'2026-09-07'})
+    assert response.status_code==302 and response.headers['Location']=='/'+route
+    assert etat(db)==avant
