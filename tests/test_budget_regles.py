@@ -415,3 +415,16 @@ def test_simulateur_ps_ne_contourne_pas_les_modes_63_64(cadre, db, admin_client,
         assert r.status_code == 400
     assert [tuple(r) for r in db.execute('SELECT * FROM budget_prev_saisies')] == avant
     assert db.execute('SELECT COUNT(*) FROM budget_ps_simulations').fetchone()[0] == 0
+
+
+def test_exception_ne_publie_aucun_detail_technique(cadre, admin_client, monkeypatch):
+    from blueprints import budget
+    from budget_calculs import BudgetRefuse
+    sid, _ = cadre
+    def echouer(*args):
+        raise BudgetRefuse('/chemin-interne-fictif: détail technique confidentiel')
+    monkeypatch.setattr(budget, 'reporter_automatiques', echouer)
+    r = post(admin_client, sid, 'recalculer')
+    assert r.status_code == 409
+    assert r.get_json()['error'] == 'Le calcul du budget est indisponible. Rechargez avant de réessayer.'
+    assert 'chemin-interne' not in r.get_data(as_text=True)

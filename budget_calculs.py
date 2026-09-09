@@ -11,8 +11,46 @@ from itsdangerous import BadSignature, URLSafeSerializer
 MODES = {'manuel', 'proportionnel', 'mensuel'}
 
 
+MESSAGES_BUDGET = {
+    'montant_invalide': 'Montant invalide : indiquez un nombre fini en euros.',
+    'annee_secteur_invalides': 'Année ou secteur invalide.',
+    'annee_type_invalides': 'Année ou type de budget invalide.',
+    'secteur_introuvable': 'Secteur introuvable.',
+    'arrete_requis': 'Choisissez le mois d’arrêté du réalisé dans les paramètres du budget.',
+    'page_invalide': 'Rechargez le budget avant d’enregistrer : référence de page absente ou invalide.',
+    'page_perimee': 'Le budget, ses paramètres ou ses sources ont changé. Rechargez avant d’enregistrer.',
+    'reference_a_confirmer': 'Confirmez une année de référence complète ; son import doit rester inchangé.',
+    'reference_inexploitable': 'Référence annuelle absente ou brut de référence nul. Choisissez un autre mode.',
+    'arrete_non_choisi': 'Mois d’arrêté non choisi.',
+    'brut_incomplet': 'Complétez le brut de base et les autres comptes 641 avant le calcul des charges.',
+    'brut_inferieur_reel': 'Le brut annuel prévu est inférieur au brut déjà réalisé. Vérifiez les montants 641.',
+    'projection_incomplete': 'Complétez la projection mensuelle de ce compte.',
+    'formulaire_invalide': 'Formulaire de budget invalide.',
+    'arrete_invalide': 'Choisissez un mois d’arrêté entre janvier et décembre, ou aucun réalisé.',
+    'annee_reference_invalide': 'La référence doit être une année antérieure au budget.',
+    'reference_absente': 'Aucune donnée pour cette référence annuelle dans ce secteur.',
+    'modes_invalides': 'Modes des comptes invalides.',
+    'compte_mode_interdit': 'Compte ou mode non autorisé. Le premier 641 reste le brut de base.',
+    'liste_saisies_invalide': 'Liste de saisies invalide.',
+    'ligne_invalide': 'Saisie invalide ou compte en double.',
+    'compte_a_ajouter': 'Ajoutez ce compte au budget avant sa saisie.',
+    'mode_manuel_requis': 'Passez le compte en mode manuel pour modifier son montant directement.',
+    'commentaire_trop_long': 'Commentaire trop long (4 000 caractères maximum).',
+    'mode_mensuel_requis': 'Choisissez le mode projection mensuelle pour ce compte. Le brut de base reste réservé au simulateur ou à la saisie directe.',
+    'nombre_simulation_invalide': 'Valeur numérique invalide dans la simulation.',
+    'premier_641_requis': 'Le simulateur doit reporter sur le premier compte 641 du secteur.',
+}
+
+
+def message_budget(code):
+    """Seuls les libellés de cette liste fermée peuvent devenir publics."""
+    return MESSAGES_BUDGET.get(code, 'Le calcul du budget est indisponible. Rechargez avant de réessayer.')
+
+
 class BudgetRefuse(ValueError):
-    pass
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
 
 
 def creer_schema(conn):
@@ -41,7 +79,7 @@ def montant(value, nullable=False):
             raise ValueError
         return float(n.quantize(Decimal('0.01')))
     except (InvalidOperation, ValueError, TypeError):
-        raise BudgetRefuse('Montant invalide : indiquez un nombre fini en euros.') from None
+        raise BudgetRefuse('montant_invalide') from None
 
 
 def contexte_valide(conn, type_budget, annee, secteur_id):
@@ -50,11 +88,11 @@ def contexte_valide(conn, type_budget, annee, secteur_id):
             raise ValueError
         annee, secteur_id = int(annee), int(secteur_id)
     except (ValueError, TypeError, OverflowError):
-        raise BudgetRefuse('Année ou secteur invalide.') from None
+        raise BudgetRefuse('annee_secteur_invalides') from None
     if type_budget not in ('initial', 'actualise') or not 1900 <= annee <= 2200:
-        raise BudgetRefuse('Année ou type de budget invalide.')
+        raise BudgetRefuse('annee_type_invalides')
     if not conn.execute('SELECT 1 FROM secteurs WHERE id=?', (secteur_id,)).fetchone():
-        raise BudgetRefuse('Secteur introuvable.')
+        raise BudgetRefuse('secteur_introuvable')
     return annee, secteur_id
 
 
@@ -87,7 +125,7 @@ def mois_arrete(conn, type_budget, annee, secteur_id, obligatoire=False):
         return 0
     mois = parametres(conn, type_budget, annee, secteur_id)['mois_arrete']
     if mois is None and obligatoire:
-        raise BudgetRefuse('Choisissez le mois d’arrêté du réalisé dans les paramètres du budget.')
+        raise BudgetRefuse('arrete_requis')
     return mois
 
 
@@ -138,15 +176,15 @@ def reference_budget(conn, type_budget, annee, secteur_id):
 
 def verifier_reference(conn, token, type_budget, annee, secteur_id):
     if not isinstance(token, str):
-        raise BudgetRefuse('Rechargez le budget avant d’enregistrer : référence de page absente ou invalide.')
+        raise BudgetRefuse('page_invalide')
     serializer = URLSafeSerializer(current_app.secret_key, salt='budget-v1')
     try:
         valeur = serializer.loads(token or '')
         attendu = serializer.loads(reference_budget(conn, type_budget, annee, secteur_id))
     except BadSignature:
-        raise BudgetRefuse('Rechargez le budget avant d’enregistrer : référence de page absente ou invalide.') from None
+        raise BudgetRefuse('page_invalide') from None
     if valeur != attendu:
-        raise BudgetRefuse('Le budget, ses paramètres ou ses sources ont changé. Rechargez avant d’enregistrer.')
+        raise BudgetRefuse('page_perimee')
 
 
 def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
@@ -166,14 +204,14 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
 
     def ratio(compte, denom):
         if not ref_ok:
-            raise BudgetRefuse('Confirmez une année de référence complète ; son import doit rester inchangé.')
+            raise BudgetRefuse('reference_a_confirmer')
         if compte not in reference_totals or denom <= 0:
-            raise BudgetRefuse('Référence annuelle absente ou brut de référence nul. Choisissez un autre mode.')
+            raise BudgetRefuse('reference_inexploitable')
         return reference_totals[compte] / denom
 
     def proportion(row, restant, denom):
         if arrete is None:
-            raise BudgetRefuse('Mois d’arrêté non choisi.')
+            raise BudgetRefuse('arrete_non_choisi')
         if arrete == 12:
             return row['N']
         taux = ratio(row['compte_num'], denom)
@@ -181,9 +219,9 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
         row['reference_montant'] = round(reference_totals[row['compte_num']], 2)
         row['reference_brut'] = round(denom, 2)
         if restant is None:
-            raise BudgetRefuse('Complétez le brut de base et les autres comptes 641 avant le calcul des charges.')
+            raise BudgetRefuse('brut_incomplet')
         if restant < -0.01:
-            raise BudgetRefuse('Le brut annuel prévu est inférieur au brut déjà réalisé. Vérifiez les montants 641.')
+            raise BudgetRefuse('brut_inferieur_reel')
         return round((row['N'] if type_budget == 'actualise' else 0) + restant * taux, 2)
 
     for r in accounts:
@@ -200,14 +238,14 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
                 (type_budget, annee, secteur_id, c)).fetchone()
             try:
                 if not fiche:
-                    raise BudgetRefuse('Complétez la projection mensuelle de ce compte.')
+                    raise BudgetRefuse('projection_incomplete')
                 if arrete is None:
-                    raise BudgetRefuse('Mois d’arrêté non choisi.')
+                    raise BudgetRefuse('arrete_non_choisi')
                 cx = _fiche_contexte(conn, c, annee, secteur_id, type_budget)
                 r['temp'] = _compute_fiche_travail(json.loads(fiche['donnees']), cx)['total']
             except (ValueError, TypeError) as exc:
                 r['temp'] = None
-                r['calcul_erreur'] = str(exc) if isinstance(exc, BudgetRefuse) else 'Projection mensuelle invalide.'
+                r['calcul_erreur'] = message_budget(exc.code) if isinstance(exc, BudgetRefuse) else 'Projection mensuelle invalide.'
 
     base_row = by_num.get(base)
     base_annuel = base_row['def'] if base_row else None
@@ -217,7 +255,7 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
             try:
                 r['temp'] = proportion(r, restant_base, reference_totals.get(base, 0))
             except BudgetRefuse as exc:
-                r['temp'], r['calcul_erreur'] = None, str(exc)
+                r['temp'], r['calcul_erreur'] = None, message_budget(exc.code)
 
     bruts = [r for r in accounts if r['compte_num'].startswith('641')]
     valeurs = [r['temp'] if r['mode'] in ('proportionnel', 'mensuel') else r['def'] for r in bruts]
@@ -230,7 +268,7 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
             try:
                 r['temp'] = proportion(r, restant_global, denom_global)
             except BudgetRefuse as exc:
-                r['temp'], r['calcul_erreur'] = None, str(exc)
+                r['temp'], r['calcul_erreur'] = None, message_budget(exc.code)
         if r['calcul_erreur']:
             alerts.append(f"{r['compte_num']} : {r['calcul_erreur']}")
         r['a_recalculer'] = r['mode'] in ('mensuel', 'proportionnel') and (

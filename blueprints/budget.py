@@ -21,7 +21,7 @@ from utils import login_required
 from app_options import get_option_bool
 from sessions_securite import verifier_action
 from budget_calculs import (
-    BudgetRefuse, appliquer_calculs, contexte_valide, donnees_reference,
+    BudgetRefuse, appliquer_calculs, contexte_valide, donnees_reference, message_budget,
     montant as montant_budget, mois_arrete, parametres,
     reference_budget, reporter_automatiques, verifier_reference as verifier_budget,
 )
@@ -1101,7 +1101,7 @@ def _budget_global(conn, type_budget, annee, inflation):
 
 def _budget_ecriture(conn, data):
     if not isinstance(data, dict):
-        raise BudgetRefuse('Formulaire de budget invalide.')
+        raise BudgetRefuse('formulaire_invalide')
     conn.execute('BEGIN IMMEDIATE')
     refus = verifier_action(conn)
     if refus is not None:
@@ -1128,27 +1128,27 @@ def api_budget_parametres():
         if typ == 'initial':
             mois = 0
         if not isinstance(mois, int) or isinstance(mois, bool) or not 0 <= mois <= 12:
-            raise BudgetRefuse('Choisissez un mois d’arrêté entre janvier et décembre, ou aucun réalisé.')
+            raise BudgetRefuse('arrete_invalide')
         ref_annee = data.get('annee_reference')
         ref_hash = None
         if ref_annee is not None:
             if not isinstance(ref_annee, int) or isinstance(ref_annee, bool) or not 1900 <= ref_annee < annee:
-                raise BudgetRefuse('La référence doit être une année antérieure au budget.')
+                raise BudgetRefuse('annee_reference_invalide')
             ref = donnees_reference(conn, ref_annee, sid)
             if data.get('confirmer_reference_complete') is True:
                 if not ref['nb_lignes']:
-                    raise BudgetRefuse('Aucune donnée pour cette référence annuelle dans ce secteur.')
+                    raise BudgetRefuse('reference_absente')
                 ref_hash = ref['empreinte']
             elif ref_annee == p['annee_reference']:
                 ref_hash = p['reference_empreinte']
         choix = data.get('modes')
         if not isinstance(choix, dict):
-            raise BudgetRefuse('Modes des comptes invalides.')
+            raise BudgetRefuse('modes_invalides')
         rows = _compute_budget_previsionnel(conn, typ, annee, sid)
         autorises = {r['compte_num'] for r in rows['rows'] if r['is_salary']}
         for compte, mode in choix.items():
             if compte not in autorises or compte == rows['salary_brut_account'] or mode not in ('manuel', 'proportionnel', 'mensuel'):
-                raise BudgetRefuse('Compte ou mode non autorisé. Le premier 641 reste le brut de base.')
+                raise BudgetRefuse('compte_mode_interdit')
         conn.execute('''INSERT INTO budget_parametres
             (type_budget, annee, secteur_id, mois_arrete, annee_reference, reference_empreinte, updated_by)
             VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(type_budget, annee, secteur_id)
@@ -1164,7 +1164,7 @@ def api_budget_parametres():
         return jsonify({'success': True, 'reports': reports})
     except BudgetRefuse as exc:
         conn.rollback()
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
@@ -1186,7 +1186,7 @@ def api_budget_recalculer():
         return jsonify({'success': True, 'reports': reports})
     except BudgetRefuse as exc:
         conn.rollback()
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
@@ -1379,23 +1379,23 @@ def api_budget_previsionnel_save_line():
         rows = _compute_budget_previsionnel(conn, typ, annee, sid)['rows']
         lignes = data.get('lignes', [data])
         if not isinstance(lignes, list) or not 1 <= len(lignes) <= 2000:
-            raise BudgetRefuse('Liste de saisies invalide.')
+            raise BudgetRefuse('liste_saisies_invalide')
         vus = set()
         for ligne in lignes:
             if not isinstance(ligne, dict) or not isinstance(ligne.get('compte_num'), str) or ligne.get('compte_num') in vus:
-                raise BudgetRefuse('Saisie invalide ou compte en double.')
+                raise BudgetRefuse('ligne_invalide')
             vus.add(ligne.get('compte_num'))
             compte = str(ligne.get('compte_num') or '').strip()
             row = next((r for r in rows if r['compte_num'] == compte), None)
             if not row:
-                raise BudgetRefuse('Ajoutez ce compte au budget avant sa saisie.')
+                raise BudgetRefuse('compte_a_ajouter')
             valeur = montant_budget(ligne.get('valeur_def'), nullable=True)
             temp = montant_budget(ligne.get('valeur_temp'), nullable=True)
             if row['mode'] in ('proportionnel', 'mensuel') and valeur != row['def']:
-                raise BudgetRefuse('Passez le compte en mode manuel pour modifier son montant directement.')
+                raise BudgetRefuse('mode_manuel_requis')
             commentaire = str(ligne.get('commentaire') or '').strip()
             if len(commentaire) > 4000:
-                raise BudgetRefuse('Commentaire trop long (4 000 caractères maximum).')
+                raise BudgetRefuse('commentaire_trop_long')
             # Une ancienne aide temporaire ne doit pas redevenir le brut de référence.
             if row['mode'] == 'base' and valeur is not None:
                 temp = valeur
@@ -1411,7 +1411,7 @@ def api_budget_previsionnel_save_line():
         return jsonify({'success': True, 'reports': reports, 'reference_budget': token})
     except BudgetRefuse as exc:
         conn.rollback()
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
@@ -2425,7 +2425,7 @@ def api_fiche_travail_get():
             },
         })
     except BudgetRefuse as exc:
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     finally:
         conn.close()
 
@@ -2464,7 +2464,7 @@ def api_fiche_travail_save():
         rows = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
         row = next((r for r in rows['rows'] if r['compte_num'] == compte_num), None)
         if not row or (row['is_salary'] and row['mode'] != 'mensuel'):
-            raise BudgetRefuse('Choisissez le mode projection mensuelle pour ce compte. Le brut de base reste réservé au simulateur ou à la saisie directe.')
+            raise BudgetRefuse('mode_mensuel_requis')
         contexte = _fiche_contexte(conn, compte_num, annee, secteur_id, type_budget)
         computed = _compute_fiche_travail(donnees, contexte)
         total = montant_budget(computed['total'])
@@ -2502,7 +2502,7 @@ def api_fiche_travail_save():
                         'reported': True, 'computed': computed, 'reference_budget': token})
     except BudgetRefuse as exc:
         conn.rollback()
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
@@ -2811,7 +2811,7 @@ def _nombre_budget(value, default=0):
             raise ValueError
         return nombre
     except (ValueError, TypeError, OverflowError):
-        raise BudgetRefuse('Valeur numérique invalide dans la simulation.') from None
+        raise BudgetRefuse('nombre_simulation_invalide') from None
 
 
 def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_reel):
@@ -2943,7 +2943,7 @@ def _paie_report_brut(conn, secteur_id, annee, type_budget, brut_compte, total_b
     total_brut = montant_budget(total_brut)
     data = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
     if brut_compte != data['salary_brut_account']:
-        raise BudgetRefuse('Le simulateur doit reporter sur le premier compte 641 du secteur.')
+        raise BudgetRefuse('premier_641_requis')
     conn.execute('''INSERT INTO budget_prev_saisies
         (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def, updated_by)
         VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(type_budget, annee, secteur_id, compte_num)
@@ -2986,7 +2986,7 @@ def api_paie_context():
             'reference_budget': reference_budget(conn, type_budget, annee, secteur_id),
         })
     except BudgetRefuse as exc:
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     finally:
         conn.close()
 
@@ -3084,7 +3084,7 @@ def api_paie_simulation_save():
                         'reports': reports})
     except BudgetRefuse as exc:
         conn.rollback()
-        return jsonify({'error': str(exc)}), 409
+        return jsonify({'error': message_budget(exc.code)}), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
