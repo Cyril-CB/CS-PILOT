@@ -82,6 +82,35 @@
         </div>
     </div>
 
+    {% if exportee and session.get('profil') in ['directeur', 'comptable'] %}
+    <div class="section" style="margin-bottom:1.5rem;">
+        <h2>Suivi après export</h2>
+        <p>Les écritures exportées restent figées. CS PILOT ne confirme pas leur import dans AIGA.</p>
+        {% for lot in lots %}<p><a href="{{ url_for('exportation_bp.detail_archive', archive_id=lot.id) }}">Lot {{ lot.id }} — {{ lot.nom_fichier }}</a></p>
+        {% else %}<p>Export historique antérieur au nouveau système : le contenu exact n’est pas garanti par CS PILOT. Consultez les anciennes archives disponibles.</p>{% endfor %}
+        <form method="POST" action="{{ url_for('factures_bp.signaler_correction', facture_id=facture.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="motifCorrection">Correction à examiner avec la comptabilité</label>
+            <textarea id="motifCorrection" name="motif" required maxlength="2000" rows="2" style="width:100%;"></textarea>
+            <p>Ce signalement est daté. Il ne génère aucune nouvelle écriture et ne modifie pas le fichier exporté.</p>
+            <button type="submit" class="btn btn-primary">Signaler une correction</button>
+        </form>
+        {% if facture.archivee %}<p>Facture archivée. Ses documents et son historique restent accessibles.</p>{% else %}
+        <form method="POST" action="{{ url_for('factures_bp.archiver_facture', facture_id=facture.id) }}" style="margin-top:1rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <label for="motifArchivage">Motif d’archivage</label>
+            <input id="motifArchivage" name="motif" required maxlength="2000">
+            <p>L’archivage retire la facture des listes actives et des relances, en conservant toutes ses données.</p>
+            <button type="submit" class="btn btn-secondary">Archiver la facture</button>
+        </form>{% endif %}
+    </div>
+    {% endif %}
+    {% if evenements and session.get('profil') in ['directeur', 'comptable'] %}
+    <div class="section" style="margin-bottom:1.5rem;">
+        <h2>Historique comptable</h2>
+        {% for e in evenements %}<p>{{ e.created_at }} UTC — {{ e.auteur_nom }} — {{ e.libelle }}{% if e.ecriture_id %} (écriture {{ e.ecriture_id }}){% endif %}{% if e.details.motif %} : {{ e.details.motif }}{% endif %}</p>{% endfor %}
+    </div>
+    {% endif %}
     {# ── Historique et Commentaires côte à côte ── #}
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem;">
         {# ── Historique ── #}

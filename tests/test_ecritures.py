@@ -8,6 +8,12 @@ par le mode ``response_format=json_object`` d'OpenAI/Groq) ou une écriture
 unique. Tous ces formats doivent produire des écritures.
 """
 import json
+import re
+
+
+def _reference(client, eid):
+    html = client.get('/ecritures').get_data(as_text=True)
+    return re.search(fr'name="reference_{eid}" value="([^"]+)"', html).group(1)
 from unittest.mock import patch
 
 
@@ -201,7 +207,7 @@ class TestValidationModification:
         fid = _seed_facture(app, db)
         eid = self._seed_ecriture(app, db, fid)
         comptable_client.post('/ecritures/valider',
-                              data={'ecriture_ids': [str(eid)]},
+                              data={'ecriture_ids': [str(eid)], f'reference_{eid}': _reference(comptable_client, eid)},
                               follow_redirects=False)
         with app.app_context():
             statut = db.execute(
@@ -214,7 +220,7 @@ class TestValidationModification:
         eid = self._seed_ecriture(app, db, fid)
         comptable_client.post(
             f'/ecritures/{eid}/modifier',
-            data={'compte': '607000', 'libelle': 'nouveau', 'debit': '99.5',
+            data={'reference': _reference(comptable_client, eid), 'compte': '607000', 'libelle': 'nouveau', 'debit': '99.5',
                   'credit': '0', 'code_analytique': 'ANA02'},
             follow_redirects=False,
         )

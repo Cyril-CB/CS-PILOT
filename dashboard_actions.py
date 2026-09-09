@@ -310,7 +310,7 @@ def _factures_a_valider(conn, profil, user_id, secteur_id, today):
                   fr.nom AS fournisseur_nom
            FROM factures f
            LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
-           WHERE f.approbation = 'en_attente' AND f.secteur_id = ?
+           WHERE f.archivee=0 AND f.approbation = 'en_attente' AND f.secteur_id = ?
            ORDER BY f.date_echeance ASC, f.date_facture ASC''',
         (secteur_id,)
     ).fetchall()
@@ -913,7 +913,7 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
                fr.nom AS fournisseur_nom
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
-        WHERE f.approbation = 'en_attente'
+        WHERE f.archivee=0 AND f.approbation = 'en_attente'
           AND f.assigned_direction = 1
         ORDER BY f.date_echeance ASC, f.date_facture ASC
         LIMIT 15

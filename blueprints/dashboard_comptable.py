@@ -209,19 +209,19 @@ def dashboard_comptable():
 
     # ── 5. Factures, ecritures brouillon, ecritures pretes a exporter ──
     nb_factures_attente = conn.execute(
-        "SELECT COUNT(*) as nb FROM factures WHERE approbation = 'en_attente'"
+        "SELECT COUNT(*) as nb FROM factures WHERE archivee=0 AND approbation = 'en_attente'"
     ).fetchone()['nb']
 
     montant_factures_attente = conn.execute(
-        "SELECT COALESCE(SUM(montant_ttc), 0) as total FROM factures WHERE approbation = 'en_attente'"
+        "SELECT COALESCE(SUM(montant_ttc), 0) as total FROM factures WHERE archivee=0 AND approbation = 'en_attente'"
     ).fetchone()['total']
 
     nb_ecritures_brouillon = conn.execute(
-        "SELECT COUNT(*) as nb FROM ecritures_comptables WHERE statut = 'brouillon'"
+        "SELECT COUNT(*) as nb FROM ecritures_comptables e JOIN factures f ON f.id=e.facture_id WHERE f.archivee=0 AND e.statut = 'brouillon'"
     ).fetchone()['nb']
 
     nb_ecritures_a_exporter = conn.execute(
-        "SELECT COUNT(*) as nb FROM ecritures_comptables WHERE statut = 'validee'"
+        "SELECT COUNT(*) as nb FROM ecritures_comptables e JOIN factures f ON f.id=e.facture_id WHERE f.archivee=0 AND e.statut = 'validee'"
     ).fetchone()['nb']
 
     # ── 6. Donnees importees (Bilan secteurs et Budget previsionnel) ──

@@ -87,6 +87,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0066', 'Revocation des sessions'),
     ('0067', 'Circuit ordonne des fiches mensuelles'),
     ('0068', 'Coherence absences recuperations et preparation paie'),
+    ('0069', 'Preuves des exports comptables'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2097,6 +2098,8 @@ def init_db():
     from prepa_paie_donnees import creer_schema as creer_schema_paie
     creer_schema_absences(conn)
     creer_schema_paie(conn)
+    from exports_comptables import creer_schema as creer_schema_exports
+    creer_schema_exports(conn)
 
     conn.commit()
     conn.close()

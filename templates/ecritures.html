@@ -53,8 +53,9 @@
                     {% for e in ecritures %}
                     <tr>
                         <td>
+                            <input type="hidden" name="reference_{{ e.id }}" value="{{ e.reference }}">
                             {% if e.statut == 'brouillon' %}
-                            <input type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="ecriture-cb" onchange="updateSelection()">
+                            <input aria-label="Sélectionner l’écriture {{ e.id }}" type="checkbox" name="ecriture_ids" value="{{ e.id }}" class="ecriture-cb" onchange="updateSelection()">
                             {% endif %}
                         </td>
                         <td>{% if e.date_ecriture %}{{ e.date_ecriture[8:10] }}/{{ e.date_ecriture[5:7] }}/{{ e.date_ecriture[0:4] }}{% else %}—{% endif %}</td>
@@ -70,11 +71,16 @@
                             {% elif e.statut == 'validee' %}
                             <span class="badge" style="background:#10b981;color:#fff;">Validée</span>
                             {% else %}
-                            <span class="badge" style="background:#6366f1;color:#fff;">Exportée</span>
+                            <span class="badge" style="background:#6366f1;color:#fff;">{{ 'Export historique' if e.export_historique else 'Exportée' }}</span>
                             {% endif %}
                         </td>
                         <td>
+                            {% if e.statut != 'exportee' %}
                             <button type="button" class="btn-icon" onclick='openEditEcriture({{ e|tojson }})' title="Éditer" aria-label="Éditer">✏️</button>
+                            {% else %}
+                            <a href="{{ url_for('factures_bp.detail_facture', facture_id=e.facture_id) }}">Suivi / correction</a>
+                            {% if e.archive_id %}<a href="{{ url_for('exportation_bp.detail_archive', archive_id=e.archive_id) }}">Lot {{ e.archive_id }}</a>{% endif %}
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -132,6 +138,7 @@
             <button class="modal-close" onclick="document.getElementById('modalEditEcriture').style.display='none'">&times;</button>
         </div>
         <form method="POST" id="editEcritureForm">
+            <input type="hidden" name="reference" id="eeReference">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label>Compte *</label>
@@ -184,7 +191,8 @@ function updateSelection() {
 }
 
 function openEditEcriture(e) {
-    document.getElementById('editEcritureForm').action = '/ecritures/' + e.id + '/modifier';
+    document.getElementById('editEcritureForm').action = e.modifier_url;
+    document.getElementById('eeReference').value = e.reference;
     document.getElementById('eeCompte').value = e.compte || '';
     document.getElementById('eeLibelle').value = e.libelle || '';
     document.getElementById('eeDebit').value = e.debit || 0;

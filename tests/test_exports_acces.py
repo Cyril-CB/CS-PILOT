@@ -14,6 +14,7 @@ partagent le même client. Dès qu'un test enchaîne plusieurs profils, il part
 de la fixture `client` et gère les connexions explicitement.
 """
 from io import BytesIO
+import re
 
 
 # Signature d'un classeur Excel (xlsx = archive ZIP) et d'un PDF.
@@ -78,13 +79,17 @@ def _seed_ecriture_validee(db, montant=120.0):
         "montant_ttc, description, statut) VALUES (?, ?, ?, ?, ?, ?)",
         (cur.lastrowid, 'INV-EXPORT-001', '2026-01-15', montant, 'Fournitures', 'traitee')
     )
+    facture_id = cur.lastrowid
     cur = db.execute(
         "INSERT INTO ecritures_comptables (facture_id, date_ecriture, compte, libelle, "
         "numero_facture, debit, credit, statut) VALUES (?, ?, ?, ?, ?, ?, ?, 'validee')",
         (cur.lastrowid, '2026-01-15', '606100', 'Fournitures', 'INV-EXPORT-001', montant, 0)
     )
+    eid = cur.lastrowid
+    db.execute("INSERT INTO ecritures_comptables (facture_id, date_ecriture, compte, libelle, credit, statut) "
+               "VALUES (?, '2026-01-15', 'FTEST', 'CONTREPARTIE', ?, 'validee')", (facture_id, montant))
     db.commit()
-    return cur.lastrowid
+    return eid
 
 
 def _seed_archive(db, tmp_path, created_by):
@@ -446,13 +451,17 @@ def test_exportation_exporter_refuse_sans_effet_en_base(client, sample_users, ap
 
     # Le comptable, lui, obtient le fichier et l'écriture bascule en « exportee ».
     _connexion(client, 'compta_test', 'compta123')
+    html = client.get('/exportation').get_data(as_text=True)
+    donnees = dict(re.findall(r'name="(reference_\d+)" value="([^"]+)"', html))
+    donnees['ecriture_ids'] = [r[0] for r in db.execute('SELECT id FROM ecritures_comptables')]
     reponse = client.post('/exportation/exporter', data=donnees)
     assert reponse.status_code == 200
     assert b'606100' in reponse.data
     assert _statut() == 'exportee'
     assert _nb_archives() == 1
-    # L'archive a bien été écrite dans le répertoire d'archives (isolé ici).
-    assert list(archives_dir.iterdir())
+    # Le fichier exact et le lot sont désormais conservés ensemble dans SQLite.
+    assert db.execute('SELECT contenu FROM archives_export').fetchone()[0] == reponse.data
+    assert not list(archives_dir.iterdir())
     _deconnexion(client)
 
 
@@ -488,13 +497,13 @@ def test_exportation_supprimer_archive_refuse_sans_effet(client, sample_users,
         assert fichier.exists(), login
         _deconnexion(client)
 
-    # Le comptable supprime effectivement l'archive (fichier compris).
+    # B3 : même la comptabilité conserve les anciennes archives pour la traçabilité.
     _connexion(client, 'compta_test', 'compta123')
     reponse = client.post(url, follow_redirects=False)
     assert reponse.status_code == 302
     assert '/exportation' in reponse.headers['Location']
-    assert not _archive_existe()
-    assert not fichier.exists()
+    assert _archive_existe()
+    assert fichier.exists()
     _deconnexion(client)
 
 

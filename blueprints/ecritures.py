@@ -8,8 +8,12 @@ Acces : directeur, comptable.
 """
 import json
 from datetime import datetime
-from flask import Blueprint, render_template, request, session, flash, redirect, url_for, jsonify
+from flask import Blueprint, render_template, request, session, flash, redirect, url_for
 from database import get_db
+from sessions_securite import verifier_action
+from exports_comptables import (ExportRefuse, colonnes_txt, contenu_ecriture, evenement,
+                                identifiants, montant_centimes, reference, source_facture,
+                                texte_champ, verifier_reference)
 from utils import login_required
 from blueprints.pesee_alisfa import call_ai, _extract_json_from_response
 from blueprints.api_keys import get_available_models
@@ -104,19 +108,35 @@ def liste_ecritures():
         return redirect(url_for('dashboard_bp.dashboard'))
 
     conn = get_db()
+    conn.execute('BEGIN')
     ecritures_rows = conn.execute('''
         SELECT e.*, f.fournisseur_id, fr.nom as fournisseur_nom
         FROM ecritures_comptables e
         LEFT JOIN factures f ON e.facture_id = f.id
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
+        WHERE COALESCE(f.archivee, 0)=0
         ORDER BY e.date_ecriture DESC, e.id
     ''').fetchall()
 
     # Compter les factures "a_traiter"
     nb_a_traiter = conn.execute(
-        "SELECT COUNT(*) as nb FROM factures WHERE statut = 'a_traiter'"
+        "SELECT COUNT(*) as nb FROM factures WHERE statut = 'a_traiter' AND archivee=0"
     ).fetchone()['nb']
 
+    sources = {}
+    ecritures_rows = [dict(e) for e in ecritures_rows]
+    for e in ecritures_rows:
+        fid = e['facture_id']
+        if fid not in sources:
+            try:
+                sources[fid] = source_facture(conn, fid)
+            except ExportRefuse:
+                sources[fid] = None
+        e['reference'] = reference(e, sources[fid]) if sources[fid] else ''
+        e['modifier_url'] = url_for('ecritures_bp.modifier_ecriture', ecriture_id=e['id'])
+        e['archive_id'] = conn.execute('SELECT archive_id FROM export_lignes WHERE ecriture_id=?',
+                                      (e['id'],)).fetchone()
+        e['archive_id'] = e['archive_id'][0] if e['archive_id'] else None
     conn.close()
 
     # Convertir les Row en dicts pour que tojson fonctionne dans le template
@@ -143,6 +163,7 @@ def generer_ecritures():
         return redirect(url_for('ecritures_bp.liste_ecritures'))
 
     conn = get_db()
+    conn.execute('BEGIN')
 
     # Récupérer les factures à traiter
     factures = conn.execute('''
@@ -150,7 +171,8 @@ def generer_ecritures():
                fr.alias1 as fournisseur_alias1
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
-        WHERE f.statut = 'a_traiter'
+        WHERE f.statut = 'a_traiter' AND f.archivee=0
+          AND NOT EXISTS (SELECT 1 FROM ecritures_comptables e WHERE e.facture_id=f.id)
     ''').fetchall()
 
     if not factures:
@@ -204,13 +226,24 @@ def generer_ecritures():
         {"role": "user", "content": user_prompt}
     ]
 
+    sources_initiales = {f['id']: source_facture(conn, f['id']) for f in factures}
+    conn.close()
+    conn = None
     try:
         raw = call_ai(messages, model)
         result = _extract_json_from_response(raw)
         entries = _normalize_entries(result)
 
+        conn = get_db()
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in PROFILS_AUTORISES:
+            raise ExportRefuse('Accès non autorisé.')
         nb_ecritures = 0
         nb_factures = 0
+        factures_vues = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
@@ -220,15 +253,20 @@ def generer_ecritures():
             if not facture_id or not lignes:
                 continue
 
-            # Récupérer la facture pour la date et l'échéance
-            fac = conn.execute('SELECT date_facture, date_echeance, numero_facture FROM factures WHERE id=?',
-                               (facture_id,)).fetchone()
-            if not fac:
-                continue
+            if (type(facture_id) is not int or facture_id not in sources_initiales
+                    or facture_id in factures_vues or not isinstance(lignes, list)):
+                raise ExportRefuse('La réponse IA référence une facture inattendue ou plusieurs fois la même facture.')
+            fac = source_facture(conn, facture_id)
+            if (fac != sources_initiales[facture_id]
+                    or conn.execute('SELECT 1 FROM ecritures_comptables WHERE facture_id=?', (facture_id,)).fetchone()):
+                raise ExportRefuse('Une facture a changé ou a déjà été traitée pendant la génération. Rechargez la page.')
+            factures_vues.add(facture_id)
 
             date_ecriture = fac['date_facture'] or datetime.now().strftime('%Y-%m-%d')
 
             for ligne in lignes:
+                if not isinstance(ligne, dict):
+                    raise ExportRefuse('Une ligne proposée par l’IA est invalide.')
                 echeance = None
                 if fac['date_echeance']:
                     # Convertir en JJMMAAAA
@@ -238,6 +276,11 @@ def generer_ecritures():
                     except ValueError:
                         echeance = fac['date_echeance']
 
+                colonnes_txt({'date_ecriture': date_ecriture,
+                    'compte': ligne.get('compte', ''), 'libelle': ligne.get('libelle', ''),
+                    'numero_facture': fac['numero_facture'], 'debit': ligne.get('debit', 0),
+                    'credit': ligne.get('credit', 0), 'code_analytique': ligne.get('code_analytique'),
+                    'echeance': echeance})
                 conn.execute(
                     '''INSERT INTO ecritures_comptables
                        (facture_id, date_ecriture, compte, libelle, numero_facture,
@@ -265,7 +308,6 @@ def generer_ecritures():
             nb_factures += 1
 
         conn.commit()
-        conn.close()
 
         if nb_ecritures:
             flash(f'{nb_ecritures} écriture(s) générée(s) pour {nb_factures} facture(s).', 'success')
@@ -273,9 +315,17 @@ def generer_ecritures():
             flash("Aucune écriture n'a pu être générée à partir de la réponse de l'IA. "
                   "Vérifiez vos règles comptables actives, puis réessayez.", 'warning')
 
-    except Exception as e:
-        conn.close()
-        flash(f'Erreur lors de la génération : {str(e)}', 'error')
+    except ExportRefuse as exc:
+        if conn is not None:
+            conn.rollback()
+        flash(str(exc), 'warning')
+    except Exception:
+        if conn is not None:
+            conn.rollback()
+        flash('Génération non réalisée. Vérifiez la réponse et la disponibilité du service IA, puis réessayez.', 'error')
+    finally:
+        if conn is not None:
+            conn.close()
 
     return redirect(url_for('ecritures_bp.liste_ecritures'))
 
@@ -287,52 +337,91 @@ def modifier_ecriture(ecriture_id):
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
-    compte = request.form.get('compte', '').strip()
-    libelle = request.form.get('libelle', '').strip().upper()
-    debit = request.form.get('debit', '0')
-    credit = request.form.get('credit', '0')
-    code_analytique = request.form.get('code_analytique', '').strip() or None
-
-    try:
-        debit = float(debit)
-        credit = float(credit)
-    except ValueError:
-        debit, credit = 0, 0
-
     conn = get_db()
-    conn.execute(
-        '''UPDATE ecritures_comptables SET compte=?, libelle=?, debit=?, credit=?,
-           code_analytique=?, updated_at=CURRENT_TIMESTAMP WHERE id=?''',
-        (compte, libelle, debit, credit, code_analytique, ecriture_id)
-    )
-    conn.commit()
-    conn.close()
-
-    flash('Écriture modifiée.', 'success')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in PROFILS_AUTORISES:
+            raise ExportRefuse('Accès non autorisé.')
+        row = conn.execute('SELECT * FROM ecritures_comptables WHERE id=?', (ecriture_id,)).fetchone()
+        if not row:
+            raise ExportRefuse('Écriture introuvable.')
+        if row['statut'] == 'exportee':
+            archive = conn.execute('SELECT archive_id FROM export_lignes WHERE ecriture_id=?', (ecriture_id,)).fetchone()
+            evenement(conn, 'modification_refusee', {'motif': 'Écriture déjà exportée'},
+                      ecriture_id=ecriture_id, facture_id=row['facture_id'],
+                      archive_id=archive[0] if archive else None)
+            conn.commit()
+            flash('Cette écriture a déjà été exportée et reste figée. Signalez la correction depuis sa facture.', 'warning')
+            return redirect(url_for('factures_bp.detail_facture', facture_id=row['facture_id']))
+        source = source_facture(conn, row['facture_id'])
+        if source['archivee']:
+            raise ExportRefuse('Cette facture est archivée.')
+        verifier_reference(request.form.get('reference'), row, source)
+        compte = texte_champ(request.form.get('compte', '').strip())
+        libelle = texte_champ(request.form.get('libelle', '').strip().upper())
+        analytique = texte_champ(request.form.get('code_analytique', '').strip()) or None
+        debit = montant_centimes(request.form.get('debit', '0'))
+        credit = montant_centimes(request.form.get('credit', '0'))
+        if not compte or not libelle or (debit and credit):
+            raise ExportRefuse('Renseignez le compte, le libellé et un seul côté débit ou crédit.')
+        avant = contenu_ecriture(row, source)
+        conn.execute('''UPDATE ecritures_comptables SET compte=?, libelle=?, debit=?, credit=?,
+            code_analytique=? WHERE id=?''',
+            (compte, libelle, debit / 100, credit / 100, analytique, ecriture_id))
+        apres = conn.execute('SELECT * FROM ecritures_comptables WHERE id=?', (ecriture_id,)).fetchone()
+        if apres['revision'] != row['revision']:
+            evenement(conn, 'modification', {'avant': avant, 'apres': contenu_ecriture(apres, source)},
+                      ecriture_id=ecriture_id, facture_id=row['facture_id'])
+        conn.commit()
+        flash('Écriture enregistrée. Tout contenu modifié doit être validé de nouveau.', 'success')
+    except ExportRefuse as exc:
+        conn.rollback()
+        flash(str(exc), 'warning')
+    finally:
+        conn.close()
     return redirect(url_for('ecritures_bp.liste_ecritures'))
 
 
 @ecritures_bp.route('/ecritures/valider', methods=['POST'])
 @login_required
 def valider_ecritures():
-    """Valide les écritures sélectionnées (brouillon -> validée)."""
+    """Une validation porte sur la version affichée, ligne par ligne."""
     if session.get('profil') not in PROFILS_AUTORISES:
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
-
-    ids = request.form.getlist('ecriture_ids')
-    if not ids:
-        flash('Aucune écriture sélectionnée.', 'warning')
-        return redirect(url_for('ecritures_bp.liste_ecritures'))
-
     conn = get_db()
-    placeholders = ','.join('?' * len(ids))
-    conn.execute(
-        f"UPDATE ecritures_comptables SET statut='validee', updated_at=CURRENT_TIMESTAMP WHERE id IN ({placeholders}) AND statut='brouillon'",
-        ids
-    )
-    conn.commit()
-    conn.close()
-
-    flash(f'{len(ids)} écriture(s) validée(s).', 'success')
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in PROFILS_AUTORISES:
+            raise ExportRefuse('Accès non autorisé.')
+        ids = identifiants(request.form.getlist('ecriture_ids'))
+        lignes = []
+        for eid in ids:
+            row = conn.execute('SELECT * FROM ecritures_comptables WHERE id=?', (eid,)).fetchone()
+            if not row or row['statut'] != 'brouillon':
+                raise ExportRefuse('La sélection doit contenir uniquement des écritures en brouillon.')
+            source = source_facture(conn, row['facture_id'])
+            if source['archivee']:
+                raise ExportRefuse('Une facture archivée ne peut pas être validée.')
+            verifier_reference(request.form.get(f'reference_{eid}'), row, source)
+            colonnes_txt(row)
+            lignes.append((row, source))
+        for row, source in lignes:
+            conn.execute("UPDATE ecritures_comptables SET statut='validee', updated_at=CURRENT_TIMESTAMP WHERE id=?", (row['id'],))
+            validee = conn.execute('SELECT * FROM ecritures_comptables WHERE id=?', (row['id'],)).fetchone()
+            evenement(conn, 'validation', contenu_ecriture(validee, source),
+                      ecriture_id=row['id'], facture_id=row['facture_id'])
+        conn.commit()
+        flash(f'{len(lignes)} écriture(s) validée(s).', 'success')
+    except ExportRefuse as exc:
+        conn.rollback()
+        flash(str(exc), 'warning')
+    finally:
+        conn.close()
     return redirect(url_for('ecritures_bp.liste_ecritures'))

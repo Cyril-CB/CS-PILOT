@@ -58,7 +58,7 @@ def _factures(conn, contexte):
 
     attente = conn.execute(
         f"""SELECT COUNT(*) AS nb FROM factures
-            WHERE approbation = 'en_attente' AND {approuvables}"""
+            WHERE archivee=0 AND approbation = 'en_attente' AND {approuvables}"""
     ).fetchone()['nb']
     if attente:
         infos.append(_info(
@@ -69,7 +69,7 @@ def _factures(conn, contexte):
 
     retard = conn.execute(
         f'''SELECT COUNT(*) AS nb FROM factures
-            WHERE approbation = 'en_attente' AND {approuvables}
+            WHERE archivee=0 AND approbation = 'en_attente' AND {approuvables}
               AND date_echeance IS NOT NULL AND date_echeance != ''
               AND date_echeance < ?''',
         (today,)
@@ -85,7 +85,7 @@ def _factures(conn, contexte):
     # aucun circuit : elle n'est pas « à approuver », elle est à assigner.
     a_assigner = conn.execute(
         """SELECT COUNT(*) AS nb FROM factures
-           WHERE approbation = 'en_attente'
+           WHERE archivee=0 AND approbation = 'en_attente'
              AND secteur_id IS NULL AND assigned_direction = 0"""
     ).fetchone()['nb']
     if a_assigner:
@@ -96,7 +96,7 @@ def _factures(conn, contexte):
         ))
 
     orphelines = conn.execute(
-        'SELECT COUNT(*) AS nb FROM factures WHERE fournisseur_id IS NULL'
+        'SELECT COUNT(*) AS nb FROM factures WHERE archivee=0 AND fournisseur_id IS NULL'
     ).fetchone()['nb']
     if orphelines:
         infos.append(_info(
@@ -114,7 +114,7 @@ def _ecritures(conn, contexte):
     infos = []
 
     a_generer = conn.execute(
-        "SELECT COUNT(*) AS nb FROM factures WHERE statut = 'a_traiter'"
+        "SELECT COUNT(*) AS nb FROM factures WHERE archivee=0 AND statut = 'a_traiter'"
     ).fetchone()['nb']
     if a_generer:
         infos.append(_info(
@@ -124,7 +124,7 @@ def _ecritures(conn, contexte):
         ))
 
     brouillons = conn.execute(
-        "SELECT COUNT(*) AS nb FROM ecritures_comptables WHERE statut = 'brouillon'"
+        "SELECT COUNT(*) AS nb FROM ecritures_comptables e JOIN factures f ON f.id=e.facture_id WHERE f.archivee=0 AND e.statut = 'brouillon'"
     ).fetchone()['nb']
     if brouillons:
         infos.append(_info(
@@ -134,7 +134,7 @@ def _ecritures(conn, contexte):
         ))
 
     validees = conn.execute(
-        "SELECT COUNT(*) AS nb FROM ecritures_comptables WHERE statut = 'validee'"
+        "SELECT COUNT(*) AS nb FROM ecritures_comptables e JOIN factures f ON f.id=e.facture_id WHERE f.archivee=0 AND e.statut = 'validee'"
     ).fetchone()['nb']
     if validees:
         infos.append(_info(

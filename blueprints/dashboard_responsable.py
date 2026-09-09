@@ -290,18 +290,18 @@ def dashboard_responsable():
                fr.nom as fournisseur_nom
         FROM factures f
         LEFT JOIN fournisseurs fr ON f.fournisseur_id = fr.id
-        WHERE f.secteur_id = ? AND f.approbation = 'en_attente'
+        WHERE f.archivee=0 AND f.secteur_id = ? AND f.approbation = 'en_attente'
         ORDER BY f.date_echeance ASC, f.date_facture ASC
         LIMIT 8
     ''', (secteur_id,)).fetchall()
 
     nb_factures_attente = conn.execute(
-        "SELECT COUNT(*) as nb FROM factures WHERE secteur_id = ? AND approbation = 'en_attente'",
+        "SELECT COUNT(*) as nb FROM factures WHERE archivee=0 AND secteur_id = ? AND approbation = 'en_attente'",
         (secteur_id,)
     ).fetchone()['nb']
 
     montant_factures_attente = conn.execute(
-        "SELECT COALESCE(SUM(montant_ttc), 0) as total FROM factures WHERE secteur_id = ? AND approbation = 'en_attente'",
+        "SELECT COALESCE(SUM(montant_ttc), 0) as total FROM factures WHERE archivee=0 AND secteur_id = ? AND approbation = 'en_attente'",
         (secteur_id,)
     ).fetchone()['total']
 

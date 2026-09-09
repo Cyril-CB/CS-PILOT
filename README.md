@@ -88,6 +88,7 @@ classique depuis « Mon espace ».
 - Saisie et gestion des ecritures comptables avec circuit de validation (Brouillon → Validee → Exportee)
 - Generation automatique d'ecritures via IA a partir des factures
 - Export des ecritures comptables au format TXT
+- Lots d’export conservant le fichier exact et ses lignes ; pièces complètes et équilibrées, protection après export, archivage et signalement des corrections. [Parcours, décisions métier et migration 0069](docs/exports-comptables.md).
 - Import et analyse des bilans comptables par secteur (compte de resultat detaille, export PDF)
 - Regles comptables pour la generation automatique d'ecritures (par type de depense ou fournisseur)
 - Trésorerie : import FEC, projection de solde multi-mois, gestion des comptes avec budget N ajustable
