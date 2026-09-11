@@ -25,6 +25,9 @@ from budget_calculs import (
     montant as montant_budget, mois_arrete, parametres,
     reference_budget, reporter_automatiques, verifier_reference as verifier_budget,
 )
+from budget_charges import (
+    calculer_taux, compte_charge, preparer_transition, simulation_enregistree, taux_actifs,
+)
 
 budget_bp = Blueprint('budget_bp', __name__)
 
@@ -1054,11 +1057,14 @@ def _budget_global(conn, type_budget, annee, inflation):
     result = {}
     alerts = []
     arretes = set()
+    secteurs_taux = []
     secteurs = conn.execute('SELECT id, nom FROM secteurs ORDER BY id').fetchall()
     for secteur in secteurs:
         data = _compute_budget_previsionnel(conn, type_budget, annee, secteur['id'], inflation)
         if not data['rows']:
             continue
+        if data.get('charges_salaries'):
+            secteurs_taux.append(secteur['nom'])
         arretes.add(data['parametres']['mois_arrete'])
         alerts.extend(f"{secteur['nom']} : {a}" for a in data['alertes'])
         for row in data['rows']:
@@ -1097,6 +1103,7 @@ def _budget_global(conn, type_budget, annee, inflation):
     m = next(iter(arretes)) if len(arretes) == 1 else 0
     return {'rows': rows, 'last_month': m or 0, 'last_month_label': NOMS_MOIS[m] if m else '',
             'salary_brut_account': None, 'salary_ratios': {}, 'totaux': _totaux_budget(rows), 'alertes': alerts,
+            'secteurs_taux_charges': secteurs_taux,
             'incomplet': any(r['def'] is None or r['a_recalculer'] for r in rows)}
 
 
@@ -1148,6 +1155,8 @@ def api_budget_parametres():
         rows = _compute_budget_previsionnel(conn, typ, annee, sid)
         autorises = {r['compte_num'] for r in rows['rows'] if r['is_salary']}
         for compte, mode in choix.items():
+            if rows.get('charges_salaries') and compte_charge(compte):
+                raise BudgetRefuse('charges_pilotees')
             if compte not in autorises or compte == rows['salary_brut_account'] or mode not in ('manuel', 'proportionnel', 'mensuel'):
                 raise BudgetRefuse('compte_mode_interdit')
         conn.execute('''INSERT INTO budget_parametres
@@ -1392,8 +1401,8 @@ def api_budget_previsionnel_save_line():
                 raise BudgetRefuse('compte_a_ajouter')
             valeur = montant_budget(ligne.get('valeur_def'), nullable=True)
             temp = montant_budget(ligne.get('valeur_temp'), nullable=True)
-            if row['mode'] in ('proportionnel', 'mensuel') and valeur != row['def']:
-                raise BudgetRefuse('mode_manuel_requis')
+            if row['mode'] in ('proportionnel', 'mensuel', 'taux_salaries') and valeur != row['def']:
+                raise BudgetRefuse('charges_pilotees' if row['mode'] == 'taux_salaries' else 'mode_manuel_requis')
             commentaire = str(ligne.get('commentaire') or '').strip()
             if len(commentaire) > 4000:
                 raise BudgetRefuse('commentaire_trop_long')
@@ -1501,12 +1510,24 @@ def api_budget_prev_retirer_compte():
         return jsonify({'error': 'Champs requis manquants'}), 400
     conn = get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in ('directeur', 'comptable'):
+            return jsonify({'error': 'Accès non autorisé.'}), 403
+        annee, secteur_id = contexte_valide(conn, type_budget, annee, secteur_id)
+        if compte_charge(compte_num) and taux_actifs(simulation_enregistree(conn, type_budget, annee, secteur_id)):
+            raise BudgetRefuse('charges_pilotees')
         conn.execute('''
             DELETE FROM budget_prev_saisies
             WHERE type_budget = ? AND annee = ? AND secteur_id = ? AND compte_num = ?
         ''', (type_budget, int(annee), int(secteur_id), compte_num))
         conn.commit()
         return jsonify({'success': True})
+    except BudgetRefuse as exc:
+        conn.rollback()
+        return jsonify({'error': message_budget(exc.code)}), 409
     finally:
         conn.close()
 
@@ -1579,6 +1600,10 @@ def api_budget_previsionnel_export_pdf():
             largeurs = [2 * cm, 6.4 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm]
         if data.get('incomplet') or data.get('alertes'):
             elements.append(Paragraph('Budget en cours de construction — montants non saisis ou calculs à revoir.', styles['Normal']))
+        if data.get('charges_salaries'):
+            elements.append(Paragraph('Charges par taux salarié : les budgets 645 à 648 sont regroupés sur le premier compte 645. Les comptes 63 conservent leur calcul habituel.', styles['Normal']))
+        elif data.get('secteurs_taux_charges'):
+            elements.append(Paragraph('Certains secteurs utilisent les taux par salarié : leurs budgets 645 à 648 sont regroupés sur leur premier compte 645.', styles['Normal']))
         if type_budget == 'actualise':
             elements.append(Paragraph('Réalisé arrêté selon les paramètres des secteurs.' if global_mode else 'Réalisé : ' + (('fin ' + data['last_month_label']) if data['last_month'] else 'aucun mois retenu'), styles['Normal']))
         table_data = [headers]
@@ -2865,6 +2890,8 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
     lignes = []
     for e in employes_base:
         ov = overrides.get(str(e['id'])) or overrides.get(e['id']) or {}
+        if not isinstance(ov, dict):
+            raise BudgetRefuse('formulaire_invalide')
         pesee_act = override_num(ov, 'pesee', e['pesee'])
         nouv = ov.get('nouvelle_pesee')
         pesee_eff = _nombre_budget(nouv) if nouv not in (None, '') else pesee_act
@@ -2943,11 +2970,12 @@ def _compute_paie(donnees, employes_base, cee_jours, last_real_month, montant_re
         'montant_reel': round(montant_reel or 0, 2),
         'total_simule': round(total_simule, 2),
         'total': round((montant_reel or 0) + total_simule, 2),
+        'charges_salaries': calculer_taux(d, lignes, ajouts_out, sum(cee_mois.values())),
     }
 
 
 def _paie_report_brut(conn, secteur_id, annee, type_budget, brut_compte, total_brut, user_id):
-    """Le simulateur ne reporte que le brut de base ; le moteur traite les modes."""
+    """Le simulateur reporte le brut de base puis les charges, dans la transaction."""
     total_brut = montant_budget(total_brut)
     data = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
     if brut_compte != data['salary_brut_account']:
@@ -2959,7 +2987,7 @@ def _paie_report_brut(conn, secteur_id, annee, type_budget, brut_compte, total_b
             updated_by=excluded.updated_by, updated_at=CURRENT_TIMESTAMP''',
         (type_budget, annee, secteur_id, brut_compte, total_brut, total_brut, user_id))
     return {brut_compte: total_brut,
-            **reporter_automatiques(conn, type_budget, annee, secteur_id, user_id)}
+            **reporter_automatiques(conn, type_budget, annee, secteur_id, user_id, strict_charges=True)}
 
 
 @budget_bp.route('/api/budget-previsionnel/paie-context')
@@ -2984,6 +3012,7 @@ def api_paie_context():
             last_real_month, montant_reel = _paie_reel_641(conn, secteur_id, compte_num, annee)
         else:
             last_real_month, montant_reel = 0, 0.0
+        budget = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
         return jsonify({
             'employes': employes,
             'mercredis_dates': mercredis,
@@ -2991,6 +3020,13 @@ def api_paie_context():
             'last_real_month': last_real_month,
             'montant_reel': montant_reel,
             'defaults': PAIE_DEFAULTS,
+            'budget_charges': {
+                'brut_base': budget['salary_brut_account'],
+                'bruts': [{k: r.get(k) for k in ('compte_num', 'N', 'temp', 'def', 'mode', 'taux')}
+                          for r in budget['rows'] if r['compte_num'].startswith('641')],
+                'comptes': [r['compte_num'] for r in budget['rows'] if compte_charge(r['compte_num'])],
+                'charges_reelles': sum(r['N'] for r in budget['rows'] if compte_charge(r['compte_num'])) if type_budget == 'actualise' else 0,
+            },
             'reference_budget': reference_budget(conn, type_budget, annee, secteur_id),
         })
     except BudgetRefuse as exc:
@@ -3069,6 +3105,12 @@ def api_paie_simulation_save():
 
         # Une simulation ne modifie jamais les données de la fiche salarié.
         total = montant_budget(total)
+        ancien = simulation_enregistree(conn, type_budget, annee, secteur_id)
+        if not compte_num and (taux_actifs(ancien) or taux_actifs(donnees)):
+            raise BudgetRefuse('premier_641_requis')
+        budget = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
+        donnees = preparer_transition(conn, donnees, type_budget, annee, secteur_id, user_id,
+                                      [r['compte_num'] for r in budget['rows']])
 
         conn.execute('''
             INSERT INTO budget_paie_simulations

@@ -39,6 +39,14 @@ MESSAGES_BUDGET = {
     'mode_mensuel_requis': 'Choisissez le mode projection mensuelle pour ce compte. Le brut de base reste réservé au simulateur ou à la saisie directe.',
     'nombre_simulation_invalide': 'Valeur numérique invalide dans la simulation.',
     'premier_641_requis': 'Le simulateur doit reporter sur le premier compte 641 du secteur.',
+    'premier_645_requis': 'Ajoutez un compte 645 au budget avant de reporter les charges par salarié.',
+    'option_taux_invalide': 'Le choix du calcul par taux de charges est invalide.',
+    'taux_charges_invalide': 'Indiquez un taux de charges compris entre 0 et 100 %.',
+    'taux_charges_manquant': 'Renseignez le taux de chaque salarié et ajout simulé, ainsi que celui des CEE si leur brut est positif. Zéro doit être saisi explicitement.',
+    'brut_simule_negatif': 'Le calcul par taux exige des bruts simulés positifs ou nuls.',
+    'base_taux_absente': 'Aucun brut simulé ne permet de pondérer les taux. Complétez les salariés ou les CEE.',
+    'simulation_charges_invalide': 'Rechargez et enregistrez à nouveau le simulateur de paie.',
+    'charges_pilotees': 'Ces comptes sont pilotés par les taux du simulateur. Décochez cette option dans le simulateur avant de les modifier.',
 }
 
 
@@ -153,7 +161,7 @@ def donnees_reference(conn, annee, secteur_id):
 
 def reference_budget(conn, type_budget, annee, secteur_id):
     """Lie les formulaires à leur périmètre, leurs paramètres et leurs sources."""
-    from blueprints.budget import _secteur_allowed_codes, _code_allowed, _paie_employes_secteur
+    from blueprints.budget import _secteur_allowed_codes, _code_allowed, _paie_employes_secteur, _paie_cee_dates
     allowed = _secteur_allowed_codes(conn, secteur_id)
     p = parametres(conn, type_budget, annee, secteur_id)
     years = {annee - 2, annee - 1, annee}
@@ -168,9 +176,11 @@ def reference_budget(conn, type_budget, annee, secteur_id):
         WHERE annee=? AND secteur_id=? ORDER BY type_budget, compte_num''', (annee, secteur_id))]
     fiches = [tuple(r) for r in conn.execute('''SELECT * FROM budget_fiches_travail
         WHERE annee=? AND secteur_id=? AND type_budget=? ORDER BY compte_num''', (annee, secteur_id, type_budget))]
+    paie = [tuple(r) for r in conn.execute('''SELECT compte_num, donnees, total FROM budget_paie_simulations
+        WHERE annee=? AND secteur_id=? AND type_budget=?''', (annee, secteur_id, type_budget))]
     source = [session.get('user_id'), type_budget, annee, secteur_id, p,
               modes(conn, type_budget, annee, secteur_id), sorted(allowed), fec, saisies, fiches,
-              _paie_employes_secteur(conn, secteur_id, annee)]
+              _paie_employes_secteur(conn, secteur_id, annee), paie, _paie_cee_dates(conn, annee)]
     return URLSafeSerializer(current_app.secret_key, salt='budget-v1').dumps(empreinte(source))
 
 
@@ -189,7 +199,11 @@ def verifier_reference(conn, token, type_budget, annee, secteur_id):
 
 def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
     """Deux étages sans boucle : autres 641 / premier 641, puis charges / tous 641."""
-    from blueprints.budget import _fiche_contexte, _compute_fiche_travail
+    from blueprints.budget import (
+        _fiche_contexte, _compute_fiche_travail, _compute_paie,
+        _paie_employes_secteur, _paie_cee_jours_par_mois,
+    )
+    from budget_charges import compte_charge, simulation_enregistree, taux_actifs, calculer_report
     p = parametres(conn, type_budget, annee, secteur_id)
     selected = modes(conn, type_budget, annee, secteur_id)
     base = next((r['compte_num'] for r in accounts if r['compte_num'].startswith('641')), None)
@@ -199,6 +213,9 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
     reference_totals = ref['totaux'] if ref else {}
     arrete = p['mois_arrete'] if type_budget == 'actualise' else 0
     alerts = []
+    simulation = simulation_enregistree(conn, type_budget, annee, secteur_id)
+    par_taux = taux_actifs(simulation)
+    charges_salaries = None
     if arrete is None:
         alerts.append('Choisissez le mois d’arrêté du réalisé.')
 
@@ -227,6 +244,8 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
     for r in accounts:
         c = r['compte_num']
         r['mode'] = 'base' if c == base else selected.get(c, 'manuel') if c.startswith(('63', '64')) else None
+        if par_taux and compte_charge(c):
+            r['mode'] = 'taux_salaries'
         r['calcul_erreur'] = None
         r['taux'] = r['reference_montant'] = r['reference_brut'] = None
         if r['mode'] in ('base', 'manuel'):
@@ -263,6 +282,25 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
     brut_reel = sum(r['N'] for r in bruts) if type_budget == 'actualise' else 0
     restant_global = brut_global - brut_reel if brut_global is not None else None
     denom_global = sum(v for c, v in reference_totals.items() if c.startswith('641'))
+    if par_taux:
+        try:
+            if arrete is None:
+                raise BudgetRefuse('arrete_non_choisi')
+            computed = _compute_paie(simulation, _paie_employes_secteur(conn, secteur_id, annee),
+                _paie_cee_jours_par_mois(conn, annee, simulation.get('fermetures')),
+                arrete, base_row['N'] if base_row and type_budget == 'actualise' else 0)
+            premier = next((r['compte_num'] for r in accounts if r['compte_num'].startswith('645')), None)
+            reel_charges = sum(r['N'] for r in accounts if compte_charge(r['compte_num'])) if type_budget == 'actualise' else 0
+            charges_salaries = calculer_report(computed['charges_salaries'], brut_global, brut_reel,
+                                               reel_charges, arrete, premier)
+        except BudgetRefuse as exc:
+            charges_salaries = {'erreur': message_budget(exc.code), 'code_erreur': exc.code}
+            alerts.append(charges_salaries['erreur'])
+        for r in accounts:
+            if r['mode'] == 'taux_salaries':
+                r['calcul_erreur'] = charges_salaries.get('erreur')
+                r['temp'] = (None if r['calcul_erreur'] else charges_salaries['total']
+                             if r['compte_num'] == charges_salaries['compte'] else 0)
     for r in accounts:
         if r['mode'] == 'proportionnel' and not r['compte_num'].startswith('641'):
             try:
@@ -271,23 +309,37 @@ def appliquer_calculs(conn, type_budget, annee, secteur_id, accounts):
                 r['temp'], r['calcul_erreur'] = None, message_budget(exc.code)
         if r['calcul_erreur']:
             alerts.append(f"{r['compte_num']} : {r['calcul_erreur']}")
-        r['a_recalculer'] = r['mode'] in ('mensuel', 'proportionnel') and (
+        r['a_recalculer'] = r['mode'] in ('mensuel', 'proportionnel', 'taux_salaries') and (
             r['temp'] is None or r['def'] is None or abs(r['temp'] - r['def']) >= 0.005)
         if r['a_recalculer'] and not r['calcul_erreur']:
             alerts.append(f"{r['compte_num']} : projection modifiée, cliquez sur Recalculer et reporter.")
     return {'salary_brut_account': base, 'salary_ratios': {}, 'brut_global': brut_global,
             'brut_reel': round(brut_reel, 2), 'alertes': alerts,
+            'charges_salaries': charges_salaries,
             'parametres': {**p, 'reference_valide': ref_ok,
                            'reference_mois': ref['mois'] if ref else [],
                            'reference_nb_lignes': ref['nb_lignes'] if ref else 0}}
 
 
-def reporter_automatiques(conn, type_budget, annee, secteur_id, user_id):
+def reporter_automatiques(conn, type_budget, annee, secteur_id, user_id, strict_charges=False):
     from blueprints.budget import _compute_budget_previsionnel
+    from budget_charges import simulation_enregistree, memoriser_montants
     data = _compute_budget_previsionnel(conn, type_budget, annee, secteur_id)
+    charges = data.get('charges_salaries')
+    if strict_charges and charges and charges.get('code_erreur'):
+        raise BudgetRefuse(charges['code_erreur'])
+    if charges:
+        simulation = simulation_enregistree(conn, type_budget, annee, secteur_id)
+        avant = json.dumps(simulation)
+        memoriser_montants(conn, simulation, type_budget, annee, secteur_id,
+                          [r['compte_num'] for r in data['rows']])
+        if json.dumps(simulation) != avant:
+            conn.execute('''UPDATE budget_paie_simulations SET donnees=?
+                WHERE type_budget=? AND annee=? AND secteur_id=?''',
+                (json.dumps(simulation), type_budget, annee, secteur_id))
     reports = {}
     for r in data['rows']:
-        if r['mode'] not in ('proportionnel', 'mensuel') or r['temp'] is None:
+        if r['mode'] not in ('proportionnel', 'mensuel', 'taux_salaries') or r['temp'] is None:
             continue
         conn.execute('''INSERT INTO budget_prev_saisies
             (type_budget, annee, secteur_id, compte_num, valeur_def, updated_by)
