@@ -32,7 +32,9 @@ def taux_charges(value):
 
 def calculer_taux(donnees, lignes, ajouts, cee_total):
     """Pondère les taux par les bruts réellement simulés sur la période restante."""
-    actif = taux_actifs(donnees)
+    # Les taux inutilisés ne doivent pas empêcher de restaurer le mode habituel.
+    if not taux_actifs(donnees):
+        return None
     overrides = donnees.get('employes') if isinstance(donnees.get('employes'), dict) else {}
     ajouts_saisis = donnees.get('ajouts') if isinstance(donnees.get('ajouts'), list) else []
     brut = charges = 0.0
@@ -40,8 +42,6 @@ def calculer_taux(donnees, lignes, ajouts, cee_total):
     def ajouter(total, valeur):
         nonlocal brut, charges
         taux = taux_charges(valeur)
-        if not actif:
-            return
         if total < 0:
             raise BudgetRefuse('brut_simule_negatif')
         if total and taux is None:
@@ -55,8 +55,6 @@ def calculer_taux(donnees, lignes, ajouts, cee_total):
     for ligne, saisie in zip(ajouts, (a for a in ajouts_saisis if isinstance(a, dict))):
         ajouter(ligne['total'], saisie.get('taux_charges'))
     ajouter(cee_total, donnees.get('taux_charges_cee'))
-    if not actif:
-        return None
     montant(brut)
     montant(charges)
     return {'brut_simule': round(brut, 2), 'charges_simulees': round(charges, 2),

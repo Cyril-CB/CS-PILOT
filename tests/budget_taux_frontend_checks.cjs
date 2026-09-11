@@ -107,4 +107,13 @@ element('paieUtiliserTaux').listeners.change.call(element('paieUtiliserTaux'));
 assert.equal(st.utiliser_taux_charges,false);
 assert.equal(element('paieReporter').disabled,false);
 assert.equal(element('paieChargesResume').innerHTML,'');
+// Une valeur invalide cesse aussi de bloquer le report dès que l'option est décochée.
+st.employes[1].taux_charges = 101;
+element('paieUtiliserTaux').checked = true;
+element('paieUtiliserTaux').listeners.change.call(element('paieUtiliserTaux'));
+assert.equal(element('paieReporter').disabled,true);
+element('paieUtiliserTaux').checked = false;
+element('paieUtiliserTaux').listeners.change.call(element('paieUtiliserTaux'));
+assert.equal(element('paieReporter').disabled,false);
+assert.equal(element('paieChargesResume').innerHTML,'');
 console.log('Budget taux JS : pondération, CEE, tous les 641, réalisé, arrondis, saisies et erreurs : OK.');

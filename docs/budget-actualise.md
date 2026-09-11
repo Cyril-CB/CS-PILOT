@@ -141,7 +141,9 @@ Les refus n'enregistrent ni la simulation, ni le brut, ni une partie des charges
 Pendant l'utilisation des taux, les montants et modes 645 à 648 sont pilotés
 par le simulateur. **Décocher l'option et reporter** restaure leurs anciens
 montants manuels puis recalcule les comptes qui étaient automatiques. Les
-commentaires et fiches de travail restent conservés. Les taux sont mémorisés
+commentaires et fiches de travail restent conservés. Les taux sont ignorés
+quand l'option est décochée : une valeur invalide ne bloque pas ce retour au
+mode habituel. Ils sont contrôlés à nouveau à la réactivation. Les taux sont mémorisés
 avec la simulation, par année, secteur et type de budget ; ils ne changent
 aucune fiche salarié. Aucune nouvelle migration ni reconnexion n'est requise.
 Recharger la page après la mise à jour.

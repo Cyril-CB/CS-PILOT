@@ -149,6 +149,40 @@ def test_desactivation_restaure_manuels_et_recalcule_modes(simulation, db, admin
     assert rows['645200']['mode'] == 'proportionnel'
 
 
+@pytest.mark.parametrize('initialement_actif', [False, True])
+@pytest.mark.parametrize('emplacement', ['salarie', 'ajout', 'cee'])
+def test_taux_invalide_ignore_option_desactivee(simulation, db, admin_client, initialement_actif, emplacement):
+    sid, uid, d = simulation
+    if emplacement == 'ajout':
+        d['ajouts'] = [{'type': 'cdi', 'temps_hebdo': 35, 'taux_charges': 20}]
+        ligne, champ = d['ajouts'][0], 'taux_charges'
+    elif emplacement == 'cee':
+        d.update(cee_mercredi=1, taux_charges_cee=15)
+        ligne, champ = d, 'taux_charges_cee'
+    else:
+        ligne, champ = d['employes'][str(uid)], 'taux_charges'
+    if initialement_actif:
+        assert enregistrer(admin_client, simulation).status_code == 200
+    # Même parcours que le navigateur : un taux invalide est saisi, puis décoché.
+    ligne[champ] = 101
+    d['utiliser_taux_charges'] = False
+    response = enregistrer(admin_client, simulation)
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['computed']['charges_salaries'] is None
+    data = lire(admin_client, sid, 'initial')
+    assert data['charges_salaries'] is None
+    rows = {r['compte_num']: r for r in data['rows']}
+    for compte, ancien in {'645100': 9600, '645200': 600, '646100': 400, '647100': 200, '648100': 200}.items():
+        assert rows[compte]['def'] == ancien
+        assert rows[compte]['mode'] == 'manuel'
+    saved = json.loads(db.execute('SELECT donnees FROM budget_paie_simulations WHERE secteur_id=?', (sid,)).fetchone()[0])
+    assert saved == d  # Les taux inutilisés restent dans le scénario.
+    avant = etat(db, sid)
+    saved['utiliser_taux_charges'] = True
+    assert enregistrer(admin_client, simulation, donnees=saved).status_code == 409
+    assert etat(db, sid) == avant  # Réactivation impossible tant que le taux reste invalide.
+
+
 @pytest.mark.parametrize('action', ['save-line', 'fiche-travail', 'parametres', 'retirer-compte'])
 def test_comptes_pilotes_proteges_sur_post_direct(simulation, db, admin_client, action):
     sid, _, _ = simulation
