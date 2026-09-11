@@ -171,7 +171,8 @@ sessions dont les révocations postérieures au point restauré auraient été p
 `diagnostic` est en lecture seule et retourne du JSON, code `0` si tout est bon,
 code `2` sinon. Il contrôle :
 
-- `PRAGMA integrity_check`, tables indispensables à la version, migrations en attente/en erreur/inconnues ;
+- `PRAGMA integrity_check`, toutes les tables attendues à la version (y compris
+  CSE, budgets et trésorerie), migrations en attente/en erreur/inconnues ;
 - références documentaires manquantes, par table et identifiant ; fichiers
   orphelins présents (signalement sans suppression) ;
 - SHA-256 des BLOB d’export et des instantanés, JSON et dates des instantanés ;
@@ -185,10 +186,24 @@ avec **le même SHA-256**. Ne pas envoyer de relance, e-mail ou requête IA rée
 Les tests automatisés réalisent ce parcours avec des données fictives et les
 connexions sortantes interdites.
 
+Le catalogue `resilience.TABLES_REQUISES` couvre les 107 tables du schéma actuel
+(avec `schema_migrations` contrôlée séparément). Un test compare ce catalogue
+au schéma neuf et à chaque étape des migrations : toute future table doit y être
+ajoutée avec sa version d'introduction. Une table attendue absente interdit
+l'export complet et la restauration, même si l'archive est authentique. Une
+ancienne sauvegarde n'est pas tenue de contenir les modules apparus ensuite.
+
 ## Migrations : états et reprise
 
 Seul `schema_migrations.statut = 'ok'` compte comme appliqué. Une erreur reste
 en attente ; même une erreur dont le fichier manque empêche l’état « à jour ».
+Toute version enregistrée mais inconnue du code installé empêche aussi l'état
+« à jour », le démarrage et l'application des migrations, y compris avec
+`--reprise-historique`. L'administration et le statut CLI l'identifient dans
+`inconnues`. Cela protège notamment d'un retour à un ancien code contre une
+base déjà mise à niveau : remettre le code compatible ou restaurer un ensemble
+code/données cohérent. Ne jamais supprimer les lignes de migration pour passer
+ce contrôle.
 Le nombre de migrations appliquées exclut les erreurs. Les tentatives sont
 conservées dans `schema_migrations_tentatives` ; les anciennes dates d’échec
 connues sont reprises, sans affirmer qu’un rollback avait eu lieu.

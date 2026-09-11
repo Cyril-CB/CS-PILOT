@@ -143,6 +143,50 @@ def test_demarrage_ne_repare_pas_echec(tmp_path, monkeypatch):
         assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name='plan_comptable_general'").fetchone()
 
 
+@pytest.mark.parametrize('version', ['0000', '9999'])
+def test_version_inconnue_empeche_statut_et_demarrage(tmp_path, monkeypatch, version):
+    monkeypatch.setattr(database, 'DATABASE', str(tmp_path / 'future.db'))
+    database.init_db()
+    with sqlite3.connect(database.DATABASE) as conn:
+        conn.execute("INSERT INTO schema_migrations(version, nom, statut) VALUES (?, 'Autre code', 'ok')", (version,))
+        conn.commit()
+        avant = list(conn.iterdump())
+    statut = migrations.get_statut_complet()
+    assert statut['nb_en_attente'] == 0 and not statut['erreurs']
+    assert not statut['a_jour']
+    assert [m['version'] for m in statut['inconnues']] == [version]
+    with pytest.raises(RuntimeError, match='inconnues'):
+        database.preparer_demarrage()
+    with sqlite3.connect(database.DATABASE) as conn:
+        assert list(conn.iterdump()) == avant
+
+
+def test_migration_refuse_base_autre_code_meme_reprise_historique(catalogue_fictif, monkeypatch):
+    migrations._ensure_migration_table()
+    with sqlite3.connect(database.DATABASE) as conn:
+        conn.execute("INSERT INTO schema_migrations(version, nom, statut) VALUES ('9999', 'Autre code', 'ok')")
+    def upgrade(conn):
+        conn.execute('CREATE TABLE modification_interdite(id INTEGER)')
+    monkeypatch.setattr(migrations, '_load_migration_module', lambda _: types.SimpleNamespace(NOM='Test', upgrade=upgrade))
+    for reprise in (False, True):
+        ok, message = migrations.appliquer_migration('9000', reprise_historique=reprise)
+        assert not ok and 'inconnues' in message
+    with sqlite3.connect(database.DATABASE) as conn:
+        assert not conn.execute("SELECT 1 FROM sqlite_master WHERE name='modification_interdite'").fetchone()
+        assert conn.execute('SELECT version, statut FROM schema_migrations').fetchall() == [('9999', 'ok')]
+        assert not conn.execute('SELECT 1 FROM schema_migrations_tentatives').fetchone()
+
+
+def test_admin_affiche_versions_inconnues(app, admin_client, db):
+    db.execute("INSERT INTO schema_migrations(version, nom, statut) VALUES ('9999', 'Autre code', 'ok')")
+    db.commit()
+    reponse = admin_client.get('/administration')
+    assert reponse.status_code == 200
+    assert 'Migration 9999 : inconnue de ce code.' in reponse.text
+    assert 'La base de donnees est a jour.' not in reponse.text
+    assert '0 mise(s) a jour disponible(s).' not in reponse.text
+
+
 @pytest.mark.parametrize('fin_transaction', ['COMMIT', 'ROLLBACK'])
 def test_transaction_sql_ne_contourne_pas_atomicite(catalogue_fictif, monkeypatch, fin_transaction):
     def upgrade(conn):
@@ -233,6 +277,7 @@ def schema(conn):
 
 
 def test_schema_neuf_identique_ancien_migre(tmp_path, monkeypatch):
+    from resilience import TABLES_REQUISES
     monkeypatch.setattr(database, 'DATABASE', str(tmp_path / 'fresh.db'))
     database.init_db()
     assert migrations.get_statut_complet()['a_jour']
@@ -240,10 +285,22 @@ def test_schema_neuf_identique_ancien_migre(tmp_path, monkeypatch):
         m['version'] for m in migrations.lister_fichiers_migrations()}
     with sqlite3.connect(database.DATABASE) as conn:
         neuf = schema(conn)
+    assert {nom for typ, nom in neuf if typ == 'table'} == {
+        table for tables in TABLES_REQUISES.values() for table in tables} | {'schema_migrations'}
     monkeypatch.setattr(database, 'DATABASE', str(tmp_path / 'old.db'))
     # Le schéma 0001 constitue la base historique ; toutes les migrations sont
     # exécutées, sans appeler init_db pour masquer d'éventuelles omissions.
-    resultats = migrations.appliquer_toutes_en_attente('test')
-    assert resultats and all(ok for _, ok, _ in resultats), resultats
+    for fichier in migrations.lister_fichiers_migrations():
+        version = fichier['version']
+        ok, message = migrations.appliquer_migration(version, 'test')
+        assert ok, message
+        with sqlite3.connect(database.DATABASE) as conn:
+            presentes = {n for n, in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+        # Vérifier l'exhaustivité ET la date d'introduction : une ancienne
+        # sauvegarde ne doit pas être obligée d'avoir les futurs modules.
+        requises = {table for v, tables in TABLES_REQUISES.items() if v <= version for table in tables}
+        # Le gestionnaire crée ses journaux avant la première migration.
+        assert presentes == requises | {'schema_migrations', 'schema_migrations_tentatives'}, version
     with sqlite3.connect(database.DATABASE) as conn:
         assert schema(conn) == neuf

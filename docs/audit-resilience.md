@@ -196,3 +196,36 @@ redémarrage. Cette migration ne change pas la clé ni les sessions ; un
 rechiffrement avec nouvelle clé lors d’une restauration impose une reconnexion.
 Les cinq scénarios de reprise, la checklist pré-mise à jour et les six étapes du
 test OVH isolé figurent dans [la procédure](resilience.md).
+
+## Corrections des deux retours P1 de la PR #255
+
+La revue a identifié deux contrôles incomplets, reproduits avant correction :
+
+- Le diagnostic ne recensait qu'une partie des tables. Le catalogue couvre
+  désormais toutes les tables persistantes de chaque migration (107 au schéma
+  actuel, journal des versions compris), y compris CSE, budgets et trésorerie.
+  Le test de convergence compare ce catalogue au schéma neuf et après chacune
+  des migrations ; une nouvelle table oubliée fera échouer ce test. L'export et
+  la restauration refusent une table attendue manquante. Les anciennes bases
+  conservent les exigences de leur propre version.
+- Une version de migration inconnue du code pouvait laisser l'état « à jour ».
+  Elle est maintenant identifiée dans le statut, affichée en administration et
+  bloque le démarrage. Le gestionnaire refuse aussi toute migration sur cette
+  base, sous verrou transactionnel, même avec l'option de reprise historique.
+  Les versions enregistrées et les données restent conservées.
+
+Onze scénarios supplémentaires couvrent notamment la perte de chacune des trois
+tables signalées, leur absence dans une archive authentique avec empreinte DB
+valide, une sauvegarde 0040 sans les futurs modules, des versions inconnues plus
+petites ou plus grandes que le catalogue et le refus de leur contournement.
+Le test de convergence existant vérifie en plus la version d'introduction des
+tables. Avant correction : **8 échecs attendus et 1 succès**. Après correction :
+**215 tests ciblés réussis en 129,74 s** (sauvegarde/restauration, migrations,
+administration et droits d'accès).
+La suite complète après ces corrections compte **2 149 tests réussis en
+497,87 s**. `compileall` et `git diff --check` réussissent également. Le statut
+CodeQL du commit corrigé figure dans la description de la PR.
+
+Ces corrections n'ajoutent pas de migration et ne changent pas les sessions.
+Le nouvel essai visuel a rencontré la même limite du navigateur cloud
+(`ERR_BLOCKED_BY_CLIENT`) ; le libellé de l'alerte est testé via HTTP.

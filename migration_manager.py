@@ -133,6 +133,9 @@ def appliquer_migration(version, appliquee_par=None, *, reprise_historique=False
     try:
         with closing(get_db()) as conn, conn.migration_atomique():
             lignes = {r['version']: dict(r) for r in conn.execute('SELECT * FROM schema_migrations')}
+            if set(lignes) - {f['version'] for f in fichiers}:
+                return False, ('Migrations inconnues de ce code : installez la version compatible '
+                               'avant toute migration ; voir docs/resilience.md.')
             existante = lignes.get(version)
             if existante and existante['statut'] == 'ok':
                 return False, f'La migration {version} est déjà appliquée.'
@@ -205,6 +208,8 @@ def appliquer_toutes_en_attente(appliquee_par=None):
 def get_statut_complet():
     """Retourne un dictionnaire complet de l'etat du systeme de migrations."""
     appliquees = get_migrations_appliquees()
+    connues = {f['version'] for f in lister_fichiers_migrations()}
+    inconnues = [m for m in appliquees if m['version'] not in connues]
     en_attente = get_migrations_en_attente()
     version = get_version_actuelle()
     with closing(get_db()) as conn:
@@ -215,11 +220,12 @@ def get_statut_complet():
         'version_actuelle': version,
         'nb_appliquees': sum(m['statut'] == 'ok' for m in appliquees),
         'erreurs': [m for m in appliquees if m['statut'] != 'ok'],
+        'inconnues': inconnues,
         'nb_en_attente': len(en_attente),
         'appliquees': appliquees,
         'tentatives': tentatives,
         'en_attente': en_attente,
-        'a_jour': not en_attente and all(m['statut'] == 'ok' for m in appliquees),
+        'a_jour': not en_attente and not inconnues and all(m['statut'] == 'ok' for m in appliquees),
     }
 
 

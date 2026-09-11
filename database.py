@@ -2147,4 +2147,5 @@ def preparer_demarrage():
         init_db()
     from migration_manager import get_statut_complet
     if not get_statut_complet()['a_jour']:
-        raise RuntimeError('Migrations en attente ou en erreur. Application arrêtée : voir docs/resilience.md.')
+        raise RuntimeError('Migrations en attente, en erreur ou inconnues de ce code. '
+                           'Application arrêtée : voir docs/resilience.md.')

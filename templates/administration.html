@@ -37,11 +37,19 @@
             une vérification sur une copie isolée avant toute reprise.
         </div>
         {% endif %}
+        {% if statut.inconnues %}
+        <div class="alert alert-error" role="alert">
+            <strong>Le code installé ne correspond pas aux migrations de cette base.</strong>
+            {% for m in statut.inconnues %}<p>Migration {{ m.version }} : inconnue de ce code.</p>{% endfor %}
+            Arrêtez l’application et installez une version compatible avant toute remise en service.
+            Ne supprimez pas ces lignes d’historique pour contourner le contrôle.
+        </div>
+        {% endif %}
         {% if statut.a_jour %}
         <div class="alert alert-success">
             La base de donnees est a jour. Aucune migration en attente.
         </div>
-        {% else %}
+        {% elif statut.en_attente %}
         <div class="alert alert-warning">
             <strong>{{ statut.nb_en_attente }} mise(s) a jour disponible(s).</strong>
             Il est recommande de faire une sauvegarde avant d'appliquer les migrations.

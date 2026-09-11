@@ -377,12 +377,57 @@ def test_volume_non_restaurable_refuse_avant_publication(installation, tmp_path,
     assert not (tmp_path / 'volume.cspbackup').exists()
 
 
-def test_table_de_preuves_absente_empeche_faux_succes(installation, tmp_path):
+@pytest.mark.parametrize('table', ['fiches_evenements', 'cse_membres', 'budgets', 'tresorerie_comptes'])
+def test_table_absente_empeche_faux_succes(installation, tmp_path, table):
     source = installation['source']
     with sqlite3.connect(source / 'cspilot.db') as conn:
-        conn.execute('DROP TABLE fiches_evenements')
+        conn.execute(f'DROP TABLE "{table}"')
     diagnostic = r.diagnostiquer(source, CLE)
     assert not diagnostic['ok']
-    assert diagnostic['tables_absentes'] == ['fiches_evenements']
+    assert diagnostic['tables_absentes'] == [table]
     with pytest.raises(r.ErreurResilience):
         r.sauvegarder(source, tmp_path / 'incomplete.cspbackup', PHRASE, arret_confirme=True, secret_key=CLE)
+    assert not (tmp_path / 'incomplete.cspbackup').exists()
+
+
+@pytest.mark.parametrize('table', ['cse_membres', 'budgets', 'tresorerie_comptes'])
+def test_restauration_refuse_table_absente_meme_archive_authentifiee(sauvegarde, tmp_path, table):
+    def retirer_table(fichiers, manifeste):
+        # Représente une archive produite par l'ancien contrôle incomplet :
+        # chiffrement et empreinte DB corrects, mais une table métier perdue.
+        copie = tmp_path / 'incomplete.db'
+        copie.write_bytes(fichiers['cspilot.db'])
+        with closing(sqlite3.connect(copie)) as conn, conn:
+            conn.execute(f'DROP TABLE "{table}"')
+        contenu = copie.read_bytes()
+        fichiers['cspilot.db'] = contenu
+        manifeste['fichiers']['cspilot.db'] = {'sha256': hashlib.sha256(contenu).hexdigest(), 'taille': len(contenu)}
+    archive = modifier_archive(sauvegarde, tmp_path, retirer_table)
+    destination = tmp_path / 'incomplete'
+    with pytest.raises(r.ErreurResilience, match='Restauration refusée'):
+        r.restaurer(archive, destination, PHRASE)
+    assert not destination.exists()
+
+
+def test_ancienne_sauvegarde_ne_requiert_pas_futurs_modules(tmp_path, monkeypatch):
+    import migration_manager as migrations
+    source = tmp_path / 'ancienne'
+    source.mkdir()
+    monkeypatch.setattr(database, 'DATABASE', str(source / 'cspilot.db'))
+    for fichier in migrations.lister_fichiers_migrations():
+        if fichier['version'] > '0040':
+            break
+        assert migrations.appliquer_migration(fichier['version'])[0]
+    with closing(sqlite3.connect(database.DATABASE)) as conn, conn:
+        # Ce journal n'existait pas encore dans l'ancienne installation.
+        conn.execute('DROP TABLE schema_migrations_tentatives')
+    avant = contenu_base(source / 'cspilot.db')
+    archive = tmp_path / 'ancienne.cspbackup'
+    r.sauvegarder(source, archive, PHRASE, arret_confirme=True, secret_key=CLE)
+    destination = tmp_path / 'restauree'
+    resultat = r.restaurer(archive, destination, PHRASE)
+    assert resultat['diagnostic']['donnees_valides']
+    assert resultat['diagnostic']['tables_absentes'] == []
+    assert resultat['diagnostic']['migrations']['en_attente']
+    assert not resultat['ok']  # Mise à niveau explicite nécessaire avant service.
+    assert contenu_base(destination / 'cspilot.db') == avant
