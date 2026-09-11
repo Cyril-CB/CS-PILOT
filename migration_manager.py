@@ -10,8 +10,9 @@ Conventions de nommage : XXXX_description.py (ex: 0001_initial_schema.py)
 import os
 import importlib.util
 import sqlite3
-from datetime import datetime
-from database import get_db, DATABASE
+from database import get_db
+from contextlib import closing
+import time
 
 MIGRATIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'migrations')
 
@@ -31,6 +32,8 @@ def _ensure_migration_table():
             statut TEXT DEFAULT 'ok'
         )
     ''')
+    from schema_resilience import creer_journal_migrations
+    creer_journal_migrations(conn)
     conn.commit()
     conn.close()
 
@@ -87,107 +90,102 @@ def get_version_actuelle():
 
 def get_migrations_en_attente():
     """Retourne la liste des migrations pas encore appliquees."""
-    appliquees = {m['version'] for m in get_migrations_appliquees()}
+    appliquees = {m['version'] for m in get_migrations_appliquees() if m['statut'] == 'ok'}
     fichiers = lister_fichiers_migrations()
 
     en_attente = []
     for f in fichiers:
         if f['version'] not in appliquees:
-            module = _load_migration_module(f['chemin'])
+            try:
+                module = _load_migration_module(f['chemin'])
+                nom = getattr(module, 'NOM', f['fichier'])
+                description = getattr(module, 'DESCRIPTION', '')
+            except Exception:
+                nom = f['fichier']
+                description = 'Fichier de migration illisible : vérifier le code avant application.'
             en_attente.append({
                 'version': f['version'],
                 'fichier': f['fichier'],
-                'nom': getattr(module, 'NOM', f['fichier']),
-                'description': getattr(module, 'DESCRIPTION', ''),
+                'nom': nom,
+                'description': description,
             })
     return en_attente
 
 
-def appliquer_migration(version, appliquee_par=None):
-    """Applique une migration specifique par son numero de version.
+def appliquer_migration(version, appliquee_par=None, *, reprise_historique=False):
+    """DDL + données + succès dans une seule transaction SQLite.
 
-    Retourne (success: bool, message: str).
+    Une erreur de l'ancien gestionnaire peut avoir été partiellement commitée :
+    sa reprise exige un diagnostic isolé et l'option CLI explicite. Les erreurs
+    rollbackées par ce gestionnaire sont directement relançables.
     """
-    _ensure_migration_table()
-
-    # Verifier que la migration n'est pas deja appliquee avec succes
-    conn = get_db()
-    existing = conn.execute(
-        "SELECT id, statut FROM schema_migrations WHERE version = ?", (version,)
-    ).fetchone()
-    conn.close()
-    if existing and existing['statut'] == 'ok':
-        return False, f"La migration {version} est deja appliquee."
-
-    # Trouver le fichier correspondant
-    fichiers = lister_fichiers_migrations()
-    fichier = None
-    for f in fichiers:
-        if f['version'] == version:
-            fichier = f
-            break
-
-    if not fichier:
-        return False, f"Fichier de migration introuvable pour la version {version}."
-
-    module = _load_migration_module(fichier['chemin'])
-
-    if not hasattr(module, 'upgrade'):
-        return False, f"La migration {version} ne contient pas de fonction upgrade()."
-
-    # Appliquer la migration
-    start = datetime.now()
     try:
-        conn = get_db()
-        module.upgrade(conn)
-        conn.commit()
-        duree = int((datetime.now() - start).total_seconds() * 1000)
-
-        conn.execute(
-            "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-            "VALUES (?, ?, ?, ?, ?, 'ok')",
-            (
-                version,
-                getattr(module, 'NOM', fichier['fichier']),
-                getattr(module, 'DESCRIPTION', ''),
-                appliquee_par or 'systeme',
-                duree
-            )
-        )
-        conn.commit()
-        conn.close()
-        return True, f"Migration {version} appliquee avec succes ({duree} ms)."
-    except Exception as e:
-        duree = int((datetime.now() - start).total_seconds() * 1000)
-        # Liberer le verrou en ecriture avant d'enregistrer l'echec
+        _ensure_migration_table()
+    except sqlite3.Error:
+        return False, 'Journal indisponible ou autre opération en cours : diagnostic nécessaire.'
+    fichiers = lister_fichiers_migrations()
+    fichier = next((f for f in fichiers if f['version'] == version), None)
+    if fichier is None:
+        return False, 'Fichier de migration introuvable.'
+    debut = time.monotonic()
+    nom = fichier['fichier']
+    acteur = appliquee_par or 'systeme'
+    try:
+        with closing(get_db()) as conn, conn.migration_atomique():
+            lignes = {r['version']: dict(r) for r in conn.execute('SELECT * FROM schema_migrations')}
+            if set(lignes) - {f['version'] for f in fichiers}:
+                return False, ('Migrations inconnues de ce code : installez la version compatible '
+                               'avant toute migration ; voir docs/resilience.md.')
+            existante = lignes.get(version)
+            if existante and existante['statut'] == 'ok':
+                return False, f'La migration {version} est déjà appliquée.'
+            precedentes = [f['version'] for f in fichiers if f['version'] < version]
+            if any(lignes.get(v, {}).get('statut') != 'ok' for v in precedentes) or any(
+                    v < version and r['statut'] != 'ok' for v, r in lignes.items()):
+                return False, 'Appliquez ou réparez les migrations précédentes dans l’ordre.'
+            derniere = conn.execute(
+                'SELECT transaction_annulee FROM schema_migrations_tentatives '
+                'WHERE version=? ORDER BY id DESC LIMIT 1', (version,)).fetchone()
+            if existante and existante['statut'] != 'ok' and not reprise_historique and (
+                    not derniere or not derniere['transaction_annulee']):
+                return False, (f'Migration {version} : ancien échec potentiellement partiel. '
+                               'Diagnostic sur une copie isolée ou restauration avant reprise ; voir docs/resilience.md.')
+            module = _load_migration_module(fichier['chemin'])
+            nom = getattr(module, 'NOM', nom)
+            module.upgrade(conn)
+            duree = int((time.monotonic() - debut) * 1000)
+            conn.execute(
+                "INSERT INTO schema_migrations(version, nom, description, appliquee_par, duree_ms, statut) "
+                "VALUES (?, ?, ?, ?, ?, 'ok') ON CONFLICT(version) DO UPDATE SET "
+                "nom=excluded.nom, description=excluded.description, appliquee_le=CURRENT_TIMESTAMP, "
+                "appliquee_par=excluded.appliquee_par, duree_ms=excluded.duree_ms, statut='ok'",
+                (version, nom, getattr(module, 'DESCRIPTION', ''), acteur, duree))
+            conn.execute(
+                "INSERT INTO schema_migrations_tentatives(version, statut, detail, appliquee_par, duree_ms) "
+                "VALUES (?, 'ok', 'Schéma, données et succès commités ensemble', ?, ?)",
+                (version, acteur, duree))
+        return True, f'Migration {version} appliquée avec succès ({duree} ms).'
+    except Exception as erreur:
+        # Ne pas exposer str(erreur) : une exception peut contenir une valeur
+        # chiffrée, une clé ou une donnée métier. Le type suffit au diagnostic.
+        detail = f'{type(erreur).__name__} : transaction annulée intégralement'
+        duree = int((time.monotonic() - debut) * 1000)
         try:
-            conn.rollback()
-        except Exception:
-            pass
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-        # Enregistrer l'echec
-        try:
-            conn2 = get_db()
-            conn2.execute(
-                "INSERT OR REPLACE INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
-                "VALUES (?, ?, ?, ?, ?, 'erreur')",
-                (
-                    version,
-                    getattr(module, 'NOM', fichier['fichier']),
-                    f"ERREUR: {str(e)}",
-                    appliquee_par or 'systeme',
-                    duree
-                )
-            )
-            conn2.commit()
-            conn2.close()
-        except Exception:
-            pass
-        return False, f"Erreur lors de la migration {version}: {str(e)}"
+            with closing(get_db()) as conn, conn.migration_atomique():
+                # Un autre processus peut avoir réussi après notre rollback.
+                conn.execute(
+                    "INSERT INTO schema_migrations(version, nom, description, appliquee_par, duree_ms, statut) "
+                    "VALUES (?, ?, ?, ?, ?, 'erreur') ON CONFLICT(version) DO UPDATE SET "
+                    "description=excluded.description, appliquee_le=CURRENT_TIMESTAMP, "
+                    "appliquee_par=excluded.appliquee_par, duree_ms=excluded.duree_ms, statut='erreur' "
+                    "WHERE schema_migrations.statut != 'ok'",
+                    (version, nom, detail, acteur, duree))
+                conn.execute(
+                    "INSERT INTO schema_migrations_tentatives(version, statut, detail, appliquee_par, duree_ms, transaction_annulee) "
+                    "VALUES (?, 'erreur', ?, ?, ?, 1)", (version, detail, acteur, duree))
+        except sqlite3.Error:
+            return False, f'Migration {version} : échec, journal indisponible. Arrêtez et diagnostiquez la base.'
+        return False, f'Migration {version} : échec ({detail}). Corrigez la cause avant de relancer.'
 
 
 def appliquer_toutes_en_attente(appliquee_par=None):
@@ -210,16 +208,24 @@ def appliquer_toutes_en_attente(appliquee_par=None):
 def get_statut_complet():
     """Retourne un dictionnaire complet de l'etat du systeme de migrations."""
     appliquees = get_migrations_appliquees()
+    connues = {f['version'] for f in lister_fichiers_migrations()}
+    inconnues = [m for m in appliquees if m['version'] not in connues]
     en_attente = get_migrations_en_attente()
     version = get_version_actuelle()
+    with closing(get_db()) as conn:
+        tentatives = [dict(r) for r in conn.execute(
+            'SELECT * FROM schema_migrations_tentatives ORDER BY id DESC LIMIT 100')]
 
     return {
         'version_actuelle': version,
-        'nb_appliquees': len(appliquees),
+        'nb_appliquees': sum(m['statut'] == 'ok' for m in appliquees),
+        'erreurs': [m for m in appliquees if m['statut'] != 'ok'],
+        'inconnues': inconnues,
         'nb_en_attente': len(en_attente),
         'appliquees': appliquees,
+        'tentatives': tentatives,
         'en_attente': en_attente,
-        'a_jour': len(en_attente) == 0,
+        'a_jour': not en_attente and not inconnues and all(m['statut'] == 'ok' for m in appliquees),
     }
 
 

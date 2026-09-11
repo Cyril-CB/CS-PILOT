@@ -17,6 +17,7 @@ from datetime import datetime
 from flask import (Blueprint, render_template, request, session, flash,
                    redirect, url_for, jsonify, send_file)
 from database import get_db, DATA_DIR
+from stockage_restaure import resoudre_fichier
 from sessions_securite import verifier_action
 from exports_comptables import ExportRefuse, evenement, facture_exportee, presenter_evenements
 from utils import login_required, get_setting
@@ -420,7 +421,8 @@ def telecharger_facture(facture_id):
     conn = get_db()
     facture = conn.execute('SELECT fichier_path, fichier_nom, secteur_id FROM factures WHERE id=?', (facture_id,)).fetchone()
 
-    if not facture or not facture['fichier_path'] or not os.path.exists(facture['fichier_path']):
+    chemin = resoudre_fichier(facture['fichier_path'], 'factures') if facture else None
+    if not chemin or not os.path.isfile(chemin):
         conn.close()
         flash('Fichier introuvable.', 'error')
         return redirect(url_for('factures_bp.liste_factures'))
@@ -434,7 +436,7 @@ def telecharger_facture(facture_id):
             return redirect(url_for('factures_bp.approbation_factures'))
 
     conn.close()
-    return send_file(facture['fichier_path'], as_attachment=True, download_name=facture['fichier_nom'])
+    return send_file(chemin, as_attachment=True, download_name=facture['fichier_nom'])
 
 
 @factures_bp.route('/factures/<int:facture_id>/supprimer', methods=['POST'])
@@ -468,9 +470,10 @@ def supprimer_facture(facture_id):
         conn.commit()
         # Un échec SQL conserve le PDF. Un échec du nettoyage après commit
         # conserve seulement un fichier résiduel, jamais une fausse preuve d'export.
-        if facture['fichier_path'] and os.path.isfile(facture['fichier_path']):
+        chemin = resoudre_fichier(facture['fichier_path'], 'factures')
+        if chemin and os.path.isfile(chemin):
             try:
-                os.unlink(facture['fichier_path'])
+                os.unlink(chemin)
             except OSError:
                 flash('Facture supprimée ; le fichier résiduel n’a pas pu être nettoyé.', 'warning')
         flash('Facture supprimée.', 'success')

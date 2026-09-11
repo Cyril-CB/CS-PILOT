@@ -72,7 +72,7 @@ def _sanitize_label(label):
 
 def _build_backup_filename(prefix, extension, label=None):
     """Construit un nom de fichier de sauvegarde standardise."""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
     clean_label = _sanitize_label(label)
     suffix = f"_{clean_label}" if clean_label else ""
     return f"{prefix}_{timestamp}{suffix}.{extension}"
@@ -90,22 +90,21 @@ def creer_sauvegarde(label=None):
     backup_dir = get_backup_dir()
     filename = _build_backup_filename('backup', 'db', label=label)
     backup_path = os.path.join(backup_dir, filename)
-
+    cree = False
     try:
-        # Utiliser l'API backup de SQLite pour une copie coherente
-        source = sqlite3.connect(db_path)
-        dest = sqlite3.connect(backup_path)
-        source.backup(dest)
-        dest.close()
-        source.close()
+        from resilience import copier_sqlite
+        with open(backup_path, 'xb'):
+            cree = True
+            os.chmod(backup_path, 0o600)
+        copier_sqlite(db_path, backup_path)
 
         size = os.path.getsize(backup_path)
         return backup_path, None
-    except Exception as e:
+    except Exception:
         # Nettoyer le fichier partiel en cas d'erreur
-        if os.path.exists(backup_path):
+        if cree and os.path.exists(backup_path):
             os.remove(backup_path)
-        return None, str(e)
+        return None, 'Copie SQLite impossible ou invalide ; vérifiez le stockage et les droits.'
 
 
 def creer_archive_documents(label=None):
@@ -125,14 +124,17 @@ def creer_archive_documents(label=None):
     if not fichiers:
         return None, "Aucun document uploadé à archiver"
 
+    cree = False
     try:
-        with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(archive_path, 'x', compression=zipfile.ZIP_DEFLATED) as archive:
+            cree = True
+            os.chmod(archive_path, 0o600)
             for filepath, arcname in fichiers:
                 archive.write(filepath, arcname)
 
         return archive_path, None
     except Exception as e:
-        if os.path.exists(archive_path):
+        if cree and os.path.exists(archive_path):
             os.remove(archive_path)
         return None, str(e)
 
@@ -169,7 +171,7 @@ def lister_archives_documents():
     return _lister_fichiers_sauvegarde('documents', 'zip')
 
 
-def restaurer_sauvegarde(filename):
+def restaurer_sauvegarde(filename, *, application_arretee=False):
     """
     Restaure la base de donnees a partir d'un fichier de sauvegarde.
     Cree automatiquement une sauvegarde de securite avant la restauration.
@@ -184,10 +186,16 @@ def restaurer_sauvegarde(filename):
     # Verifier que le fichier est une base SQLite valide
     try:
         conn = sqlite3.connect(backup_path)
-        conn.execute("SELECT name FROM sqlite_master WHERE type='table' LIMIT 1")
+        if conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+            conn.close()
+            return False, "Le fichier n'est pas une base de donnees SQLite valide"
         conn.close()
     except sqlite3.DatabaseError:
         return False, "Le fichier n'est pas une base de donnees SQLite valide"
+
+    if not application_arretee:
+        return False, ('Restauration à chaud désactivée. Arrêtez l’application et suivez '
+                       'docs/resilience.md pour restaurer dans un emplacement vierge.')
 
     db_path = get_db_path()
 
@@ -270,6 +278,8 @@ if __name__ == '__main__':
     parser.add_argument('--max-backups', type=int, default=20, help='Nombre max de sauvegardes a conserver')
     parser.add_argument('--label', type=str, help='Label pour la sauvegarde')
 
+    parser.add_argument('--application-arretee', action='store_true',
+                        help='Confirmer l’arrêt de tous les processus écrivains (restauration partielle)')
     args = parser.parse_args()
 
     if args.list:
@@ -285,7 +295,7 @@ if __name__ == '__main__':
 
     elif args.restore:
         print(f"Restauration de: {args.restore}")
-        ok, msg = restaurer_sauvegarde(args.restore)
+        ok, msg = restaurer_sauvegarde(args.restore, application_arretee=args.application_arretee)
         if ok:
             print(f"OK - {msg}")
         else:

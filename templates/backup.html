@@ -5,19 +5,28 @@
 {% block content %}
 <div class="form-container">
     <h1>💾 Sauvegardes</h1>
-    <p class="subtitle">Gerez les sauvegardes et la restauration de vos donnees</p>
+    <p class="subtitle">Copies ponctuelles et reconstruction de votre installation</p>
+
+    <div class="alert alert-warning" role="status">
+        <strong>Les copies ci-dessous sont partielles.</strong>
+        La base et le ZIP de documents ne suffisent pas à reconstruire CS PILOT.
+        Les factures, modèles, contrats générés, anciens exports et la configuration
+        protégée nécessitent l’export complet chiffré décrit dans <code>docs/resilience.md</code>.
+        Cet export se réalise après arrêt de l’application. La restauration se fait
+        dans un emplacement vierge, avec contrôle avant remise en service.
+    </div>
 
     <!-- Info base actuelle + creation sauvegarde -->
     <div class="section">
-        <h2>Creer une sauvegarde</h2>
+        <h2>Créer des copies ponctuelles</h2>
         <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
             <div>
                 <p>Base de donnees actuelle : <strong>{{ db_filename or 'cspilot.db' }}</strong>
                 {% if db_size %} ({{ db_size }}){% endif %}</p>
-                <p style="margin-top: 6px;">Le bouton ci-dessous cree aussi une archive ZIP de tous les documents uploadés en conservant les sous-repertoires.</p>
+                <p style="margin-top: 6px;">Le bouton copie SQLite (y compris son WAL) et archive uniquement le dossier documents/. Ces deux copies ne constituent pas un ensemble synchronisé.</p>
             </div>
-            <form method="POST" action="{{ url_for('backup_bp.creer') }}" style="display: flex; align-items: center; gap: 10px;">
-                <input type="text" name="label" placeholder="Label optionnel (ex: avant_mise_a_jour)" style="width: 300px;">
+            <form method="POST" action="{{ url_for('backup_bp.creer') }}" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <input type="text" name="label" aria-label="Label optionnel" placeholder="Label optionnel" style="width: 100%; max-width: 300px;">
                 <button type="submit" class="btn btn-primary">💾 Sauvegarder maintenant</button>
             </form>
         </div>
@@ -48,14 +57,6 @@
                         <a href="{{ url_for('backup_bp.telecharger', filename=s.filename) }}"
                            class="btn btn-secondary" style="font-size: 0.85em; padding: 4px 10px;"
                            title="Telecharger">📥 Telecharger</a>
-
-                        <!-- Restaurer -->
-                        <form method="POST" action="{{ url_for('backup_bp.restaurer') }}" style="display:inline;"
-                              onsubmit="return confirm('ATTENTION : La base actuelle sera remplacee par cette sauvegarde.\nUne sauvegarde de securite sera creee automatiquement.\n\nContinuer ?');">
-                            <input type="hidden" name="filename" value="{{ s.filename }}">
-                            <button type="submit" class="btn btn-primary" style="font-size: 0.85em; padding: 4px 10px;"
-                                    title="Restaurer cette sauvegarde">🔄 Restaurer</button>
-                        </form>
 
                         <!-- Supprimer -->
                         <form method="POST" action="{{ url_for('backup_bp.supprimer') }}" style="display:inline;"
@@ -119,10 +120,10 @@
             <li><strong>Sauvegardez regulierement</strong> : avant chaque mise a jour, en fin de mois, ou apres des modifications importantes</li>
             <li><strong>Telechargez vos sauvegardes</strong> : conservez une copie sur un autre support (cle USB, disque externe, cloud)</li>
             <li><strong>Documents uploadés</strong> : les archives ZIP conservent l'arborescence de vos sous-dossiers</li>
-            <li><strong>Restauration</strong> : une sauvegarde de securite est creee automatiquement avant toute restauration</li>
+            <li><strong>Restauration</strong> : interrompre les accès et suivre la procédure hors ligne ; aucun remplacement de la base en service depuis cette page.</li>
             <li><strong>Rotation automatique</strong> : les 20 dernieres sauvegardes sont conservees, les plus anciennes sont supprimees automatiquement</li>
         </ul>
-        <p><strong>Ligne de commande :</strong> Vous pouvez aussi utiliser <code>python backup_db.py</code> pour sauvegarder, <code>python backup_db.py --list</code> pour lister, et <code>python backup_db.py --restore &lt;fichier&gt;</code> pour restaurer.</p>
+        <p><strong>Export complet chiffré :</strong> <code>python resilience_cli.py --help</code>. Conserver sa phrase secrète séparément. Les copies ponctuelles ci-dessus sont non chiffrées et doivent rester sur un support protégé.</p>
     </div>
 </div>
 {% endblock %}

@@ -40,14 +40,8 @@ fi
 echo "[OK] Dependances installees"
 echo ""
 
-# Charger le .env si present
-if [ -f .env ]; then
-    set -a
-    source .env
-    set +a
-    echo "[OK] Variables d'environnement chargees (.env)"
-    echo ""
-fi
+# app.py charge la configuration avec python-dotenv (DATA_DIR/.env).
+# Ne jamais exécuter le contenu d'un fichier .env comme du code shell.
 
 echo "============================================================"
 echo "   LANCEMENT DE L'APPLICATION"

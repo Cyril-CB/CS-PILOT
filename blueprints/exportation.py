@@ -9,6 +9,7 @@ from uuid import uuid4
 from flask import (Blueprint, Response, current_app, flash, redirect,
                    render_template, request, session, url_for, send_file)
 from database import get_db, DATA_DIR
+from stockage_restaure import resoudre_fichier
 from utils import login_required
 from sessions_securite import verifier_action
 from exports_comptables import (COLONNES_TXT, ExportRefuse, canonique, evenement,
@@ -179,9 +180,10 @@ def telecharger_archive(archive_id):
             raise ExportRefuse('Archive introuvable.')
         if archive['preuve_version'] == 0:
             # Fichier historique référencé par 0023 ; aucun rapprochement inventé.
-            if not archive['fichier_path'] or not os.path.isfile(archive['fichier_path']):
+            chemin = resoudre_fichier(archive['fichier_path'], 'exports')
+            if not chemin or not os.path.isfile(chemin):
                 raise ExportRefuse('Fichier historique introuvable. Son contenu ne peut pas être reconstitué.')
-            response = send_file(archive['fichier_path'], as_attachment=True, download_name=archive['nom_fichier'])
+            response = send_file(chemin, as_attachment=True, download_name=archive['nom_fichier'])
             # Le GET historique reste compatible ; l'action est un téléchargement.
             conn.rollback()
             conn.execute('BEGIN IMMEDIATE')

@@ -11,7 +11,9 @@ import sqlite3
 #   - Windows : %LOCALAPPDATA%\cspilot
 #   - Linux/Mac : ~/.local/share/cspilot
 # En mode script normal, utiliser le dossier du projet (comportement d'origine).
-if getattr(sys, 'frozen', False):
+if os.environ.get('CSPILOT_DATA_DIR'):
+    DATA_DIR = os.path.abspath(os.environ['CSPILOT_DATA_DIR'])
+elif getattr(sys, 'frozen', False):
     if os.name == 'nt':
         DATA_DIR = os.path.join(
             os.environ.get('LOCALAPPDATA', os.path.join(os.path.expanduser('~'), 'AppData', 'Local')),
@@ -79,6 +81,26 @@ ALL_MIGRATION_VERSIONS = [
     ('0038', 'Correctif types variables paie'),
     ('0039', 'Journal des actions metier'),
     ('0040', 'Module CSE'),
+    ('0041', 'MAJ modèles IA (chatbot_model)'),
+    ('0042', 'Ajout simulateur PS CAF'),
+    ('0043', 'Compat simulateur PS EAJE prév/réel'),
+    ('0044', 'Types PS ALSH (perisco / extrasco)'),
+    ('0045', 'Ajout simulateur de paie'),
+    ('0046', 'Ajout maintien de salaire'),
+    ('0047', 'Ajout module bilan action'),
+    ('0048', 'Délégation récurrences de salle'),
+    ('0049', 'Module Planificateur de taches'),
+    ('0050', 'Ajout quantité aux commandes salariés'),
+    ('0051', 'Ajout action budget aux subventions'),
+    ('0052', 'Types de subvention'),
+    ('0053', 'Synonymes de secteurs'),
+    ('0054', 'Journal des recherches (barre intelligente)'),
+    ('0055', 'Créneau soir optionnel (entretien / vacances)'),
+    ('0056', 'Fiches de travail budget actualisé'),
+    ('0057', 'Heures supp payées déduites du compteur de récup'),
+    ('0058', 'Profil du valideur direction/comptable des demandes'),
+    ('0059', 'Pause méridienne rémunérée (saisie des heures)'),
+    ('0060', 'Priorité numérique relative du planificateur'),
     ('0061', 'Type de benevolat, date de fin et suivi des heures'),
     ('0062', 'Charte du benevolat signee'),
     ('0063', 'Delegation de la gestion des benevoles'),
@@ -89,6 +111,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0068', 'Coherence absences recuperations et preparation paie'),
     ('0069', 'Preuves des exports comptables'),
     ('0070', 'Référence annuelle et modes des comptes du budget'),
+    ('0071', 'Résilience et convergence du schéma'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -219,7 +242,13 @@ def _corriger_types_variables_paie(cursor):
 
 def init_db():
     """Initialisation de la base de données avec le schema complet."""
-    conn = get_db()
+    from contextlib import closing
+    with closing(get_db()) as conn, conn.migration_atomique():
+        neuve = not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        _initialiser_schema(conn, neuve)
+
+
+def _initialiser_schema(conn, neuve):
     cursor = conn.cursor()
 
     # ===== Table des utilisateurs =====
@@ -725,7 +754,7 @@ def init_db():
             user_id INTEGER NOT NULL,
             mois INTEGER NOT NULL,
             annee INTEGER NOT NULL,
-            traite INTEGER DEFAULT 0,
+            traite INTEGER NOT NULL DEFAULT 0,
             traite_par INTEGER,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
@@ -1836,7 +1865,7 @@ def init_db():
 
     # Marquer toutes les migrations comme appliquees pour les nouvelles installations
     cursor.execute("SELECT COUNT(*) as nb FROM schema_migrations")
-    if cursor.fetchone()[0] == 0:
+    if cursor.fetchone()[0] == 0 and neuve:
         for version, nom in ALL_MIGRATION_VERSIONS:
             cursor.execute(
                 "INSERT INTO schema_migrations (version, nom, description, appliquee_par, duree_ms, statut) "
@@ -2105,5 +2134,18 @@ def init_db():
     from exports_comptables import creer_schema as creer_schema_exports
     creer_schema_exports(conn)
 
-    conn.commit()
-    conn.close()
+    from schema_resilience import creer_schema as creer_schema_resilience
+    creer_schema_resilience(conn)
+
+
+def preparer_demarrage():
+    """Ne pas auto-réparer silencieusement une base existante au redémarrage."""
+    from contextlib import closing
+    with closing(get_db()) as conn:
+        vide = not conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()
+    if vide:
+        init_db()
+    from migration_manager import get_statut_complet
+    if not get_statut_complet()['a_jour']:
+        raise RuntimeError('Migrations en attente, en erreur ou inconnues de ce code. '
+                           'Application arrêtée : voir docs/resilience.md.')
