@@ -477,6 +477,7 @@ function chargerBudget(){
         const info = type === 'actualise' ? (data.parametres.mois_arrete === null ? 'Arrêté du réalisé à choisir.' : 'Réalisé retenu : ' + (data.last_month ? 'fin ' + data.last_month_label : 'aucun mois') + '.') : '';
         document.getElementById('budgetInfos').innerHTML = escapeHtml(info) +
             '<p>Brut global prévu (ensemble des 641) : <strong>' + fmt(data.brut_global) + ' €</strong></p>' +
+            (data.charges_salaries ? '<p>Charges 645 à 648 pilotées par les taux du simulateur de paie.</p>' : '') +
             (data.incomplet ? '<p>Budget en cours : les montants non renseignés restent à compléter.</p>' : '') +
             (data.alertes || []).map(a => '<div role="status">' + escapeHtml(a) + '</div>').join('');
         renderBudgetParametres(data);
@@ -495,6 +496,7 @@ function chargerGlobal(){
         renderResult('globalResultat', data.totaux);
         document.getElementById('globalResultat').insertAdjacentHTML('beforeend',
             (data.incomplet ? '<p>Consolidation en cours : des montants restent à renseigner.</p>' : '') +
+            ((data.secteurs_taux_charges || []).length ? '<p>Charges par taux salarié : ' + escapeHtml(data.secteurs_taux_charges.join(', ')) + '.</p>' : '') +
             (data.alertes || []).map(a => '<div>' + escapeHtml(a) + '</div>').join(''));
     });
 }
@@ -606,7 +608,7 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const isBrut = ctx.brutBase === r.compte_num;
         const rowStyle = isBrut ? ' style="background:#fff7d6;"' : '';
         const tempInput = '<span style="display:block;text-align:right;">' + fmt(r.temp) + '</span>';
-        const auto = r.mode === 'proportionnel' || r.mode === 'mensuel';
+        const auto = ['proportionnel', 'mensuel', 'taux_salaries'].includes(r.mode);
         const defInput = (!globalMode && !isReadOnly)
             ? '<input class="form-control bp-input-def" aria-label="Budget du compte ' + escapeHtml(r.compte_num) + '" placeholder="Non renseigné" type="number" step="0.01" value="' + (r.def == null ? '' : r.def) + '" data-bp-def-compte="' + escapeHtml(r.compte_num) + '"' + (auto ? ' readonly title="Compte calculé : modifier son mode pour une saisie manuelle"' : '') + '>'
             : '<span style="display:block;text-align:right;">' + fmt(r.def) + '</span>';
@@ -622,14 +624,14 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const ficheBtn = (!globalMode && !psComptes[r.compte_num] && ((actualise && !r.is_salary) || r.mode === 'mensuel'))
             ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-fiche-compte="' + escapeHtml(r.compte_num) + '" title="Fiche de travail : réel + projection + ajustements" aria-label="Fiche de travail">📋</button>'
             : '';
-        const retirerBtn = (!globalMode && canEditPs && r.manuel)
+        const retirerBtn = (!globalMode && canEditPs && r.manuel && r.mode !== 'taux_salaries')
             ? '<button type="button" class="btn btn-sm btn-danger bp-ps-btn" data-retirer-compte="' + escapeHtml(r.compte_num) + '" title="Compte ajouté manuellement au budget — le retirer (supprime les montants saisis)" aria-label="Retirer ce compte du budget">🗑</button>'
             : '';
         const boutons = psBtn + paieBtn + ficheBtn + retirerBtn;
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td>' +
           '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) +
-          (r.mode ? '<small style="display:block;">' + escapeHtml(r.mode === 'base' ? 'Brut de base' : r.mode === 'mensuel' ? 'Projection mensuelle' : r.mode === 'proportionnel' ? 'Proportionnel au brut' : 'Montant manuel') + '</small>' : '') +
+          (r.mode ? '<small style="display:block;">' + escapeHtml(r.mode === 'base' ? 'Brut de base' : r.mode === 'taux_salaries' ? 'Taux par salarié (simulateur)' : r.mode === 'mensuel' ? 'Projection mensuelle' : r.mode === 'proportionnel' ? 'Proportionnel au brut' : 'Montant manuel') + '</small>' : '') +
           (r.taux != null ? '<small style="display:block;">Réf. ' + escapeHtml(salaryMeta.parametres.annee_reference) + ' : ' + fmt(r.reference_montant) + ' / ' + fmt(r.reference_brut) + ' = ' + fmt(r.taux * 100) + ' %</small>' : '') +
           (r.calcul_erreur ? '<small style="display:block;color:var(--danger,#b00);">' + escapeHtml(r.calcul_erreur) + '</small>' : '') + '</span>' +
           (boutons ? '<span class="bp-btns">' + boutons + '</span>' : '') + '</div></td>' +
@@ -810,6 +812,7 @@ function renderBudgetParametres(data){
     (data.rows || []).filter(r => r.is_salary).forEach(r => {
         html += '<tr><td>' + escapeHtml(r.compte_num + ' — ' + r.libelle) + '</td><td>';
         if (r.mode === 'base') html += 'Brut de base : saisie directe ou simulateur de paie';
+        else if (r.mode === 'taux_salaries') html += 'Taux par salarié : option à décocher dans le simulateur pour retrouver le mode habituel.';
         else html += '<select class="form-select" aria-label="Mode du compte ' + escapeHtml(r.compte_num) + '" data-budget-mode="' + escapeHtml(r.compte_num) + '"' + dis + '>' +
             [['manuel','Montant manuel'],['proportionnel','Proportionnel au brut'],['mensuel','Projection mensuelle']].map(([v,label]) => '<option value="' + v + '"' + (r.mode === v ? ' selected' : '') + '>' + label + '</option>').join('') + '</select>';
         html += '</td></tr>';
@@ -2064,6 +2067,7 @@ function defaultPaieState(ctx){
         forfait_cee: def.forfait_cee != null ? def.forfait_cee : 70,
         temps_plein: def.temps_plein != null ? def.temps_plein : 35,
         cee_mercredi: '', cee_vacances: '',
+        utiliser_taux_charges: false, taux_charges_cee: '',
         fermetures: [{debut:'', fin:''}, {debut:'', fin:''}],
         employes: {}, ajouts: []
     };
@@ -2076,6 +2080,7 @@ function defaultPaieState(ctx){
             competence: e.competence != null ? e.competence : '',
             nouvelle_competence: '',
             maintien: e.maintien != null ? e.maintien : 0,
+            taux_charges: '',
             temps_hebdo: e.temps_hebdo != null ? e.temps_hebdo : ''
         };
     });
@@ -2084,9 +2089,10 @@ function defaultPaieState(ctx){
 function mergePaieState(saved, ctx){
     var st = defaultPaieState(ctx);
     if (!saved) return st;
-    ['salaire_socle','valeur_point','forfait_cee','temps_plein','cee_mercredi','cee_vacances'].forEach(function(k){
+    ['salaire_socle','valeur_point','forfait_cee','temps_plein','cee_mercredi','cee_vacances','taux_charges_cee'].forEach(function(k){
         if (saved[k] !== undefined && saved[k] !== null) st[k] = saved[k];
     });
+    st.utiliser_taux_charges = saved.utiliser_taux_charges === true;
     if (Array.isArray(saved.fermetures)){
         for (var i=0;i<2;i++){ if (saved.fermetures[i]) st.fermetures[i] = {debut: saved.fermetures[i].debut||'', fin: saved.fermetures[i].fin||''}; }
     }
@@ -2163,6 +2169,66 @@ function paieMonths(){
     var lastReal = (paieSim.ctx.type_budget === 'actualise') ? (paieSim.context.last_real_month || 0) : 0;
     var arr = []; for (var m=lastReal+1; m<=12; m++) arr.push(m); return arr;
 }
+// round(float, 2) côté Python : toFixed a le même arrondi binaire, sauf aux
+// demis exactement représentables (.125, .375, .625, .875), arrondis au pair.
+function paieArrondiBrut(n){
+    const v = Number(n.toFixed(2)), fraction = Math.abs(n) % 1;
+    if ([0.125,0.375,0.625,0.875].includes(fraction) && Math.round(Math.abs(v) * 100) % 2)
+        return (Math.round(v * 100) - Math.sign(n)) / 100;
+    return v;
+}
+// Comme montant_budget : Decimal(str(nombre)), au centime le plus proche,
+// au pair en cas d'égalité. Ne pas arrondir le taux moyen avant le produit.
+function paieArrondiMontant(n){
+    const [mantisse, exposant = '0'] = Math.abs(n).toString().split('e');
+    const [entier, fraction = ''] = mantisse.split('.');
+    const digits = entier + fraction, position = entier.length + Number(exposant) + 2;
+    const avant = position <= 0 ? '0' : digits.slice(0, position).padEnd(position, '0');
+    const apres = position < 0 ? '0'.repeat(-position) + digits : digits.slice(position);
+    let cents = Number(avant);
+    if (apres && (apres[0] > '5' || (apres[0] === '5' && (/[1-9]/.test(apres.slice(1)) || cents % 2)))) cents++;
+    return Math.sign(n) * cents / 100;
+}
+function computeChargesPaie(st, ctx, c, typeBudget){
+    if (!st.utiliser_taux_charges) return null;
+    const b = ctx.budget_charges || {};
+    const compte = (b.comptes || []).find(n => n.startsWith('645'));
+    if (!compte) return {erreur:'Ajoutez un compte 645 au budget avant de reporter les charges.'};
+    let base = 0, charges = 0, erreur = null;
+    function ajouter(total, valeur){
+        const absent = valeur === '' || valeur == null;
+        const taux = absent ? null : Number(valeur);
+        if (!absent && (!Number.isFinite(taux) || taux < 0 || taux > 100)) erreur = 'Indiquez des taux compris entre 0 et 100 %.';
+        if (total < 0) erreur = 'Les bruts simulés doivent être positifs ou nuls.';
+        if (total > 0 && absent) erreur = 'Complétez les T%Ch. des salariés, des ajouts et des CEE simulés. Saisissez 0 explicitement si nécessaire.';
+        base += total;
+        charges += total * (taux || 0) / 100;
+    }
+    Object.entries(c.lignes).forEach(([id, ligne]) => ajouter(paieArrondiBrut(ligne.total), (st.employes[id] || {}).taux_charges));
+    Object.entries(c.ajouts).forEach(([i, ligne]) => ajouter(paieArrondiBrut(ligne.total), st.ajouts[i].taux_charges));
+    ajouter(Object.values(c.ceeCout).reduce((s, v) => s + paieArrondiBrut(v), 0), st.taux_charges_cee);
+    if (erreur) return {erreur};
+    const taux = base > 0 ? charges / base : null;
+    let brut = paieArrondiBrut(c.total), reelBrut = 0;
+    const restantBase = brut - (typeBudget === 'actualise' ? ctx.montant_reel || 0 : 0);
+    for (const r of b.bruts || []){
+        reelBrut += typeBudget === 'actualise' ? r.N : 0;
+        if (r.compte_num === b.brut_base) continue;
+        let valeur = r.def;
+        if (r.mode === 'mensuel') valeur = r.temp;
+        if (r.mode === 'proportionnel') valeur = c.lastReal === 12 ? r.N : r.taux == null ? null :
+            paieArrondiBrut((typeBudget === 'actualise' ? r.N : 0) + restantBase * r.taux);
+        if (valeur == null && c.lastReal !== 12) return {erreur:'Complétez les autres comptes 641 du budget avant de reporter les charges.'};
+        brut += valeur || 0;
+    }
+    const restant = c.lastReal === 12 ? 0 : paieArrondiBrut(paieArrondiBrut(brut) - reelBrut);
+    if (restant < -0.01) return {erreur:'Le brut prévu est inférieur au brut déjà réalisé. Vérifiez les comptes 641.'};
+    if (restant > 0 && taux == null) return {erreur:'Aucun brut simulé ne permet de pondérer les taux.'};
+    const reel = typeBudget === 'actualise' ? (b.charges_reelles || 0) : 0;
+    const prevues = paieArrondiMontant(Math.max(0, restant) * (taux || 0));
+    return {compte, taux_moyen:taux, charges_reelles:reel, brut_restant:Math.max(0, restant),
+        charges_prevues:prevues, total:paieArrondiMontant(reel + prevues)};
+}
 function paieInput(attrs, val, step){
     return '<input class="ps-input" type="number" step="' + (step||'0.01') + '" value="' + psAttr(val) + '" ' + attrs + '>';
 }
@@ -2181,6 +2247,9 @@ function renderPaieSimulator(){
             '</strong> sont simulés ; réel déjà constaté : <strong>' + fmt(ctx.montant_reel || 0) + ' €</strong>.';
     }
     html += '</div>';
+    html += '<p><label for="paieUtiliserTaux"><input id="paieUtiliserTaux" type="checkbox"' +
+        (st.utiliser_taux_charges ? ' checked' : '') + '> Utiliser les taux de charges par salarié (T%Ch.)</label></p>' +
+        '<p class="ps-legend">Les taux restent dans cette simulation. La moyenne des taux est pondérée par les bruts simulés, CEE compris, puis appliquée au brut total des 641 restant à prévoir. Les compléments 641 sont ainsi répartis au prorata des bruts simulés. En actualisé, les charges réalisées à l’arrêté sont conservées. Le total des budgets 645 à 648 sera regroupé sur le premier 645 ; les autres seront mis à zéro. Les comptes 63 et les autres comptes gardent leurs règles. Décocher restaure les anciens montants puis recalcule les comptes automatiques.</p>';
 
     // Salariés en cours de contrat
     html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Salariés en cours de contrat (secteur)</h4>';
@@ -2197,6 +2266,7 @@ function renderPaieSimulator(){
             '<th title="Points de compétences actuels (fiche salarié)">Comp.</th>' +
             '<th title="Nouvelles compétences simulées — prennent le pas sur les actuelles, sans modifier la fiche">Nv comp.</th>' +
             '<th title="Maintien de salaire (€/mois)">Maint. €</th>' +
+            '<th title="Taux de charges du salarié (%)">T%Ch.</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th></tr></thead><tbody>';
         (ctx.employes || []).forEach(function(e){
             var ov = st.employes[e.id] || {};
@@ -2210,6 +2280,7 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="competence"', ov.competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="nouvelle_competence"', ov.nouvelle_competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-emp="' + e.id + '" data-paie-key="maintien"', ov.maintien, '0.01') + '</td>' +
+                '<td>' + paieInput('min="0" max="100" aria-label="Taux de charges de ' + psAttr((e.nom||'') + ' ' + (e.prenom||'')) + '" data-paie-emp="' + e.id + '" data-paie-key="taux_charges"', ov.taux_charges, '0.01') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-' + m + '"></td>'; }).join('') +
                 '<td class="bp-ps-calc" id="paie-emp-' + e.id + '-tot"></td></tr>';
         });
@@ -2228,6 +2299,7 @@ function renderPaieSimulator(){
             '<th title="Points d\'ancienneté">Anc.</th>' +
             '<th title="Points de compétences">Comp.</th>' +
             '<th title="Maintien de salaire (€/mois)">Maint. €</th>' +
+            '<th title="Taux de charges de cet ajout (%)">T%Ch.</th>' +
             '<th title="Mois de début (CDD) ou d\'embauche (CDI)">Début</th>' +
             '<th title="Mois de fin (CDD)">Fin</th>' +
             monthTh + '<th class="bp-ps-calc">Total</th><th></th></tr></thead><tbody>';
@@ -2239,6 +2311,7 @@ function renderPaieSimulator(){
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="anciennete"', a.anciennete, '1') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="competence"', a.competence, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="maintien"', a.maintien, '0.01') + '</td>' +
+                '<td>' + paieInput('min="0" max="100" aria-label="Taux de charges de l’ajout ' + (i+1) + '" data-paie-aj="' + i + '" data-paie-key="taux_charges"', a.taux_charges, '0.01') + '</td>' +
                 '<td>' + paieInput('data-paie-aj="' + i + '" data-paie-key="' + (isCdd ? 'mois_debut' : 'mois_embauche') + '"', isCdd ? a.mois_debut : a.mois_embauche, '1') + '</td>' +
                 '<td>' + (isCdd ? paieInput('data-paie-aj="' + i + '" data-paie-key="mois_fin"', a.mois_fin, '1') : '—') + '</td>' +
                 months.map(function(m){ return '<td class="bp-ps-calc" id="paie-aj-' + i + '-' + m + '"></td>'; }).join('') +
@@ -2252,6 +2325,7 @@ function renderPaieSimulator(){
     html += '<h4 style="margin:14px 0 6px;color:var(--primary);">Contrats d\'engagement éducatif (CEE)</h4>';
     html += '<div class="ps-params">' +
         '<div class="ps-field"><label>Forfait jour brut moyen (€)</label>' + paieInput('data-paie-top="forfait_cee"', st.forfait_cee, '0.01') + '</div>' +
+        '<div class="ps-field"><label for="paieTauxCee">Taux de charges CEE (%)</label>' + paieInput('id="paieTauxCee" min="0" max="100" data-paie-top="taux_charges_cee"', st.taux_charges_cee, '0.01') + '</div>' +
         '<div class="ps-field"><label>CEE moyen / mercredi périscolaire</label>' + paieInput('data-paie-top="cee_mercredi"', st.cee_mercredi, '0.1') + '</div>' +
         '<div class="ps-field"><label>CEE moyen / jour de vacances</label>' + paieInput('data-paie-top="cee_vacances"', st.cee_vacances, '0.1') + '</div>' +
         '</div>';
@@ -2269,21 +2343,23 @@ function renderPaieSimulator(){
     var totalLabel = actualise ? 'Total à reporter (réel + simulé)' : 'Total brut annuel à reporter';
     html += '<div class="ps-total-box"><span>' + totalLabel + ' sur le compte ' + escapeHtml(paieSim.compte) +
         '</span><strong><span id="paie-total">0,00</span> €</strong></div>';
-    // Le report ventile aussi les charges : préciser l'année de référence du
-    // produit en croix, qui porte toujours sur une année complète.
-    html += '<p class="ps-legend">Le report répartit également les comptes 63x/64x (hors 649) au prorata du brut, ' +
-        'd\'après le rapport constaté sur l\'année ' + (paieSim.ctx.annee - 1) + ' complète.</p>';
+    html += '<div id="paieChargesResume" aria-live="polite"></div>';
+    html += '<p class="ps-legend">Les comptes non pilotés par les taux suivent les modes paramétrés dans le budget. Le calcul proportionnel utilise l’année complète de référence confirmée.</p>';
 
     document.getElementById('paieSimBody').innerHTML = html;
     document.getElementById('paieSimFooter').innerHTML =
         '<span id="paieSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>' +
         '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Annuler</button>' +
-        '<button class="btn btn-primary" type="button" onclick="savePaieSimulator()">💾 Reporter sur le 641 (et 63x/64x)</button>';
+        '<button id="paieReporter" class="btn btn-primary" type="button" onclick="savePaieSimulator()">💾 Reporter le brut et les charges</button>';
     bindPaieInputs();
 }
 function bindPaieInputs(){
     var body = document.getElementById('paieSimBody');
     if (!body) return;
+    document.getElementById('paieUtiliserTaux').addEventListener('change', function(){
+        paieSim.state.utiliser_taux_charges = this.checked;
+        recomputePaie();
+    });
     body.querySelectorAll('[data-paie-top]').forEach(function(el){
         var h = function(){ paieSim.state[this.dataset.paieTop] = this.value; recomputePaie(); };
         el.addEventListener('input', h); el.addEventListener('change', h);
@@ -2303,8 +2379,8 @@ function bindPaieInputs(){
 }
 function paieAddAjout(type){
     paieSim.state.ajouts.push(type === 'cdd'
-        ? {type:'cdd', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, mois_debut:1, mois_fin:12}
-        : {type:'cdi', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, mois_embauche:1});
+        ? {type:'cdd', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, taux_charges:'', mois_debut:1, mois_fin:12}
+        : {type:'cdi', temps_hebdo:'', pesee:'', anciennete:'', competence:0, maintien:0, taux_charges:'', mois_embauche:1});
     renderPaieSimulator(); recomputePaie();
 }
 function paieRemoveAjout(i){ paieSim.state.ajouts.splice(i,1); renderPaieSimulator(); recomputePaie(); }
@@ -2337,6 +2413,14 @@ function recomputePaie(){
     months.forEach(function(m){ psSet('paie-mtot-' + m, fmt(c.monthly[m] || 0)); });
     psSet('paie-totalsim', fmt(c.totalSim));
     psSet('paie-total', fmt(c.total));
+    const charges = computeChargesPaie(paieSim.state, paieSim.context, c, paieSim.ctx.type_budget);
+    const resume = document.getElementById('paieChargesResume');
+    resume.innerHTML = !charges ? '' : charges.erreur ?
+        '<p role="alert" class="alert alert-danger">' + escapeHtml(charges.erreur) + '</p>' :
+        '<p>Taux moyen pondéré : <strong>' + (charges.taux_moyen == null ? 'sans brut restant' : fmt(charges.taux_moyen * 100) + ' %') +
+        '</strong> — Charges réalisées : ' + fmt(charges.charges_reelles) + ' € — Charges prévues : ' + fmt(charges.charges_prevues) + ' €.</p>' +
+        '<div class="ps-total-box"><span>Charges à reporter sur ' + escapeHtml(charges.compte) + '</span><strong>' + fmt(charges.total) + ' €</strong></div>';
+    document.getElementById('paieReporter').disabled = !!(charges && charges.erreur);
 }
 function savePaieSimulator(){
     if (!paieSim) return;

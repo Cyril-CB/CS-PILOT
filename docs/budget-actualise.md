@@ -100,6 +100,52 @@ simulation ne modifie jamais la pesée, les compétences ou le maintien dans les
 fiches salariés**, même en réouvrant une ancienne simulation. Pour modifier une
 donnée RH réelle, utiliser la fiche salarié.
 
+### Utiliser les taux de charges des salariés
+
+La direction et la comptabilité peuvent saisir **T%Ch.** pour chaque salarié et
+chaque ajout CDI/CDD, ainsi qu'un **taux global pour les CEE**. Cocher
+**Utiliser les taux de charges par salarié** pour appliquer ces taux. L'option
+est désactivée par défaut, y compris dans les simulations existantes.
+
+Le taux d'un salarié s'applique à son brut total, quel que soit le compte 641.
+Le budget ne ventilant pas les compléments 641 par salarié, ceux-ci sont
+répartis au prorata des bruts simulés. Cela revient à calculer :
+
+**Taux moyen = somme (brut simulé de chaque salarié × son taux, CEE compris)
+/ somme des bruts simulés.**
+
+Ce même taux moyen s'applique à **l'ensemble des comptes 641**, y compris les
+indemnités et éléments variables saisis dans les autres 641. Exemple :
+24 000 € à 40 % et 12 000 € à 20 % donnent 12 000 € de charges, soit un taux
+moyen de 33,333… %. Avec 3 600 € de compléments 641, le brut global de
+39 600 € donne **13 200 € de charges**. Le taux moyen affiché est arrondi pour
+la lecture ; le calcul conserve sa précision et arrondit le report au centime.
+
+Dans l'actualisé, la pondération utilise seulement les bruts simulés après
+l'arrêté. Les **charges réalisées 645 à 648 sont conservées**, puis on ajoute
+**(brut global annuel − brut global réalisé) × taux moyen**. À fin décembre,
+seules les charges réalisées sont reprises. Le socle de salaire reste annuel :
+le simulateur le divise par douze avant d'appliquer la durée du contrat.
+
+Le total est reporté sur le **premier compte 645 du secteur**, dans l'ordre
+des numéros de comptes. Tous les autres comptes **645, 646, 647 et 648** passent
+à zéro dans le budget ; leurs écritures réalisées restent intactes. Les
+comptes **63** et les autres comptes conservent leurs modes et leurs règles,
+notamment la référence à une année complète pour le calcul proportionnel.
+
+Saisir un taux entre **0 et 100 %** pour chaque ligne au brut simulé positif.
+Un champ vide signifie « à compléter » ; saisir **0** si aucune charge n'est
+prévue. Un compte 645 doit exister et les autres 641 doivent être renseignés.
+Les refus n'enregistrent ni la simulation, ni le brut, ni une partie des charges.
+
+Pendant l'utilisation des taux, les montants et modes 645 à 648 sont pilotés
+par le simulateur. **Décocher l'option et reporter** restaure leurs anciens
+montants manuels puis recalcule les comptes qui étaient automatiques. Les
+commentaires et fiches de travail restent conservés. Les taux sont mémorisés
+avec la simulation, par année, secteur et type de budget ; ils ne changent
+aucune fiche salarié. Aucune nouvelle migration ni reconnexion n'est requise.
+Recharger la page après la mise à jour.
+
 ## Migration 0070
 
 La migration ajoute uniquement les tables des paramètres et des modes. Elle est
