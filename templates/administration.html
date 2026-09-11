@@ -29,6 +29,14 @@
             </div>
         </div>
 
+        {% if statut.erreurs %}
+        <div class="alert alert-error" role="alert">
+            <strong>Migration(s) en échec : la base n’est pas à jour.</strong>
+            {% for m in statut.erreurs %}<p>Migration {{ m.version }} : échec.</p>{% endfor %}
+            Consultez le diagnostic. Un ancien échec peut être partiel et nécessite
+            une vérification sur une copie isolée avant toute reprise.
+        </div>
+        {% endif %}
         {% if statut.a_jour %}
         <div class="alert alert-success">
             La base de donnees est a jour. Aucune migration en attente.
@@ -48,10 +56,10 @@
         <div class="help-box" style="margin-bottom: 15px;">
             <strong>Procedure recommandee :</strong>
             <ol style="margin: 5px 0 0 20px;">
-                <li>Allez dans <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">Sauvegardes</a> et creez une sauvegarde</li>
+                <li>Arrêtez les accès, vérifiez la sauvegarde quotidienne et préparez un export complet ; pour une grosse mise à jour, réalisez un snapshot OVH manuel.</li>
                 <li>Revenez ici et appliquez les mises a jour</li>
                 <li>Verifiez que l'application fonctionne correctement</li>
-                <li>En cas de probleme, restaurez la sauvegarde</li>
+                <li>En cas d’échec, consultez <code>docs/resilience.md</code> : diagnostic isolé, reprise ou restauration avec le code correspondant.</li>
             </ol>
         </div>
 
@@ -159,6 +167,24 @@
         <p style="color: #666; font-style: italic;">Aucune migration enregistree.</p>
         {% endif %}
     </div>
+
+    {% if statut.tentatives %}
+    <div class="section">
+        <h2>Dernières tentatives de migration</h2>
+        <p>Les échecs restent tracés après une reprise réussie. Les 100 dernières tentatives sont affichées.</p>
+        <div style="overflow-x: auto;">
+            <table class="data-table">
+                <thead><tr><th>Version</th><th>Date réelle</th><th>Acteur</th><th>Résultat</th><th>Diagnostic</th></tr></thead>
+                <tbody>
+                {% for t in statut.tentatives %}
+                    <tr><td>{{ t.version }}</td><td>{{ t.appliquee_le }}</td><td>{{ t.appliquee_par or '-' }}</td>
+                        <td>{{ 'Réussie' if t.statut == 'ok' else 'Échec' }}</td><td>{{ t.detail }}</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Informations sur la base de donnees -->
     <div class="section">

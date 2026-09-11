@@ -533,10 +533,10 @@ def test_restauration_refuse_fichier_non_sqlite(app, admin_client, monkeypatch, 
     assert _fichiers_sauvegardes(tmp_path) == {faux.name}
 
 
-def test_restauration_sauvegarde_valide_par_directeur(
+def test_restauration_a_chaud_refusee_meme_par_directeur(
     app, db, admin_client, sample_users, monkeypatch, tmp_path
 ):
-    """Cas legitime : un directeur restaure une sauvegarde valide et la base revient a son etat."""
+    """B4 : pas de remplacement d’une base vivante, même avec un fichier valide."""
     _configurer_documents_test(tmp_path, monkeypatch)
 
     admin_client.post('/sauvegardes/creer', data={'label': 'avantmodif'})
@@ -560,7 +560,36 @@ def test_restauration_sauvegarde_valide_par_directeur(
     contenu = response.get_data(as_text=True)
 
     assert response.status_code == 200
-    assert 'Restauration reussie' in contenu
-    assert _nb_utilisateurs() == utilisateurs_avant
-    # Une sauvegarde de securite a bien ete creee avant l'ecrasement.
-    assert list(_dossier_sauvegardes(tmp_path).glob('backup_*_avant_restauration.db'))
+    assert 'Restauration à chaud désactivée' in contenu
+    assert _nb_utilisateurs() == utilisateurs_avant + 1
+    assert not list(_dossier_sauvegardes(tmp_path).glob('backup_*_avant_restauration.db'))
+
+
+@pytest.mark.parametrize('documents', [False, True])
+def test_collision_nom_ne_supprime_pas_ancienne_copie(app, monkeypatch, tmp_path, documents):
+    import backup_db
+    _configurer_documents_test(tmp_path, monkeypatch)
+    nom = 'documents_collision.zip' if documents else 'backup_collision.db'
+    monkeypatch.setattr(backup_db, '_build_backup_filename', lambda *a, **k: nom)
+    dossier = tmp_path / 'documents'
+    dossier.mkdir(); (dossier / 'test.txt').write_text('Fictif')
+    backup_dir = tmp_path / 'backups'
+    backup_dir.mkdir(); ancienne = backup_dir / nom
+    ancienne.write_bytes(b'Copie deja existante')
+    fonction = backup_db.creer_archive_documents if documents else backup_db.creer_sauvegarde
+    chemin, erreur = fonction()
+    assert chemin is None and erreur
+    assert ancienne.read_bytes() == b'Copie deja existante'
+
+
+def test_reinitialisation_annulee_si_sauvegarde_impossible(app, admin_client, db, monkeypatch):
+    import backup_db
+    import database
+    import blueprints.administration as administration
+    monkeypatch.setattr(administration, 'DATABASE', database.DATABASE)
+    monkeypatch.setattr(backup_db, 'creer_sauvegarde', lambda **k: (None, 'Panne fictive'))
+    avant = _nb_utilisateurs()
+    response = admin_client.post('/administration/reinitialiser_bdd',
+                                 data={'confirmation': 'REINITIALISER'}, follow_redirects=True)
+    assert 'Réinitialisation annulée' in response.text
+    assert _nb_utilisateurs() == avant

@@ -6,6 +6,7 @@ Les connexions brutes de sauvegarde/restauration restent des opérations
 d'exploitation distinctes, jamais des chemins normaux de modification métier.
 """
 import sqlite3
+from contextlib import contextmanager
 
 
 TABLES_CONTENU = frozenset({
@@ -20,6 +21,7 @@ class ConnexionFiches(sqlite3.Connection):
         super().__init__(*args, **kwargs)
         self._tables_ecrites = set()
         self._commit_controle = False
+        self._migration_en_cours = False
         self.set_authorizer(self._observer)
 
     def _observer(self, action, table, colonne, base, source):
@@ -30,9 +32,15 @@ class ConnexionFiches(sqlite3.Connection):
                 self._tables_ecrites.add(table)
         if action == sqlite3.SQLITE_TRANSACTION and table == 'COMMIT' and not self._commit_controle:
             return sqlite3.SQLITE_DENY  # un COMMIT SQL direct contournerait le contrôle
+        if self._migration_en_cours and action == sqlite3.SQLITE_TRANSACTION and table == 'ROLLBACK':
+            return sqlite3.SQLITE_DENY
         return sqlite3.SQLITE_OK
 
     def commit(self):
+        if self._migration_en_cours:
+            # Compatibilité des migrations déjà livrées : leurs commit() ne
+            # doivent pas séparer la reprise de données du journal de succès.
+            return
         try:
             if self.in_transaction and self._tables_ecrites:
                 schema = self.execute(
@@ -57,6 +65,24 @@ class ConnexionFiches(sqlite3.Connection):
             raise
         finally:
             self._commit_controle = False
+
+    @contextmanager
+    def migration_atomique(self):
+        """Un seul commit contrôlé, DDL compris ; interruption = rollback."""
+        if self.in_transaction or self._migration_en_cours:
+            raise RuntimeError('Une transaction est déjà en cours')
+        self.execute('BEGIN IMMEDIATE')
+        self._migration_en_cours = True
+        try:
+            yield self
+            self._migration_en_cours = False
+            self.commit()
+        except BaseException:
+            self._migration_en_cours = False
+            self.rollback()
+            raise
+        finally:
+            self._migration_en_cours = False
 
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is None:

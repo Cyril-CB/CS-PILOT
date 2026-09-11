@@ -158,7 +158,7 @@ classique depuis « Mon espace ».
 - Gestion des cles API
 - Parametres personnels (email, preferences de notifications)
 - Systeme de migration de base de donnees avec suivi des versions
-- Sauvegarde de la base de donnees, archivage des documents uploades et restauration (avec rotation automatique)
+- Copies ponctuelles SQLite/documents et export applicatif complet chiffré, restauration vierge vérifiée, reprise atomique des migrations. [Procédure de résilience](docs/resilience.md).
 - Page d'administration systeme
 
 ### Securite
@@ -229,7 +229,9 @@ Ce compte sera automatiquement de profil **Directeur** (acces complet). Le mot d
 CS-PILOT/
 ├── app.py                     # Point d'entree Flask
 ├── database.py                # Gestion de la base SQLite
-├── backup_db.py               # Sauvegarde / restauration
+├── backup_db.py               # Copies ponctuelles SQLite / documents
+├── resilience_cli.py          # Export complet chiffré, restauration vierge, diagnostic
+├── resilience.py              # Vérification des données et des archives
 ├── migration_manager.py       # Systeme de migrations
 ├── utils.py                   # Utilitaires (decorateurs, chiffrement)
 ├── navigation.py              # Carte des zones et pages (interface sans menu)
@@ -361,7 +363,7 @@ Les 4 premieres notifications sont envoyees automatiquement lors de l'action cor
 
 ### Erreur de base de donnees
 - Utiliser la page Administration pour verifier l'etat des migrations
-- Restaurer une sauvegarde depuis la page Sauvegardes
+- Arrêter les accès, diagnostiquer puis restaurer dans un emplacement vierge selon [la procédure de reprise](docs/resilience.md). La restauration à chaud depuis le navigateur est désactivée.
 
 ## Versionnement
 

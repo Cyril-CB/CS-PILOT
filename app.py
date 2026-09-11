@@ -699,7 +699,12 @@ def set_cache_headers(response):
 
 
 if __name__ == '__main__':
-    init_db()
+    from database import preparer_demarrage
+    preparer_demarrage()
+    from contextlib import closing
+    from resilience import verifier_parametres
+    with closing(get_db()) as conn:
+        verifier_parametres(conn, app.secret_key)
 
     host = '0.0.0.0'
     port = int(os.environ.get('PORT', 5000))

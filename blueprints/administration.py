@@ -158,16 +158,15 @@ def reinitialiser_bdd():
         flash('Confirmation invalide. La reinitialisation a ete annulee.', 'error')
         return redirect(url_for('administration_bp.administration'))
 
-    import shutil
+    from backup_db import creer_sauvegarde
     from database import init_db
 
     # Sauvegarde de securite avant suppression
     if os.path.exists(DATABASE):
-        backup_path = DATABASE + '.avant_reinit'
-        try:
-            shutil.copy2(DATABASE, backup_path)
-        except Exception:
-            pass
+        _, erreur = creer_sauvegarde(label='avant_reinit')
+        if erreur:
+            flash('Sauvegarde de sécurité impossible. Réinitialisation annulée.', 'error')
+            return redirect(url_for('administration_bp.administration'))
 
         try:
             os.remove(DATABASE)
