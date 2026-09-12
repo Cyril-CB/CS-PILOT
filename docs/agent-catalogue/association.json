@@ -1,0 +1,1096 @@
+{
+  "schema_version": 1,
+  "domain": "association",
+  "features": [
+    {
+      "id": "association.subventions_suivi",
+      "title": "Dossiers, étapes et classement des subventions",
+      "purpose": "Suivre les demandes de subvention et leurs étapes, responsables, montants et échéances.",
+      "example_requests": [
+        "suivre mes dossiers de subvention",
+        "qui prépare le bilan CAF",
+        "montant accordé par la Ville",
+        "rattacher une subvention au budget d’une action"
+      ],
+      "capabilities": [
+        "Créer un dossier avec année d’action, statut et type de financeur ; quatre étapes initiales : préparer, soumettre, bilan qualitatif, bilan financier.",
+        "Regrouper les dossiers par types personnalisables et conserver séparément les statuts nouveau_projet, en_cours, acceptee, refusee ; un groupe Sans type recueille les dossiers non classés.",
+        "Modifier les montants demandés/accordés, échéance, date de notification, contact, deux personnes assignées, comptes comptables, analytique, bénévoles liés et action_budget_id.",
+        "Créer, modifier et supprimer les sous-étapes, avec assignation, échéance et statut non_commence/en_cours/fait/blocage.",
+        "Filtrer par année d’action N−3 à N+2, année courante par défaut ; toutes permet de retrouver les dossiers hors plage ou sans année.",
+        "Notifier par email un nouvel assigné au dossier ou à une étape lorsque l’envoi et le consentement le permettent.",
+        "Créer, renommer, colorer et supprimer les types ; endpoint distinct de création du référentiel subventions_analytiques."
+      ],
+      "entry_points": [
+        "subventions_bp.gestion_subventions",
+        "subventions_bp.api_ajouter_subvention",
+        "subventions_bp.api_modifier_subvention",
+        "subventions_bp.api_supprimer_subvention",
+        "subventions_bp.api_ajouter_type",
+        "subventions_bp.api_modifier_type",
+        "subventions_bp.api_supprimer_type",
+        "subventions_bp.api_ajouter_sous_element",
+        "subventions_bp.api_modifier_sous_element",
+        "subventions_bp.api_supprimer_sous_element",
+        "subventions_bp.api_ajouter_analytique"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/subventions.py"
+        ],
+        "service_files": [
+          "email_service.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/subventions.html"
+        ],
+        "tables": [
+          "subventions",
+          "subventions_sous_elements",
+          "subventions_types",
+          "subventions_analytiques",
+          "users",
+          "benevoles",
+          "comptabilite_actions"
+        ],
+        "tests": [
+          "tests/test_subventions.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Direction/comptabilité : lecture et modification globales. Responsable : création autorisée ; lecture, modification et suppression d’un dossier existant uniquement si assigné au parent ou à une de ses étapes (_refus_acces_subvention). Types et création d’analytiques réservés direction/comptabilité.",
+        "scope": "Association pour direction/comptabilité ; dossiers assignés pour responsable, y compris via une sous-étape. Le périmètre porte sur le dossier entier et toutes ses étapes.",
+        "conditions": [
+          "Profil directeur, comptable ou responsable ; compte actif et session courante vérifiés globalement.",
+          "Pour les emails : configuration du service et consentement du destinataire."
+        ],
+        "sources": [
+          "blueprints/subventions.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Ne pas confondre type de financeur (type_id) et avancement (groupe).",
+        "Toute action sur une sous-étape doit vérifier le droit sur le dossier parent.",
+        "Suppression d’un type : dossiers conservés, type_id remis à NULL.",
+        "L’attribution inchangée ou vidée ne déclenche pas de notification ; une erreur email n’annule pas la modification.",
+        "Un responsable peut créer un dossier sans être automatiquement assigné : sa visibilité ultérieure suit les assignations."
+      ],
+      "extension_points": [
+        "Réutiliser _refus_acces_subvention et _refus_acces_sous_element pour toute route supplémentaire.",
+        "Étendre les étapes ou leur rendu dans subventions_sous_elements avant de créer un second suivi de dossiers.",
+        "Réutiliser action_budget_id vers comptabilite_actions pour les besoins de bilan financier ; ne pas dupliquer le budget dans le dossier."
+      ],
+      "related_features": [
+        "association.benevoles_repertoire",
+        "association.subventions_documents",
+        "finances.budget_previsionnel",
+        "finances.plan_analytique",
+        "interface.accueil_flux"
+      ],
+      "limitations": [
+        "La création d’analytique via api_ajouter_analytique alimente subventions_analytiques ; ce référentiel est distinct des actions comptabilite_actions utilisées pour le lien Budget.",
+        "Ce module suit le dossier et ses pièces ; les routes ne transmettent pas le dossier à un portail de financeur."
+      ]
+    },
+    {
+      "id": "association.subventions_documents",
+      "title": "Pièces PDF des dossiers de subvention",
+      "purpose": "Conserver et télécharger un justificatif de notification et les documents PDF des étapes d’un dossier.",
+      "example_requests": [
+        "retrouver la notification de subvention",
+        "joindre le bilan financier au dossier CAF",
+        "télécharger le document de cette étape"
+      ],
+      "capabilities": [
+        "Téléverser et remplacer un justificatif PDF au niveau du dossier.",
+        "Téléverser et remplacer un PDF par sous-étape ; nom normalisé comprenant année d’action, dossier, étape et identifiant de sous-étape.",
+        "Télécharger une pièce autorisée avec son nom enregistré."
+      ],
+      "entry_points": [
+        "subventions_bp.api_upload_se_document",
+        "subventions_bp.telecharger_se_document",
+        "subventions_bp.api_upload_justificatif",
+        "subventions_bp.telecharger_justificatif"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/subventions.py"
+        ],
+        "service_files": [
+          "database.py"
+        ],
+        "templates": [
+          "templates/subventions.html"
+        ],
+        "tables": [
+          "subventions",
+          "subventions_sous_elements"
+        ],
+        "tests": [
+          "tests/test_subventions.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Mêmes profils et périmètres que les dossiers. Upload vérifié par _refus_acces_subvention/_refus_acces_sous_element ; téléchargement par les helpers _peut_telecharger_piece_* qui réutilisent les mêmes contrôles.",
+        "scope": "Pièce attachée à un dossier autorisé ; l’assignation à une étape autorise les pièces du dossier entier.",
+        "conditions": [
+          "Fichier présent et extension .pdf ; stockage sous DATA_DIR/documents/subventions.",
+          "Limite globale de requête MAX_CONTENT_LENGTH configurée dans app.py."
+        ],
+        "sources": [
+          "blueprints/subventions.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Les chemins de téléchargement et de nettoyage sont vérifiés dans DOCUMENTS_DIR.",
+        "Remplacer un PDF supprime l’ancien fichier référencé.",
+        "Les documents de sous-étapes ont un identifiant dans leur nom pour éviter de mélanger des étapes de même nom."
+      ],
+      "extension_points": [
+        "Réutiliser les autorisations de dossier et le rattachement aux étapes pour les pièces propres aux subventions.",
+        "Pour une fiche d’identité associative ou des statuts partagés, prévoir une identité de document indépendante du dossier : les champs actuels représentent une pièce remplaçable par dossier/étape."
+      ],
+      "related_features": [
+        "administration.stockage_documents",
+        "association.subventions_suivi"
+      ],
+      "limitations": [
+        "Stockage d’une seule pièce par dossier et d’une seule pièce par étape, remplacée à chaque nouvel upload ; pas d’historique de versions dans ces tables.",
+        "Le nom du justificatif parent est année courante + nom normalisé de subvention, sans identifiant ; deux dossiers homonymes peuvent partager un nom de fichier.",
+        "api_supprimer_subvention efface les lignes de sous-étapes mais ne parcourt pas leurs document_path pour effacer leurs fichiers ; la suppression individuelle d’une étape le fait."
+      ]
+    },
+    {
+      "id": "association.benevoles_repertoire",
+      "title": "Répertoire des bénévoles",
+      "purpose": "Tenir les coordonnées, missions, rattachements et informations de suivi des bénévoles.",
+      "example_requests": [
+        "liste de mes bénévoles",
+        "coordonnées d’un bénévole",
+        "qui a signé la charte",
+        "bénévoles gouvernance et activités"
+      ],
+      "capabilities": [
+        "Créer, modifier et supprimer les fiches ; classement nouveau/actif/inactif.",
+        "Renseigner nom, responsable, début/fin, email, téléphone, adresse, compétences, fourchette d’heures par semaine, type de bénévolat et indicateur charte_signee.",
+        "Choisir gouvernance, activité, coup de pouce ou leurs combinaisons.",
+        "Afficher dans le répertoire le total d’heures suivi pour une année.",
+        "Délégation de la gestion complète à plusieurs salariés/responsables via le module délégations."
+      ],
+      "entry_points": [
+        "benevoles_bp.gestion_benevoles",
+        "benevoles_bp.api_ajouter_benevole",
+        "benevoles_bp.api_modifier_benevole",
+        "benevoles_bp.api_supprimer_benevole"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/benevoles.py"
+        ],
+        "service_files": [
+          "blueprints/delegations.py"
+        ],
+        "templates": [
+          "templates/benevoles.html"
+        ],
+        "tables": [
+          "benevoles",
+          "users",
+          "delegations_benevoles",
+          "benevoles_activites",
+          "benevoles_seances",
+          "benevoles_participations",
+          "benevoles_presences",
+          "benevoles_heures_autres"
+        ],
+        "tests": [
+          "tests/test_benevoles.py",
+          "tests/test_delegation_benevoles.py"
+        ],
+        "docs": [
+          "README.md",
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture : directeur/comptable/responsable ou délégation bénévoles. GET filtre un responsable non délégué par responsable_id ; les délégués lisent tout. Écriture actuelle : les trois API CRUD appellent _peut_modifier (ces mêmes profils/délégués) mais n’appliquent pas de contrôle responsable_id sur la fiche ciblée.",
+        "scope": "Répertoire entier pour direction/comptabilité/délégués ; lecture restreinte aux bénévoles assignés pour responsable non délégué. Les mutations API ont un périmètre plus large que cette lecture.",
+        "conditions": [
+          "user_peut_gerer_benevoles relit delegations_benevoles et users à chaque appel ; délégation valable seulement pour compte actif de profil salarie ou responsable."
+        ],
+        "sources": [
+          "blueprints/benevoles.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "blueprints/delegations.py"
+        ]
+      },
+      "invariants": [
+        "charte_signee stocké exclusivement comme 0 ou 1 ; un type inconnu est vidé.",
+        "Supprimer un bénévole nettoie explicitement ses présences, participations et heures ponctuelles avant sa fiche.",
+        "Le retrait d’une délégation doit prendre effet sans attendre une nouvelle connexion."
+      ],
+      "extension_points": [
+        "Réutiliser benevoles et _heures_par_benevole pour les listes et bilans, plutôt qu’un second annuaire.",
+        "Avant d’étendre les mutations du répertoire, clarifier et aligner leur périmètre serveur avec celui de la lecture."
+      ],
+      "related_features": [
+        "administration.delegations",
+        "association.benevoles_heures",
+        "association.subventions_suivi"
+      ],
+      "limitations": [
+        "Divergence vérifiée entre GET et API : api_ajouter_benevole, api_modifier_benevole et api_supprimer_benevole autorisent le profil responsable sans restriction à ses fiches ; le masquage des boutons ne constitue pas ce contrôle. Les gardes globaux de session ne rajoutent pas cette restriction.",
+        "charte_signee est un indicateur déclaré ; ces routes ne téléversent ni ne signent une charte."
+      ]
+    },
+    {
+      "id": "association.benevoles_heures",
+      "title": "Activités, présences et heures de bénévolat",
+      "purpose": "Calculer les heures annuelles de bénévolat à partir des séances, forfaits et interventions ponctuelles.",
+      "example_requests": [
+        "total annuel des heures de bénévolat",
+        "pointer les bénévoles présents au CA",
+        "déduire les absences d’un forfait bénévole",
+        "heures de bénévolat pour le bilan"
+      ],
+      "capabilities": [
+        "Gérer des activités annuelles au mode séance ou forfait, durée de séance par défaut, volume annuel et nombre de séances.",
+        "Créer/modifier/supprimer les séances et inscrire/retirer les participants.",
+        "Cocher les présences avec retour JSON des totaux par bénévole, activité et année pour rafraîchissement immédiat.",
+        "Renseigner les absences des participants au forfait, et ajouter/supprimer des heures ponctuelles avec date et libellé.",
+        "Afficher le récapitulatif annuel et le total général, incluant les participants suivis encore à zéro heure."
+      ],
+      "entry_points": [
+        "benevoles_bp.suivi_heures",
+        "benevoles_bp.api_ajouter_activite",
+        "benevoles_bp.api_modifier_activite",
+        "benevoles_bp.api_supprimer_activite",
+        "benevoles_bp.api_ajouter_seance",
+        "benevoles_bp.api_modifier_seance",
+        "benevoles_bp.api_supprimer_seance",
+        "benevoles_bp.api_ajouter_participant",
+        "benevoles_bp.api_modifier_participation",
+        "benevoles_bp.api_supprimer_participation",
+        "benevoles_bp.api_presence",
+        "benevoles_bp.api_ajouter_heures_autres",
+        "benevoles_bp.api_supprimer_heures_autres"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/benevoles.py"
+        ],
+        "service_files": [
+          "blueprints/delegations.py"
+        ],
+        "templates": [
+          "templates/benevoles_heures.html"
+        ],
+        "tables": [
+          "benevoles",
+          "benevoles_activites",
+          "benevoles_seances",
+          "benevoles_participations",
+          "benevoles_presences",
+          "benevoles_heures_autres",
+          "delegations_benevoles",
+          "users"
+        ],
+        "tests": [
+          "tests/test_benevoles.py",
+          "tests/test_delegation_benevoles.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et toutes les mutations réservées à directeur/comptable ou délégation bénévoles active, via _peut_gerer_heures ; responsable non délégué refusé, même s’il possède des bénévoles.",
+        "scope": "Calendrier et total associatifs globaux, sélectionnés par année ; aucun cloisonnement par responsable dans cette page.",
+        "conditions": [
+          "Délégation vérifiée par user_peut_gerer_benevoles, ou profil directeur/comptable.",
+          "Année acceptée entre 1900 et 2200, sinon année courante."
+        ],
+        "sources": [
+          "blueprints/benevoles.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "blueprints/delegations.py"
+        ]
+      },
+      "invariants": [
+        "À la séance : seules les présences cochées comptent la durée réelle de séance.",
+        "Au forfait : volume annuel × max(0, nombre de séances − absences) / nombre de séances, arrondi à deux décimales.",
+        "Sans nombre de séances, le forfait entier est retenu ; aucune déduction d’absences possible.",
+        "Création et modification d’une date de séance : date ISO valide et dans l’année de l’activité.",
+        "Suppression d’activité/séance/participation nettoie explicitement les lignes dépendantes pour préserver les totaux."
+      ],
+      "extension_points": [
+        "Réutiliser _heures_par_benevole et _heures_forfait pour valoriser le bénévolat dans un futur bilan.",
+        "Ajouter un éventuel export au suivi existant en conservant les trois sources de temps et le périmètre global."
+      ],
+      "related_features": [
+        "association.benevoles_repertoire",
+        "finances.bilan_action"
+      ],
+      "limitations": [
+        "Les heures ponctuelles ont un champ annee utilisé pour le total ; api_ajouter_heures_autres n’applique pas _date_de_seance à leur date libre."
+      ]
+    },
+    {
+      "id": "association.salles_reservations",
+      "title": "Salles, disponibilités et réservations ponctuelles",
+      "purpose": "Consulter l’occupation des salles et réserver un créneau disponible.",
+      "example_requests": [
+        "salle libre mardi à 14 h",
+        "réserver une salle de réunion",
+        "calendrier des salles",
+        "supprimer ma réservation"
+      ],
+      "capabilities": [
+        "Créer/modifier les salles avec nom, capacité, description et couleur ; les désactiver.",
+        "Consulter les disponibilités en vues jour/semaine/mois, et le calendrier d’une salle.",
+        "Réserver ponctuellement une salle avec titre, description, date et horaires ; refuser un chevauchement constaté.",
+        "Supprimer une réservation autorisée ; interroger les réservations du jour et la disponibilité d’un créneau via JSON."
+      ],
+      "entry_points": [
+        "salles_bp.salles",
+        "salles_bp.calendrier_salle",
+        "salles_bp.ajouter_salle",
+        "salles_bp.modifier_salle",
+        "salles_bp.supprimer_salle",
+        "salles_bp.reserver",
+        "salles_bp.supprimer_reservation",
+        "salles_bp.api_reservations",
+        "salles_bp.api_disponibilite"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/salles.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/salles.html",
+          "templates/salles_calendrier.html"
+        ],
+        "tables": [
+          "salles",
+          "reservations_salles",
+          "recurrences_salles",
+          "users"
+        ],
+        "tests": [
+          "tests/test_salles.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Toutes les routes exigent une connexion. Lecture globale des calendriers et création ponctuelle : aucun filtre de profil supplémentaire dans les routes, y compris pour une session prestataire valide. Gestion des salles : directeur/comptable uniquement. Suppression de réservation : auteur ou directeur/comptable.",
+        "scope": "Occupation partagée de toutes les salles ; suppression contrôlée par created_by, sans périmètre d’équipe/secteur.",
+        "conditions": [
+          "Session valide ; _est_admin pour administrer les salles."
+        ],
+        "sources": [
+          "blueprints/salles.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Un chevauchement est recherché sur même salle/date avec heure_debut < fin demandée et heure_fin > début demandé ; deux créneaux contigus sont acceptés.",
+        "Désactiver une salle met active à 0, sans supprimer son historique.",
+        "Le serveur impose heure_fin > heure_debut à la réservation."
+      ],
+      "extension_points": [
+        "Réutiliser _verifier_conflit, salles et reservations_salles pour une évolution des parcours de réservation.",
+        "Pour une réservation de matériel, examiner les différences de quantité et de disponibilité avant d’assimiler chaque objet à une salle."
+      ],
+      "related_features": [
+        "administration.calendrier_collectif",
+        "administration.delegations",
+        "association.salles_recurrences"
+      ],
+      "limitations": [
+        "L’authentification suffit côté serveur à lire les calendriers et réserver ponctuellement ; un menu restreint aux salariés ne restreint pas ces routes.",
+        "La création ponctuelle ne vérifie pas explicitement que salle_id désigne une salle active ; le formulaire ne présente que les salles actives."
+      ]
+    },
+    {
+      "id": "association.salles_recurrences",
+      "title": "Réservations récurrentes de salles",
+      "purpose": "Créer et régénérer une série hebdomadaire de réservations en tenant compte des vacances et jours fériés.",
+      "example_requests": [
+        "réserver la salle chaque mercredi",
+        "réservations hors vacances scolaires",
+        "régénérer une série après changement du calendrier"
+      ],
+      "capabilities": [
+        "Définir jour de semaine, période de début/fin, créneau et exclusions vacances/jours fériés.",
+        "Matérialiser les occurrences sans conflit avec une réservation déjà présente.",
+        "Désactiver une récurrence et supprimer ses réservations à partir d’aujourd’hui.",
+        "Régénérer les réservations futures avec le calendrier actualisé, en conservant l’historique antérieur."
+      ],
+      "entry_points": [
+        "salles_bp.creer_recurrence",
+        "salles_bp.supprimer_recurrence",
+        "salles_bp.regenerer_recurrence"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/salles.py"
+        ],
+        "service_files": [
+          "blueprints/delegations.py"
+        ],
+        "templates": [
+          "templates/salles.html"
+        ],
+        "tables": [
+          "salles",
+          "recurrences_salles",
+          "reservations_salles",
+          "periodes_vacances",
+          "jours_feries",
+          "delegations_salles_recurrence",
+          "users"
+        ],
+        "tests": [
+          "tests/test_salles.py",
+          "tests/test_delegation_recurrence_salles.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Création : directeur/comptable/responsable ou user_peut_recurrence_salle. Suppression et régénération : auteur de la récurrence ou directeur/comptable ; ces deux opérations ne revérifient pas le droit de création de récurrence.",
+        "scope": "Séries partagées en lecture ; mutations d’une série sous contrôle de son created_by, sauf direction/comptabilité.",
+        "conditions": [
+          "Droit de création délégué dans delegations_salles_recurrence ; session valide.",
+          "Date de fin strictement après la date de début ; heure de fin strictement après le début."
+        ],
+        "sources": [
+          "blueprints/salles.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "blueprints/delegations.py"
+        ]
+      },
+      "invariants": [
+        "La série produit un créneau par semaine ; les dates exclues et les conflits sont sautés.",
+        "Suppression/régénération ne retire pas les réservations datées avant aujourd’hui.",
+        "La régénération commence au plus tôt aujourd’hui même si la série a commencé avant."
+      ],
+      "extension_points": [
+        "Réutiliser _get_dates_exclues et _generer_reservations_recurrence pour les évolutions des séries.",
+        "Conserver la distinction délégation de création et propriété des séries existantes."
+      ],
+      "related_features": [
+        "association.salles_reservations"
+      ],
+      "limitations": [
+        "Les occurrences en conflit sont omises ; créer la série ne garantit pas que toutes ses dates soient réservées.",
+        "Retirer la délégation empêche de créer une nouvelle série mais ne retire pas les droits d’auteur de suppression/régénération sur les séries déjà créées."
+      ]
+    },
+    {
+      "id": "association.alsh_analyse",
+      "title": "Analyse comptable et fréquentation ALSH",
+      "purpose": "Croiser les données comptables importées et les saisies de fréquentation pour mesurer les coûts et résultats de l’ALSH.",
+      "example_requests": [
+        "coût par enfant du centre de loisirs",
+        "charges et recettes des vacances",
+        "saisir les heures NOÉ",
+        "comparer ALSH avec les années précédentes"
+      ],
+      "capabilities": [
+        "Configurer les tranches d’âge et périodes ; ajouter des périodes personnalisées et supprimer les références non utilisées.",
+        "Associer au maximum trois codes analytiques par cellule année/période/tranche, avec liste des codes présents dans les données FEC.",
+        "Saisir heures de présence et nombre d’enfants par cellule ; relire ces données enregistrées.",
+        "Produire tableau, totaux et graphiques : charges, produits, résultat, coût/heure, coût/enfant, reste à charge/enfant, couverture.",
+        "Appliquer aux charges le taux logistique global de l’année et signaler son absence ou sa valeur nulle.",
+        "Afficher le détail agrégé des charges par compte/libellé/code/mois ; API de comparaison N/N−1/N−2 quand les années sont disponibles."
+      ],
+      "entry_points": [
+        "alsh_bp.analyse_alsh",
+        "alsh_bp.api_alsh_config",
+        "alsh_bp.api_alsh_ajouter_tranche",
+        "alsh_bp.api_alsh_supprimer_tranche",
+        "alsh_bp.api_alsh_ajouter_periode",
+        "alsh_bp.api_alsh_supprimer_periode",
+        "alsh_bp.api_alsh_get_codes",
+        "alsh_bp.api_alsh_save_codes",
+        "alsh_bp.api_alsh_get_noe",
+        "alsh_bp.api_alsh_save_noe",
+        "alsh_bp.api_alsh_tableau",
+        "alsh_bp.api_alsh_comparaison",
+        "alsh_bp.api_alsh_codes_disponibles",
+        "alsh_bp.api_alsh_charges_detail"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/alsh.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/alsh.html"
+        ],
+        "tables": [
+          "alsh_tranches_age",
+          "alsh_periodes",
+          "alsh_config_codes",
+          "alsh_saisie_noe",
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "bilan_taux_logistique",
+          "periodes_vacances",
+          "budget_ps_simulations",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_alsh.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et écritures réservées aux profils directeur/comptable par _peut_acceder, sous login_required.",
+        "scope": "Analyse associative globale, par année/période/tranche ; aucune restriction par équipe/secteur.",
+        "conditions": [
+          "Données comptables déjà importées dans bilan_fec_donnees ; données de fréquentation saisies dans alsh_saisie_noe.",
+          "Pour le filtrage vacances : correspondance du nom avec periodes_vacances ; taux logistique annuel lu dans bilan_taux_logistique."
+        ],
+        "sources": [
+          "blueprints/alsh.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Charges issues des comptes 6, produits des comptes 7 ; le reste à charge soustrait les produits hors 7064xx, sans déduire la participation familles 7064xx.",
+        "Charges multipliées par 1 + taux_global / 100.",
+        "Vacances reconnues : filtrage des charges par mois couverts ; produits partagés par code et tranche répartis au prorata des durées de vacances, à parts égales si une durée manque.",
+        "Mercredis et périodes personnalisées : montants annuels des codes, sans filtrage de mois.",
+        "Refuser la suppression d’une tranche utilisée dans codes, NOÉ ou cellules enregistrées de budget_ps_simulations ; période utilisée dans codes/NOÉ non supprimable.",
+        "Ratios renvoyés à None lorsque leur dénominateur est nul."
+      ],
+      "extension_points": [
+        "Réutiliser _build_tableau et _build_periode_info pour les futurs indicateurs ou exports.",
+        "Les tranches d’âge sont partagées avec les simulateurs de prestation de service ; préserver les références enregistrées dans leur JSON.",
+        "Une nouvelle source NOÉ peut alimenter les mêmes cellules sans créer une seconde analyse."
+      ],
+      "related_features": [
+        "association.alsh_tarification",
+        "finances.import_bi",
+        "temps.planning_annualise_enfance"
+      ],
+      "limitations": [
+        "Le module saisit des agrégats NOÉ ; ses routes ne réalisent pas d’import/synchronisation avec Noé.",
+        "Le total d’enfants additionne les cellules ; ce n’est pas un décompte annuel de personnes uniques entre périodes.",
+        "Les charges de vacances sont filtrées par mois, pas par jour ; périodes sans correspondance utilisent les montants annuels.",
+        "La comparaison pluriannuelle existe en API ; le template actuel ne présente plus de section Évolution pluriannuelle, comme le vérifie test_alsh.py."
+      ]
+    },
+    {
+      "id": "association.alsh_tarification",
+      "title": "Propositions de tarifs ALSH par quotient familial",
+      "purpose": "Estimer une grille de tarifs couvrant le reste à charge observé selon la répartition des quotients familiaux.",
+      "example_requests": [
+        "tarif optimal pour les vacances ALSH",
+        "adapter les tarifs aux quotients familiaux",
+        "quel prix couvre le reste à charge par enfant"
+      ],
+      "capabilities": [
+        "Afficher des propositions distinctes pour vacances et périscolaire à partir des lignes de l’analyse ALSH.",
+        "Saisir et enregistrer globalement la répartition entre huit tranches de quotient familial.",
+        "Normaliser cette répartition dans le navigateur et ajuster la base tarifaire au coefficient pondéré pour viser le reste à charge moyen par enfant."
+      ],
+      "entry_points": [
+        "alsh_bp.api_alsh_save_tarif_repartition"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/alsh.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/alsh.html"
+        ],
+        "tables": [
+          "app_settings",
+          "alsh_saisie_noe",
+          "alsh_config_codes",
+          "bilan_fec_donnees",
+          "bilan_taux_logistique"
+        ],
+        "tests": [
+          "tests/test_alsh.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Même page et mêmes droits que l’analyse ALSH ; écriture de la répartition réservée directeur/comptable par _peut_acceder.",
+        "scope": "Répartition globale de l’association, commune aux années ; résultats calculés à partir de l’année affichée.",
+        "conditions": [
+          "Données enfants positives et coefficient pondéré valide pour afficher un tarif.",
+          "Clé de paramètre alsh_tarif_repartition_quotients ; identifiants des huit tranches fermés côté serveur."
+        ],
+        "sources": [
+          "blueprints/alsh.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Le tarif moyen pondéré cible est le reste à charge total / somme des enfants des lignes concernées.",
+        "Les périodes mercredi forment le périscolaire ; à défaut, les périodes non vacances sont utilisées.",
+        "La persistance porte sur les pourcentages ; la grille est recalculée en JavaScript."
+      ],
+      "extension_points": [
+        "Réutiliser renderTarifOptimalZone et getRepartitionQuotientsNormalisee du template pour comprendre les calculs avant une extraction en service serveur.",
+        "Pour une grille tarifaire réellement approuvée, ajouter un état/version explicite distinct de ces propositions recalculées."
+      ],
+      "related_features": [
+        "association.alsh_analyse",
+        "finances.simulation_ps"
+      ],
+      "limitations": [
+        "Les tarifs sont des estimations affichées dans le navigateur, sans publication, facturation ou validation d’une grille dans ces routes.",
+        "Les coefficients par quotient sont définis dans le template ; le paramètre enregistré modifie seulement la répartition."
+      ]
+    },
+    {
+      "id": "association.commandes_fournitures",
+      "title": "Demandes de fournitures des salariés",
+      "purpose": "Recueillir les besoins de fournitures et suivre leur traitement centralisé.",
+      "example_requests": [
+        "demander une commande de fournitures",
+        "où en est ma demande d’achat",
+        "commandes urgentes à traiter"
+      ],
+      "capabilities": [
+        "Déposer description, référence facultative, quantité, prix facultatif et urgence peut_attendre/normal/urgent.",
+        "Afficher les demandes regroupées en cours, commandées et annulées.",
+        "Suivre globalement les demandes et changer leur statut avec auteur/date de traitement."
+      ],
+      "entry_points": [
+        "commandes_salaries_bp.commandes_salaries",
+        "commandes_salaries_bp.modifier_statut_commande"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/commandes_salaries.py"
+        ],
+        "service_files": [
+          "blueprints/delegations.py"
+        ],
+        "templates": [
+          "templates/commandes_salaries.html"
+        ],
+        "tables": [
+          "commandes_salaries",
+          "delegations_missions",
+          "users"
+        ],
+        "tests": [
+          "tests/test_commandes_salaries.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Page et dépôt : profils salarie/responsable/comptable/directeur. Lecture personnelle par défaut ; vue globale et changement de statut pour direction/comptabilité ou délégation MISSION_SUIVI_COMMANDES_FOURNITURES via _peut_suivre_globalement.",
+        "scope": "Propres demandes pour salarié/responsable ordinaires ; toutes les demandes pour le gestionnaire ou titulaire de mission, sans filtrage de secteur.",
+        "conditions": [
+          "Délégation de mission lue en base à chaque contrôle ; session active.",
+          "Quantité entière entre 1 et 9999, 1 si vide ; prix facultatif à deux décimales maximum."
+        ],
+        "sources": [
+          "blueprints/commandes_salaries.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "blueprints/delegations.py"
+        ]
+      },
+      "invariants": [
+        "Une nouvelle demande est attribuée à session.user_id, datée du jour et créée en_cours.",
+        "Le changement de statut conserve traite_par, date_traitement et updated_at."
+      ],
+      "extension_points": [
+        "Réutiliser le suivi centralisé et la délégation pour améliorer la collecte des besoins d’achat.",
+        "Relier explicitement à un futur bon de commande/fournisseur/facture si ce besoin apparaît : les demandes actuelles n’effectuent pas cet achat."
+      ],
+      "related_features": [
+        "finances.budgets_secteurs",
+        "interface.accueil_flux"
+      ],
+      "limitations": [
+        "Le traitement change seulement le statut de la demande ; aucune commande fournisseur ni écriture comptable n’est générée par ces routes."
+      ]
+    },
+    {
+      "id": "association.cse_membres",
+      "title": "Composition et habilitations CSE",
+      "purpose": "Désigner les salariés autorisés à utiliser les outils internes du CSE.",
+      "example_requests": [
+        "ajouter un membre au CSE",
+        "retirer un élu du CSE",
+        "qui a accès au budget CSE"
+      ],
+      "capabilities": [
+        "Afficher la composition aux gestionnaires et proposer les salariés actifs non prestataires non déjà membres.",
+        "Ajouter ou retirer un membre ; enregistrer l’auteur et journaliser le changement dans journal_actions.",
+        "Donner accès aux outils internes selon l’appartenance en base, distinctement du profil professionnel."
+      ],
+      "entry_points": [
+        "cse_bp.cse_accueil",
+        "cse_bp.ajouter_membre",
+        "cse_bp.supprimer_membre"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/cse.py"
+        ],
+        "service_files": [
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/cse.html"
+        ],
+        "tables": [
+          "cse_membres",
+          "users",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_cse.py"
+        ],
+        "docs": [
+          "README.md",
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "Accueil accessible direction/comptabilité ou membre CSE. Liste de gestion et ajout/retrait réservés directeur/comptable ; les membres sans ces profils ne gèrent pas la composition. Être gestionnaire ne donne pas accès aux pages budget/messages internes sans appartenance CSE.",
+        "scope": "Composition globale du CSE ; droits internes attribués individuellement via cse_membres.",
+        "conditions": [
+          "Salarié cible actif et profil différent de prestataire ; user_id unique dans cse_membres."
+        ],
+        "sources": [
+          "blueprints/cse.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Relire est_membre_cse en base ; retrait immédiat des accès internes à la prochaine requête.",
+        "Ajout/retrait et journalisation partagent la transaction.",
+        "Direction/comptabilité peuvent se désigner elles-mêmes : cette action est possible et tracée (test_auto_designation_comptable_est_tracee)."
+      ],
+      "extension_points": [
+        "Réutiliser est_membre_cse pour toute nouvelle capacité CSE ; conserver la séparation gestion de composition / accès aux données internes."
+      ],
+      "related_features": [
+        "administration.gestion_comptes",
+        "association.cse_budget",
+        "association.cse_messages"
+      ],
+      "limitations": [
+        "Le contrôle d’accès interne dépend de la composition modifiable par direction/comptabilité ; ces profils peuvent s’ajouter eux-mêmes, ce qui est journalisé mais ne requiert pas une approbation supplémentaire."
+      ]
+    },
+    {
+      "id": "association.cse_messages",
+      "title": "Messages du CSE aux salariés",
+      "purpose": "Publier une communication du CSE limitée dans le temps et conserver ses archives.",
+      "example_requests": [
+        "publier un message du CSE",
+        "retirer une annonce CSE",
+        "retrouver les anciens messages du CSE"
+      ],
+      "capabilities": [
+        "Publier titre facultatif, contenu obligatoire et date de validité.",
+        "Afficher le message actif via le contexte global de l’application aux utilisateurs internes ; consulter les archives dans l’espace membres.",
+        "Archiver manuellement un message ou automatiquement les messages expirés à l’ouverture des pages de gestion.",
+        "Notifier la publication par email si demandé, avec audience personnel actif hors prestataires et consentement individuel."
+      ],
+      "entry_points": [
+        "cse_bp.cse_messages",
+        "cse_bp.creer_message",
+        "cse_bp.archiver_message"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/cse.py"
+        ],
+        "service_files": [
+          "email_service.py",
+          "app.py"
+        ],
+        "templates": [
+          "templates/cse_messages.html",
+          "templates/cse.html"
+        ],
+        "tables": [
+          "cse_messages",
+          "cse_membres",
+          "users"
+        ],
+        "tests": [
+          "tests/test_cse.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Gestion et archives : membre CSE obligatoire, sans dérogation de profil directeur/comptable. Lecture du message actif : contexte app.inject_cse_context pour utilisateurs connectés hors prestataires.",
+        "scope": "Archives réservées CSE ; publication active diffusée au personnel interne, sans restriction d’équipe.",
+        "conditions": [
+          "Date de validité au moins égale à aujourd’hui à la publication.",
+          "Email optionnel : notifier_email, service configuré, adresse et consentement individuel."
+        ],
+        "sources": [
+          "blueprints/cse.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "app.py"
+        ]
+      },
+      "invariants": [
+        "Publier archive tous les précédents messages actifs avant insertion du nouveau.",
+        "get_message_actif exclut une date expirée même si l’archivage matériel n’a pas encore eu lieu.",
+        "La publication est conservée même en cas d’échec email."
+      ],
+      "extension_points": [
+        "Réutiliser get_message_actif et le contexte CSE existant pour toute nouvelle présentation des communications."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "association.cse_membres",
+        "interface.navigation"
+      ],
+      "limitations": [
+        "Un seul message actif est destiné à l’affichage ; pour plusieurs communications simultanées, il faudrait faire évoluer cette règle et le contexte global."
+      ]
+    },
+    {
+      "id": "association.cse_budget",
+      "title": "Trésorerie et bilan annuel CSE",
+      "purpose": "Tenir les entrées et sorties banque/caisse du CSE et produire leur bilan annuel imprimable.",
+      "example_requests": [
+        "solde de la banque du CSE",
+        "saisir une dépense du CSE",
+        "bilan annuel du CSE"
+      ],
+      "capabilities": [
+        "Définir ou modifier un solde initial daté pour banque et caisse.",
+        "Ajouter une entrée ou sortie avec date, montant et commentaire ; supprimer un mouvement.",
+        "Calculer les soldes courants par compte et total.",
+        "Afficher un bilan annuel imprimable avec mouvements chronologiques, entrées, sorties, variation et soldes début/fin."
+      ],
+      "entry_points": [
+        "cse_bp.cse_budget",
+        "cse_bp.definir_solde",
+        "cse_bp.ajouter_mouvement",
+        "cse_bp.supprimer_mouvement",
+        "cse_bp.cse_bilan"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/cse.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/cse_budget.html",
+          "templates/cse_bilan.html"
+        ],
+        "tables": [
+          "cse_mouvements",
+          "cse_soldes_initiaux",
+          "cse_membres",
+          "users"
+        ],
+        "tests": [
+          "tests/test_cse.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et écritures exclusivement aux membres du CSE via est_membre_cse ; direction/comptabilité non membres refusées.",
+        "scope": "Budget commun aux membres du CSE, indépendant des écritures comptables générales de l’association.",
+        "conditions": [
+          "Compte banque ou caisse ; type entree ou sortie ; montant strictement positif pour un mouvement, signé ou nul autorisé pour le solde initial."
+        ],
+        "sources": [
+          "blueprints/cse.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Solde courant = solde initial + entrées − sorties.",
+        "Bilan annuel : ne prendre le solde initial que si sa date est atteinte en fin d’exercice ; cumuler les mouvements jusqu’au 31 décembre pour le solde final.",
+        "Un seul solde initial enregistré par compte, remplacé par mise à jour."
+      ],
+      "extension_points": [
+        "Réutiliser _calculer_soldes_courants et _calculer_bilan_annuel pour ajouter export ou indicateurs CSE.",
+        "Conserver le périmètre membre CSE en cas de raccordement à des outils comptables plus généraux."
+      ],
+      "related_features": [
+        "association.cse_membres",
+        "interface.navigation"
+      ],
+      "limitations": [
+        "Suivi de trésorerie simplifié avec deux comptes fermés ; ni plan comptable ni écriture en partie double dans ces routes.",
+        "Le bilan est une page imprimable ; le module ne génère pas un fichier PDF serveur."
+      ]
+    },
+    {
+      "id": "association.planificateur_personnel",
+      "title": "Planification personnelle des tâches et rendez-vous",
+      "purpose": "Organiser automatiquement le travail personnel en blocs de temps selon horaires, contraintes et priorités.",
+      "example_requests": [
+        "organiser ma semaine",
+        "replanifier mes tâches",
+        "prévoir deux heures pour le bilan",
+        "rendez-vous demain matin",
+        "tâche récurrente chaque mois"
+      ],
+      "capabilities": [
+        "Créer/modifier/supprimer tâches et événements fixes ; vues jour/semaine/mois avec lecture des blocs et horaires.",
+        "Renseigner durée estimée, échéance facultative, préférence matin/après-midi, possibilité de découpage et taille minimale des blocs.",
+        "Évaluer la priorité relative par comparaison avec une ou deux tâches personnelles ; proposer d’abord des références à échéance proche puis élargir.",
+        "Replanifier automatiquement après les principales mutations ou manuellement ; moteur pur avec répartition de charge, blocs de longues missions et micro-pauses.",
+        "Déplacer un bloc par glisser-déposer et le verrouiller ; le déverrouiller pour revenir à la planification automatique.",
+        "Marquer tâche ou bloc fait, rouvrir/annuler une tâche, reporter à une date et créer une tâche suite après réalisation partielle.",
+        "Créer des récurrences quotidiennes/hebdomadaires/mensuelles, à jour imposé ou à placer dans une fenêtre ; supprimer une récurrence en conservant l’historique réalisé.",
+        "Afficher les tâches ordinaires non placées ; libérer/replanifier les blocs de tâches lorsqu’une absence a été saisie après planification."
+      ],
+      "entry_points": [
+        "planificateur_bp.planificateur",
+        "planificateur_bp.api_blocs",
+        "planificateur_bp.api_priorite_comparaison",
+        "planificateur_bp.api_creer_tache",
+        "planificateur_bp.api_modifier_tache",
+        "planificateur_bp.api_supprimer_tache",
+        "planificateur_bp.api_statut_tache",
+        "planificateur_bp.api_reporter_tache",
+        "planificateur_bp.api_terminer_partiel",
+        "planificateur_bp.api_statut_bloc",
+        "planificateur_bp.api_supprimer_bloc",
+        "planificateur_bp.api_deplacer_bloc",
+        "planificateur_bp.api_verrou_bloc",
+        "planificateur_bp.api_replanifier",
+        "planificateur_bp.api_creer_recurrence",
+        "planificateur_bp.api_supprimer_recurrence"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/planificateur.py"
+        ],
+        "service_files": [
+          "planificateur_engine.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/planificateur.html"
+        ],
+        "tables": [
+          "planif_taches",
+          "planif_blocs",
+          "planif_recurrences",
+          "users",
+          "planning_theorique",
+          "periodes_vacances",
+          "alternance_reference",
+          "jours_feries",
+          "absences",
+          "heures_reelles"
+        ],
+        "tests": [
+          "tests/test_planificateur.py",
+          "tests/test_planificateur_acces.py",
+          "tests/test_planificateur_priorite.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "planif_required exige connexion et profil salarie/responsable/comptable/directeur ; prestataire refusé. Lectures et mutations contrôlent user_id de session, y compris tâches, blocs, récurrences et références de comparaison. Direction/comptabilité n’accèdent jamais au planificateur d’autrui par ces routes.",
+        "scope": "Strictement personnel, sans périmètre hiérarchique, équipe ou délégation de consultation.",
+        "conditions": [
+          "Horaires repris du planning théorique valide à la date ; à défaut de tout planning : lundi-vendredi 09:00–12:30/13:30–17:30, ou 09:00–12:30/14:00–18:00 pour directeur.",
+          "Horizon de planification HORIZON_JOURS = 60 ; jours fériés, jours d’absence et recup_journee exclus des tâches automatiques.",
+          "Comparaisons requises à la création d’une tâche lorsque des références existent."
+        ],
+        "sources": [
+          "blueprints/planificateur.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "L’heure locale utilisée par _replanifier vient de utils.maintenant ; placement automatique jamais dans le passé.",
+        "Un bloc verrouillé est du temps engagé, pas du temps réalisé : seule la somme des blocs fait clôture automatiquement une tâche.",
+        "Les blocs verrouillés passés non réalisés ne doivent pas faire perdre le reliquat à replanifier.",
+        "Préserver événements fixes et réalisé ; une absence libère les autres blocs de tâches, y compris verrouillés.",
+        "Supprimer un bloc d’événement fixe seul ou le déverrouiller est refusé ; modifier/supprimer l’événement.",
+        "Réalisation partielle clôture l’original, conserve les blocs déjà faits, libère les futurs non faits et crée la suite pour le reste.",
+        "La priorité numérique guide le moteur ; une échéance menacée peut rehausser temporairement une tâche sans changer sa priorité enregistrée.",
+        "Les récurrences sont placées en dernier ; leurs occurrences passées non réalisées expirent et ne sont pas reportées."
+      ],
+      "extension_points": [
+        "Réutiliser planificateur_engine.planifier (structures simples, sans base) pour faire évoluer l’optimisation.",
+        "Réutiliser _horaires_par_date, _jours_absences_set et _get_tache_proprietaire pour toute nouvelle route.",
+        "Un futur suivi collectif doit être conçu avec son propre périmètre : il ne doit pas rendre ces tâches privées consultables par la hiérarchie."
+      ],
+      "related_features": [
+        "interface.accueil_flux",
+        "temps.planning_theorique"
+      ],
+      "limitations": [
+        "Le moteur est une heuristique ; les contraintes de capacité peuvent laisser des tâches non placées.",
+        "Horaires automatiques limités au lundi-vendredi ; l’horizon actuel est de 60 jours.",
+        "Les absences sont interprétées comme journées indisponibles par _jours_absences_set ; ce helper ne soustrait pas des créneaux partiels.",
+        "Les occurrences récurrentes impossibles à placer sont exclues des alertes de non-placement.",
+        "La phrase introductive du blueprint évoquant une phase réservée au comptable est obsolète ; PROFILS_AUTORISES, planif_required et les tests permettent les quatre profils internes."
+      ]
+    }
+  ]
+}

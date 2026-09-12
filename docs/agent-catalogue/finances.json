@@ -1,0 +1,1588 @@
+{
+  "schema_version": 1,
+  "domain": "finances",
+  "features": [
+    {
+      "id": "finances.budgets_secteurs",
+      "title": "Enveloppes de dépenses par secteur",
+      "purpose": "Répartir une enveloppe annuelle entre postes de dépense et comparer les montants prévus aux dépenses saisies.",
+      "example_requests": [
+        "Répartir le budget de mon secteur",
+        "Suivre les dépenses des vacances de printemps",
+        "Combien reste-t-il sur notre enveloppe ?"
+      ],
+      "capabilities": [
+        "Vue globale annuelle des secteurs, enveloppes, pourcentages répartis et consommés.",
+        "Budgets par secteur et année ; postes annuels pour les secteurs ordinaires, ventilation mercredis/hiver/printemps/été/Toussaint/Noël pour accueil_loisirs.",
+        "Calcul des jours ouvrés par période à partir des vacances et jours fériés.",
+        "Saisie des dépenses réelles, soldes par poste et alertes de dépassement ; raccourci Mon budget vers son secteur."
+      ],
+      "entry_points": [
+        "budget_bp.gestion_budgets",
+        "budget_bp.budget_secteur",
+        "budget_bp.api_budget_save",
+        "budget_bp.api_budget_save_reel",
+        "budget_bp.mon_budget"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/gestion_budgets.html",
+          "templates/budget_secteur.html"
+        ],
+        "tables": [
+          "budgets",
+          "budget_lignes",
+          "budget_reel_lignes",
+          "postes_depense",
+          "postes_depense_secteur_types",
+          "secteurs",
+          "types_secteur",
+          "users",
+          "jours_feries",
+          "periodes_vacances"
+        ],
+        "tests": [
+          "tests/test_budget.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Directeur/comptable : gestion globale, création du budget, modification de l’enveloppe et du réalisé. Responsable : consultation et répartition du budget déjà créé dans son seul secteur, contrôlé en base. Les autres profils sont refusés.",
+        "scope": "Secteur et année ; global réservé à direction/comptabilité.",
+        "conditions": [],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Le responsable ne peut ni créer une enveloppe ni modifier son montant global ou les dépenses réelles.",
+        "Le serveur refuse un total de lignes soumises supérieur à l’enveloppe avec une tolérance de 0,01 €.",
+        "Les postes proposés sont actifs et rattachés au type de secteur."
+      ],
+      "extension_points": [
+        "Réutiliser budgets/budget_lignes pour des demandes de répartition opérationnelle ; déterminer si le besoin relève plutôt des comptes généraux du budget prévisionnel."
+      ],
+      "related_features": [
+        "administration.secteurs",
+        "association.commandes_fournitures",
+        "finances.budget_previsionnel",
+        "finances.postes_depense"
+      ],
+      "limitations": [
+        "Les dépenses réelles de cette capacité sont saisies dans budget_reel_lignes ; elles ne sont pas automatiquement alimentées par les imports BI, FEC ou les écritures de factures."
+      ]
+    },
+    {
+      "id": "finances.postes_depense",
+      "title": "Référentiel des postes de dépense",
+      "purpose": "Définir les rubriques utilisables dans les enveloppes de dépenses des secteurs.",
+      "example_requests": [
+        "Ajouter un poste sorties aux budgets",
+        "Désactiver un poste de dépense"
+      ],
+      "capabilities": [
+        "Créer, renommer, activer/désactiver et supprimer les postes.",
+        "Associer un poste à un ou plusieurs types de secteur ; libellés des types chargés depuis le référentiel dynamique."
+      ],
+      "entry_points": [
+        "budget_bp.gestion_postes_depense"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/gestion_postes_depense.html"
+        ],
+        "tables": [
+          "postes_depense",
+          "postes_depense_secteur_types",
+          "budget_lignes",
+          "types_secteur"
+        ],
+        "tests": [
+          "tests/test_budget.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Un poste utilisé dans budget_lignes ne peut pas être supprimé ; la désactivation reste proposée.",
+        "Un nom et au moins un type de secteur sont requis."
+      ],
+      "extension_points": [
+        "Étendre les associations existantes avant de créer un nouveau système de rubriques budgétaires."
+      ],
+      "related_features": [
+        "finances.budgets_secteurs"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "finances.budget_previsionnel",
+      "title": "Budget initial, actualisé et consolidation",
+      "purpose": "Construire un budget par compte général, année et secteur puis consolider les secteurs avec des références de calcul explicites.",
+      "example_requests": [
+        "Budget prévisionnel du secteur famille",
+        "Actualiser le budget à fin septembre",
+        "Comparer budget initial et actualisé",
+        "Recalculer les charges patronales du secteur"
+      ],
+      "capabilities": [
+        "Budgets initial et actualisé distincts, comparaison avec réalisé BI N/N-1/N-2 ; comptes 6/7, propositions, montants enregistrés et commentaires.",
+        "Hors comptes 63/64, proposition initiale : produits N-1, charges sur N s’il est non nul sinon N-1 avec taux d’inflation saisi ; actualisé : réel à l’arrêté + mois restants de N-1, sauf proposition déjà enregistrée.",
+        "Rattachement sectoriel via comptes analytiques et budget_prev_config_codes ; gestion API de ce complément de correspondances.",
+        "Arrêté explicite du réalisé, année antérieure de référence et confirmation de sa complétude liée à l’empreinte des données et du périmètre.",
+        "Modes manuel, proportionnel au brut et projection mensuelle pour les comptes 63/64 ; le premier 641 porte le brut de base.",
+        "Ajout d’un compte sans historique, retrait d’une saisie manuelle, enregistrement groupé et recalcul serveur des comptes automatiques.",
+        "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées."
+      ],
+      "entry_points": [
+        "budget_bp.budget_previsionnel",
+        "budget_bp.api_budget_parametres",
+        "budget_bp.api_budget_recalculer",
+        "budget_bp.api_budget_previsionnel_detail",
+        "budget_bp.api_budget_previsionnel_config_save",
+        "budget_bp.api_budget_previsionnel_config_delete",
+        "budget_bp.api_budget_previsionnel_donnees",
+        "budget_bp.api_budget_previsionnel_save_line",
+        "budget_bp.api_budget_prev_comptes_disponibles",
+        "budget_bp.api_budget_prev_ajouter_compte",
+        "budget_bp.api_budget_prev_retirer_compte",
+        "budget_bp.api_budget_previsionnel_export_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [
+          "budget_calculs.py",
+          "budget_charges.py"
+        ],
+        "templates": [
+          "templates/budget_previsionnel.html"
+        ],
+        "tables": [
+          "budget_prev_saisies",
+          "budget_prev_config_codes",
+          "budget_parametres",
+          "budget_modes_comptes",
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "comptabilite_comptes",
+          "plan_comptable_general",
+          "secteurs",
+          "users",
+          "budget_fiches_travail",
+          "budget_paie_simulations"
+        ],
+        "tests": [
+          "tests/test_budget.py",
+          "tests/test_budget_regles.py",
+          "tests/test_budget_taux_charges.py",
+          "tests/budget_frontend_checks.cjs"
+        ],
+        "docs": [
+          "docs/budget-actualise.md"
+        ]
+      },
+      "access": {
+        "summary": "Directeur/comptable : lecture globale et sectorielle, configuration, saisies et recalculs. Responsable : lecture si option autorisée ; secteur forcé en base dans les données, détail, PDF et fiches de travail, sans consolidation globale ni écriture.",
+        "scope": "Type de budget × année × secteur ; consolidation tous secteurs pour directeur/comptable.",
+        "conditions": [
+          "budget_previsionnel_responsable_autorise contrôle l’accès responsable.",
+          "Le réalisé provient des imports BI et du périmètre analytique configuré."
+        ],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "Aucun arrêté ou exercice complet n’est inféré automatiquement ; un réimport ou changement de périmètre peut invalider la confirmation.",
+        "Les montants manquants restent distincts de zéro et rendent les totaux concernés inconnus ; un calcul indisponible conserve la valeur enregistrée.",
+        "Les comptes 63/64 restent manuels par défaut ; aucun compte nouveau n’est implicitement lié au brut.",
+        "Compléments 641 proportionnels : ratio au premier 641 ; autres charges proportionnelles : ratio annuel au total des 641. Actualisé : réel à l’arrêté + projection de la seule période restante.",
+        "Les saisies groupées, paramètres, recalculs, fiches et report de paie utilisent une référence signée du budget et une transaction ; une page périmée est refusée.",
+        "La consolidation additionne les budgets sectoriels, compte chaque écriture réelle une seule fois et signale les arrêtés sectoriels différents.",
+        "Les PDF utilisent les montants enregistrés et signalent les données à compléter ou recalculer."
+      ],
+      "extension_points": [
+        "Réutiliser budget_calculs.py pour toute évolution de projection ; préserver les règles de références, modes et montants inconnus.",
+        "Une demande de simulation de coût salarial doit d’abord examiner simulation_paie et bilan_action.",
+        "Un lien direct peut présélectionner secteur_id et annee sur budget_bp.budget_previsionnel."
+      ],
+      "related_features": [
+        "association.subventions_suivi",
+        "finances.fiches_travail",
+        "finances.import_bi",
+        "finances.plan_analytique",
+        "finances.simulation_paie",
+        "finances.simulation_ps"
+      ],
+      "limitations": [
+        "L’affichage de la page propose N-3 à N+3.",
+        "La référence de page et la transaction renforcée ne sont pas communes à toutes les API historiques : vérifier notamment ajout de compte et simulation PS avant de généraliser un mécanisme d’édition."
+      ]
+    },
+    {
+      "id": "finances.fiches_travail",
+      "title": "Fiches de projection par compte budgétaire",
+      "purpose": "Justifier et enregistrer la projection mensuelle d’un compte avec des ajustements explicites.",
+      "example_requests": [
+        "Projeter les dépenses de chauffage",
+        "Répartir le restant du budget sur les mois",
+        "Expliquer le calcul d’un compte actualisé"
+      ],
+      "capabilities": [
+        "Contexte réel mensuel N, N-1, N-2 et budget initial.",
+        "Méthodes N-1 mois par mois, moyenne N-1/N-2, tendance du réel, solde du budget initial ou saisie mensuelle.",
+        "Ajout de lignes d’ajustement ; sauvegarde des données, total recalculé côté serveur et commentaire automatique de méthode.",
+        "Report sur le montant définitif du compte et recalcul des comptes automatiques dépendants."
+      ],
+      "entry_points": [
+        "budget_bp.api_fiche_travail_get",
+        "budget_bp.api_fiche_travail_save"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [
+          "budget_calculs.py"
+        ],
+        "templates": [
+          "templates/budget_previsionnel.html"
+        ],
+        "tables": [
+          "budget_fiches_travail",
+          "budget_prev_saisies",
+          "budget_parametres",
+          "budget_modes_comptes",
+          "bilan_fec_donnees",
+          "comptabilite_comptes",
+          "budget_prev_config_codes",
+          "users"
+        ],
+        "tests": [
+          "tests/test_budget.py",
+          "tests/test_budget_regles.py"
+        ],
+        "docs": [
+          "docs/budget-actualise.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture direction/comptabilité et responsable si option active, avec secteur du responsable forcé. Écriture réservée à direction/comptabilité et contrôlée sous transaction.",
+        "scope": "Compte × année × secteur × type de budget.",
+        "conditions": [
+          "budget_previsionnel_responsable_autorise pour la lecture responsable.",
+          "Pour un compte 63/64, le mode mensuel est requis ; le premier 641 reste réservé au brut de base."
+        ],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "Le montant reçu du navigateur ne fait pas autorité : le serveur calcule le réel, le reste et les ajustements.",
+        "Le même arrêté explicite s’applique au tableau et à la fiche.",
+        "Une ancienne page ne peut pas écraser silencieusement des données ayant changé."
+      ],
+      "extension_points": [
+        "Ajouter une méthode de projection à FICHE_METHODES et _compute_fiche_travail en conservant la fiche comme justification de la valeur."
+      ],
+      "related_features": [
+        "finances.budget_previsionnel"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "finances.simulation_paie",
+      "title": "Simulation budgétaire de masse salariale et charges",
+      "purpose": "Simuler les bruts, les recrutements et les charges d’un secteur sans modifier les fiches RH.",
+      "example_requests": [
+        "Simuler le coût d’un CDI",
+        "Ajouter un CDD au budget",
+        "Quel impact d’une nouvelle pesée ?",
+        "Prévoir le coût des animateurs CEE",
+        "Calculer les charges avec le taux de chaque salarié",
+        "Estimer le coût d’un apprenti"
+      ],
+      "capabilities": [
+        "Charge les salariés actifs du secteur ayant au moins un contrat non CEE chevauchant l’année ; types CDI, CDD et autres contrats sont affichés.",
+        "Agrège les périodes de contrats successifs sans doubler le salarié ; prorata des fractions de mois et exclusion des intervalles sans contrat.",
+        "Scénarios de pesée, nouvelle pesée, ancienneté, nouvelle ancienneté, compétences, nouvelles compétences, maintien et temps hebdomadaire ; paramètres socle annuel, valeur du point et temps plein.",
+        "Ajouts fictifs CDI par mois d’embauche et CDD par mois de début/fin ; aucune création de contrat ou de salarié RH.",
+        "Coût collectif CEE par nombre d’animateurs le mercredi/en vacances × jours du calendrier × forfait journalier, avec fermetures saisies.",
+        "Initial : projection annuelle ; actualisé : réalisé du premier 641 jusqu’à l’arrêté + seuls mois restants.",
+        "Option désactivée par défaut : taux de charges par salarié/ajout et taux CEE global ; moyenne pondérée appliquée au brut global de tous les 641, compléments compris.",
+        "Sauvegarde du scénario JSON et report du brut sur le premier 641 ; avec taux activés, report unique des charges sur le premier 645 et pilotage des 645 à 648."
+      ],
+      "entry_points": [
+        "budget_bp.api_paie_context",
+        "budget_bp.api_paie_simulation_get",
+        "budget_bp.api_paie_simulation_save"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [
+          "budget_calculs.py",
+          "budget_charges.py"
+        ],
+        "templates": [
+          "templates/budget_previsionnel.html"
+        ],
+        "tables": [
+          "budget_paie_simulations",
+          "budget_prev_saisies",
+          "budget_modes_comptes",
+          "budget_parametres",
+          "users",
+          "contrats",
+          "secteurs",
+          "jours_feries",
+          "periodes_vacances",
+          "bilan_fec_donnees",
+          "comptabilite_comptes",
+          "budget_prev_config_codes"
+        ],
+        "tests": [
+          "tests/test_budget.py",
+          "tests/test_budget_regles.py",
+          "tests/test_budget_taux_charges.py",
+          "tests/budget_taux_frontend_checks.cjs"
+        ],
+        "docs": [
+          "docs/budget-actualise.md"
+        ]
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Scénario par année × secteur × type de budget ; données RH consultées comme point de départ.",
+        "conditions": [
+          "API du simulateur réservées aux profils directeur/comptable, même si le responsable peut lire le budget.",
+          "Un premier compte 641 est nécessaire au report ; taux activés : compte 645 existant et compléments 641 renseignés."
+        ],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Le scénario ne met jamais à jour users.pesee, competence, maintien ni les contrats ; valeurs absentes et valeurs explicitement vides ont une signification différente.",
+        "Brut mensuel = ((socle annuel + pesée × point) × temps/temps plein + (ancienneté + compétences) × point) / 12 + maintien. Le prorata temps partiel porte seulement sur socle/pesée ; maintien mensuel non proratisé par quotité.",
+        "Un directeur sans secteur est inclus une seule fois dans le secteur administratif de plus petit id ; un directeur affecté reste dans son secteur.",
+        "Le taux d’un salarié concerne tout son brut ; les compléments 641 non ventilés individuellement sont répartis implicitement au prorata des bruts simulés.",
+        "Actualisé : pondération sur bruts simulés après l’arrêté ; réalisé 645–648 conservé, puis ajout (brut global annuel − brut global réalisé) × taux moyen. À décembre, seul le réel est reporté.",
+        "Taux finis entre 0 et 100 % ; toute ligne au brut positif doit avoir un taux renseigné, zéro explicite étant autorisé.",
+        "Premier 645 reçoit le total ; autres 645–648 mis à zéro dans le budget seulement ; les 63 conservent leurs modes. Désactivation : restauration des anciens montants manuels et recalcul des modes automatiques.",
+        "Simulation, brut et charges sont enregistrés atomiquement ; refus de valeurs incohérentes ou de référence périmée sans report partiel."
+      ],
+      "extension_points": [
+        "Pour un outil de coût CDI/CDD, exposer un parcours ciblé réutilisant _compute_paie et budget_charges plutôt que dupliquer les formules.",
+        "Pour l’apprentissage, compléter explicitement les règles de rémunération/aides et leur période d’application ; le simple affichage du type de contrat ne les calcule pas.",
+        "Pour un coût imputé à une action selon un nombre d’heures, examiner aussi bilan_action._calc_salarie."
+      ],
+      "related_features": [
+        "administration.options_centre",
+        "finances.bilan_action",
+        "finances.budget_previsionnel",
+        "rh.contrats_dossier",
+        "rh.dossier_salarie",
+        "rh.pesee_alisfa"
+      ],
+      "limitations": [
+        "Les contrats hors CEE, y compris apprentissage, suivent actuellement la même formule socle/pesée ; aucun calcul spécifique d’âge, année d’apprentissage ou aide employeur dans _compute_paie.",
+        "Une seule ligne conserve les caractéristiques du contrat le plus récent pour plusieurs contrats successifs ; variations de quotité ou caractéristiques entre périodes ne sont pas automatiquement simulées séparément.",
+        "Les ajouts fictifs CDI/CDD utilisent des mois entiers ; le prorata journalier concerne les contrats source.",
+        "Le scénario calcule une estimation budgétaire et ne constitue pas un bulletin de paie."
+      ]
+    },
+    {
+      "id": "finances.simulation_ps",
+      "title": "Simulation des prestations de service EAJE et ALSH",
+      "purpose": "Estimer les produits de prestations de service et reporter les montants sur les comptes du budget.",
+      "example_requests": [
+        "Estimer la PSU de la crèche",
+        "Simuler la prestation CAF des mercredis",
+        "Calculer la PS extrascolaire et le complément inclusif"
+      ],
+      "capabilities": [
+        "Paramétrage de comptes produits 70x en type eaje, alsh_perisco ou alsh_extrasco.",
+        "EAJE : modes réel/prévisionnel par mois, jours/places/amplitude, heures facturées et réalisées, participations, occupation et taux horaire ; PSU nette de participation, préparation, bonus mixité, journées pédagogiques et attractivité.",
+        "ALSH extrascolaire : cellules période de vacances × tranche d’âge, heures réelles ou estimation enfants × jours × heures, régime et complément inclusif.",
+        "ALSH périscolaire : mercredis scolaires, déduction, tranches d’âge, prévision annuelle ou réel + reste après arrêté, complément inclusif.",
+        "Scénario enregistré par compte/secteur/année/type ; total recalculé serveur et report sur valeur définitive en conservant temporaire et commentaire."
+      ],
+      "entry_points": [
+        "budget_bp.api_ps_comptes_liste",
+        "budget_bp.api_ps_comptes_disponibles",
+        "budget_bp.api_ps_comptes_save",
+        "budget_bp.api_ps_comptes_delete",
+        "budget_bp.api_ps_alsh_context",
+        "budget_bp.api_ps_simulation_get",
+        "budget_bp.api_ps_simulation_save"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/budget_previsionnel.html"
+        ],
+        "tables": [
+          "budget_ps_comptes",
+          "budget_ps_simulations",
+          "budget_prev_saisies",
+          "plan_comptable_general",
+          "bilan_fec_donnees",
+          "alsh_tranches_age",
+          "periodes_vacances",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_budget.py",
+          "tests/test_budget_regles.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Modification des paramètres/simulations réservée à direction/comptabilité. Les GET de liste, calendrier et simulation acceptent aussi responsable si option active. GET simulation utilise le secteur_id demandé sans le remplacer par celui du responsable ; voir limitation.",
+        "scope": "Simulation par compte × année × secteur × type de budget ; correspondance compte/type PS partagée.",
+        "conditions": [
+          "budget_previsionnel_responsable_autorise contrôle les GET pour responsable.",
+          "Calendrier et tranches d’âge actifs nécessaires aux contextes ALSH."
+        ],
+        "sources": [
+          "blueprints/budget.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "Les comptes ciblés doivent commencer par 70 ; le simulateur ne doit pas contourner le pilotage des comptes salariaux.",
+        "Les taux sont des paramètres du scénario ; les valeurs par défaut du code ne prouvent pas leur validité réglementaire à une date donnée.",
+        "Les totaux EAJE utilisent les sommes et moyennes pondérées, les autres modes utilisent les calendriers et paramètres propres à leur formule."
+      ],
+      "extension_points": [
+        "Réutiliser les trois _compute_ps_* et les tables existantes pour ajouter variantes, hypothèses ou nouveaux paramètres CAF.",
+        "Vérifier et harmoniser le filtrage sectoriel de api_ps_simulation_get avant de réutiliser cette API pour un agent ou élargir l’accès."
+      ],
+      "related_features": [
+        "association.alsh_tarification",
+        "finances.budget_previsionnel",
+        "temps.encadrement_creche"
+      ],
+      "limitations": [
+        "Comportement vérifié : budget_bp.api_ps_simulation_get ne contrôle pas l’appartenance du secteur_id reçu pour un responsable autorisé. login_required et les before_app_request actualisent l’identité/les droits du compte mais n’ajoutent pas ce filtrage métier ; aucun test d’exploitation exécuté.",
+        "Les scénarios sont des estimations fondées sur paramètres saisis ; ils ne déposent aucune déclaration CAF."
+      ]
+    },
+    {
+      "id": "finances.tresorerie",
+      "title": "Trésorerie, projections et épargne",
+      "purpose": "Projeter les disponibilités mensuelles à partir des imports FEC, budgets de flux et mouvements d’épargne.",
+      "example_requests": [
+        "Prévoir la trésorerie à six mois",
+        "Importer les mouvements bancaires du mois",
+        "Simuler un placement sur l’épargne",
+        "Modifier le budget de décaissement d’un compte"
+      ],
+      "capabilities": [
+        "Import FEC historique ou banque, tabulé/point-virgule, agrégation par compte/année/mois et suivi des imports.",
+        "Solde initial avec mois/année de référence ; vue de 6 à 36 mois et graphiques de projection.",
+        "Prévisions automatiques à partir de N-1 et du réalisé disponible ; budget N manuel ajustable par compte/mois.",
+        "Gestion des comptes : activation, libellé affiché, nature, ordre, suppression du référentiel ; comptes d’attente séparés.",
+        "Solde d’épargne, placements/retraits datés par mois avec commentaire et suppression de mouvement.",
+        "Suppression d’un import avec ses données ; réinitialisation spécifique à la trésorerie sur confirmation exacte."
+      ],
+      "entry_points": [
+        "tresorerie_bp.tresorerie",
+        "tresorerie_bp.api_import_fec",
+        "tresorerie_bp.api_solde_initial",
+        "tresorerie_bp.api_budget_n",
+        "tresorerie_bp.gestion_comptes",
+        "tresorerie_bp.api_modifier_compte",
+        "tresorerie_bp.api_reordonner_comptes",
+        "tresorerie_bp.api_supprimer_tous_comptes",
+        "tresorerie_bp.api_supprimer_import",
+        "tresorerie_bp.api_epargne_solde",
+        "tresorerie_bp.api_epargne_mouvement",
+        "tresorerie_bp.api_epargne_supprimer_mouvement",
+        "tresorerie_bp.api_reinitialiser_tresorerie"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/tresorerie.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/tresorerie.html",
+          "templates/tresorerie_comptes.html"
+        ],
+        "tables": [
+          "tresorerie_imports",
+          "tresorerie_donnees",
+          "tresorerie_comptes",
+          "tresorerie_budget_n",
+          "tresorerie_solde_initial",
+          "tresorerie_epargne_solde",
+          "tresorerie_epargne_mouvements",
+          "users"
+        ],
+        "tests": [
+          "tests/test_tresorerie.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/tresorerie.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Net de trésorerie = crédit − débit ; exclusion des comptes 512, 531, 580 et journal AN ; 471 affichés séparément.",
+        "L’agrégation FEC remplace le montant de chaque clé compte/année/mois importée ; le référentiel conserve les personnalisations des comptes existants.",
+        "La référence du solde initial sert à décaler la vue ; les placements diminuent les disponibilités et les retraits les augmentent.",
+        "La réinitialisation exige confirmation=REINITIALISER_TRESORERIE et ne supprime que les sept tables de ce module."
+      ],
+      "extension_points": [
+        "Réutiliser _build_projection pour un scénario de flux ou une alerte de solde futur.",
+        "Conserver la séparation entre flux FEC et budget comptable BI lors d’un rapprochement futur."
+      ],
+      "related_features": [
+        "finances.budget_previsionnel",
+        "finances.import_bi",
+        "finances.indicateurs_financiers"
+      ],
+      "limitations": [
+        "Import de fichiers et simulation : les routes ne réalisent aucun virement bancaire réel.",
+        "Le libellé de type d’import banque ne constitue pas une connexion bancaire automatique."
+      ]
+    },
+    {
+      "id": "finances.factures",
+      "title": "Réception, classement et conservation des factures",
+      "purpose": "Centraliser les PDF de factures, leurs informations, leur affectation et leur historique.",
+      "example_requests": [
+        "Importer mes factures PDF",
+        "Trouver la facture numéro 123",
+        "Assigner une facture au secteur enfance",
+        "Signaler une erreur sur une facture exportée"
+      ],
+      "capabilities": [
+        "Import de plusieurs PDF avec extraction de texte pdfplumber et extraction IA optionnelle ; fournisseur rapproché par nom/alias ou créé.",
+        "Nommage normalisé avec suffixe en cas de collision ; enregistrement fournisseur, numéro, dates, montant TTC et description.",
+        "Listes actives/archivées ; affectation à un secteur ou à la direction ; détail avec commentaires, historique, événements comptables et liens aux lots.",
+        "Téléchargement du PDF source ; suppression d’une facture non exportée ; après export, archivage motivé et signalement de correction motivé."
+      ],
+      "entry_points": [
+        "factures_bp.liste_factures",
+        "factures_bp.importer_facture",
+        "factures_bp.assigner_facture",
+        "factures_bp.detail_facture",
+        "factures_bp.commenter_facture",
+        "factures_bp.telecharger_facture",
+        "factures_bp.supprimer_facture",
+        "factures_bp.archiver_facture",
+        "factures_bp.signaler_correction"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/factures.py"
+        ],
+        "service_files": [
+          "exports_comptables.py",
+          "stockage_restaure.py",
+          "blueprints/pesee_alisfa.py",
+          "blueprints/api_keys.py"
+        ],
+        "templates": [
+          "templates/factures.html",
+          "templates/facture_detail.html"
+        ],
+        "tables": [
+          "factures",
+          "fournisseurs",
+          "facture_historique",
+          "facture_commentaires",
+          "secteurs",
+          "users",
+          "ecritures_comptables",
+          "archives_export",
+          "export_lignes",
+          "comptabilite_evenements"
+        ],
+        "tests": [
+          "tests/test_factures.py",
+          "tests/test_exports_comptables.py",
+          "tests/test_exports_comptables_migration_ia.py"
+        ],
+        "docs": [
+          "docs/exports-comptables.md"
+        ]
+      },
+      "access": {
+        "summary": "Gestion/import/affectation/suppression/archivage/correction : directeur/comptable. Détail, commentaire et téléchargement : aussi responsable, avec comparaison au secteur de la facture depuis users. Session active vérifiée en amont ; actions après export recontrôlées sous verrou.",
+        "scope": "Toutes les factures pour direction/comptabilité ; seules factures du secteur pour responsable.",
+        "conditions": [
+          "Extraction IA : modèle disponible et configuration API ; sans modèle ou en cas d’échec d’extraction, les informations sont vides.",
+          "Stockage des PDF sous DATA_DIR/factures ; accès par résolution contrôlée."
+        ],
+        "sources": [
+          "blueprints/factures.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Une facture exportée, même partiellement dans l’ancien système, ne peut pas être supprimée physiquement ; PDF, lignes et historiques restent conservés.",
+        "L’archivage sort la facture des listes actives et relances sans effacer approbations ni preuves.",
+        "Le signalement de correction est une trace motivée ; aucune écriture corrective n’est générée.",
+        "Affecter à la direction vide secteur_id ; un secteur inexistant est refusé.",
+        "La collision de nom crée un nom distinct ; elle n’établit pas une détection de doublon métier de facture."
+      ],
+      "extension_points": [
+        "Réutiliser les tables factures/historique et les liens de lot pour enrichir le classement ou un suivi de traitement.",
+        "Pour toute modification de contenu source, préserver les vérifications des références des écritures et les protections après export."
+      ],
+      "related_features": [
+        "administration.cles_api_ia",
+        "administration.stockage_documents",
+        "finances.approbation_factures",
+        "finances.ecritures",
+        "finances.exports_comptables",
+        "finances.fournisseurs"
+      ],
+      "limitations": [
+        "Le PDF est traité par extraction de texte ; aucun OCR d’image dans importer_facture.",
+        "Les statuts de traitement et d’approbation sont indépendants ; aucun état payé ni exécution d’un paiement dans ces routes."
+      ]
+    },
+    {
+      "id": "finances.approbation_factures",
+      "title": "Approbation métier et relances des factures",
+      "purpose": "Faire approuver les factures affectées par les acteurs autorisés et relancer ceux qui doivent intervenir.",
+      "example_requests": [
+        "Quelles factures dois-je approuver ?",
+        "Relancer les responsables pour leurs factures"
+      ],
+      "capabilities": [
+        "File des factures actives en attente, filtrée pour le responsable ; direction/comptabilité voient celles affectées à un secteur ou à la direction.",
+        "Approbation enregistrant l’auteur, la date et un événement d’historique.",
+        "Relance email des responsables des secteurs concernés et des directeurs pour les factures affectées à la direction."
+      ],
+      "entry_points": [
+        "factures_bp.approuver_facture",
+        "factures_bp.approbation_factures",
+        "factures_bp.relancer_secteurs"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/factures.py"
+        ],
+        "service_files": [
+          "email_service.py"
+        ],
+        "templates": [
+          "templates/approbation_factures.html",
+          "templates/facture_detail.html"
+        ],
+        "tables": [
+          "factures",
+          "facture_historique",
+          "secteurs",
+          "users"
+        ],
+        "tests": [
+          "tests/test_factures.py",
+          "tests/test_exports_comptables_migration_ia.py"
+        ],
+        "docs": [
+          "docs/exports-comptables.md"
+        ]
+      },
+      "access": {
+        "summary": "Responsable : liste et approbation de son secteur vérifié en base. Directeur et comptable : consultation et approbation sur l’ensemble. Relances réservées directeur/comptable.",
+        "scope": "Secteur pour responsable, global pour direction/comptabilité.",
+        "conditions": [
+          "Relances : messagerie configurée et emails renseignés sur les comptes destinataires."
+        ],
+        "sources": [
+          "blueprints/factures.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "L’approbation métier ne remplace pas la validation comptable et n’est pas un prérequis de l’export actuel.",
+        "Les factures archivées sont exclues des files actives et relances."
+      ],
+      "extension_points": [
+        "Étendre le circuit à partir des champs d’approbation existants si le besoin est une règle métier de validation ; ne pas le confondre avec ecritures.statut."
+      ],
+      "related_features": [
+        "finances.ecritures",
+        "finances.exports_comptables",
+        "finances.factures",
+        "interface.accueil_flux"
+      ],
+      "limitations": [
+        "La route approuver_facture autorise également le comptable ; ne pas se fier au seul libellé responsable/direction.",
+        "Le mécanisme de ces routes est une approbation simple ; il ne matérialise pas deux signatures successives."
+      ]
+    },
+    {
+      "id": "finances.fournisseurs",
+      "title": "Annuaire et historique fournisseurs",
+      "purpose": "Maintenir les informations des fournisseurs et consulter leurs factures annuelles.",
+      "example_requests": [
+        "Fiche fournisseur EDF",
+        "Combien avons-nous dépensé chez ce fournisseur ?",
+        "Ajouter un alias fournisseur pour l’IA"
+      ],
+      "capabilities": [
+        "Création, modification et suppression : nom, deux alias, code comptable auxiliaire et email de contact.",
+        "Fiche avec liste des factures et total TTC de l’année sélectionnée, liens de téléchargement et secteurs.",
+        "Recherche d’identité par nom/alias utilisée lors de l’import des factures."
+      ],
+      "entry_points": [
+        "fournisseurs_bp.liste_fournisseurs",
+        "fournisseurs_bp.detail_fournisseur",
+        "fournisseurs_bp.ajouter_fournisseur",
+        "fournisseurs_bp.modifier_fournisseur",
+        "fournisseurs_bp.supprimer_fournisseur"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/fournisseurs.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/fournisseurs.html",
+          "templates/fournisseur_detail.html"
+        ],
+        "tables": [
+          "fournisseurs",
+          "factures",
+          "secteurs"
+        ],
+        "tests": [
+          "tests/test_factures.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/fournisseurs.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Code comptable limité aux lettres majuscules A–Z.",
+        "Suppression refusée lorsqu’une facture référence le fournisseur.",
+        "Année de la fiche bornée de N-3 à N ; hors plage, repli sur l’année courante."
+      ],
+      "extension_points": [
+        "Enrichir ce référentiel et ses alias avant de créer un annuaire parallèle.",
+        "Réutiliser les liens aux factures et totaux annuels pour des besoins de consultation fournisseurs."
+      ],
+      "related_features": [
+        "finances.factures",
+        "finances.regles_comptables"
+      ],
+      "limitations": [
+        "Les responsables n’ont pas accès aux routes de fiche fournisseur, même s’ils peuvent consulter certaines factures de leur secteur."
+      ]
+    },
+    {
+      "id": "finances.regles_comptables",
+      "title": "Règles de proposition d’écritures",
+      "purpose": "Paramétrer les informations transmises à l’IA pour proposer des écritures adaptées aux fournisseurs ou types de dépense.",
+      "example_requests": [
+        "Ventiler une facture moitié Cyprian moitié Brosses",
+        "Définir le compte des achats alimentaires"
+      ],
+      "capabilities": [
+        "CRUD de règles actives/inactives, cible fournisseur ou type de dépense, compte comptable et modèle de libellé.",
+        "Un ou deux codes analytiques avec pourcentages ; variables de libellé supplier, invoice_number, date, period.",
+        "Les règles actives alimentent le contexte de génération IA des écritures."
+      ],
+      "entry_points": [
+        "regles_comptables_bp.liste_regles",
+        "regles_comptables_bp.ajouter_regle",
+        "regles_comptables_bp.modifier_regle",
+        "regles_comptables_bp.supprimer_regle"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/regles_comptables.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/regles_comptables.html"
+        ],
+        "tables": [
+          "regles_comptables",
+          "fournisseurs"
+        ],
+        "tests": [
+          "tests/test_regles_comptables.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/regles_comptables.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Un seul analytique impose 100 % sur le premier et 0 % sur le second.",
+        "Les sorties IA demeurent des brouillons à vérifier et ne deviennent pas automatiquement exportables."
+      ],
+      "extension_points": [
+        "Étendre le référentiel et le contexte de generer_ecritures pour une nouvelle règle de ventilation."
+      ],
+      "related_features": [
+        "finances.ecritures",
+        "finances.fournisseurs"
+      ],
+      "limitations": [
+        "Les règles sont communiquées à un modèle IA ; les routes ne fournissent pas un moteur déterministe garantissant leur application.",
+        "Les formulaires convertissent les pourcentages en nombres mais ne contrôlent pas systématiquement leur somme ou leur plage lorsque deux codes sont présents."
+      ]
+    },
+    {
+      "id": "finances.ecritures",
+      "title": "Propositions et validation des écritures de factures",
+      "purpose": "Transformer les factures à traiter en brouillons comptables vérifiables avant export.",
+      "example_requests": [
+        "Générer les écritures des factures",
+        "Corriger la ventilation comptable",
+        "Valider les écritures avant AIGA"
+      ],
+      "capabilities": [
+        "Liste des lignes avec source facture, filtres de statut et liens vers l’export.",
+        "Génération IA à partir des factures actives a_traiter sans écritures existantes et des règles actives ; réponse JSON normalisée.",
+        "Édition des lignes et validation manuelle ; conservation de la révision et références signées de formulaire.",
+        "Statuts brouillon, validee, exportee ; la facture devient traitee quand des écritures ont été générées."
+      ],
+      "entry_points": [
+        "ecritures_bp.liste_ecritures",
+        "ecritures_bp.generer_ecritures",
+        "ecritures_bp.modifier_ecriture",
+        "ecritures_bp.valider_ecritures"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/ecritures.py"
+        ],
+        "service_files": [
+          "exports_comptables.py",
+          "blueprints/pesee_alisfa.py",
+          "blueprints/api_keys.py"
+        ],
+        "templates": [
+          "templates/ecritures.html"
+        ],
+        "tables": [
+          "ecritures_comptables",
+          "factures",
+          "fournisseurs",
+          "regles_comptables",
+          "export_lignes",
+          "comptabilite_evenements",
+          "facture_historique"
+        ],
+        "tests": [
+          "tests/test_ecritures.py",
+          "tests/test_exports_comptables.py",
+          "tests/test_exports_comptables_atomicite.py",
+          "tests/test_exports_comptables_migration_ia.py"
+        ],
+        "docs": [
+          "docs/exports-comptables.md"
+        ]
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [
+          "Génération : modèle IA sélectionné et configuration API fonctionnelle."
+        ],
+        "sources": [
+          "blueprints/ecritures.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Une réponse IA vide ne marque pas les factures traitées.",
+        "L’appel distant ne tient pas le verrou d’écriture ; au retour, identité, droits, source inchangée et absence d’écritures sont recontrôlés sous BEGIN IMMEDIATE.",
+        "L’IA ne peut choisir une facture hors de la sélection source ni référencer plusieurs fois la même facture.",
+        "Une modification avant export incrémente la révision et remet la ligne en brouillon ; une référence périmée est refusée.",
+        "Une ligne exportée est immuable ; refus de modification tracé.",
+        "Les montants et champs de sortie passent les contrôles du format comptable ; la validation humaine reste distincte de l’approbation de la facture."
+      ],
+      "extension_points": [
+        "Réutiliser exports_comptables.reference/verifier_reference et les invariants de source pour tout nouvel écran d’édition.",
+        "Étudier une génération déterministe au sein du parcours existant si une demande vise des règles simples répétables."
+      ],
+      "related_features": [
+        "finances.exports_comptables",
+        "finances.factures",
+        "finances.regles_comptables"
+      ],
+      "limitations": [
+        "Ces écritures servent à la saisie/export des factures ; les autres analyses financières utilisent les imports BI/FEC, pas ces propositions."
+      ]
+    },
+    {
+      "id": "finances.exports_comptables",
+      "title": "Exports AIGA et preuves conservées",
+      "purpose": "Produire des lots TXT comptables complets et conserver exactement ce qui a été exporté.",
+      "example_requests": [
+        "Exporter les écritures validées vers AIGA",
+        "Retrouver le fichier comptable exporté",
+        "Vérifier le contenu d’un ancien lot"
+      ],
+      "capabilities": [
+        "Sélection de lignes validées, contrôle de pièces complètes et équilibrées puis export TXT UTF-8 tabulé.",
+        "Neuf colonnes : journal AC, date JJMMAAAA, compte/code auxiliaire, libellé majuscule, référence facture, débit, crédit, analytique, échéance JJMMAAAA.",
+        "Lot archives_export contenant fichier exact en BLOB, SHA-256, version de preuve, format, auteur, date, nombre de lignes et totaux en centimes.",
+        "Détail des export_lignes avec position, source et révision ; consultation d’événements et nouveau téléchargement explicite, tracé.",
+        "Archives historiques preuve_version=0 conservées et téléchargeables si leur fichier existe ; route de suppression conservée mais suppression refusée et tracée."
+      ],
+      "entry_points": [
+        "exportation_bp.liste_exportation",
+        "exportation_bp.exporter",
+        "exportation_bp.detail_archive",
+        "exportation_bp.telecharger_archive",
+        "exportation_bp.supprimer_archive"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/exportation.py"
+        ],
+        "service_files": [
+          "exports_comptables.py",
+          "stockage_restaure.py"
+        ],
+        "templates": [
+          "templates/exportation.html",
+          "templates/export_archive.html"
+        ],
+        "tables": [
+          "archives_export",
+          "export_lignes",
+          "comptabilite_evenements",
+          "ecritures_comptables",
+          "factures",
+          "facture_historique",
+          "users"
+        ],
+        "tests": [
+          "tests/test_exports_comptables.py",
+          "tests/test_exports_comptables_atomicite.py",
+          "tests/test_exports_comptables_migration_ia.py"
+        ],
+        "docs": [
+          "docs/exports-comptables.md"
+        ]
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [
+          "Toutes les lignes de chaque facture doivent être validées, non déjà exportées et correspondre à la référence affichée ; droits actuels recontrôlés sous verrou."
+        ],
+        "sources": [
+          "blueprints/exportation.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Chaque facture est une pièce complète et équilibrée au centime ; un équilibre global ne compense jamais des factures déséquilibrées.",
+        "Pas de tolérance d’équilibre ni d’arrondi silencieux : montants finis, non négatifs, au plus deux décimales et un seul côté positif par ligne.",
+        "Tabulations, retours à la ligne et caractères de contrôle sont refusés dans les colonnes.",
+        "Fichier temporaire écrit, relu et fermé avant commit ; BLOB, lignes, états et historique sont validés dans une transaction atomique.",
+        "Une écriture ne peut appartenir qu’à un export ; concurrence, édition périmée ou incident de stockage n’engendrent pas un second lot ou un export partiel.",
+        "Les preuves et lignes exportées sont protégées par contraintes/déclencheurs SQL ; les archives ne sont plus supprimables.",
+        "Un nouveau téléchargement restitue le même fichier et ne remet pas les lignes dans la file.",
+        "La migration 0069 conserve l’ancien historique sans inventer fichier exact, montants ou lien archive/écriture absents."
+      ],
+      "extension_points": [
+        "Tout autre format d’export doit conserver l’objet lot et ses preuves, versionner le format et définir explicitement ses colonnes.",
+        "Un processus de correction après export doit être spécifié séparément avec une nouvelle preuve liée au lot original, sans réécrire celui-ci."
+      ],
+      "related_features": [
+        "finances.ecritures",
+        "finances.factures",
+        "interface.tableau_bord_comptable"
+      ],
+      "limitations": [
+        "Exporté signifie produit et conservé par CS PILOT ; aucun accusé de réception du poste ou d’import AIGA.",
+        "Aucune contrepassation ni correction comptable automatique ; le signalement de facture est seulement une trace.",
+        "Le contenu exact des archives antérieures preuve_version=0 n’est pas garanti ; un fichier manquant ne peut pas être reconstitué."
+      ]
+    },
+    {
+      "id": "finances.plan_general",
+      "title": "Plan comptable général",
+      "purpose": "Maintenir les comptes généraux et leurs libellés utilisés dans les analyses et budgets.",
+      "example_requests": [
+        "Importer le plan comptable général",
+        "Ajouter un compte de charges",
+        "Corriger le libellé d’un compte"
+      ],
+      "capabilities": [
+        "Liste, ajout et suppression de comptes ; numéro et libellé obligatoires.",
+        "Import TXT tabulé numéro/libellé, UTF-8 BOM puis latin-1 ; actualisation des libellés des numéros déjà présents.",
+        "Libellés utilisés prioritairement dans les bilans et budgets, complétés par les comptes des imports."
+      ],
+      "entry_points": [
+        "plan_comptable_general_bp.plan_comptable_general",
+        "plan_comptable_general_bp.api_ajouter_compte",
+        "plan_comptable_general_bp.api_supprimer_compte",
+        "plan_comptable_general_bp.api_import_txt"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/plan_comptable_general.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/plan_comptable_general.html"
+        ],
+        "tables": [
+          "plan_comptable_general"
+        ],
+        "tests": [
+          "tests/test_comptabilite_analytique.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/plan_comptable_general.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "L’import met à jour le numéro existant et ne crée pas de doublon de compte.",
+        "Le plan est un référentiel de libellés ; sa modification ne change pas les écritures importées."
+      ],
+      "extension_points": [
+        "Réutiliser le plan pour les listes de comptes au lieu de coder les numéros métiers en dur."
+      ],
+      "related_features": [
+        "finances.budget_previsionnel",
+        "finances.compte_resultat_bilan",
+        "finances.plan_analytique"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "finances.plan_analytique",
+      "title": "Plan analytique, secteurs et actions",
+      "purpose": "Rattacher les codes analytiques aux secteurs et actions utilisés pour filtrer les données comptables.",
+      "example_requests": [
+        "Associer un code analytique à une action",
+        "Créer une action pour une subvention",
+        "Importer le plan analytique"
+      ],
+      "capabilities": [
+        "Liste, ajout, suppression et import TXT tabulé de comptes/code et libellé.",
+        "Affectation secteur/action par compte ; création et suppression d’actions.",
+        "Référentiel partagé avec bilans secteurs/actions, budget prévisionnel et bilan action."
+      ],
+      "entry_points": [
+        "comptabilite_analytique_bp.plan_comptable_analytique",
+        "comptabilite_analytique_bp.api_ajouter_compte",
+        "comptabilite_analytique_bp.api_supprimer_compte",
+        "comptabilite_analytique_bp.api_import_txt",
+        "comptabilite_analytique_bp.api_update_affectation",
+        "comptabilite_analytique_bp.api_ajouter_action",
+        "comptabilite_analytique_bp.api_supprimer_action"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/comptabilite_analytique.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/plan_comptable_analytique.html"
+        ],
+        "tables": [
+          "comptabilite_comptes",
+          "comptabilite_actions",
+          "secteurs"
+        ],
+        "tests": [
+          "tests/test_comptabilite_analytique.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/comptabilite_analytique.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Le réimport d’un compte actualise son libellé sans réinitialiser ses affectations.",
+        "Une action référencée par des comptes analytiques ne peut pas être supprimée ; création d’un nom existant retourne l’action existante.",
+        "Les analyses correspondent au code analytique exact ou au préfixe du compte général ; une modification de rattachement modifie les résultats sectoriels."
+      ],
+      "extension_points": [
+        "Étendre les affectations et réutiliser comptabilite_actions pour toute nouvelle dimension métier nécessitant un bilan par action."
+      ],
+      "related_features": [
+        "administration.secteurs",
+        "association.subventions_suivi",
+        "finances.bilan_action",
+        "finances.bilan_secteurs",
+        "finances.budget_previsionnel",
+        "finances.import_bi"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "finances.import_bi",
+      "title": "Imports BI comptables partagés",
+      "purpose": "Charger les données AIGA qui alimentent les bilans, comptes de résultat, indicateurs et budgets.",
+      "example_requests": [
+        "Importer mon export BI AIGA",
+        "Remplacer les écritures de 2025",
+        "Quelles périodes comptables sont chargées ?"
+      ],
+      "capabilities": [
+        "Page des années importées avec premier/dernier mois, nombre de mois, nombre de lignes et date du dernier import.",
+        "Import BI tabulé ou point-virgule, UTF-8 BOM/latin-1, colonnes avec accents ou variantes sans accents et plusieurs formats de date.",
+        "Classes 1 à 7 conservées ; 6/7 seulement si code analytique renseigné afin d’éviter les doublons général/analytique.",
+        "Réimport remplaçant les données de l’année identifiée ; suppression explicite d’une année avec ses données."
+      ],
+      "entry_points": [
+        "import_bi_bp.import_bi",
+        "bilan_secteurs_bp.api_import_bi",
+        "bilan_secteurs_bp.api_supprimer_annee"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/import_bi.py",
+          "blueprints/bilan_secteurs.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/import_bi.html",
+          "templates/bilan_secteurs.html"
+        ],
+        "tables": [
+          "bilan_fec_imports",
+          "bilan_fec_donnees"
+        ],
+        "tests": [
+          "tests/test_comptabilite_analytique.py",
+          "tests/test_compte_resultat.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/import_bi.py",
+          "blueprints/bilan_secteurs.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Montant = crédit−débit pour classes 1/7, débit−crédit pour classes 2/3/4/5/6.",
+        "Les comptes 6/7 sans analytique sont ignorés ; ne pas les réintroduire pour calculer un total global sous peine de double comptage dans le format attendu.",
+        "Une réimportation renouvelle les sources des budgets et peut invalider leurs confirmations/références.",
+        "Les analyses financières partagent bilan_fec_donnees ; une suppression d’année affecte tous ses consommateurs."
+      ],
+      "extension_points": [
+        "Réutiliser ces tables et l’import central plutôt que dupliquer les sources pour un nouveau tableau comptable.",
+        "Définir explicitement la compatibilité et les conventions de signe si un autre format source est ajouté."
+      ],
+      "related_features": [
+        "association.alsh_analyse",
+        "finances.bilan_action",
+        "finances.bilan_secteurs",
+        "finances.budget_previsionnel",
+        "finances.compte_resultat_bilan",
+        "finances.indicateurs_financiers"
+      ],
+      "limitations": [
+        "Le badge Complet de la page import signifie seulement mois minimum 1 et maximum 12 ; il ne prouve pas la clôture ni les régularisations et ne remplace pas la confirmation budgétaire.",
+        "Le traitement identifie le lot par l’année de la première ligne ; le formulaire doit être utilisé avec un fichier annuel, car aucune validation d’unicité d’année n’est effectuée.",
+        "Les lignes de bilan_fec_donnees conservent compte, libellé, analytique, année, mois et montant ; elles ne conservent pas toutes les colonnes ni le fichier BI exact."
+      ]
+    },
+    {
+      "id": "finances.bilan_secteurs",
+      "title": "Bilans comptables par secteur et action",
+      "purpose": "Consulter le réalisé importé d’un secteur ou d’une action et son résultat avec frais logistiques.",
+      "example_requests": [
+        "Bilan du secteur enfance",
+        "Compte de résultat de l’action numérique",
+        "Détail du compte 606 de mon secteur"
+      ],
+      "capabilities": [
+        "Filtres année, secteur et/ou action ; regroupement charges et produits par catégorie et compte.",
+        "Détail mensuel des opérations, libellés issus du plan général en priorité.",
+        "Taux logistique par année site1/site2/global, choix du taux à appliquer et résultat avant/après logistique.",
+        "Export PDF du bilan et présélection par secteur_id/action_id/annee."
+      ],
+      "entry_points": [
+        "bilan_secteurs_bp.bilan_secteurs",
+        "bilan_secteurs_bp.api_bilan_donnees",
+        "bilan_secteurs_bp.api_detail_compte",
+        "bilan_secteurs_bp.api_save_taux_logistique",
+        "bilan_secteurs_bp.api_export_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/bilan_secteurs.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/bilan_secteurs.html"
+        ],
+        "tables": [
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "bilan_taux_logistique",
+          "comptabilite_comptes",
+          "comptabilite_actions",
+          "plan_comptable_general",
+          "secteurs"
+        ],
+        "tests": [
+          "tests/test_comptabilite_analytique.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Lecture/PDF pour directeur, comptable et responsable. Responsable : secteur actualisé en session puis imposé côté serveur ; aucun secteur assigné entraîne un refus. Modification des taux, imports et suppressions réservés directeur/comptable.",
+        "scope": "Année, secteur et/ou action ; secteur obligatoire pour responsable.",
+        "conditions": [],
+        "sources": [
+          "blueprints/bilan_secteurs.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Un secteur et/ou une action sont requis pour les données de ce bilan.",
+        "EXISTS sur les correspondances analytiques évite de dupliquer une ligne en présence de plusieurs règles correspondantes.",
+        "Taux logistiques partagés par année avec bilan_action ; modifier leur valeur affecte les deux parcours."
+      ],
+      "extension_points": [
+        "Réutiliser ces filtres et détails pour une demande de réalisé par activité ou financeur rattaché à une action."
+      ],
+      "related_features": [
+        "finances.bilan_action",
+        "finances.import_bi",
+        "finances.plan_analytique"
+      ],
+      "limitations": [
+        "Le bilan présente les données importées ; il ne certifie pas qu’un exercice est clôturé."
+      ]
+    },
+    {
+      "id": "finances.bilan_action",
+      "title": "Budget et réalisé d’une action avec salaires et bénévolat",
+      "purpose": "Construire un budget d’action et comparer son réalisé avec les coûts de personnel, logistique et temps bénévoles.",
+      "example_requests": [
+        "Préparer le budget d’une sortie subventionnée",
+        "Calculer le coût de personnel d’une action",
+        "Bilan financier de l’accompagnement scolaire"
+      ],
+      "capabilities": [
+        "Scénarios par action/année/onglet prévisionnel ou réalisé ; charges 60/61/62, produits, montants/commentaires et compléments manuels du réalisé.",
+        "Salariés sous contrat dans l’année avec paramètres socle/point, pesée, ancienneté, compétence, maintien, temps hebdomadaire et heures affectées à l’action.",
+        "Coût salarial selon taux horaire annuel × heures d’action ; charges et taxe sur salaire par taux saisis.",
+        "Réalisé BI filtré par action, comparaison avec le prévisionnel et reprise de ses salaires/logistique/bénévoles, modifiables dans le scénario.",
+        "Liste des bénévoles, heures et commentaires ; frais logistiques selon taux partagés ou choix de l’action.",
+        "PDF avec bilan, récapitulatif salariés et bénévoles ; présélection action_id, annee et onglet."
+      ],
+      "entry_points": [
+        "bilan_action_bp.bilan_action",
+        "bilan_action_bp.api_contexte",
+        "bilan_action_bp.api_donnees",
+        "bilan_action_bp.api_save",
+        "bilan_action_bp.api_realise_compta",
+        "bilan_action_bp.api_taux_logistique",
+        "bilan_action_bp.api_export_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/bilan_action.py"
+        ],
+        "service_files": [
+          "blueprints/budget.py"
+        ],
+        "templates": [
+          "templates/bilan_action.html"
+        ],
+        "tables": [
+          "bilan_action_data",
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "bilan_taux_logistique",
+          "comptabilite_actions",
+          "comptabilite_comptes",
+          "plan_comptable_general",
+          "users",
+          "contrats",
+          "benevoles"
+        ],
+        "tests": [
+          "tests/test_bilan_action.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/bilan_action.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Chaque scénario est enregistré par action/année/onglet ; l’action doit exister.",
+        "La formule mensuelle partage le principe du budget : prorata seulement sur socle/pesée ; salaire annuel / (temps hebdo × 52) donne le taux horaire utilisé.",
+        "Les salaires du PDF sont regroupés sur 641100, 645100 et 631100.",
+        "Les taux logistiques par année sont partagés avec bilan_secteurs ; leur mise à jour ici préserve le taux_selectionne de l’autre page.",
+        "Le scénario ne modifie pas les données RH source.",
+        "Le réalisé comptable de l’action reprend seulement les charges 60/61/62 et produits 7 ; personnel 63/64 et autres coûts sont gérés dans les sections du scénario pour éviter un double comptage. La logistique s’applique aux charges directes et à la masse salariale chargée, taxe comprise."
+      ],
+      "extension_points": [
+        "Réutiliser _calc_salarie et _summary pour une demande de coût affecté à un projet.",
+        "Converger avec le moteur de simulation_paie seulement après comparaison des unités, proratas, charges et finalités des deux calculs."
+      ],
+      "related_features": [
+        "association.benevoles_heures",
+        "finances.bilan_secteurs",
+        "finances.import_bi",
+        "finances.plan_analytique",
+        "finances.simulation_paie",
+        "rh.dossier_salarie"
+      ],
+      "limitations": [
+        "Taux de charges par défaut 27 % et taxe 4,25 % paramétrables : calculs simplifiés de scénario, pas liquidation de paie.",
+        "Les comptes salariaux du PDF sont fixés dans les constantes de ce module, contrairement au report budget qui choisit les premiers 641/645 du secteur."
+      ]
+    },
+    {
+      "id": "finances.compte_resultat_bilan",
+      "title": "Compte de résultat et bilan simplifié",
+      "purpose": "Présenter les comptes annuels importés, leur comparaison N/N-1 et une synthèse actif/passif.",
+      "example_requests": [
+        "Compte de résultat de l’association",
+        "Comparer les charges à l’année précédente",
+        "Exporter le bilan comptable en PDF"
+      ],
+      "capabilities": [
+        "Compte de résultat catégories 60–79, détail par comptes, charges, produits et résultat.",
+        "Comparaison N/N-1 selon années disponibles ; sélection d’année.",
+        "Bilan simplifié classes 1–5 : immobilisations, stocks, tiers, trésorerie, capitaux et dettes ; résultat de l’exercice injecté au passif.",
+        "Export PDF compte de résultat et bilan."
+      ],
+      "entry_points": [
+        "compte_resultat_bp.compte_resultat",
+        "compte_resultat_bp.api_cr_donnees",
+        "compte_resultat_bp.api_bilan_donnees",
+        "compte_resultat_bp.api_cr_export_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/compte_resultat.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/compte_resultat.html"
+        ],
+        "tables": [
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "plan_comptable_general"
+        ],
+        "tests": [
+          "tests/test_compte_resultat.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/compte_resultat.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Résultat = produits 7 − charges 6 ; libellés du plan général prioritaires.",
+        "Tiers 4 à solde positif classés créances, négatifs classés dettes à leur valeur absolue.",
+        "Le résultat calculé est ajouté au passif via 120000 ou 129000 ; ne pas changer les conventions d’import et ce traitement indépendamment."
+      ],
+      "extension_points": [
+        "Réutiliser _cr_for_year et _bilan_for_year pour un rapport consolidé ou des ratios complémentaires."
+      ],
+      "related_features": [
+        "finances.import_bi",
+        "finances.indicateurs_financiers",
+        "finances.plan_general"
+      ],
+      "limitations": [
+        "Le bilan nécessite les classes 1–5 dans l’import ; un import limité aux charges/produits ne suffit pas.",
+        "L’injection du résultat suppose que les soldes source ne comprennent pas déjà cette clôture ; vérifier cette hypothèse avant de supporter d’autres exports."
+      ]
+    },
+    {
+      "id": "finances.indicateurs_financiers",
+      "title": "Indicateurs financiers et fonds de roulement",
+      "purpose": "Calculer une synthèse financière pluriannuelle depuis les écritures BI importées.",
+      "example_requests": [
+        "Combien de mois de charges couvre la trésorerie ?",
+        "Évolution du fonds de roulement",
+        "Calculer la capacité d’autofinancement"
+      ],
+      "capabilities": [
+        "Capitaux permanents, immobilisations nettes, fonds de roulement et FR en mois de charges.",
+        "Besoin en fonds de roulement, trésorerie nette et mois couverts, capacité d’autofinancement et part de masse salariale.",
+        "Tableau des années disponibles, détail des comptes du fonds de roulement, score simplifié de santé sur cinq étoiles et export PDF."
+      ],
+      "entry_points": [
+        "indicateurs_financiers_bp.indicateurs_financiers",
+        "indicateurs_financiers_bp.api_indicateurs_donnees",
+        "indicateurs_financiers_bp.api_fonds_roulement_detail",
+        "indicateurs_financiers_bp.api_indicateurs_export_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/indicateurs_financiers.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/indicateurs_financiers.html"
+        ],
+        "tables": [
+          "bilan_fec_donnees",
+          "bilan_fec_imports",
+          "plan_comptable_general"
+        ],
+        "tests": [
+          "tests/test_compte_resultat.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Session authentifiée et compte actif, droits actualisés avant la route ; lecture et écriture réservées aux profils directeur et comptable.",
+        "scope": "Ensemble de la structure.",
+        "conditions": [],
+        "sources": [
+          "blueprints/indicateurs_financiers.py",
+          "utils.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Capitaux permanents = classes 1 + résultat ; FR = capitaux permanents − classes 2 ; BFR = classes 3 + 4 ; trésorerie = classe 5.",
+        "CAF = résultat + dotations 68 − reprises 78 ; masse salariale = tous les 64 / total des 6.",
+        "Ratios en mois fondés sur charges annuelles/12 ; division par zéro rend le ratio absent.",
+        "Le score suit des seuils codés FR, trésorerie, CAF, masse salariale et couverture BFR ; il ne doit pas être présenté comme une certification."
+      ],
+      "extension_points": [
+        "Réutiliser _compute_indicateurs et les imports BI pour une nouvelle comparaison ou alerte financière ; documenter tout changement des seuils."
+      ],
+      "related_features": [
+        "finances.compte_resultat_bilan",
+        "finances.import_bi",
+        "finances.tresorerie"
+      ],
+      "limitations": [
+        "Les ratios annualisés et le score ne vérifient pas que l’exercice importé est complet.",
+        "La trésorerie calculée ici est issue de la classe 5 du BI, distincte de la projection mensuelle du module tresorerie."
+      ]
+    }
+  ]
+}

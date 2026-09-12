@@ -31,6 +31,15 @@ qui participent déjà au parcours concerné. Un même concept peut traverser
 plusieurs modules (par exemple saisie des heures, paie, prévention, exports et
 tableaux de bord).
 
+Commencez cette recherche par `docs/agent-catalogue/catalogue.json`, puis chargez
+les fichiers JSON des domaines pertinents. Ce catalogue décrit les capacités
+existantes, leurs points d'entrée, données, droits, invariants, limites et points
+de réutilisation. Suivez les `related_features` pour les parcours transversaux,
+puis vérifiez les sources actuelles : le catalogue oriente l'investigation, il
+ne remplace ni le code ni les contrôles d'autorisation. Les `example_requests`
+sont des exemples de besoins, pas une garantie de reconnaissance par la barre.
+Une recherche vide ou une fiche absente ne prouve pas qu'un module manque.
+
 ## 2. Installation et commandes utiles
 
 Depuis la racine du dépôt :
@@ -56,6 +65,7 @@ pytest                             # suite complète
 pytest tests/test_<module>.py       # fichier ciblé
 pytest tests/test_<module>.py -k nom_du_test
 python -m compileall -q app.py blueprints migrations tests
+python scripts/validate_feature_catalogue.py  # structure et références du catalogue
 ```
 
 Commencez par les tests ciblés, puis lancez la suite complète avant de livrer.
@@ -197,10 +207,43 @@ un parcours utilisateur change. Ne changez `VERSION.txt` que si la tâche ou le
 processus de livraison l'exige ; une modification fonctionnelle ordinaire ne
 justifie pas à elle seule une hausse de version.
 
+### Catalogue des fonctionnalités pour les agents
+
+- **Tout ajout de fonctionnalité doit actualiser le catalogue dans la même
+  PR que le code.** Cette obligation couvre aussi les modifications, retraits,
+  changements de règles métier, droits, périmètres, options, données,
+  imports/exports, points d'entrée et déplacements de fichiers référencés.
+- L'index est `docs/agent-catalogue/catalogue.json`. Les fiches sont réparties
+  par domaine dans ce dossier et suivent `feature.schema.json` : JSON UTF-8,
+  indentation de deux espaces, chemins relatifs exacts, aucune donnée réelle.
+- Recherchez une fiche existante avant d'en ajouter une. Décrivez une capacité
+  métier cohérente avec ses variantes, pas une fiche par route. Conservez son
+  `id` lors d'un renommage d'écran et actualisez les références
+  `related_features` si une capacité est déplacée, remplacée ou retirée.
+- Vérifiez les droits dans les routes et helpers, en distinguant lecture,
+  écriture, visibilité du menu et périmètre des ressources. Documentez les
+  limites constatées ; ne présentez pas une extension envisagée comme livrée.
+- Actualisez les capacités, invariants, limites et références aux routes,
+  services, tables, templates, tests et docs réellement concernés. Si la
+  recherche change, vérifiez aussi `navigation.py`, `interface_flux.py`,
+  `search_engine.py` et `search_palette.py` selon le parcours. Ajouter des
+  exemples dans le catalogue ne modifie pas le vocabulaire de l'application.
+- Ajoutez un nouveau domaine au manifeste, au schéma et au vérificateur si les
+  domaines actuels ne conviennent pas. Le champ `last_full_inventory_commit`
+  reste celui de la dernière revue globale ; ne le réécrivez pas après une
+  simple mise à jour partielle.
+- Exécutez `python scripts/validate_feature_catalogue.py` avant livraison et
+  corrigez les références cassées. Ce contrôle est statique, sans démarrage de
+  Flask, accès à la base ni appel externe ; il ne prouve pas l'exactitude métier
+  des descriptions et ne remplace pas les tests du changement.
+- Dans le compte rendu ou la PR, indiquez les IDs actualisés. Si une
+  modification n'a aucun impact sur le catalogue, expliquez brièvement
+  pourquoi ; ne modifiez pas artificiellement une fiche sans lien.
+
 ## 10. Critères de fin
 
 Une intervention est terminée lorsque le comportement demandé est implémenté,
 les autorisations et cas d'erreur sont couverts, les données existantes restent
 compatibles, les tests ciblés et la suite pertinente passent, la documentation
-est cohérente et `git diff` ne contient ni artefact ni modification étrangère à
-la tâche.
+est cohérente, le catalogue fonctionnel est à jour et son contrôle statique
+passe, et `git diff` ne contient ni artefact ni modification étrangère à la tâche.

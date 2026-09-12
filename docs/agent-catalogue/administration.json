@@ -1,0 +1,1450 @@
+{
+  "schema_version": 1,
+  "domain": "administration",
+  "features": [
+    {
+      "id": "administration.authentification",
+      "title": "Authentification, initialisation et révocation des sessions",
+      "purpose": "Permettre la connexion des comptes actifs, la création du premier directeur et le renouvellement des mots de passe.",
+      "example_requests": [
+        "me connecter",
+        "première installation",
+        "mot de passe oublié",
+        "changer mon mot de passe",
+        "révoquer les sessions d’un compte désactivé"
+      ],
+      "capabilities": [
+        "Création d’un premier compte de profil directeur seulement si aucun utilisateur n’existe.",
+        "Connexion par identifiant et mot de passe haché avec Werkzeug ; déconnexion ; redirection du prestataire vers la préparation de paie.",
+        "Changement personnel avec vérification du mot de passe actuel, confirmation et politique de complexité ; remplacement obligatoire des mots de passe temporaires.",
+        "Récupération par email avec mot de passe temporaire : écriture validée seulement si l’envoi réussit, sinon rollback et conservation de l’ancien mot de passe.",
+        "Relecture du compte actif, du profil, du secteur et de session_version avant chaque requête authentifiée ; révocation des anciens cookies après désactivation ou changement de mot de passe.",
+        "Journalisation des connexions, échecs, réinitialisations, changements de mot de passe et sessions révoquées."
+      ],
+      "entry_points": [
+        "auth.index",
+        "auth.login",
+        "auth.setup",
+        "auth.changer_mot_de_passe",
+        "auth.mot_de_passe_oublie",
+        "auth.logout"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/auth.py"
+        ],
+        "service_files": [
+          "sessions_securite.py",
+          "utils.py",
+          "email_service.py",
+          "access_log.py",
+          "extensions.py",
+          "app.py"
+        ],
+        "templates": [
+          "templates/login.html",
+          "templates/setup.html",
+          "templates/changer_mot_de_passe.html",
+          "templates/forgot_password.html"
+        ],
+        "tables": [
+          "users",
+          "journal_acces",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_auth.py",
+          "tests/test_security.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/quick-start.md",
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion, récupération et setup accessibles sans session ; setup refuse toute installation possédant déjà un utilisateur. Changement de mot de passe réservé au compte connecté et actif. La garde globale relit les droits depuis SQLite.",
+        "scope": "Compte personnel ; setup au niveau de l’installation.",
+        "conditions": [
+          "Compte actif pour se connecter.",
+          "Réinitialisation par email : SMTP configuré et activé, compte actif disposant d’une adresse email.",
+          "force_password_change bloque les autres parcours jusqu’au changement ; seules les routes de changement, déconnexion et ressources statiques sont admises.",
+          "Limites POST : 5 par minute pour login/setup/changement, 3 par heure pour récupération."
+        ],
+        "sources": [
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "utils.py",
+          "extensions.py"
+        ]
+      },
+      "invariants": [
+        "La base fait autorité sur les rôles ; ne jamais traiter les valeurs de session comme une autorisation autonome.",
+        "Le trigger users_revoquer_sessions incrémente session_version quand actif ou password change, y compris par SQL hors formulaire.",
+        "Réactiver un compte ne rend pas ses anciens cookies valides ; un changement personnel conserve uniquement la session ayant prouvé l’ancien mot de passe.",
+        "Politique de saisie : 8 caractères minimum, majuscule, minuscule et caractère spécial ; aucun chiffre imposé.",
+        "Le message de récupération reste générique pour un identifiant inconnu ou dépourvu d’email."
+      ],
+      "extension_points": [
+        "Réutiliser verifier_session/verifier_action pour les actions sensibles ; conserver le recontrôle dans la transaction d’écriture.",
+        "Réutiliser validate_password_strength et les fonctions Werkzeug plutôt qu’un nouvel algorithme de mot de passe."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "administration.gestion_comptes",
+        "administration.journaux",
+        "interface.mon_espace",
+        "interface.navigation",
+        "rh.dossier_salarie"
+      ],
+      "limitations": [
+        "Le parcours de récupération actuel envoie un mot de passe temporaire ; il ne s’agit pas d’un lien de réinitialisation à jeton.",
+        "La vérification actuelle utilise check_password_hash ; ne pas se fier à la mention de migration SHA256 automatique encore présente dans le README."
+      ]
+    },
+    {
+      "id": "administration.gestion_comptes",
+      "title": "Gestion des comptes, profils et rattachements",
+      "purpose": "Créer et maintenir les comptes et leurs rattachements utilisés par les autorisations et les compteurs RH.",
+      "example_requests": [
+        "créer un salarié",
+        "désactiver un compte",
+        "changer le responsable de Cyril",
+        "réinitialiser le mot de passe d’un utilisateur",
+        "modifier le solde initial de récupération"
+      ],
+      "capabilities": [
+        "Liste des utilisateurs actifs et inactifs avec profil, secteur et responsable.",
+        "Création et modification : identité, identifiant, profil, secteur, responsable, date d’entrée, solde initial de récupération, CP acquis/à prendre/pris et solde de congés conventionnels.",
+        "Attribution ou renouvellement d’un mot de passe temporaire avec changement personnel obligatoire.",
+        "Activation ou désactivation sans suppression du compte ; journalisation de création, modification et changement de statut."
+      ],
+      "entry_points": [
+        "admin_bp.gestion_users",
+        "admin_bp.creer_user",
+        "admin_bp.modifier_user",
+        "admin_bp.toggle_user"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/admin.py"
+        ],
+        "service_files": [
+          "sessions_securite.py",
+          "utils.py",
+          "access_log.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/gestion_users.html",
+          "templates/creer_user.html",
+          "templates/modifier_user.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_administration_acces.py",
+          "tests/test_security.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/quick-start.md",
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture, création, modification et changement de statut réservés aux profils directeur et comptable. Modification et changement de statut recontrôlent compte et profil sous BEGIN IMMEDIATE.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Session authentifiée valide et changement de mot de passe obligatoire terminé."
+        ],
+        "sources": [
+          "blueprints/admin.py",
+          "blueprints/auth.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Le mot de passe initial ou attribué par un administrateur impose force_password_change=1.",
+        "Écriture sensible et journal_actions appartiennent à la même transaction.",
+        "Changement de mot de passe ou désactivation révoque les sessions ; changement de profil/secteur est relu à la requête suivante.",
+        "Conserver l’identité du compte et les liens avec les historiques métier lors d’une désactivation."
+      ],
+      "extension_points": [
+        "S’appuyer sur users et les rattachements existants pour ajouter des droits ou améliorer les parcours d’onboarding.",
+        "Distinguer ces réglages de compte des contrats et pièces du dossier salarié."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.delegations",
+        "administration.journaux",
+        "administration.secteurs",
+        "association.cse_membres",
+        "rh.dossier_salarie",
+        "temps.planning_theorique"
+      ],
+      "limitations": [
+        "Ces routes permettent de modifier directement les compteurs initiaux ; elles ne constituent pas un import de bulletins de paie ou une génération de contrat."
+      ]
+    },
+    {
+      "id": "administration.secteurs",
+      "title": "Référentiel des secteurs, types et synonymes",
+      "purpose": "Organiser les salariés et les données métier par secteur et fournir des synonymes utiles à leur recherche.",
+      "example_requests": [
+        "ajouter un secteur",
+        "modifier le nom de la crèche",
+        "ajouter un synonyme de secteur",
+        "créer un type de secteur"
+      ],
+      "capabilities": [
+        "Création, modification et suppression de secteurs : nom, description, type et synonymes.",
+        "Liste des secteurs avec nombre d’utilisateurs rattachés.",
+        "Ajout de types de secteur avec code, libellé et ordre ; suppression des types non utilisés."
+      ],
+      "entry_points": [
+        "admin_bp.gestion_secteurs"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/admin.py"
+        ],
+        "service_files": [
+          "database.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/gestion_secteurs.html"
+        ],
+        "tables": [
+          "secteurs",
+          "types_secteur",
+          "users"
+        ],
+        "tests": [
+          "tests/test_administration_acces.py"
+        ],
+        "docs": [
+          "docs/quick-start.md"
+        ]
+      },
+      "access": {
+        "summary": "Toutes les opérations sont réservées aux profils directeur et comptable.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Session authentifiée valide."
+        ],
+        "sources": [
+          "blueprints/admin.py"
+        ]
+      },
+      "invariants": [
+        "La suppression d’un secteur ayant des utilisateurs est refusée.",
+        "La suppression d’un type encore utilisé par un secteur est refusée.",
+        "Les codes de type contiennent uniquement lettres minuscules et underscores, dans une limite de 50 caractères.",
+        "Les synonymes doivent rester associés au secteur existant et ne pas créer un deuxième secteur pour une autre formulation."
+      ],
+      "extension_points": [
+        "Réutiliser secteurs.synonymes pour enrichir la recherche avant de développer un nouveau parcours.",
+        "Réutiliser les identifiants de secteur existants dans les modules RH, comptables et budgétaires."
+      ],
+      "related_features": [
+        "administration.gestion_comptes",
+        "finances.budgets_secteurs",
+        "finances.plan_analytique",
+        "interface.recherche",
+        "rh.dossier_salarie"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "administration.calendrier_collectif",
+      "title": "Vacances scolaires et jours fériés",
+      "purpose": "Maintenir les dates collectives utilisées par les plannings, calculs de temps et réservations.",
+      "example_requests": [
+        "ajouter les vacances scolaires",
+        "déclarer un jour férié",
+        "corriger les périodes de vacances"
+      ],
+      "capabilities": [
+        "Ajout et suppression des périodes de vacances scolaires avec dates de début et de fin ; affichage de la durée inclusive.",
+        "Ajout et suppression des jours fériés ; affichage des dates à partir de l’année courante avec jour de semaine.",
+        "Lors de l’ajout d’un jour férié, suppression des journées forfait jour préremplies comme travaillées sur cette date lorsqu’elles ne contiennent ni horaire ni commentaire."
+      ],
+      "entry_points": [
+        "admin_bp.gestion_vacances",
+        "admin_bp.gestion_jours_feries"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/admin.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/gestion_vacances.html",
+          "templates/gestion_jours_feries.html"
+        ],
+        "tables": [
+          "periodes_vacances",
+          "jours_feries",
+          "presence_forfait_jour"
+        ],
+        "tests": [
+          "tests/test_auth.py",
+          "tests/test_administration_acces.py",
+          "tests/test_forfait_jour.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Consultation et mutations réservées aux profils directeur et comptable.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Session authentifiée valide."
+        ],
+        "sources": [
+          "blueprints/admin.py"
+        ]
+      },
+      "invariants": [
+        "Une période ajoutée ne peut avoir sa fin avant son début.",
+        "Les doublons de date fériée sont refusés par la contrainte d’unicité.",
+        "La réconciliation des jours fériés conserve les saisies effectives du forfait jour avec horaires ou commentaire."
+      ],
+      "extension_points": [
+        "Réutiliser utils.get_type_periode et les tables de calendrier pour toute distinction scolaire/vacances.",
+        "Examiner les effets sur planning, forfait jour, jours ouvrés et récurrences de salles avant de modifier une règle collective."
+      ],
+      "related_features": [
+        "association.salles_reservations",
+        "temps.planning_annualise_enfance",
+        "temps.planning_theorique"
+      ],
+      "limitations": [
+        "Ces écrans proposent ajout et suppression ; aucun import automatique d’un calendrier national ou par zone scolaire n’est appelé dans leurs routes."
+      ]
+    },
+    {
+      "id": "administration.delegations",
+      "title": "Délégations de missions et droits complémentaires",
+      "purpose": "Confier des missions précises à des salariés ou responsables sans changer leur profil global.",
+      "example_requests": [
+        "déléguer les relances des fiches",
+        "autoriser un salarié à réserver une salle régulièrement",
+        "déléguer la gestion des bénévoles",
+        "confier le suivi des commandes de fournitures"
+      ],
+      "capabilities": [
+        "Attribution ou retrait d’un unique délégataire par mission : suivi_commandes_fournitures et suivi_validations_relances.",
+        "Attribution à plusieurs salariés du droit de réservation récurrente des salles.",
+        "Attribution à plusieurs salariés de la gestion complète du répertoire et des heures des bénévoles.",
+        "Sélection limitée côté serveur aux comptes actifs de profil salarie ou responsable."
+      ],
+      "entry_points": [
+        "admin_bp.delegations"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/admin.py"
+        ],
+        "service_files": [
+          "blueprints/delegations.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/delegations.html"
+        ],
+        "tables": [
+          "delegations_missions",
+          "delegations_salles_recurrence",
+          "delegations_benevoles",
+          "users"
+        ],
+        "tests": [
+          "tests/test_delegation_benevoles.py",
+          "tests/test_delegation_recurrence_salles.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Direction et comptable peuvent consulter la page. Seule la direction modifie les deux missions unitaires. Direction et comptable peuvent attribuer ou retirer les droits complémentaires de salles et de bénévoles.",
+        "scope": "Missions au niveau du centre ; droits précis applicables dans les modules cibles.",
+        "conditions": [
+          "Délégataire actif de profil salarie ou responsable.",
+          "Le helper bénévoles revérifie activité et profil à chaque appel ; les routes cibles restent responsables de leurs contrôles métier."
+        ],
+        "sources": [
+          "blueprints/admin.py",
+          "blueprints/delegations.py",
+          "blueprints/auth.py"
+        ]
+      },
+      "invariants": [
+        "Un délégataire ne reçoit que les capacités que les modules cibles attachent à sa mission.",
+        "Le retrait de délégation doit prendre effet sans attendre une nouvelle connexion.",
+        "Les listes salles/bénévoles sont remplacées par les identifiants validés côté serveur."
+      ],
+      "extension_points": [
+        "Étendre MISSIONS et les contrôles du module cible ensemble pour une nouvelle mission unitaire.",
+        "Réutiliser les helpers de délégation dans les gardes serveur et dans la navigation ; masquer un lien ne suffit pas."
+      ],
+      "related_features": [
+        "administration.gestion_comptes",
+        "administration.relances_fiches",
+        "association.benevoles_repertoire",
+        "association.salles_reservations",
+        "temps.validation_fiches"
+      ],
+      "limitations": [
+        "blueprints/delegations.py est un service, sans Blueprint ni routes ; le point d’entrée réel est admin_bp.delegations, enregistré par admin_bp dans app.py.",
+        "La délégation de suivi/relance ne vaut pas automatiquement droit de signature ou de verrouillage d’une fiche."
+      ]
+    },
+    {
+      "id": "administration.options_centre",
+      "title": "Options applicatives du centre",
+      "purpose": "Adapter les affichages et certains accès responsables à l’installation sans modifier le code.",
+      "example_requests": [
+        "activer l’interface sans menu",
+        "masquer les motifs d’absence aux salariés",
+        "autoriser les responsables au budget prévisionnel",
+        "désactiver la déclaration conforme"
+      ],
+      "capabilities": [
+        "Gestion de saisie_afficher_declaration_conforme, active par défaut.",
+        "Gestion de vue_mensuelle_afficher_horaires et mon_equipe_masquer_motifs_absence_salaries, inactives par défaut.",
+        "Gestion de interface_sans_menu_active, active par défaut ; l’éligibilité par rôle/délégation et la préférence utilisateur sont traitées par l’interface.",
+        "Gestion de generation_contrats_responsable_autorise et budget_previsionnel_responsable_autorise, actives par défaut.",
+        "Lecture des valeurs via get_option_bool et stockage chiffré dans app_settings."
+      ],
+      "entry_points": [
+        "administration_bp.options"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/administration.py"
+        ],
+        "service_files": [
+          "app_options.py",
+          "utils.py",
+          "interface_flux.py"
+        ],
+        "templates": [
+          "templates/options.html"
+        ],
+        "tables": [
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_options.py",
+          "tests/test_responsable_rh_paie_access.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et enregistrement de la page options réservés aux profils directeur et comptable ; les consommateurs appliquent les options dans leurs propres routes.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Options de portée installation, sans identifiant de centre dans app_settings.",
+          "En absence de valeur, appliquer la valeur default de OPTION_DEFINITIONS."
+        ],
+        "sources": [
+          "blueprints/administration.py",
+          "app_options.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Le formulaire POST réécrit toutes les options définies : une case absente est enregistrée comme désactivée.",
+        "Les valeurs passent par save_setting/get_setting et dépendent de la clé de chiffrement de l’installation.",
+        "Une option d’affichage ne doit pas devenir implicitement une autorisation métier."
+      ],
+      "extension_points": [
+        "Ajouter une définition explicite, son défaut, ses consommateurs serveur et ses tests lors de l’ajout d’une option.",
+        "Vérifier les options du centre et les préférences personnelles avant de conclure qu’un parcours recherché est absent."
+      ],
+      "related_features": [
+        "administration.cles_api_ia",
+        "administration.configuration_email",
+        "finances.simulation_paie",
+        "interface.navigation",
+        "interface.recherche",
+        "rh.generation_contrats",
+        "temps.demandes_conges"
+      ],
+      "limitations": [
+        "Cette page contient les six options déclarées dans OPTION_DEFINITIONS ; elle n’installe pas de code ni de nouveau module."
+      ]
+    },
+    {
+      "id": "administration.cles_api_ia",
+      "title": "Configuration des fournisseurs et modèles IA",
+      "purpose": "Configurer les clés des fournisseurs IA utilisées par les assistants et traitements existants.",
+      "example_requests": [
+        "configurer une clé OpenAI",
+        "activer Anthropic",
+        "supprimer une clé IA",
+        "régler l’effort de raisonnement"
+      ],
+      "capabilities": [
+        "Consultation du statut configuré/non configuré des fournisseurs OpenAI, Anthropic et Groq et des modèles déclarés dans le code.",
+        "Test de la clé par un appel minimal au fournisseur avant son enregistrement chiffré ; suppression d’une clé.",
+        "Liste des modèles disponibles filtrée selon les fournisseurs possédant une clé configurée.",
+        "Réglage global openai_reasoning_effort parmi low, medium, high et xhigh ; défaut medium.",
+        "Helpers partagés pour résoudre fournisseur/modèle et adapter les paramètres des modèles de raisonnement OpenAI et des modèles Anthropic ; compatibilité avec anciens identifiants persistés."
+      ],
+      "entry_points": [
+        "api_keys_bp.gestion_cles_api",
+        "api_keys_bp.api_save_key",
+        "api_keys_bp.api_delete_key",
+        "api_keys_bp.api_set_effort",
+        "api_keys_bp.api_keys_status"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/api_keys.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/gestion_cles_api.html"
+        ],
+        "tables": [
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_administration_acces.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Page et toutes les API réservées aux profils directeur et comptable ; refus JSON 403 sur API. Les réponses d’état ne contiennent pas les clés en clair.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Clé du fournisseur enregistrée et déchiffrable pour rendre ses modèles disponibles.",
+          "Accès réseau au fournisseur pour tester une nouvelle clé ; le test peut consommer une requête externe.",
+          "Les appels effectifs de chaque module conservent leurs propres permissions et choix de modèle."
+        ],
+        "sources": [
+          "blueprints/api_keys.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Ne jamais renvoyer une clé en clair dans l’état des fournisseurs ou le catalogue.",
+        "Conserver la résolution des identifiants anciens pour les réglages déjà persistés.",
+        "Une réponse 429 au test de clé est acceptée comme preuve de clé reconnue ; elle ne garantit pas la disponibilité de quota."
+      ],
+      "extension_points": [
+        "Réutiliser get_available_models, get_provider_for_model et les helpers de compatibilité dans un nouveau traitement IA.",
+        "L’ajout d’un fournisseur nécessite définition, test de clé et adaptation des modules appelants ; ce panneau n’est pas un moteur d’exécution autonome."
+      ],
+      "related_features": [
+        "administration.options_centre",
+        "administration.resilience_hors_ligne",
+        "finances.factures",
+        "interface.aide_contextuelle",
+        "rh.assistant_rh"
+      ],
+      "limitations": [
+        "La liste de modèles est statique dans AI_PROVIDERS, pas découverte dynamiquement chez les fournisseurs.",
+        "La gestion du modèle du chatbot relève de ses routes propres ; cette page affiche son modèle enregistré."
+      ]
+    },
+    {
+      "id": "administration.configuration_email",
+      "title": "Configuration SMTP et service de notifications",
+      "purpose": "Envoyer les notifications applicatives depuis un expéditeur SMTP configuré au niveau du centre.",
+      "example_requests": [
+        "configurer les emails de CS PILOT",
+        "tester l’envoi d’un email",
+        "changer l’adresse publique dans les notifications",
+        "désactiver les notifications du centre"
+      ],
+      "capabilities": [
+        "Configuration du serveur, port, adresse expéditrice, mot de passe, nom expéditeur et URL publique des liens.",
+        "Conservation du mot de passe si le champ est laissé vide ; retrait des espaces des mots de passe d’application Gmail saisis et avertissement de longueur.",
+        "Activation/désactivation du service ; enregistrement d’une configuration active l’envoi.",
+        "Envoi d’un email de test à l’adresse expéditrice.",
+        "Service réutilisable d’envoi HTML individuel ou multiple, ce dernier conservant une seule connexion SMTP pour le lot.",
+        "Notifications prédéfinies pour demandes de récupération/congés, décisions, affectation de subvention, publications CSE et relances de fiches ; les modules métier déclenchent ces envois."
+      ],
+      "entry_points": [
+        "notifications_bp.configuration_email",
+        "notifications_bp.toggle_email",
+        "notifications_bp.test_email"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/notifications.py"
+        ],
+        "service_files": [
+          "email_service.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/configuration_email.html"
+        ],
+        "tables": [
+          "app_settings",
+          "users"
+        ],
+        "tests": [
+          "tests/test_email_notifications.py"
+        ],
+        "docs": [
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Configuration, activation et test réservés aux profils directeur et comptable. Les fonctions SMTP ne réalisent pas une autorisation métier : le module appelant sélectionne et autorise les destinataires.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "email_enabled doit valoir true pour envoyer ; serveur, port, expéditeur et mot de passe nécessaires à is_email_configured.",
+          "Connexion SMTP avec STARTTLS puis login/password ; Gmail est le défaut, serveur et port restent configurables.",
+          "peut_envoyer_email exige un email et, pour les profils autres que directeur/comptable/responsable, email_notifications_enabled."
+        ],
+        "sources": [
+          "blueprints/notifications.py",
+          "email_service.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Stocker les paramètres et secrets via app_settings chiffré.",
+        "Utiliser construire_lien pour appliquer app_base_url et les liens Flask existants.",
+        "envoyer_email ne vérifie pas lui-même le consentement d’un utilisateur ; conserver la sélection par les appelants lorsque requise.",
+        "Un envoi multiple produit un résultat par lot avec nombres de succès/échecs ; ne pas annoncer tous les envois réussis après un échec partiel."
+      ],
+      "extension_points": [
+        "Réutiliser envoyer_email et construire_lien pour un nouveau type de notification, avec contrôle du destinataire et échappement des valeurs.",
+        "Réutiliser le SMTP existant pour notifier une demande d’amélioration si le futur workflow le requiert ; créer séparément sa persistance et sa corrélation."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.parametres_personnels",
+        "administration.relances_fiches",
+        "association.cse_messages",
+        "interface.digest_direction",
+        "temps.validation_demandes_absence",
+        "temps.validation_fiches"
+      ],
+      "limitations": [
+        "Ce service envoie des emails ; il ne relève pas de boîte Outlook et ne lit pas les réponses.",
+        "Le mode de connexion implémenté est SMTP STARTTLS avec mot de passe ; aucun flux OAuth Microsoft ou lecteur IMAP n’est implémenté dans email_service.py.",
+        "Il n’y a pas de file durable ni de reprise automatique d’envoi dans ce service synchrone."
+      ]
+    },
+    {
+      "id": "administration.relances_fiches",
+      "title": "Relances des acteurs attendus pour les fiches mensuelles",
+      "purpose": "Inviter par email l’acteur qui doit agir sur une fiche mensuelle ou confirmer une fiche historique.",
+      "example_requests": [
+        "relancer les fiches non signées",
+        "relancer un responsable pour le mois dernier",
+        "inviter le salarié à confirmer une ancienne fiche"
+      ],
+      "capabilities": [
+        "Relance d’un mois terminé pour les salariés actifs hors direction/prestataire en utilisant destinataires_etape du circuit de fiches.",
+        "Relance ciblée d’un responsable, uniquement lorsque l’étape attendue est responsable.",
+        "Résultat JSON avec envois réussis, échecs et fiches sans acteur applicable.",
+        "Invitation individuelle à confirmer une fiche historique, depuis le parcours des fiches historiques."
+      ],
+      "entry_points": [
+        "notifications_bp.relance_validation",
+        "notifications_bp.relance_responsable",
+        "notifications_bp.relancer_fiche_historique"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/notifications.py"
+        ],
+        "service_files": [
+          "fiches_circuit.py",
+          "email_service.py",
+          "blueprints/delegations.py",
+          "utils.py"
+        ],
+        "templates": [],
+        "tables": [
+          "users",
+          "validations",
+          "delegations_missions",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_circuit_fiches.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Relances courantes : directeur ou titulaire de la mission suivi_validations_relances. Le profil comptable seul ne suffit pas. Relance de confirmation historique : directeur uniquement.",
+        "scope": "Fiches mensuelles du centre, éventuellement filtrées par acteur responsable ; invitation historique pour la fiche sélectionnée.",
+        "conditions": [
+          "Mois terminé, mois 1 à 12, année valide pour relances courantes.",
+          "Service SMTP configuré et activé.",
+          "Destinataire ayant un email et satisfaisant peut_envoyer_email.",
+          "Pour l’historique : salarié actif et historique_a_confirmer vrai."
+        ],
+        "sources": [
+          "blueprints/notifications.py",
+          "blueprints/delegations.py",
+          "email_service.py",
+          "fiches_circuit.py"
+        ]
+      },
+      "invariants": [
+        "Ne relancer que l’acteur de l’étape courante ; les fiches terminées sont ignorées.",
+        "L’absence de responsable_id dans la relance ciblée est refusée ; elle ne doit pas déclencher un lot global.",
+        "Les anciens verrous ne sont pas rouverts par une relance.",
+        "Les erreurs SMTP sont comptées et peuvent produire un HTTP 500 après des envois déjà réussis."
+      ],
+      "extension_points": [
+        "Réutiliser destinataires_etape plutôt que recalculer le circuit par lecture de signatures isolées.",
+        "Prévoir une éventuelle déduplication avant d’automatiser les relances répétées."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "administration.delegations",
+        "interface.accueil_flux",
+        "interface.centre_controle",
+        "temps.validation_fiches"
+      ],
+      "limitations": [
+        "Ces routes envoient immédiatement à la demande ; elles ne créent pas une tâche de relance planifiée durable."
+      ]
+    },
+    {
+      "id": "administration.parametres_personnels",
+      "title": "Email et consentement personnels",
+      "purpose": "Permettre aux salariés et prestataires de renseigner leur email et leur préférence de notifications.",
+      "example_requests": [
+        "modifier mon adresse email",
+        "accepter les notifications",
+        "désactiver mes notifications"
+      ],
+      "capabilities": [
+        "Consultation et modification de l’adresse email du compte connecté.",
+        "Consultation et modification de email_notifications_enabled si la colonne est disponible ; compatibilité avec un ancien schéma sans cette colonne."
+      ],
+      "entry_points": [
+        "parametres_bp.parametres"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/parametres.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "email_service.py"
+        ],
+        "templates": [
+          "templates/parametres.html"
+        ],
+        "tables": [
+          "users"
+        ],
+        "tests": [
+          "tests/test_email_notifications.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Route limitée explicitement aux profils salarie et prestataire. Les profils responsable, comptable et directeur sont redirigés ; aucune édition d’un autre utilisateur n’est possible ici.",
+        "scope": "Compte identifié par session.user_id uniquement.",
+        "conditions": [
+          "Session valide."
+        ],
+        "sources": [
+          "blueprints/parametres.py",
+          "email_service.py"
+        ]
+      },
+      "invariants": [
+        "L’ID modifié provient de la session et non du formulaire.",
+        "Une adresse vide est enregistrée comme NULL ; la préférence d’envoi des autres profils reste régie par peut_envoyer_email."
+      ],
+      "extension_points": [
+        "Réutiliser users.email et users.email_notifications_enabled dans un parcours de préférences ; ne pas créer un second email divergent."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "interface.mon_espace"
+      ],
+      "limitations": [
+        "Malgré le commentaire introductif « tous les salariés », la liste PROFILS_AUTORISES ne contient que salarie et prestataire."
+      ]
+    },
+    {
+      "id": "administration.journaux",
+      "title": "Journaux de sécurité, actions et recherches",
+      "purpose": "Consulter les accès, les actions métier tracées et les résultats récents de la barre intelligente.",
+      "example_requests": [
+        "voir les connexions échouées",
+        "qui a modifié ce compte",
+        "exporter le journal des actions",
+        "voir les recherches sans résultat"
+      ],
+      "capabilities": [
+        "Journal des accès filtrable par événement, dates et identifiant/nom/prénom ; affichage plafonné à 500 lignes.",
+        "Journal des actions filtrable par action, dates et auteur ; affichage de l’auteur, cible, détails non sensibles et IP, plafonné à 500 lignes.",
+        "Export CSV des accès ou actions avec mêmes filtres, sans plafond de 500 lignes ; séparateur point-virgule et encodage UTF-8 avec BOM.",
+        "Consultation des 50 dernières recherches avec auteur, terme, type de résultat, présence de résultat et libellé."
+      ],
+      "entry_points": [
+        "securite_bp.journal_acces",
+        "securite_bp.export_journal_acces",
+        "securite_bp.journal_actions",
+        "securite_bp.export_journal_actions",
+        "securite_bp.journal_recherches"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/securite.py"
+        ],
+        "service_files": [
+          "access_log.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/journal_acces.html",
+          "templates/journal_actions.html",
+          "templates/journal_recherches.html"
+        ],
+        "tables": [
+          "journal_acces",
+          "journal_actions",
+          "recherche_log",
+          "users"
+        ],
+        "tests": [
+          "tests/test_securite.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Consultation et exports réservés aux profils directeur et comptable, avec contrôle serveur sur chaque route.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Session valide."
+        ],
+        "sources": [
+          "blueprints/securite.py"
+        ]
+      },
+      "invariants": [
+        "journaliser_action participe à la transaction de l’appelant, sans commit interne et sans absorption de l’erreur : une action sensible doit échouer si sa trace échoue.",
+        "enregistrer_acces est indépendant et tolère une erreur de journalisation pour ne pas bloquer l’authentification.",
+        "Les filtres sont paramétrés en SQL et les types d’événement/action sont pris dans une liste fermée.",
+        "Les détails d’audit ne doivent contenir ni mots de passe, ni clés, ni données salariales sensibles."
+      ],
+      "extension_points": [
+        "Ajouter les actions sensibles aux constantes et libellés d’access_log puis appeler journaliser_action dans la transaction métier.",
+        "Utiliser le journal des recherches comme signal de mauvaise découvrabilité ; vérifier les droits et l’existant avant d’en déduire une fonctionnalité manquante."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.gestion_comptes",
+        "interface.recherche",
+        "temps.historique_modifications"
+      ],
+      "limitations": [
+        "Le journal des actions couvre les actions dont les producteurs appellent explicitement journaliser_action ; ce n’est pas un historique universel de toutes les écritures SQL.",
+        "La vue des recherches ne propose ici ni export CSV ni filtres comparables aux deux journaux."
+      ]
+    },
+    {
+      "id": "administration.sauvegardes_ponctuelles",
+      "title": "Copies ponctuelles SQLite et documents",
+      "purpose": "Créer et gérer des copies ponctuelles de la base SQLite et du dossier documents depuis l’administration.",
+      "example_requests": [
+        "sauvegarder la base",
+        "télécharger une sauvegarde",
+        "archiver les documents téléversés",
+        "supprimer une ancienne copie"
+      ],
+      "capabilities": [
+        "Liste des copies SQLite et archives ZIP documentaires avec nom, date et taille.",
+        "Création d’une copie SQLite par l’API backup prenant en compte le WAL et d’un ZIP distinct du dossier documents avec sous-répertoires.",
+        "Téléchargement d’un fichier valide du dossier backups ; suppression des copies backup_*.db et documents_*.zip.",
+        "Rotation après création : conservation de 20 copies SQLite et 20 archives documentaires.",
+        "La route de restauration existe, mais le service refuse la restauration à chaud faute de application_arretee=True."
+      ],
+      "entry_points": [
+        "backup_bp.liste_sauvegardes",
+        "backup_bp.creer",
+        "backup_bp.telecharger",
+        "backup_bp.supprimer",
+        "backup_bp.restaurer"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/backup.py"
+        ],
+        "service_files": [
+          "backup_db.py",
+          "resilience.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/backup.html"
+        ],
+        "tables": [],
+        "tests": [
+          "tests/test_backup.py",
+          "tests/test_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Tous les écrans, téléchargements et mutations exigent directeur ou comptable. La restauration par navigateur est refusée même à ces profils.",
+        "scope": "Fichiers de la base et des documents de l’installation.",
+        "conditions": [
+          "Répertoire backups inscriptible ; base existante pour la copie.",
+          "Archive ZIP documentaire créée seulement si des documents sont présents."
+        ],
+        "sources": [
+          "blueprints/backup.py",
+          "backup_db.py"
+        ]
+      },
+      "invariants": [
+        "Création exclusive des fichiers de copie, permissions privées et nettoyage des seuls fichiers partiels créés par l’opération.",
+        "Les noms et chemins sont validés avec une liste de caractères et une vérification du chemin canonique pour empêcher toute sortie du dossier backups.",
+        "Les deux copies sont indépendantes : un succès DB ne signifie pas succès documents.",
+        "Préserver le refus de restauration à chaud ; une restauration complète se fait dans un emplacement vierge par le CLI de résilience."
+      ],
+      "extension_points": [
+        "Réutiliser copier_sqlite pour une copie cohérente de SQLite plutôt qu’une copie brute du fichier DB.",
+        "Orienter les besoins de reconstruction complète vers resilience_cli.py."
+      ],
+      "related_features": [
+        "administration.resilience_hors_ligne",
+        "administration.copies_sqlite_hors_ligne"
+      ],
+      "limitations": [
+        "Copies non chiffrées et produites séparément ; seul documents/ est archivé, pas factures/, modèles, contrats générés, exports ni configuration.",
+        "Cette page ne constitue pas à elle seule une sauvegarde applicative complète ni une intégration OVH."
+      ]
+    },
+    {
+      "id": "administration.copies_sqlite_hors_ligne",
+      "title": "Commandes de copies SQLite ponctuelles",
+      "purpose": "Exécuter les opérations historiques de copie SQLite depuis une commande d’exploitation.",
+      "example_requests": [
+        "faire une copie SQLite en ligne de commande",
+        "lister les copies SQLite",
+        "restaurer une copie DB après arrêt"
+      ],
+      "capabilities": [
+        "python backup_db.py crée une copie SQLite puis applique la rotation --max-backups (20 par défaut).",
+        "Options --list pour les copies SQLite et --label pour nommer une nouvelle copie.",
+        "Option --restore avec --application-arretee pour restaurer la seule base ; vérification SQLite et copie de sécurité préalable."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "backup_db.py",
+          "resilience.py",
+          "database.py"
+        ],
+        "templates": [],
+        "tables": [],
+        "tests": [
+          "tests/test_backup.py",
+          "tests/test_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Commande locale sans authentification Flask ; accès régi par les droits système de l’exploitant. La restauration exige une déclaration explicite d’arrêt.",
+        "scope": "Base cspilot.db et dossier backups de l’installation ciblée.",
+        "conditions": [
+          "Accès fichier adéquat.",
+          "Tous les écrivains arrêtés avant --restore --application-arretee."
+        ],
+        "sources": [
+          "backup_db.py"
+        ]
+      },
+      "invariants": [
+        "Valider le nom et l’intégrité de la source avant restauration.",
+        "Refuser une restauration si la sauvegarde de sécurité préalable échoue.",
+        "Le drapeau d’arrêt est une attestation d’exploitation ; la commande n’arrête pas elle-même le service."
+      ],
+      "extension_points": [
+        "Pour une reconstruction incluant pièces, paramètres et preuves, utiliser le CLI complet de résilience."
+      ],
+      "related_features": [
+        "administration.sauvegardes_ponctuelles",
+        "administration.resilience_hors_ligne"
+      ],
+      "limitations": [
+        "La CLI historique ne restaure que SQLite, dans la base existante ; elle ne remplace pas la procédure complète vers une destination vierge."
+      ]
+    },
+    {
+      "id": "administration.resilience_hors_ligne",
+      "title": "Sauvegarde complète chiffrée, restauration vierge et diagnostic",
+      "purpose": "Exporter et reconstruire les données applicatives avec vérification des pièces, preuves et paramètres dans un emplacement isolé.",
+      "example_requests": [
+        "exporter toutes les données pour changer de serveur",
+        "tester une restauration complète",
+        "vérifier les pièces manquantes",
+        "restaurer avec une nouvelle clé de chiffrement"
+      ],
+      "capabilities": [
+        "python resilience_cli.py diagnostic --data-dir : contrôle SQLite, clés étrangères, migrations, tables attendues, références documentaires, pièces orphelines, empreintes des exports et instantanés, déchiffrement des paramètres.",
+        "sauvegarder --data-dir --archive --application-arretee : archive complète chiffrée et authentifiée de SQLite, documents, factures, modèles de contrats, contrats générés, exports et configuration effective.",
+        "Manifeste avec inventaire, tailles, SHA-256, version Python/SQLite, révision Git, état modifié du code et empreinte de requirements.txt.",
+        "restaurer --archive --destination : déchiffrement, contrôles du manifeste et des données, publication dans une destination inexistante ; rapport JSON et table de correspondance des anciens chemins.",
+        "Option --nouvelle-cle-fichier pour rechiffrer atomiquement app_settings au cours de la restauration ; --phrase-fichier et --cle-fichier pour secrets en fichiers privés.",
+        "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "resilience_cli.py",
+          "resilience.py",
+          "stockage_restaure.py",
+          "schema_resilience.py",
+          "database.py"
+        ],
+        "templates": [],
+        "tables": [
+          "app_settings",
+          "schema_migrations",
+          "schema_migrations_tentatives",
+          "fiches_versions",
+          "archives_export"
+        ],
+        "tests": [
+          "tests/test_resilience.py",
+          "tests/test_migrations_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md",
+          "docs/audit-resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Exploitation locale hors HTTP, sans connexion Flask utilisateur. Les droits système et l’accès à la phrase/clé déterminent l’accès. Aucun service système ni compte OVH n’est piloté.",
+        "scope": "Ensemble des données du DATA_DIR explicitement choisi, code et infrastructure conservés séparément.",
+        "conditions": [
+          "Arrêt de tous les écrivains et --application-arretee pour sauvegarder.",
+          "Archive nouvelle hors stockages métier ; destination de restauration inexistante.",
+          "Phrase secrète valide et clé de paramètres disponible ; fichiers secrets privés, sans lien symbolique, permissions POSIX sans accès groupe/autres.",
+          "Dépendances installées et code compatible disponibles séparément."
+        ],
+        "sources": [
+          "resilience_cli.py",
+          "resilience.py",
+          "stockage_restaure.py",
+          "docs/resilience.md"
+        ]
+      },
+      "invariants": [
+        "Copie DB sous verrou d’écriture ; comparaison de l’inventaire disque avant/après copie pour refuser des changements concurrents.",
+        "Vérifier contenus et références avant publication ; ne jamais annoncer une sauvegarde complète malgré une pièce requise absente.",
+        "Refuser écrasement, chemins sortants, archive incohérente, preuves altérées ou clé inutilisable.",
+        "Ne pas réécrire les preuves historiques pour adapter des chemins ; utiliser restauration-chemins.json et resoudre_fichier.",
+        "Maintenir resilience.TABLES_REQUISES par version d’introduction et resilience.REFERENCES lors de tout ajout de table ou stockage documentaire.",
+        "Aucune migration, activation SMTP, émission IA ou mise en route applicative n’est déclenchée par sauvegarder/restaurer/diagnostic."
+      ],
+      "extension_points": [
+        "Ajouter toute nouvelle table au catalogue TABLES_REQUISES avec sa migration et tout fichier référencé à REFERENCES/REPERTOIRES selon le stockage.",
+        "Réutiliser diagnostiquer pour vérifier une copie avant une reprise ou une migration de serveur."
+      ],
+      "related_features": [
+        "administration.sauvegardes_ponctuelles",
+        "administration.migrations_hors_ligne",
+        "administration.stockage_documents"
+      ],
+      "limitations": [
+        "L’archive exclut code, environnement virtuel, infrastructure, logs et sauvegardes précédentes ; elle ne sauvegarde pas le VPS OVH.",
+        "Aucune planification, rétention ni copie hors machine de ces archives complètes n’est implémentée par ce CLI.",
+        "Limite d’archive et de volume décompressé de 32 Gio ; limite de manifeste contrôlée.",
+        "La vérification des tables dépend de TABLES_REQUISES : ce catalogue doit suivre chaque évolution de schéma."
+      ]
+    },
+    {
+      "id": "administration.migrations_web",
+      "title": "État système et application des migrations",
+      "purpose": "Consulter l’état du schéma et appliquer les migrations connues dans l’ordre tout en conservant les traces de tentative.",
+      "example_requests": [
+        "quelle version de la base est installée",
+        "voir les migrations en erreur",
+        "appliquer les migrations en attente"
+      ],
+      "capabilities": [
+        "Page système avec version applicative, taille DB, liste des tables et nombre de lignes, migrations appliquées/en attente/en erreur/inconnues et tentatives.",
+        "Application d’une migration précisée ou de toutes les migrations en attente, avec arrêt au premier échec et invalidation du cache de version après succès.",
+        "Action historique de marquage de la baseline 0001 pour une base existante."
+      ],
+      "entry_points": [
+        "administration_bp.administration",
+        "administration_bp.appliquer_migration",
+        "administration_bp.appliquer_toutes",
+        "administration_bp.initialiser_baseline"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/administration.py"
+        ],
+        "service_files": [
+          "migration_manager.py",
+          "schema_resilience.py",
+          "database.py",
+          "app_version.py"
+        ],
+        "templates": [
+          "templates/administration.html"
+        ],
+        "tables": [
+          "schema_migrations",
+          "schema_migrations_tentatives"
+        ],
+        "tests": [
+          "tests/test_administration_acces.py",
+          "tests/test_migrations_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et POST réservés à directeur et comptable ; toutes les mutations de cette page passent par login_required et le contrôle de profil.",
+        "scope": "Centre et base de données de l’installation courante.",
+        "conditions": [
+          "Une migration ciblée doit être connue du code, ne pas être déjà réussie et avoir toutes ses précédentes réussies.",
+          "Une migration inconnue du code installé ou un ancien échec potentiellement partiel bloque le gestionnaire."
+        ],
+        "sources": [
+          "blueprints/administration.py",
+          "migration_manager.py",
+          "database.py"
+        ]
+      },
+      "invariants": [
+        "Une migration forme une transaction atomique : DDL, données, marque de réussite et tentative ; les commits internes des migrations anciennes sont neutralisés dans ce contexte.",
+        "Seul statut=ok compte comme appliqué ; un échec reste visible et en attente.",
+        "Reprise d’un échec ancien potentiellement partiel réservée au chemin CLI explicite après diagnostic ; ne pas supprimer sa trace pour contourner le blocage.",
+        "Toute évolution de schéma doit converger entre init_db et migrations numérotées."
+      ],
+      "extension_points": [
+        "Réutiliser get_statut_complet pour présenter l’état système.",
+        "Créer une nouvelle migration numérotée et mettre à jour le schéma neuf et les catalogues de résilience, sans modifier l’historique livré."
+      ],
+      "related_features": [
+        "administration.migrations_hors_ligne",
+        "administration.resilience_hors_ligne",
+        "administration.reinitialisation_bdd",
+        "administration.mise_a_jour"
+      ],
+      "limitations": [
+        "Les POST de migration web sont encore exposés et n’exigent pas le drapeau d’arrêt utilisé par le CLI ; la procédure d’exploitation recommande le chemin hors ligne.",
+        "Le marquage baseline est une action administrative historique, pas une réparation de données ni un substitut à un diagnostic."
+      ]
+    },
+    {
+      "id": "administration.migrations_hors_ligne",
+      "title": "Migration et reprise explicite en ligne de commande",
+      "purpose": "Mettre à niveau une installation arrêtée et reprendre de façon explicite une migration historiquement en échec.",
+      "example_requests": [
+        "migrer la base hors ligne",
+        "reprendre une ancienne migration partielle après diagnostic"
+      ],
+      "capabilities": [
+        "python resilience_cli.py migrer --data-dir --application-arretee : applique toutes les migrations en attente puis restitue l’état complet en JSON.",
+        "--version cible une migration ; --reprise-historique autorise la reprise contrôlée d’un ancien échec et exige une version explicite.",
+        "Vérification du déchiffrement des paramètres avant migration ; contexte Flask minimal sans import app ni lancement de service ou appel réseau."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "resilience_cli.py",
+          "migration_manager.py",
+          "database.py",
+          "schema_resilience.py",
+          "resilience.py"
+        ],
+        "templates": [],
+        "tables": [
+          "schema_migrations",
+          "schema_migrations_tentatives",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_migrations_resilience.py",
+          "tests/test_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Commande d’exploitation locale, sans permission HTTP ; accès limité par les droits système. Le CLI exige explicitement la confirmation que les processus écrivains sont arrêtés.",
+        "scope": "Base du --data-dir, avec code de migration de la révision exécutée.",
+        "conditions": [
+          "--application-arretee obligatoire.",
+          "Clé permettant de déchiffrer app_settings.",
+          "Avant --reprise-historique : diagnostic isolé d’un échec ancien et contrôle de l’idempotence documentés dans la procédure."
+        ],
+        "sources": [
+          "resilience_cli.py",
+          "migration_manager.py",
+          "docs/resilience.md"
+        ]
+      },
+      "invariants": [
+        "Même moteur atomique et mêmes contrôles d’ordre/inconnues que la voie web.",
+        "Une version inconnue du code bloque même --reprise-historique.",
+        "Un résultat non à jour produit un code de retour non nul ; ne pas le traiter comme autorisation de remise en service."
+      ],
+      "extension_points": [
+        "Utiliser ce CLI dans une procédure d’exploitation contrôlée ; gérer arrêt, sauvegarde préalable et remise en service à l’extérieur du CLI."
+      ],
+      "related_features": [
+        "administration.migrations_web",
+        "administration.resilience_hors_ligne"
+      ],
+      "limitations": [
+        "Le CLI n’arrête ni ne redémarre lui-même les processus et n’orchestre pas le déploiement du code."
+      ]
+    },
+    {
+      "id": "administration.reinitialisation_bdd",
+      "title": "Réinitialisation complète de la base",
+      "purpose": "Recréer une base vide après une confirmation explicite et une copie de sécurité préalable.",
+      "example_requests": [
+        "réinitialiser l’installation",
+        "repartir avec une base vide"
+      ],
+      "capabilities": [
+        "POST de réinitialisation exigeant la valeur de confirmation REINITIALISER.",
+        "Copie de sécurité SQLite avant suppression de la DB et des fichiers WAL/SHM ; annulation si cette copie échoue.",
+        "Recréation du schéma vide, effacement de la session courante et redirection vers la création du premier administrateur."
+      ],
+      "entry_points": [
+        "administration_bp.reinitialiser_bdd"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/administration.py"
+        ],
+        "service_files": [
+          "backup_db.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/administration.html"
+        ],
+        "tables": [],
+        "tests": [
+          "tests/test_administration_acces.py",
+          "tests/test_backup.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Action destructive réservée à directeur ou comptable connecté, avec jeton de confirmation textuelle exact.",
+        "scope": "Toutes les données de la base de l’installation.",
+        "conditions": [
+          "confirmation=REINITIALISER.",
+          "Copie préalable réussie si une base existe."
+        ],
+        "sources": [
+          "blueprints/administration.py"
+        ]
+      },
+      "invariants": [
+        "Ne pas supprimer la DB après un échec de la copie de sécurité.",
+        "Le résultat attendu est une base vide nécessitant un nouveau setup ; ne pas présenter cette action comme un correctif de migration."
+      ],
+      "extension_points": [
+        "Pour un besoin de reprise avec conservation des données, employer la restauration isolée existante au lieu d’étendre cette action."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.sauvegardes_ponctuelles",
+        "administration.resilience_hors_ligne"
+      ],
+      "limitations": [
+        "L’action reste exposée dans le navigateur ; elle ne vérifie pas l’arrêt de tous les autres processus.",
+        "La copie de sécurité de ce parcours est SQLite seule ; la route n’effectue pas de remise à zéro des répertoires documentaires."
+      ]
+    },
+    {
+      "id": "administration.mise_a_jour",
+      "title": "Vérification et installation des mises à jour",
+      "purpose": "Consulter la dernière release GitHub et installer une mise à jour du code ou de l’exécutable selon le mode de lancement.",
+      "example_requests": [
+        "vérifier une mise à jour",
+        "installer la dernière version",
+        "voir les notes de version"
+      ],
+      "capabilities": [
+        "Page affichant version courante, mode script/exécutable et système.",
+        "Interrogation de la dernière release GitHub Cyril-CB/CS-PILOT ; restitution de version, notes, date, URL et présence d’un asset exe.",
+        "En mode exécutable : téléchargement de l’asset exe, renommage de l’ancien en .old et remplacement ; tentative de restauration de l’ancien en cas d’échec.",
+        "En mode script : téléchargement de zipball/main, extraction et copie des fichiers en protégeant les noms déclarés dans PROTECTED_PATHS.",
+        "Après réussite en mode script, lancement d’une commande différée demandant sudo systemctl restart cspilot ; en mode exe, invitation au redémarrage."
+      ],
+      "entry_points": [
+        "mise_a_jour_bp.mise_a_jour",
+        "mise_a_jour_bp.verifier_mise_a_jour",
+        "mise_a_jour_bp.lancer_mise_a_jour"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/mise_a_jour.py"
+        ],
+        "service_files": [
+          "app_version.py",
+          "database.py"
+        ],
+        "templates": [
+          "templates/mise_a_jour.html"
+        ],
+        "tables": [],
+        "tests": [
+          "tests/test_mise_a_jour.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Page et API de vérification/lancement réservées aux profils directeur et comptable ; aucun contrôle n’autorise un autre profil à remplacer le code.",
+        "scope": "Installation locale, dépôt GitHub prédéfini dans le module.",
+        "conditions": [
+          "Réseau GitHub disponible.",
+          "Droits d’écriture sur le dossier de code ou de l’exécutable.",
+          "Mode script : commande de redémarrage attend un service systemd nommé cspilot et l’autorisation sudo appropriée."
+        ],
+        "sources": [
+          "blueprints/mise_a_jour.py"
+        ]
+      },
+      "invariants": [
+        "Les chemins protégés déclarés ne sont pas écrasés pendant la copie des sources.",
+        "Ne jamais confondre installation du code et application réussie des migrations."
+      ],
+      "extension_points": [
+        "Réutiliser la consultation des releases pour afficher une version disponible.",
+        "Examiner la procédure de résilience et la cohérence code/données avant de faire évoluer le mécanisme d’installation."
+      ],
+      "related_features": [
+        "administration.migrations_web",
+        "administration.migrations_hors_ligne",
+        "administration.resilience_hors_ligne"
+      ],
+      "limitations": [
+        "La mise à jour web n’est pas désactivée dans cette révision.",
+        "En mode script le code est pris sur main, même si l’interface affiche le tag de la dernière release ; ce ne sont pas nécessairement la même révision.",
+        "La copie script remplace progressivement les fichiers ; aucune bascule atomique du code, restauration automatique de l’arbre complet ou sauvegarde applicative préalable n’est réalisée par cette fonction.",
+        "Une commande de redémarrage lancée n’est pas une preuve que le service a redémarré correctement."
+      ]
+    },
+    {
+      "id": "administration.stockage_documents",
+      "title": "Helpers de stockage et relocalisation des documents",
+      "purpose": "Réutiliser les stockages documentaires existants et résoudre les chemins historiques après restauration sans altérer les preuves métier.",
+      "example_requests": [
+        "ajouter des pièces à un module",
+        "retrouver un document après changement de serveur",
+        "nettoyer un fichier après suppression métier"
+      ],
+      "capabilities": [
+        "nettoyer_document supprime une pièce interne stockée à plat ; refuse traversées, séparateurs, caractères dangereux et sortie du dossier réel.",
+        "Nettoyage tolérant à un fichier déjà absent ; échec disque journalisé et renvoyé comme booléen, sans exposer le chemin système à l’utilisateur.",
+        "resoudre_fichier gère les chemins relatifs des cinq stockages et la correspondance explicite restauration-chemins.json pour les anciens chemins absolus.",
+        "REPERTOIRES inventorie documents, factures, modeles_contrats, contrats_generes et exports ; le diagnostic de résilience vérifie les références des tables métier."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "document_files.py",
+          "stockage_restaure.py",
+          "resilience.py",
+          "database.py"
+        ],
+        "templates": [],
+        "tables": [
+          "documents_salaries",
+          "contrats",
+          "absences",
+          "subventions",
+          "subventions_sous_elements",
+          "factures",
+          "modeles_contrats",
+          "contrats_generes",
+          "archives_export"
+        ],
+        "tests": [
+          "tests/test_nettoyage_documents.py",
+          "tests/test_security.py",
+          "tests/test_resilience.py"
+        ],
+        "docs": [
+          "docs/resilience.md"
+        ]
+      },
+      "access": {
+        "summary": "Helpers internes sans endpoint et sans autorisation utilisateur propre. Chaque route appelante doit vérifier le rôle, le propriétaire et le périmètre de la pièce avant lecture, téléchargement ou suppression.",
+        "scope": "Dossiers métier gérés sous DATA_DIR ; correspondance de restauration pour les chemins historiques.",
+        "conditions": [
+          "Chemins/noms compatibles avec le stockage concerné.",
+          "Validation du type, taille et droits à effectuer dans les routes d’upload ; le helper de nettoyage n’est pas un validateur universel d’upload."
+        ],
+        "sources": [
+          "document_files.py",
+          "stockage_restaure.py",
+          "resilience.py"
+        ]
+      },
+      "invariants": [
+        "Ne pas transformer un nom refusé en un nom de fichier différent valide.",
+        "Le nettoyage non bloquant convient après commit ou rollback ; il ne remplace pas une suppression impérative nécessaire avant commit.",
+        "En installation restaurée, ne pas suivre un ancien chemin absolu vers le serveur d’origine.",
+        "Maintenir les références et stockages de résilience avec chaque nouvelle capacité documentaire."
+      ],
+      "extension_points": [
+        "Pour une future fiche d’identité associative avec pièces, réutiliser les conventions de stockage, contrôles d’upload et diagnostics existants en ajoutant un propriétaire métier explicite.",
+        "Utiliser resoudre_fichier dans les consommateurs de chemins persistés qui doivent fonctionner après une restauration."
+      ],
+      "related_features": [
+        "administration.resilience_hors_ligne",
+        "association.subventions_documents",
+        "finances.factures",
+        "rh.documents_salaries",
+        "rh.generation_contrats"
+      ],
+      "limitations": [
+        "En installation historique sans fichier de correspondance de restauration, resoudre_fichier conserve la compatibilité des chemins absolus ; il ne réalise pas à lui seul un contrôle de droit ou de confinement de tous ces anciens chemins."
+      ]
+    }
+  ]
+}

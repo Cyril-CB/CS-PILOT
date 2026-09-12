@@ -1,0 +1,1458 @@
+{
+  "schema_version": 1,
+  "domain": "temps",
+  "features": [
+    {
+      "id": "temps.planning_theorique",
+      "title": "Planning théorique historisé et alternance",
+      "purpose": "Définir les horaires de référence applicables à un salarié selon la date et la période scolaire ou de vacances.",
+      "example_requests": [
+        "Mon planning de travail",
+        "Modifier le planning de Cyril à compter de septembre",
+        "Alterner une semaine sur deux",
+        "Horaires différents pendant les vacances"
+      ],
+      "capabilities": [
+        "Créer un nouveau planning avec date de début de validité et conserver les versions précédentes.",
+        "Définir jusqu’à trois créneaux matin, après-midi et soir pour chacun des jours lundi à vendredi, avec total hebdomadaire calculé.",
+        "Choisir un planning fixe ou une alternance semaine_1/semaine_2 avec lundi de référence et consulter la semaine actuelle.",
+        "Consulter tout l’historique et supprimer un planning saisi par erreur.",
+        "La sélection à une date utilise le planning applicable le plus récent ; repli sur planning fixe si alternance absente et sur période scolaire si aucun planning vacances."
+      ],
+      "entry_points": [
+        "planning_bp.planning_theorique",
+        "planning_bp.supprimer_planning"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/planning.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "fiches_db.py",
+          "fiches_versions.py"
+        ],
+        "templates": [
+          "templates/planning_theorique.html"
+        ],
+        "tables": [
+          "planning_theorique",
+          "alternance_reference",
+          "users",
+          "secteurs",
+          "heures_reelles",
+          "validations",
+          "periodes_vacances"
+        ],
+        "tests": [
+          "tests/test_planning.py",
+          "tests/test_equipe_responsable.py",
+          "tests/test_creneau_soir.py",
+          "tests/test_fiches_versions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Chaque utilisateur peut gérer son propre planning ; directeur/comptable peuvent gérer les salariés actifs hors prestataires ; responsable : mêmes conditions plus même secteur OU rattachement direct. Le même contrôle protège lecture, création et suppression.",
+        "scope": "Personnel ou salariés actifs autorisés par profil et rattachement.",
+        "conditions": [],
+        "sources": [
+          "blueprints/planning.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Un planning créé est une nouvelle ligne historisée, pas une réécriture silencieuse des horaires passés.",
+        "Une référence d’alternance doit être un lundi ; la suppression du dernier planning alterné retire les références d’alternance du salarié.",
+        "Une date rétroactive peut modifier les calculs de fiches et de soldes ; ConnexionFiches refuse toute modification du contenu d’une fiche verrouillée et rend obsolètes les accords ouverts affectés."
+      ],
+      "extension_points": [
+        "Réutiliser get_planning_valide_a_date et get_heures_theoriques_jour pour toute nouvelle simulation portant sur les horaires de référence.",
+        "Ajouter un nouveau composant du planning au calcul et au suivi des versions mensuelles avant de l’utiliser dans les fiches."
+      ],
+      "related_features": [
+        "administration.calendrier_collectif",
+        "administration.gestion_comptes",
+        "association.planificateur_personnel",
+        "temps.planning_annualise_enfance",
+        "temps.saisie_heures",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Le formulaire hebdomadaire ne comporte que lundi à vendredi ; le travail réel du samedi relève de la saisie des heures."
+      ]
+    },
+    {
+      "id": "temps.saisie_heures",
+      "title": "Saisie quotidienne des heures et pauses",
+      "purpose": "Enregistrer ou corriger les horaires réellement travaillés et les déclarations journalières d’un salarié.",
+      "example_requests": [
+        "Saisir mes heures de mardi",
+        "Corriger les horaires de mon salarié",
+        "Déclarer une pause rémunérée",
+        "Mes heures sont conformes au planning"
+      ],
+      "capabilities": [
+        "Saisie de trois créneaux quotidiens, commentaire et pause méridienne rémunérée.",
+        "Déclaration conforme au planning lorsque l’option correspondante est active ; la ligne conserve l’indicateur plutôt qu’une copie des horaires théoriques.",
+        "Saisie de récupération en journée complète ; calcul du solde de récupération affiché.",
+        "Préremplissage d’une journée et retour vers la vue mensuelle ou calendrier.",
+        "Journalisation des valeurs avant/après et détection des écarts de plus de trois heures, des corrections de récupérations validées et des modifications après accord responsable."
+      ],
+      "entry_points": [
+        "saisie_bp.saisie_heures"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/saisie.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "app_options.py",
+          "fiches_db.py",
+          "fiches_versions.py",
+          "absences_coherence.py"
+        ],
+        "templates": [
+          "templates/saisie_heures.html"
+        ],
+        "tables": [
+          "heures_reelles",
+          "users",
+          "contrats",
+          "validations",
+          "anomalies",
+          "historique_modifications",
+          "planning_theorique",
+          "variables_paie",
+          "rh_projections"
+        ],
+        "tests": [
+          "tests/test_saisie.py",
+          "tests/test_pause_remuneree.py",
+          "tests/test_creneau_soir.py",
+          "tests/test_coherence_rh.py",
+          "tests/test_fiches_versions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md",
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Chaque utilisateur sauf directeur peut saisir sa propre fiche ; directeur : fiches d’autrui ; responsable : fiches de son secteur OU de ses rattachés directs. Le comptable ne peut pas saisir les heures d’autrui par cette route.",
+        "scope": "Fiche personnelle ou cible explicitement autorisée ; journées non verrouillées.",
+        "conditions": [
+          "Option saisie_afficher_declaration_conforme.",
+          "Un contrat doit couvrir la journée pour une nouvelle saisie ; une ancienne saisie manuelle reste corrigeable hors contrat. Une ligne générée par absence/récup ne constitue pas cette exception.",
+          "Le créneau soir est proposé pendant les vacances ou si une valeur soir est déjà présente."
+        ],
+        "sources": [
+          "blueprints/saisie.py",
+          "utils.py",
+          "app_options.py",
+          "absences_coherence.py"
+        ]
+      },
+      "invariants": [
+        "Une fiche verrouillée exige une réouverture motivée par la direction avant correction.",
+        "Une projection d’absence ou récupération encore active ne peut pas être remplacée par une saisie manuelle : vérification avant commit et rollback intégral.",
+        "La pause rémunérée ne compte que si les créneaux matin/après-midi complets délimitent une pause positive ; elle n’est pas conservée pour déclaration conforme ou récupération complète.",
+        "Désactiver l’option déclaration conforme préserve une ancienne déclaration lors d’une édition sans nouveaux horaires.",
+        "Écriture des heures, anomalies et historique dans une seule transaction contrôlée."
+      ],
+      "extension_points": [
+        "Réutiliser calculer_heures_reelles_jour et duree_pause_meridienne au lieu de sommer seulement deux créneaux.",
+        "Étendre le point de saisie existant pour un nouveau qualificatif de journée et intégrer ce qualificatif au contenu versionné."
+      ],
+      "related_features": [
+        "interface.tableau_bord_salarie",
+        "temps.coherence_absences",
+        "temps.fiches_mensuelles",
+        "temps.planning_theorique",
+        "temps.suivi_anomalies",
+        "temps.versions_fiches"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "temps.fiches_mensuelles",
+      "title": "Consultation des fiches mensuelles et calendrier",
+      "purpose": "Présenter le détail des jours, les écarts au planning, les soldes et l’état courant des signatures pour un mois.",
+      "example_requests": [
+        "Fiche d’heures de Cyril",
+        "Voir mes heures du mois dernier",
+        "Pourquoi ma fiche est incomplète ?",
+        "Voir mon solde après les heures payées"
+      ],
+      "capabilities": [
+        "Vue tableau mensuel et vue calendrier avec navigation par mois et sélection du salarié autorisé.",
+        "Affichage du théorique, du réel, des pauses, des absences, jours fériés, repos et périodes hors contrat.",
+        "Totaux mensuels, solde antérieur, heures supplémentaires payées dans le mois et solde cumulé.",
+        "Indication des journées attendues non déclarées, de l’absence de contrat, du prochain rôle de signature et de l’historique des événements.",
+        "Une fiche verrouillée est lue depuis son instantané conservé."
+      ],
+      "entry_points": [
+        "validation_bp.vue_mensuelle",
+        "validation_bp.vue_calendrier"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/validation.py"
+        ],
+        "service_files": [
+          "fiches_contenu.py",
+          "fiches_versions.py",
+          "fiches_circuit.py",
+          "utils.py",
+          "app_options.py"
+        ],
+        "templates": [
+          "templates/vue_mensuelle.html",
+          "templates/vue_calendrier.html"
+        ],
+        "tables": [
+          "users",
+          "contrats",
+          "heures_reelles",
+          "planning_theorique",
+          "alternance_reference",
+          "periodes_vacances",
+          "jours_feries",
+          "absences",
+          "variables_paie",
+          "validations",
+          "fiches_versions",
+          "fiches_evenements"
+        ],
+        "tests": [
+          "tests/test_validation.py",
+          "tests/test_fiches_versions.py",
+          "tests/test_equipe_responsable.py",
+          "tests/test_pause_remuneree.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Lecture personnelle ; directeur/comptable : fiches d’autrui ; responsable : même secteur OU rattachement direct. Le sélecteur filtre les actifs, mais l’autorisation de lecture par identifiant n’impose pas le filtre actif de l’export PDF. Une délégation de suivi des validations ne donne pas ces droits de lecture.",
+        "scope": "Un salarié et un mois ; périmètre contrôlé indépendamment de la navigation.",
+        "conditions": [
+          "Options vue_mensuelle_afficher_horaires et saisie_afficher_declaration_conforme."
+        ],
+        "sources": [
+          "blueprints/validation.py",
+          "utils.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "La page et son empreinte doivent provenir de la même transaction de lecture.",
+        "Repos planifié à zéro heure, jours fériés et jours hors des périodes de contrat ne créent pas de journée attendue manquante ; absence de planning ne vaut pas repos.",
+        "Les bornes de contrats sont inclusives ; une saisie manuelle déjà présente reste visible hors contrat.",
+        "Solde cumulé = solde antérieur + écart du mois − heures payées du mois marquées hs_deduites_compteur.",
+        "Sans aucun contrat au dossier, le calcul d’affichage ne suppose pas un mois entièrement hors contrat : les journées attendues restent signalées et la saisie impose l’ajout du contrat."
+      ],
+      "extension_points": [
+        "Réutiliser calculer_contenu(conn, ...) et lire_contenu pour tout nouvel affichage ou export d’une fiche ; ne pas recalculer différemment les soldes.",
+        "Utiliser le paramètre user_id avec mois/annee pour orienter une recherche intelligente vers la bonne fiche."
+      ],
+      "related_features": [
+        "temps.export_fiche_pdf",
+        "temps.saisie_heures",
+        "temps.validation_fiches",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Les journées détaillées du calcul mensuel excluent le dimanche ; le samedi est inclus en présence de saisie ou de jour férié."
+      ]
+    },
+    {
+      "id": "temps.validation_fiches",
+      "title": "Circuit ordonné de signatures, clôture et réouverture",
+      "purpose": "Obtenir les accords salarié, responsable puis direction sur une même version de fiche et verrouiller son contenu.",
+      "example_requests": [
+        "Valider ma fiche du mois dernier",
+        "Signer les heures de mon équipe",
+        "Qui doit encore signer ?",
+        "Déverrouiller une fiche pour correction",
+        "Confirmer mes anciennes fiches"
+      ],
+      "capabilities": [
+        "Signature salarié puis responsable puis direction ; verrouillage après les trois références à la même version.",
+        "Un responsable signant sa propre fiche enregistre deux accords distincts salarié/responsable ; un directeur responsable applicable peut signer responsable/direction après accord salarié.",
+        "Vue d’ensemble des validations avec étape attendue, navigation mensuelle et accès aux actions de relance selon droits.",
+        "Réouverture direction avec motif, conservation des preuves précédentes et retrait des approbations actives.",
+        "Liste distincte des anciennes fiches verrouillées et confirmation personnelle a posteriori de leur instantané, sans modifier la clôture historique."
+      ],
+      "entry_points": [
+        "validation_bp.valider_mois",
+        "validation_bp.deverrouiller_mois",
+        "validation_bp.vue_ensemble_validation",
+        "validation_bp.confirmer_fiche_historique",
+        "validation_bp.fiches_historiques"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/validation.py"
+        ],
+        "service_files": [
+          "fiches_circuit.py",
+          "fiches_versions.py",
+          "fiches_contenu.py",
+          "fiches_db.py",
+          "sessions_securite.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/vue_ensemble_validation.html",
+          "templates/fiches_historiques.html",
+          "templates/vue_mensuelle.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "validations",
+          "fiches_versions",
+          "fiches_evenements",
+          "historique_modifications",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_circuit_fiches.py",
+          "tests/test_validation.py",
+          "tests/test_fiches_versions.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise ; rôle et session relus sous transaction de signature/réouverture. Signature personnelle salarié ; responsable pour son équipe ; direction pour accord final d’autrui. Le comptable suit les fiches mais ne signe pas celles d’autrui. Réouverture : directeur uniquement. Vue d’ensemble : directeur/comptable/responsable ou délégation MISSION_SUIVI_VALIDATIONS_RELANCES ; cette délégation étend le suivi sans donner accès aux fiches ni le pouvoir de signature. Confirmation historique : propriétaire uniquement.",
+        "scope": "Fiches du salarié ; équipe pour responsable ; ensemble des actifs hors directeur/prestataire dans la vue globale. Directeur/comptable voient l’ensemble des confirmations historiques attendues, les autres uniquement leurs propres fiches.",
+        "conditions": [
+          "Mois terminé et aucune journée attendue non déclarée.",
+          "Empreinte de la fiche affichée obligatoire et encore courante.",
+          "Un responsable applicable doit exister ; aucune suppléance automatique."
+        ],
+        "sources": [
+          "blueprints/validation.py",
+          "fiches_circuit.py",
+          "blueprints/delegations.py",
+          "sessions_securite.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "BEGIN IMMEDIATE englobe contrôle de session, droits, contenu, accord et verrouillage.",
+        "Une signature sur page ancienne est refusée ; un changement de contenu avant verrouillage remet le circuit à l’accord salarié courant.",
+        "Les trois accords doivent viser la même version ; la direction ne peut pas auto-clôturer sa propre fiche horaire.",
+        "Réouverture motivée : les trois approbations du circuit 2 doivent être recueillies de nouveau.",
+        "Confirmation historique liée à la version et son empreinte, unique et datée réellement ; elle ne remplit pas rétroactivement validation_salarie et ne satisfait pas une étape après réouverture."
+      ],
+      "extension_points": [
+        "Réutiliser roles_applicables, planifier_signature, etape_courante et destinataires_etape pour tout nouveau tableau de bord ou action.",
+        "Conserver la séparation entre relance du circuit courant et invitation à confirmer l’historique."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "administration.delegations",
+        "administration.relances_fiches",
+        "interface.accueil_flux",
+        "rh.preparation_paie",
+        "temps.export_fiche_pdf",
+        "temps.fiches_mensuelles",
+        "temps.versions_fiches"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "temps.export_fiche_pdf",
+      "title": "Export PDF d’une fiche mensuelle verrouillée",
+      "purpose": "Télécharger le contenu clôturé d’une fiche de temps avec ses soldes et signatures.",
+      "example_requests": [
+        "Télécharger la fiche d’heures signée",
+        "PDF des heures de Cyril en août"
+      ],
+      "capabilities": [
+        "PDF paysage avec détail quotidien, totaux, soldes, heures payées déduites et signatures.",
+        "Mention du circuit historique ou ordonné et, si présente, de la confirmation salarié a posteriori.",
+        "Signalement explicite des fiches anciennes dont le contenu exact au moment des signatures initiales n’est pas vérifiable."
+      ],
+      "entry_points": [
+        "exports_bp.export_pdf_mensuel"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/exports.py"
+        ],
+        "service_files": [
+          "fiches_versions.py",
+          "fiches_contenu.py",
+          "fiches_circuit.py",
+          "utils.py"
+        ],
+        "templates": [],
+        "tables": [
+          "users",
+          "validations",
+          "fiches_versions",
+          "fiches_evenements"
+        ],
+        "tests": [
+          "tests/test_exports_acces.py",
+          "tests/test_fiches_versions.py",
+          "tests/test_circuit_fiches.py",
+          "tests/test_pause_remuneree.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Export personnel ; directeur/comptable pour une cible active hors prestataire ; responsable pour une cible active hors prestataire appartenant au même secteur OU rattachée directement.",
+        "scope": "Une fiche verrouillée identifiée par user_id, mois et annee.",
+        "conditions": [
+          "La fiche doit être verrouillée ; PDF refusé avant clôture."
+        ],
+        "sources": [
+          "blueprints/exports.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Le PDF reproduit l’instantané conservé, y compris identité et soldes ; pas de second calcul à partir des données actuelles.",
+        "Lecture des droits, validation et instantané dans une transaction cohérente."
+      ],
+      "extension_points": [
+        "Étendre ce générateur pour une variante de présentation de fiche clôturée en conservant lire_contenu comme source."
+      ],
+      "related_features": [
+        "temps.fiches_mensuelles",
+        "temps.validation_fiches",
+        "temps.versions_fiches"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "temps.versions_fiches",
+      "title": "Versions métier et protection transactionnelle des fiches",
+      "purpose": "Conserver les valeurs approuvées et empêcher qu’une écriture directe ou indirecte altère une fiche verrouillée.",
+      "example_requests": [
+        "Une correction de contrat a changé les heures signées",
+        "Pourquoi cette modification impose une réouverture ?",
+        "Retrouver le contenu réellement approuvé"
+      ],
+      "capabilities": [
+        "Instantanés JSON numérotés par salarié/mois avec empreinte SHA-256 déterministe.",
+        "Événements de signature, changement de contenu, obsolescence, verrouillage, réouverture, reprise et confirmation historique.",
+        "Triggers de suivi des salariés affectés par heures, planning, alternance, contrats, absences, variables de paie, identité et calendriers collectifs.",
+        "Contrôle avant commit des fiches signées et rollback de l’intégralité des écritures liées si un contenu verrouillé change."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "fiches_contenu.py",
+          "fiches_versions.py",
+          "fiches_db.py",
+          "fiches_circuit.py",
+          "database.py"
+        ],
+        "templates": [],
+        "tables": [
+          "validations",
+          "fiches_versions",
+          "fiches_evenements",
+          "fiches_a_recalculer",
+          "heures_reelles",
+          "planning_theorique",
+          "alternance_reference",
+          "contrats",
+          "absences",
+          "variables_paie",
+          "users",
+          "periodes_vacances",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_fiches_versions.py",
+          "tests/test_circuit_fiches.py",
+          "tests/test_coherence_rh_versions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Service interne sans route ni contrôle de profil propre ; les routes productrices doivent vérifier les droits de l’acteur. La protection des contenus intervient via get_db() et ConnexionFiches indépendamment du profil autorisé à écrire.",
+        "scope": "Toutes les fiches déjà signées affectées, y compris les mois ultérieurs dont le solde reporté change.",
+        "conditions": [],
+        "sources": [
+          "fiches_db.py",
+          "fiches_versions.py",
+          "fiches_contenu.py",
+          "database.py"
+        ]
+      },
+      "invariants": [
+        "Un changement sans effet sur le contenu métier ne crée pas une nouvelle version.",
+        "Ne jamais utiliser connexion brute, autocommit ou COMMIT SQL direct pour une écriture métier ; un seul conn.commit() après les écritures liées.",
+        "La nouvelle version d’une fiche ouverte conserve les anciens événements mais invalide les accords courants.",
+        "Une correction antérieure peut modifier les soldes de plusieurs mois verrouillés ; le refus annule aussi demandes, compteurs et historique.",
+        "Les états anciens sont conservés sans inventer une preuve des valeurs au jour des signatures historiques."
+      ],
+      "extension_points": [
+        "Toute nouvelle table alimentant calculer_contenu doit rejoindre les triggers de fiches_versions.py et TABLES_CONTENU de fiches_db.py, avec preuve de rollback.",
+        "Utiliser calculer_contenu avec la connexion de l’appelant pour examiner les changements non encore commités."
+      ],
+      "related_features": [
+        "rh.absences",
+        "rh.contrats_dossier",
+        "rh.variables_paie",
+        "temps.coherence_absences",
+        "temps.fiches_mensuelles",
+        "temps.validation_fiches"
+      ],
+      "limitations": [
+        "Le contenu non signé n’est pas historisé à chaque frappe.",
+        "Ces preuves sont applicatives ; elles ne constituent pas un scellement indépendant d’un administrateur ayant accès à SQLite."
+      ]
+    },
+    {
+      "id": "temps.demandes_recuperation",
+      "title": "Demandes de récupération complète ou partielle",
+      "purpose": "Demander une récupération puis suivre la décision et les heures correspondantes.",
+      "example_requests": [
+        "Poser une journée de récupération",
+        "Partir deux heures plus tôt vendredi",
+        "Voir mes demandes de récup",
+        "Pourquoi mon compteur a diminué après la paie ?"
+      ],
+      "capabilities": [
+        "Demande sur un intervalle de journées complètes ou sur un créneau d’une seule journée ouvrée.",
+        "Estimation des heures à récupérer depuis le planning daté ; pour une récupération partielle, calcul de l’intersection avec les créneaux de travail et des horaires restants.",
+        "Affichage du solde net des heures payées ; avertissement de solde négatif sans blocage automatique.",
+        "Liste personnelle des demandes et des heures supplémentaires payées marquées déduites du compteur.",
+        "Suppression par le demandeur tant que la demande reste en attente responsable ou direction."
+      ],
+      "entry_points": [
+        "recup_bp.demande_recup",
+        "recup_bp.mes_demandes_recup",
+        "recup_bp.supprimer_demande_recup"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/recup.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "email_service.py"
+        ],
+        "templates": [
+          "templates/demande_recup.html",
+          "templates/mes_demandes_recup.html"
+        ],
+        "tables": [
+          "demandes_recup",
+          "users",
+          "heures_reelles",
+          "planning_theorique",
+          "alternance_reference",
+          "periodes_vacances",
+          "variables_paie"
+        ],
+        "tests": [
+          "tests/test_recup_partielle.py",
+          "tests/test_creneau_soir.py",
+          "tests/test_coherence_rh.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise ; création, liste et suppression uniquement pour session.user_id. Ces routes personnelles ne posent pas de filtre de profil supplémentaire. Les demandes validées ou refusées ne peuvent pas être supprimées ici.",
+        "scope": "Demandes et compteur personnels.",
+        "conditions": [
+          "Récupération partielle : lundi à vendredi, planning applicable et chevauchement positif avec les horaires prévus.",
+          "Notification à l’encadrement si service email configuré ; statut initial en_attente_direction pour responsable, en_attente_responsable pour les autres profils."
+        ],
+        "sources": [
+          "blueprints/recup.py",
+          "utils.py",
+          "email_service.py"
+        ]
+      },
+      "invariants": [
+        "Conserver les trois créneaux de travail lors du calcul des heures restantes.",
+        "Une demande ne modifie pas encore le calendrier : le report intervient seulement lors de la décision finale réussie.",
+        "Le solde global déduit uniquement les variables de paie portant hs_deduites_compteur=1."
+      ],
+      "extension_points": [
+        "Réutiliser calculer_recup_partielle pour une évolution des créneaux et calculer_solde_recup pour le compteur personnel.",
+        "Rattacher une nouvelle présentation des demandes au circuit existant, sans créer un second compteur de récupération."
+      ],
+      "related_features": [
+        "interface.mon_espace",
+        "temps.coherence_absences",
+        "temps.planning_theorique",
+        "temps.validation_demandes_absence"
+      ],
+      "limitations": [
+        "Le modèle de report comporte une seule ligne de calendrier par jour ; deux récupérations partielles d’une même journée ne sont pas fusionnées automatiquement.",
+        "La correction ou annulation d’une récupération déjà validée n’est pas proposée par les routes de suppression personnelles.",
+        "Pour les récupérations complètes, le nombre de jours exclut les fériés via calculer_jours_ouvres, mais le calcul du volume et la boucle de report parcourent tous les lundi-vendredi ; vérifier cette différence avant de réutiliser ces résultats comme jours réellement consommés."
+      ]
+    },
+    {
+      "id": "temps.demandes_conges",
+      "title": "Demandes de congés et attestation PDF",
+      "purpose": "Déposer et suivre un congé payé, conventionnel ou de repos forfait pour la direction.",
+      "example_requests": [
+        "Demander mes congés payés",
+        "Poser un congé conventionnel",
+        "Poser un jour forfait",
+        "Imprimer ma demande de congés"
+      ],
+      "capabilities": [
+        "Création de congés sur un intervalle de dates, décompte en jours ouvrés et motif libre.",
+        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique.",
+        "Statut initial en attente responsable, ou directement direction pour le profil responsable.",
+        "Les demandes du directeur sont auto-validées, créent une absence et se reportent immédiatement au calendrier forfait.",
+        "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures."
+      ],
+      "entry_points": [
+        "recup_bp.demande_conge",
+        "recup_bp.mes_demandes_conges",
+        "recup_bp.supprimer_demande_conge",
+        "recup_bp.demande_conge_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/recup.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "absences_coherence.py",
+          "sessions_securite.py",
+          "email_service.py",
+          "blueprints/absences.py"
+        ],
+        "templates": [
+          "templates/demande_conge.html",
+          "templates/mes_demandes_conges.html"
+        ],
+        "tables": [
+          "demandes_conges",
+          "users",
+          "absences",
+          "heures_reelles",
+          "presence_forfait_jour",
+          "rh_projections",
+          "historique_modifications"
+        ],
+        "tests": [
+          "tests/test_demandes_conges.py",
+          "tests/test_demande_conge_direction.py",
+          "tests/test_profil_valideur_conges.py",
+          "tests/test_coherence_rh.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise ; demande, liste et suppression personnelles. Type Forfait jour réservé au directeur, relu sous transaction avant auto-validation. PDF accessible au propriétaire et aux profils directeur/comptable, pas au responsable pour autrui.",
+        "scope": "Congés personnels ; PDF d’autrui pour direction/comptabilité.",
+        "conditions": [
+          "Types acceptés : Congé payé, Congé conventionnel ; Forfait jour seulement pour directeur.",
+          "Dates normalisées et intervalle comptant au moins un jour ouvré."
+        ],
+        "sources": [
+          "blueprints/recup.py",
+          "utils.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "La demande directeur et ses reports sont une opération atomique ; un conflit annule l’ensemble.",
+        "Une demande validée/refusée reste conservée ; la suppression personnelle ne permet pas de rétablir les compteurs après validation.",
+        "Le PDF distingue le libellé Comptable ou Direction selon profil_validation_direction ; il ne constitue pas une signature électronique du Comité de présidence.",
+        "Le décompte de jours ouvrés exclut les week-ends et les jours fériés configurés."
+      ],
+      "extension_points": [
+        "Étendre TYPES_CONGE et les règles de report/compteurs existantes ensemble si un nouveau type de congé est décidé."
+      ],
+      "related_features": [
+        "administration.options_centre",
+        "interface.mon_espace",
+        "rh.cloture_soldes_conges",
+        "temps.coherence_absences",
+        "temps.forfait_jours",
+        "temps.validation_demandes_absence"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "temps.validation_demandes_absence",
+      "title": "Décision et application des congés/récupérations",
+      "purpose": "Traiter les demandes et appliquer leur décision finale au calendrier et aux compteurs de façon atomique.",
+      "example_requests": [
+        "Valider les congés de mon équipe",
+        "Refuser une récupération avec motif",
+        "Historique des demandes traitées",
+        "Une demande validée doit apparaître au calendrier"
+      ],
+      "capabilities": [
+        "File commune des récupérations et congés à traiter.",
+        "Accord responsable vers en_attente_direction ; refus avec motif obligatoire.",
+        "Décision finale direction/comptable depuis les deux états d’attente autorisés.",
+        "Congé approuvé : création d’absence, report calendrier horaire ou forfait et actualisation des compteurs via les helpers Absences.",
+        "Récupération approuvée : création des journées ou des horaires restants, conservation de la provenance et journal d’application.",
+        "Historique global des décisions validées/refusées, statistiques et heures supplémentaires payées déduites du compteur.",
+        "Notifications de décision seulement après commit réussi, selon configuration et autorisation email du salarié."
+      ],
+      "entry_points": [
+        "recup_bp.validation_demandes_recup",
+        "recup_bp.historique_demandes_recup"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/recup.py"
+        ],
+        "service_files": [
+          "absences_coherence.py",
+          "fiches_db.py",
+          "fiches_versions.py",
+          "sessions_securite.py",
+          "utils.py",
+          "email_service.py",
+          "blueprints/absences.py"
+        ],
+        "templates": [
+          "templates/validation_demandes_recup.html",
+          "templates/historique_demandes_recup.html"
+        ],
+        "tables": [
+          "demandes_recup",
+          "demandes_conges",
+          "users",
+          "secteurs",
+          "absences",
+          "heures_reelles",
+          "presence_forfait_jour",
+          "planning_theorique",
+          "validations",
+          "rh_projections",
+          "historique_modifications",
+          "variables_paie"
+        ],
+        "tests": [
+          "tests/test_demandes_conges.py",
+          "tests/test_recup_partielle.py",
+          "tests/test_coherence_rh.py",
+          "tests/test_coherence_rh_versions.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md",
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion requise. Responsable : demandes en_attente_responsable du même secteur OU rattachées directement. Directeur/comptable : demandes en_attente_responsable ou en_attente_direction de tous les salariés, avec possibilité de décision finale. Historique global : directeur/comptable seulement. Droits, session, cible et état relus sous BEGIN IMMEDIATE.",
+        "scope": "Équipe autorisée ou totalité selon profil.",
+        "conditions": [
+          "Une validation finale de récupération exige les plannings nécessaires et des mois modifiables.",
+          "Un report partiel exige que le volume recalculé corresponde à la demande à 0,01 h près."
+        ],
+        "sources": [
+          "blueprints/recup.py",
+          "utils.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Décision, calendrier, compteurs, origine et journal sont atomiques ; aucun succès final si le report échoue.",
+        "UPDATE conditionné par l’état et verrou transactionnel empêchent la double application concurrente.",
+        "Conflit d’absence/récupération, planning absent ou fiche verrouillée laissent la demande dans son état antérieur ; un intervalle de plusieurs mois est entièrement refusé si nécessaire.",
+        "Le circuit des demandes n’est pas le circuit des fiches : direction/comptable peuvent finaliser une demande sans accord responsable préalable."
+      ],
+      "extension_points": [
+        "Réutiliser _creer_absence_depuis_conge, _reporter_recup_partielle et verifier_disponibilite pour prolonger les effets métier existants.",
+        "Maintenir les envois de notifications après la validation durable de la transaction."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "interface.accueil_flux",
+        "temps.coherence_absences",
+        "temps.demandes_conges",
+        "temps.demandes_recuperation",
+        "temps.versions_fiches"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "temps.coherence_absences",
+      "title": "Provenance et cohérence des reports de calendrier",
+      "purpose": "Empêcher les conflits et l’écrasement des journées produites par une absence ou récupération validée.",
+      "example_requests": [
+        "Corriger une absence sans perdre son origine",
+        "Pourquoi une journée générée ne peut pas être modifiée ?",
+        "Éviter les doubles congés le même jour"
+      ],
+      "capabilities": [
+        "Contrôle des chevauchements d’absences et récupérations déjà appliquées sur un intervalle normalisé.",
+        "Origine structurée par calendrier, salarié et date : absence_id OU demande_recup_id et contenu exact reporté.",
+        "Vérification avant commit des journées modifiées dans heures_reelles ou presence_forfait_jour.",
+        "Suppression ciblée d’une projection et restauration d’une unique absence historique restante ; signalement limité à 100 paires de chevauchements historiques."
+      ],
+      "entry_points": [],
+      "implementation": {
+        "route_files": [],
+        "service_files": [
+          "absences_coherence.py",
+          "fiches_db.py",
+          "database.py",
+          "blueprints/absences.py"
+        ],
+        "templates": [],
+        "tables": [
+          "absences",
+          "demandes_conges",
+          "demandes_recup",
+          "heures_reelles",
+          "presence_forfait_jour",
+          "rh_projections",
+          "rh_projections_a_verifier",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_coherence_rh.py",
+          "tests/test_coherence_rh_versions.py",
+          "tests/test_coherence_rh_migration.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Service interne sans route ; les producteurs Absences/Congés/Récupérations contrôlent les droits. ConnexionFiches vérifie la cohérence au commit et annule la transaction en cas de conflit.",
+        "scope": "Journée d’un salarié dans le calendrier horaire ou forfait.",
+        "conditions": [],
+        "sources": [
+          "absences_coherence.py",
+          "fiches_db.py"
+        ]
+      },
+      "invariants": [
+        "Chaque projection a exactement une origine ; aucune fusion implicite de fractions de journée.",
+        "Les commentaires historiques sont comparés entièrement : Absence #1 ne doit pas correspondre à Absence #10.",
+        "Une projection possédée par une autre absence est conservée ; plusieurs sources restantes ambiguës entraînent un refus explicite.",
+        "Ne jamais committer à l’intérieur des helpers de report ou retrait : les écritures de l’appelant doivent rester atomiques."
+      ],
+      "extension_points": [
+        "Réutiliser memoriser_projection et verifier_disponibilite pour toute nouvelle opération qui produit des journées depuis une décision métier.",
+        "Une évolution vers des absences fractionnées nécessite un modèle explicite avant d’assouplir le contrôle actuel."
+      ],
+      "related_features": [
+        "rh.absences",
+        "temps.forfait_jours",
+        "temps.saisie_heures",
+        "temps.validation_demandes_absence",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Le modèle actuel ne définit ni priorité métier CP/maladie ni cumul de fractions ; les nouvelles superpositions sont refusées.",
+        "La migration ne reconstruit pas les origines historiques et ne rejoue pas les anciennes récupérations validées dont le report aurait été perdu."
+      ]
+    },
+    {
+      "id": "temps.forfait_jours",
+      "title": "Calendrier et bilan du forfait jours",
+      "purpose": "Suivre les journées travaillées et absences du directeur, avec prévision annuelle et rapport mensuel.",
+      "example_requests": [
+        "Mon calendrier forfait jours",
+        "Combien de jours me reste-t-il à travailler ?",
+        "Noter les horaires de ma journée forfait",
+        "Rapport mensuel forfait en PDF"
+      ],
+      "capabilities": [
+        "Préremplir une année encore vierge en journées travaillées du lundi au vendredi hors jours fériés.",
+        "Saisir le type de journée, commentaire et horaires facultatifs matin/après-midi, y compris dans le futur.",
+        "Afficher statistiques annuelles et soldes travail/CP/CC/repos forfait.",
+        "Rapport PDF mensuel détaillant types, commentaires, totaux, heures facultatives renseignées et espaces de signature directeur/Comité de présidence.",
+        "Les congés et absences transmis par les circuits RH alimentent également ce calendrier."
+      ],
+      "entry_points": [
+        "forfait_bp.dashboard_forfait_jour",
+        "forfait_bp.calendrier_forfait_jour",
+        "forfait_bp.rapport_forfait_jour_pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/forfait.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "absences_coherence.py",
+          "fiches_db.py"
+        ],
+        "templates": [
+          "templates/dashboard_forfait_jour.html",
+          "templates/calendrier_forfait_jour.html"
+        ],
+        "tables": [
+          "presence_forfait_jour",
+          "jours_feries",
+          "users",
+          "rh_projections"
+        ],
+        "tests": [
+          "tests/test_forfait_jour.py",
+          "tests/test_absences_forfait_jour.py",
+          "tests/test_demande_conge_direction.py",
+          "tests/test_coherence_rh.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion et profil directeur requis pour les trois routes ; toutes les opérations visent session.user_id, sans sélection d’un autre directeur.",
+        "scope": "Calendrier personnel du directeur.",
+        "conditions": [
+          "Initialisation uniquement si aucune ligne n’existe pour l’année ; ouverture du dashboard/calendrier peut donc écrire le préremplissage."
+        ],
+        "sources": [
+          "blueprints/forfait.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Ne pas écraser les saisies existantes lors d’une initialisation annuelle.",
+        "forfait_jour et repos_forfait consomment le même compteur de repos.",
+        "Une journée issue d’une absence active ne peut pas être remplacée par une édition manuelle du calendrier."
+      ],
+      "extension_points": [
+        "Réutiliser initialiser_annee_forfait_jour avec commit=False lorsque l’initialisation fait partie d’une transaction plus large.",
+        "Centraliser une éventuelle configuration des quotas dans calculer_stats_forfait_jour et le générateur PDF."
+      ],
+      "related_features": [
+        "interface.digest_direction",
+        "interface.mon_espace",
+        "rh.absences",
+        "rh.cloture_soldes_conges",
+        "temps.coherence_absences",
+        "temps.demandes_conges",
+        "temps.presence_effectif"
+      ],
+      "limitations": [
+        "Calcul et PDF utilisent actuellement des quotas fixes : 210 jours travaillés, 25 CP et 8 congés conventionnels.",
+        "Les journées futures préremplies sont comptées dans les statistiques annuelles ; ce tableau comporte donc une dimension prévisionnelle.",
+        "La table validation_forfait_jour existe au schéma mais ces routes ne mettent pas en œuvre un circuit de signatures/verrouillage équivalent aux fiches horaires."
+      ]
+    },
+    {
+      "id": "temps.equipe_hebdomadaire",
+      "title": "Présences et absences hebdomadaires de mon équipe",
+      "purpose": "Voir les horaires de l’équipe sur la semaine courante ou suivante.",
+      "example_requests": [
+        "Qui travaille dans mon équipe demain ?",
+        "Planning de l’équipe la semaine prochaine",
+        "Combien de personnes sont présentes à 14 heures ?"
+      ],
+      "capabilities": [
+        "Grille lundi-vendredi : heures réelles, conforme, planning théorique de repli, absences, récupérations et fériés.",
+        "Membres du secteur, rattachés directs et responsables externes supervisant ce secteur, avec contrat en cours.",
+        "Comptage des présences par tranches horaires pour responsable/comptable ; variante crèche avec taux d’encadrement.",
+        "Masquage facultatif des motifs d’absence pour les salariés dans le rendu."
+      ],
+      "entry_points": [
+        "mon_equipe_bp.mon_equipe"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/mon_equipe.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "app_options.py"
+        ],
+        "templates": [
+          "templates/mon_equipe.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "heures_reelles",
+          "absences",
+          "planning_theorique",
+          "alternance_reference",
+          "jours_feries",
+          "frequentation_creche"
+        ],
+        "tests": [
+          "tests/test_equipe_responsable.py",
+          "tests/test_options.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Connexion requise. Page accessible aux profils salarie, responsable et comptable ; directeur et prestataire refusés. L’équipe est déduite du compte connecté, sans sélection libre d’un autre secteur. Les tableaux de présence horaire sont réservés à responsable/comptable.",
+        "scope": "Secteur personnel, rattachés directs et responsables associés ; membres actifs ayant un contrat à la date actuelle.",
+        "conditions": [
+          "Option mon_equipe_masquer_motifs_absence_salaries pour le masquage du rendu salarié."
+        ],
+        "sources": [
+          "blueprints/mon_equipe.py",
+          "templates/mon_equipe.html",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "Priorité de présentation : férié puis absence, puis ligne réelle, puis planning théorique en repli.",
+        "Une personne n’est comptée qu’une fois par tranche lorsqu’un de ses créneaux la chevauche.",
+        "Ne pas transformer les horaires théoriques de repli en confirmation d’une présence réelle."
+      ],
+      "extension_points": [
+        "Réutiliser _get_equipe et _construire_grille pour étendre cette vue d’équipe en conservant les contrôles de confidentialité."
+      ],
+      "related_features": [
+        "interface.tableau_bord_responsable",
+        "rh.dossier_salarie",
+        "temps.encadrement_creche",
+        "temps.planning_theorique",
+        "temps.saisie_heures"
+      ],
+      "limitations": [
+        "Navigation limitée à la semaine courante et à la suivante.",
+        "Le filtre de contrat des membres utilise la date actuelle, même pour la semaine suivante ; ce n’est pas une reconstitution historique de l’effectif."
+      ]
+    },
+    {
+      "id": "temps.encadrement_creche",
+      "title": "Fréquentation et comparaison d’encadrement crèche",
+      "purpose": "Comparer les professionnels prévus présents aux besoins calculés à partir de la fréquentation moyenne par tranche.",
+      "example_requests": [
+        "Taux d’encadrement de la crèche",
+        "Modifier le nombre d’enfants par tranche horaire",
+        "Compter la responsable sur le terrain"
+      ],
+      "capabilities": [
+        "Présences par tranches spécifiques crèche dans Mon équipe.",
+        "Fréquentation moyenne par tranche enregistrée pour le secteur et option responsable_terrain.",
+        "Besoin calculé avec les constantes actuelles : plafond du nombre d’enfants divisé par 6, minimum 2 si des enfants sont présents.",
+        "Responsables exclus par défaut du comptage professionnel ; l’option terrain ajoute une présence responsable si celle-ci est prévue sur la tranche."
+      ],
+      "entry_points": [
+        "mon_equipe_bp.mon_equipe",
+        "mon_equipe_bp.api_save_frequentation"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/mon_equipe.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/mon_equipe.html"
+        ],
+        "tables": [
+          "frequentation_creche",
+          "users",
+          "secteurs",
+          "contrats",
+          "heures_reelles",
+          "absences",
+          "planning_theorique"
+        ],
+        "tests": [
+          "tests/test_database.py",
+          "tests/test_equipe_responsable.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Lecture des tranches : responsable/comptable de leur propre secteur de type creche via Mon équipe. Écriture de fréquentation : responsable uniquement, dont secteur_id correspond au secteur demandé et dont type_secteur vaut creche ; directeur/comptable ne disposent pas de ce POST.",
+        "scope": "Secteur crèche du compte connecté ; données de fréquentation communes au secteur.",
+        "conditions": [
+          "Secteur de type creche ; responsable_terrain activé par tranche si besoin."
+        ],
+        "sources": [
+          "blueprints/mon_equipe.py"
+        ]
+      },
+      "invariants": [
+        "Les valeurs négatives de fréquentation sont ramenées à zéro.",
+        "La clé secteur/tranche est unique et la sauvegarde met à jour les valeurs et l’auteur.",
+        "Les nombres affichés découlent des créneaux de la grille, avec une seule occurrence d’un salarié par tranche."
+      ],
+      "extension_points": [
+        "Réutiliser les fonctions _calculer_presences_creche, _calculer_presence_responsable et _calculer_requis_creche pour faire évoluer cette comparaison.",
+        "Vérifier les règles métier avant de généraliser les constantes de ratio ou de qualifier le résultat de conformité réglementaire."
+      ],
+      "related_features": [
+        "finances.simulation_ps",
+        "temps.equipe_hebdomadaire"
+      ],
+      "limitations": [
+        "La fréquentation est moyenne et stockée par secteur/tranche, sans date ni déclinaison selon le jour de la semaine.",
+        "Le nombre de professionnels compte tout chevauchement avec une tranche ; il ne garantit pas un minimum constant pendant toute sa durée."
+      ]
+    },
+    {
+      "id": "temps.presence_effectif",
+      "title": "Tableau mensuel de présence de l’effectif",
+      "purpose": "Présenter l’effectif sous contrat et ses catégories d’absences jour par jour sur un mois.",
+      "example_requests": [
+        "Présence effectif de septembre",
+        "Qui était absent la semaine dernière ?",
+        "Combien de salariés absents chaque jour ?"
+      ],
+      "capabilities": [
+        "Matrice salariés par jour classée par secteur, avec catégories présent, maladie, congés, récup, autre absence, week-end, férié et hors contrat.",
+        "Agrégation des absences, récupérations complètes dans heures_reelles et types du calendrier forfait.",
+        "Compteurs par salarié et nombre d’absents par jour.",
+        "Contrats clos conservés dans leur mois même si le compte est désactivé ; contrats ouverts seulement pour un compte actif."
+      ],
+      "entry_points": [
+        "presence_effectif_bp.presence_effectif"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/presence_effectif.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/presence_effectif.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "absences",
+          "heures_reelles",
+          "presence_forfait_jour",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_presence_effectif.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Connexion requise ; directeur/comptable uniquement ; consultation sans écriture.",
+        "scope": "Ensemble de l’effectif hors prestataires dont au moins un contrat chevauche le mois.",
+        "conditions": [
+          "Mois borné à 1–12 et année à 2000–2100 par la route."
+        ],
+        "sources": [
+          "blueprints/presence_effectif.py"
+        ]
+      },
+      "invariants": [
+        "Une seule ligne par salarié malgré plusieurs contrats ; dates de contrat inclusives et interruptions distinguées.",
+        "Hors contrat, week-end et férié précèdent les catégories d’absence pour le rendu et les compteurs.",
+        "En cas de données anciennes superposées, priorité d’affichage maladie, congés, autre, récup ; cette priorité n’est pas une règle de remplacement des sources RH."
+      ],
+      "extension_points": [
+        "Réutiliser _construire_matrice pour enrichir un état de présence mensuel sans recréer le calcul des périodes d’emploi."
+      ],
+      "related_features": [
+        "temps.coherence_absences",
+        "temps.equipe_hebdomadaire",
+        "temps.forfait_jours"
+      ],
+      "limitations": [
+        "Présent signifie ici jour ouvré sous contrat sans absence reconnue ; les horaires théoriques et la preuve de pointage ne sont pas examinés.",
+        "Les récupérations partielles ne sont pas classées en récupération par cette matrice ; seuls les types recup_journee le sont."
+      ]
+    },
+    {
+      "id": "temps.planning_annualise_enfance",
+      "title": "Simulation de planning annualisé enfance",
+      "purpose": "Comparer une répartition annuelle d’heures enfance au volume contractuel cible et sauvegarder ses hypothèses.",
+      "example_requests": [
+        "Simuler le temps annualisé d’un animateur",
+        "Répartir les heures entre ALSH et accompagnement scolaire",
+        "Équilibrer les horaires pendant les vacances"
+      ],
+      "capabilities": [
+        "Configuration par salarié/année : heures hebdomadaires contractuelles, CP, seuil d’alerte, créneaux vacances/hors vacances, accompagnement scolaire, réunions et préparation hebdomadaire.",
+        "Chargement des vacances et fériés déjà configurés dans l’application.",
+        "Analyse civile annuelle avec jours ouvrés et semaines équivalentes, volumes par activité et journée, écart à la cible et heures restant à répartir.",
+        "Alertes calculées côté navigateur sur journées longues, volumes hebdomadaires, accompagnement scolaire tardif et équilibre annuel.",
+        "Sauvegarde/rechargement du JSON d’hypothèses avec auteur et date de mise à jour."
+      ],
+      "entry_points": [
+        "planning_enfance_bp.planning_enfance",
+        "planning_enfance_bp.api_vacances",
+        "planning_enfance_bp.api_feries",
+        "planning_enfance_bp.api_get_config",
+        "planning_enfance_bp.api_save_config"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/planning_enfance.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/planning_enfance.html"
+        ],
+        "tables": [
+          "planning_enfance_config",
+          "users",
+          "secteurs",
+          "periodes_vacances",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_responsable_rh_paie_access.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Connexion requise ; profils directeur/responsable/comptable. Le sélecteur propose tous les actifs hors prestataires à direction/comptabilité et les actifs du secteur plus soi au responsable. Les API de configuration GET/POST ne vérifient toutefois que le profil et les paramètres obligatoires, sans recontrôler le périmètre du user_id reçu. Les hooks globaux vérifient compte actif, version de session et changement de mot de passe imposé ; ils ne filtrent pas le salarié cible de ces API.",
+        "scope": "Configuration indexée par salarié/année ; restriction du sélecteur responsable au secteur, non appliquée au serveur des API de configuration.",
+        "conditions": [
+          "Les calendriers vacances/fériés doivent être renseignés pour une simulation représentative."
+        ],
+        "sources": [
+          "blueprints/planning_enfance.py",
+          "blueprints/auth.py",
+          "sessions_securite.py",
+          "utils.py",
+          "app.py"
+        ]
+      },
+      "invariants": [
+        "Les résultats sont calculés dans analyzeYear/computeAll du template ; le serveur persiste les hypothèses et ne certifie pas le calcul.",
+        "Cible actuelle : heures hebdomadaires × 52, moins CP valorisés à heures hebdomadaires/5 et heures des fériés selon planning.",
+        "Les CP réduisent proportionnellement les heures hors vacances ; accompagnement scolaire exclu en juillet/août ; semaines équivalentes calculées en jours/5."
+      ],
+      "extension_points": [
+        "Étendre la configuration annuelle existante pour un nouveau besoin de simulation enfance.",
+        "Extraire un moteur partagé avant de consommer ces calculs côté serveur ou dans un autre module.",
+        "Avant d’élargir l’usage, réutiliser un contrôle de périmètre par cible dans les API de configuration."
+      ],
+      "related_features": [
+        "administration.calendrier_collectif",
+        "association.alsh_analyse",
+        "temps.planning_theorique"
+      ],
+      "limitations": [
+        "La sauvegarde écrit uniquement planning_enfance_config ; elle ne publie pas de planning théorique et ne crée ni contrat ni heures réelles.",
+        "Écart de périmètre à examiner : planning_enfance_bp.api_get_config et planning_enfance_bp.api_save_config ne contrôlent pas la cible au-delà du profil ; le sélecteur responsable filtre pourtant par secteur. Les hooks globaux de session n’ajoutent pas ce filtre.",
+        "Le test référencé couvre la navigation du responsable, pas la justesse du calcul JavaScript ni le périmètre des API."
+      ]
+    },
+    {
+      "id": "temps.historique_modifications",
+      "title": "Historique des modifications des temps",
+      "purpose": "Consulter les changements tracés avec leurs auteurs et valeurs avant/après.",
+      "example_requests": [
+        "Qui a modifié les heures de Cyril ?",
+        "Historique des corrections de fiche",
+        "Retrouver le motif de réouverture"
+      ],
+      "capabilities": [
+        "Liste chronologique des événements de historique_modifications avec salarié modifié et auteur.",
+        "Filtres facultatifs salarié et intervalle de dates concernées.",
+        "Présentation des valeurs JSON avant/après, comprenant les modifications d’heures et réouvertures journalisées par les producteurs."
+      ],
+      "entry_points": [
+        "suivi_bp.historique_modifications"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/suivi.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/historique_modifications.html"
+        ],
+        "tables": [
+          "historique_modifications",
+          "users"
+        ],
+        "tests": [
+          "tests/test_acces_routes_sensibles.py",
+          "tests/test_saisie.py",
+          "tests/test_fiches_versions.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion et profil directeur requis ; lecture uniquement.",
+        "scope": "Historique de tous les salariés, éventuellement filtré.",
+        "conditions": [],
+        "sources": [
+          "blueprints/suivi.py"
+        ]
+      },
+      "invariants": [
+        "Les filtres portent sur date_concernee et le classement sur date_modification décroissante.",
+        "Ne pas confondre le journal de modifications générales avec les preuves/versionnements dans fiches_evenements."
+      ],
+      "extension_points": [
+        "Réutiliser historique_modifications pour une nouvelle correction métier nécessitant l’auteur et les valeurs avant/après ; conserver les événements de preuve dans le moteur de fiches."
+      ],
+      "related_features": [
+        "administration.journaux",
+        "temps.saisie_heures",
+        "temps.validation_fiches",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Résultats limités aux 200 dernières lignes correspondant aux filtres."
+      ]
+    },
+    {
+      "id": "temps.suivi_anomalies",
+      "title": "Suivi et traitement des anomalies de saisie",
+      "purpose": "Examiner les modifications d’heures signalées et marquer les anomalies comme traitées.",
+      "example_requests": [
+        "Voir les anomalies de saisie",
+        "Traiter un écart important d’heures",
+        "Retrouver les fiches modifiées après signature"
+      ],
+      "capabilities": [
+        "Affichage des anomalies avec salarié, gravité, description et valeurs avant/après.",
+        "Filtres par gravité et inclusion facultative des anomalies déjà traitées.",
+        "Marquage traitee=1 par POST et statistiques globales critique/alerte/suspect/non traitées."
+      ],
+      "entry_points": [
+        "suivi_bp.suivi_anomalies"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/suivi.py"
+        ],
+        "service_files": [],
+        "templates": [
+          "templates/suivi_anomalies.html"
+        ],
+        "tables": [
+          "anomalies",
+          "users"
+        ],
+        "tests": [
+          "tests/test_saisie.py",
+          "tests/test_fiches_versions.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Connexion requise ; directeur et comptable pour lecture et marquage traité ; aucun filtre d’équipe.",
+        "scope": "Toutes les anomalies enregistrées.",
+        "conditions": [],
+        "sources": [
+          "blueprints/suivi.py",
+          "blueprints/saisie.py"
+        ]
+      },
+      "invariants": [
+        "Marquer une anomalie traitée ne modifie ni les heures ni le circuit des signatures.",
+        "Les anomalies proviennent des producteurs métier ; leur liste ne remplace pas les contrôles de verrouillage/versionnement."
+      ],
+      "extension_points": [
+        "Ajouter un type d’anomalie dans le producteur concerné et réutiliser la vue existante au lieu de créer une nouvelle liste d’alertes similaires."
+      ],
+      "related_features": [
+        "temps.saisie_heures",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Affichage limité à 500 anomalies ; les statistiques de la page portent sur l’ensemble de la table."
+      ]
+    },
+    {
+      "id": "temps.alertes_surcharge",
+      "title": "Indicateur de surcharge et métriques de temps",
+      "purpose": "Repérer les salariés présentant des signaux de surcharge à partir des heures déclarées et de leurs écarts au planning.",
+      "example_requests": [
+        "Quels salariés accumulent trop d’heures ?",
+        "Repérer les pauses réduites",
+        "Voir les signaux de surcharge de travail"
+      ],
+      "capabilities": [
+        "Score calculé sur 100 avec catégories Vert/Jaune/Orange/Rouge/Noir et détail des points.",
+        "Critères portant sur dépassements des cinq derniers jours ouvrés, journée longue, semaine forte, moyenne sur douze semaines, repos, pauses réduites et soldes mensuel/courant.",
+        "Courbe du solde calculé sur 60 jours et classement décroissant par score puis solde.",
+        "Helpers partagés worktime_metrics pour planning daté/alterné avec cache, trois créneaux, durée réelle, amplitude, pauses et plus longue durée consécutive."
+      ],
+      "entry_points": [
+        "suivi_bp.alertes_surcharge"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/suivi.py"
+        ],
+        "service_files": [
+          "blueprints/worktime_metrics.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/alertes_surcharge.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "heures_reelles",
+          "planning_theorique",
+          "alternance_reference",
+          "periodes_vacances",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_alertes_surcharge.py",
+          "tests/test_pause_remuneree.py",
+          "tests/test_creneau_soir.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Connexion requise ; directeur/comptable uniquement ; lecture et calcul sans écriture.",
+        "scope": "Salariés actifs hors directeur/prestataire ; heures jusqu’à la date actuelle.",
+        "conditions": [],
+        "sources": [
+          "blueprints/suivi.py",
+          "blueprints/worktime_metrics.py"
+        ]
+      },
+      "invariants": [
+        "Le score est borné à 100 ; une alerte est masquée si score nul ou solde courant calculé inférieur ou égal à zéro.",
+        "La pause rémunérée augmente les heures effectives mais coupe le travail consécutif lorsqu’une pause positive existe ; la déclaration conforme utilise le planning daté.",
+        "Les périodes récentes utilisent les jours ouvrés hors fériés et les semaines complètes précédentes ; les catégories et seuils sont des constantes du module."
+      ],
+      "extension_points": [
+        "Réutiliser compute_day_metrics pour une nouvelle analyse des pauses ou horaires et lire les critères de _calculate_surcharge_alert avant d’ajouter un autre score.",
+        "Évaluer explicitement les données manquantes et les divergences de compteur avant une utilisation de cet indicateur dans une décision automatique."
+      ],
+      "related_features": [
+        "interface.centre_controle",
+        "rh.prevention_sante",
+        "temps.demandes_recuperation",
+        "temps.planning_theorique",
+        "temps.saisie_heures"
+      ],
+      "limitations": [
+        "Le solde de cet indicateur est calculé depuis solde_initial et écarts des heures ; il ne déduit pas les variables de paie hs_deduites_compteur, contrairement au solde de récupération métier.",
+        "L’indicateur ne valide pas une conformité réglementaire ; ses fenêtres et seuils sont ceux du code actuel.",
+        "Les heures absentes des lignes déclarées ne sont pas complétées comme une journée travaillée, ce qui peut réduire les agrégats de semaines incomplètement saisies."
+      ]
+    }
+  ]
+}

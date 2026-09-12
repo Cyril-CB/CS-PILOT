@@ -1,0 +1,1082 @@
+{
+  "schema_version": 1,
+  "domain": "rh",
+  "features": [
+    {
+      "id": "rh.dossier_salarie",
+      "title": "Fiche de renseignements et fonction du salarié",
+      "purpose": "Centraliser les coordonnées, informations personnelles, fonction et éléments de pesée du salarié pour les parcours RH.",
+      "example_requests": [
+        "fiche RH de Cyril",
+        "changer adresse salarié",
+        "modifier fonction professionnelle",
+        "renseigner points de compétence"
+      ],
+      "capabilities": [
+        "Sélectionner un salarié autorisé et afficher ses renseignements, contrats et documents.",
+        "Modifier email, adresse, date de naissance et numéro de sécurité sociale.",
+        "Sélectionner, retirer ou créer une fonction dans un référentiel commun ; nouvelle fonction limitée à 60 caractères et entrée existante vérifiée.",
+        "Modifier pesée, points de compétence décimaux et maintien de salaire."
+      ],
+      "entry_points": [
+        "infos_salaries_bp.infos_salaries",
+        "infos_salaries_bp.modifier_email",
+        "infos_salaries_bp.modifier_infos_personnelles",
+        "infos_salaries_bp.modifier_fonction",
+        "infos_salaries_bp.modifier_pesee"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/infos_salaries.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "prepa_paie_donnees.py"
+        ],
+        "templates": [
+          "templates/infos_salaries.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "fonctions",
+          "contrats",
+          "documents_salaries"
+        ],
+        "tests": [
+          "tests/test_infos_salaries.py",
+          "tests/test_fonction_salarie.py",
+          "tests/test_responsable_rh_paie_access.py"
+        ],
+        "docs": [
+          "docs/quick-start.md"
+        ]
+      },
+      "access": {
+        "summary": "Routes protégées par login_required puis _peut_gerer : comptable, directeur et responsable peuvent lire et modifier les fiches autorisées ; le salarié et le prestataire ne disposent pas de ces routes. _est_salarie_visible vérifie la cible avant consultation ou écriture.",
+        "scope": "Comptable/direction : utilisateurs actifs hors prestataires. Responsable : salariés actifs de son secteur, rattachés directs via responsable_id même hors secteur, et lui-même ; sans secteur, rattachés directs et lui-même.",
+        "conditions": [],
+        "sources": [
+          "blueprints/infos_salaries.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Le contrôle de cible porte sur les écritures et téléchargements, pas uniquement sur la liste du formulaire.",
+        "Le référentiel des fonctions est commun ; ne pas enregistrer la sentinelle __autre__ comme fonction.",
+        "La compétence accepte des décimales ; vide remet à NULL, maintien vide vaut zéro.",
+        "Les données users alimentent plusieurs parcours ; la préparation de paie ne doit être invalidée que si son contenu réellement présenté change."
+      ],
+      "extension_points": [
+        "Réutiliser _est_salarie_visible pour une extension du dossier RH ; ne pas remplacer le périmètre par le seul secteur.",
+        "Réutiliser users et fonctions pour les coordonnées et la fonction, au lieu de créer un second annuaire.",
+        "Examiner prepa_paie_donnees.donnees_salarie avant d’ajouter des informations à la préparation de paie."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.gestion_comptes",
+        "administration.secteurs",
+        "finances.bilan_action",
+        "finances.simulation_paie",
+        "interface.tableau_bord_responsable",
+        "rh.contrats_dossier",
+        "rh.documents_salaries",
+        "rh.pesee_alisfa",
+        "rh.preparation_paie",
+        "temps.equipe_hebdomadaire"
+      ],
+      "limitations": [
+        "La fiche RH cible des salariés actifs ; un accès historique à un salarié désactivé exige un parcours et des droits explicites."
+      ]
+    },
+    {
+      "id": "rh.documents_salaries",
+      "title": "Pièces du dossier salarié",
+      "purpose": "Conserver, remplacer et télécharger les pièces administratives classées du dossier d’un salarié.",
+      "example_requests": [
+        "déposer diplôme salarié",
+        "télécharger fiche de renseignement",
+        "remplacer carte vitale",
+        "documents RH manquants"
+      ],
+      "capabilities": [
+        "Déposer une fiche de renseignement, carte d’identité recto/verso, carte vitale, diplôme ou deux catégories de documents complémentaires.",
+        "Associer une description et remplacer le fichier d’une catégorie existante pour le même salarié.",
+        "Télécharger ou supprimer une pièce avec contrôle de visibilité du salarié."
+      ],
+      "entry_points": [
+        "infos_salaries_bp.infos_salaries",
+        "infos_salaries_bp.ajouter_document",
+        "infos_salaries_bp.telecharger_document",
+        "infos_salaries_bp.supprimer_document"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/infos_salaries.py"
+        ],
+        "service_files": [
+          "document_files.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/infos_salaries.html"
+        ],
+        "tables": [
+          "users",
+          "documents_salaries",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_infos_salaries.py",
+          "tests/test_prestataire_paie.py"
+        ],
+        "docs": [
+          "docs/quick-start.md"
+        ]
+      },
+      "access": {
+        "summary": "Routes protégées par login_required puis _peut_gerer : comptable, directeur et responsable peuvent lire et modifier les fiches autorisées ; le salarié et le prestataire ne disposent pas de ces routes. _est_salarie_visible vérifie la cible avant consultation ou écriture.",
+        "scope": "Comptable/direction : utilisateurs actifs hors prestataires. Responsable : salariés actifs de son secteur, rattachés directs via responsable_id même hors secteur, et lui-même ; sans secteur, rattachés directs et lui-même.",
+        "conditions": [
+          "Extension autorisée selon catégorie : PDF pour renseignement, diplôme et documents complémentaires ; PDF ou image pour identité/vitale."
+        ],
+        "sources": [
+          "blueprints/infos_salaries.py"
+        ]
+      },
+      "invariants": [
+        "Une catégorie de document est remplacée pour le salarié concerné ; ce parcours ne conserve pas un historique de versions du fichier remplacé.",
+        "Les téléchargements vérifient le chemin réel sous le dossier documents ; ne pas accepter un chemin fourni par le navigateur.",
+        "Le prestataire peut télécharger les PDF de contrats dans un autre endpoint, mais cela ne lui donne pas accès à ces pièces RH."
+      ],
+      "extension_points": [
+        "Étendre TYPES_DOCUMENT et _extensions_acceptees de manière coordonnée avec le formulaire.",
+        "Pour un besoin de documents de l’association, examiner un propriétaire organisation distinct : documents_salaries est lié à user_id et à des droits RH."
+      ],
+      "related_features": [
+        "administration.stockage_documents",
+        "interface.tableau_bord_comptable",
+        "rh.contrats_dossier",
+        "rh.dossier_salarie"
+      ],
+      "limitations": [
+        "Le nombre de catégories est fixé dans TYPES_DOCUMENT ; les documents complémentaires disposent de deux emplacements."
+      ]
+    },
+    {
+      "id": "rh.contrats_dossier",
+      "title": "Contrats enregistrés au dossier salarié",
+      "purpose": "Maintenir les périodes contractuelles et PDF qui alimentent les heures, la paie et le suivi des effectifs.",
+      "example_requests": [
+        "ajouter contrat CDD",
+        "prolonger date de fin contrat",
+        "joindre PDF contrat signé",
+        "temps hebdomadaire contrat"
+      ],
+      "capabilities": [
+        "Enregistrer CDI, CDD, CEE ou Autre avec début, fin éventuelle, forfait, nombre de jours, temps hebdomadaire et PDF facultatif.",
+        "Compléter un contrat sans PDF ; télécharger le PDF existant.",
+        "Modifier ou retirer la date de fin sans supprimer le contrat ni son PDF.",
+        "Supprimer un contrat en conservant les protections transversales des fiches mensuelles."
+      ],
+      "entry_points": [
+        "infos_salaries_bp.infos_salaries",
+        "infos_salaries_bp.ajouter_contrat",
+        "infos_salaries_bp.ajouter_pdf_contrat",
+        "infos_salaries_bp.telecharger_contrat",
+        "infos_salaries_bp.modifier_date_fin_contrat",
+        "infos_salaries_bp.supprimer_contrat"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/infos_salaries.py"
+        ],
+        "service_files": [
+          "fiches_versions.py",
+          "prepa_paie_donnees.py",
+          "document_files.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/infos_salaries.html"
+        ],
+        "tables": [
+          "users",
+          "contrats",
+          "journal_actions",
+          "prepa_paie_statut"
+        ],
+        "tests": [
+          "tests/test_infos_salaries.py",
+          "tests/test_nouvelles_fonctionnalites.py",
+          "tests/test_fiches_versions.py",
+          "tests/test_prestataire_paie.py"
+        ],
+        "docs": [
+          "docs/fiches-mensuelles.md",
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Routes protégées par login_required puis _peut_gerer : comptable, directeur et responsable peuvent lire et modifier les fiches autorisées ; le salarié et le prestataire ne disposent pas de ces routes. _est_salarie_visible vérifie la cible avant consultation ou écriture. Exception de lecture : telecharger_contrat autorise aussi le prestataire, sans le filtre _est_salarie_visible ; il ne peut pas modifier le dossier.",
+        "scope": "Comptable/direction : utilisateurs actifs hors prestataires. Responsable : salariés actifs de son secteur, rattachés directs via responsable_id même hors secteur, et lui-même ; sans secteur, rattachés directs et lui-même. Les téléchargements par le prestataire ne sont pas limités à l’effectif actif.",
+        "conditions": [],
+        "sources": [
+          "blueprints/infos_salaries.py"
+        ]
+      },
+      "invariants": [
+        "Dates stockées en texte ISO et utilisées pour les fenêtres mensuelles ; leur validité est contrôlée à l’ajout et à la modification de fin.",
+        "La modification de date de fin refuse une fin antérieure au début ; une date vide signifie sans terme connu.",
+        "ajouter_pdf_contrat refuse d’écraser un PDF déjà présent.",
+        "Un changement contractuel qui modifierait une fiche verrouillée est refusé par la couche de connexion/versionnement et la transaction est annulée.",
+        "Une modification des contrats ou du PDF lié affichés dans le mois invalide la vérification de préparation de paie correspondante."
+      ],
+      "extension_points": [
+        "Réutiliser contrats pour les périodes contractuelles et les fenêtres d’activité ; ne pas confondre contrats_generes, qui conserve un DOCX de travail, avec le dossier contractuel.",
+        "Propager toute nouvelle donnée contractuelle dans les calculs de fiches, de paie et de statistiques qui l’utilisent."
+      ],
+      "related_features": [
+        "finances.simulation_paie",
+        "rh.dossier_salarie",
+        "rh.generation_contrats",
+        "rh.preparation_paie",
+        "rh.suivi_contrats",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Le formulaire d’ajout valide le format des dates mais ne comporte pas le même contrôle explicite fin >= début que modifier_date_fin_contrat."
+      ]
+    },
+    {
+      "id": "rh.suivi_contrats",
+      "title": "Recherche mensuelle des contrats et salariés sans couverture",
+      "purpose": "Retrouver les contrats d’un mois et les salariés actifs dont la saisie des heures manque d’une période contractuelle courante.",
+      "example_requests": [
+        "CDD en cours",
+        "contrats se terminant en juillet",
+        "contrats débutant ce mois",
+        "salariés sans contrat"
+      ],
+      "capabilities": [
+        "Filtrer par mois/année, type de contrat, activité sur le mois, échéance ou début durant le mois.",
+        "Consulter les paramètres du contrat, son secteur et accéder au PDF par la route du dossier salarié.",
+        "Lister les salariés actifs sans contrat couvrant aujourd’hui et distinguer absence de contrat, échéance passée et contrat futur."
+      ],
+      "entry_points": [
+        "contrats_bp.liste_contrats",
+        "contrats_bp.salaries_sans_contrat"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/contrats.py"
+        ],
+        "service_files": [
+          "utils.py"
+        ],
+        "templates": [
+          "templates/contrats.html",
+          "templates/contrats_sans_contrat.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats"
+        ],
+        "tests": [
+          "tests/test_contrats.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Consultation réservée aux profils directeur et comptable après login_required ; aucune écriture dans ces routes.",
+        "scope": "Liste mensuelle : contrats hors prestataires, y compris salariés inactifs. Sans contrat : salariés actifs hors direction/prestataires.",
+        "conditions": [],
+        "sources": [
+          "blueprints/contrats.py"
+        ]
+      },
+      "invariants": [
+        "Actif sur le mois signifie date_debut <= dernier jour et date_fin absente ou >= premier jour.",
+        "Échéance sans type explicite applique le type CDD.",
+        "Le filtre interne signe est un proxy fondé sur date_debut, et non une preuve de signature.",
+        "La liste sans contrat distingue une embauche future d’un contrat échu ; la date du jour est issue de utils.aujourd_hui."
+      ],
+      "extension_points": [
+        "Réutiliser liste_contrats et ses paramètres mois, annee, type, filtre pour enrichir les intentions de recherche.",
+        "Réutiliser salaries_sans_contrat pour un signalement du blocage de saisie, avec le même périmètre d’effectif."
+      ],
+      "related_features": [
+        "rh.contrats_dossier",
+        "rh.preparation_paie"
+      ],
+      "limitations": [
+        "La page limite le choix d’année à N+1 jusqu’à N-4 ; une autre année reçue est remplacée par l’année courante."
+      ]
+    },
+    {
+      "id": "rh.generation_contrats",
+      "title": "Génération de contrats DOCX et référentiels associés",
+      "purpose": "Produire un DOCX de contrat à partir d’un modèle, des données du salarié et des paramètres saisis.",
+      "example_requests": [
+        "générer contrat de travail",
+        "modèle CEE",
+        "contrat remplacement salarié",
+        "lieux de travail association",
+        "forfaits CEE"
+      ],
+      "capabilities": [
+        "Choisir un modèle DOCX et un salarié ; produire CDI, CDD de remplacement, CDD d’accroissement d’activité, CEE ou autre.",
+        "Remplacer les balises de renseignements salarié, dates, salarié remplacé, poste ALISFA, responsable, temps hebdomadaire, essai, horaires, salaire socle, pesée, ancienneté, brut mensuel, forfait et jours CEE.",
+        "Utiliser jusqu’à trois lieux nom/adresse et la position ainsi que les points de chacun des huit critères ALISFA.",
+        "Télécharger le document généré puis retélécharger le dernier DOCX du salarié.",
+        "Ajouter, remplacer, télécharger et supprimer les modèles DOCX ; ajouter/supprimer lieux et forfaits CEE avec condition descriptive.",
+        "Le salaire socle du formulaire est mémorisé dans app_settings via save_setting."
+      ],
+      "entry_points": [
+        "generation_contrats_bp.generation_contrats",
+        "generation_contrats_bp.generer_contrat",
+        "generation_contrats_bp.retelecharger_contrat",
+        "generation_contrats_bp.upload_modele",
+        "generation_contrats_bp.remplacer_modele",
+        "generation_contrats_bp.telecharger_modele",
+        "generation_contrats_bp.supprimer_modele",
+        "generation_contrats_bp.ajouter_lieu",
+        "generation_contrats_bp.supprimer_lieu",
+        "generation_contrats_bp.ajouter_forfait_cee",
+        "generation_contrats_bp.supprimer_forfait_cee"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/generation_contrats.py"
+        ],
+        "service_files": [
+          "blueprints/pesee_alisfa.py",
+          "app_options.py",
+          "utils.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/generation_contrats.html"
+        ],
+        "tables": [
+          "users",
+          "postes_alisfa",
+          "lieux_travail",
+          "forfaits_cee",
+          "modeles_contrats",
+          "contrats_generes",
+          "app_settings",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_responsable_rh_paie_access.py",
+          "tests/test_options.py",
+          "tests/test_acces_routes_sensibles.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Comptable/direction : accès et administration des modèles/lieux/forfaits. Responsable : page, génération et dernier DOCX seulement si generation_contrats_responsable_autorise ; les routes d’administration des référentiels restent refusées. La génération accessible au responsable peut néanmoins mémoriser salaire_socle.",
+        "scope": "Comptable/direction : salariés actifs hors prestataires. Responsable : salariés actifs de son secteur et lui-même ; sans secteur, lui-même. Les rattachés directs hors secteur ne sont pas ajoutés par ce helper.",
+        "conditions": [
+          "Option generation_contrats_responsable_autorise pour le responsable.",
+          "python-docx installé, modèle DOCX existant et fichier accessible dans le répertoire autorisé."
+        ],
+        "sources": [
+          "blueprints/generation_contrats.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "La génération remplace le dernier enregistrement et fichier de contrats_generes du salarié ; elle ne crée aucune ligne contrats.",
+        "Pour un CEE, plusieurs champs de salaire/temps hebdomadaire sont vidés et les champs forfait/jours sont utilisés ; le remplacement concerne seulement le CDD de remplacement.",
+        "Les points de critères proviennent de CRITERES_ALISFA ; ne pas confondre position et points.",
+        "Les chemins de téléchargement doivent rester dans leurs répertoires autorisés."
+      ],
+      "extension_points": [
+        "Réutiliser le moteur _remplacer_dans_document, les lieux et les modèles si un futur outil a besoin de documents RH.",
+        "Pour une identité de l’association, vérifier les paramètres et autres domaines avant de créer un référentiel ; le moteur présent réutilise les adresses de lieux mais ne définit pas de balise SIRET/SIREN/employeur.",
+        "Évaluer un référentiel organisation partagé pour alimenter les futurs documents, tout en conservant la distinction entre lieu de travail et identité légale."
+      ],
+      "related_features": [
+        "administration.options_centre",
+        "administration.stockage_documents",
+        "rh.contrats_dossier",
+        "rh.dossier_salarie",
+        "rh.pesee_alisfa"
+      ],
+      "limitations": [
+        "Un seul DOCX généré est conservé par salarié ; ce parcours ne constitue pas un archivage des versions signées.",
+        "Aucun champ structuré ni remplacement SIRET/SIREN/identité de l’employeur n’est défini dans cette route ou ce template. Les modèles DOCX métier peuvent contenir du texte statique : leur contenu n’a pas été inspecté et ce constat ne prouve pas une absence globale dans CS PILOT."
+      ]
+    },
+    {
+      "id": "rh.absences",
+      "title": "Absences administratives et justificatifs",
+      "purpose": "Enregistrer les absences et répercuter leurs jours et compteurs de façon cohérente dans les calendriers et la préparation de paie.",
+      "example_requests": [
+        "enregistrer arrêt maladie",
+        "absence salarié",
+        "justificatif absence",
+        "conflits de congés",
+        "corriger une absence"
+      ],
+      "capabilities": [
+        "Saisir une période, un motif parmi onze catégories, date de reprise, commentaire et justificatif PDF/image facultatif.",
+        "Calculer les jours ouvrés hors week-ends et jours fériés ; consulter les compteurs CP/CC.",
+        "Reporter les jours sur heures_reelles ou sur presence_forfait_jour pour la direction.",
+        "Consulter les vingt dernières absences ou filtrer par salarié ; afficher les chevauchements historiques.",
+        "Supprimer une absence avec retrait/restauration contrôlés des projections et restitution des compteurs ; télécharger son justificatif.",
+        "Identifier les motifs exigeant un justificatif pour les alertes avant paie via MOTIFS_AVEC_JUSTIFICATIF."
+      ],
+      "entry_points": [
+        "absences_bp.absences",
+        "absences_bp.supprimer_absence",
+        "absences_bp.telecharger_justificatif",
+        "absences_bp.ouvrir_dossier",
+        "absences_bp.api_jours_ouvres",
+        "absences_bp.api_compteurs_conges"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/absences.py"
+        ],
+        "service_files": [
+          "absences_coherence.py",
+          "prepa_paie_donnees.py",
+          "fiches_versions.py",
+          "sessions_securite.py",
+          "document_files.py",
+          "blueprints/forfait.py"
+        ],
+        "templates": [
+          "templates/absences.html"
+        ],
+        "tables": [
+          "users",
+          "absences",
+          "jours_feries",
+          "heures_reelles",
+          "presence_forfait_jour",
+          "historique_modifications",
+          "demandes_conges",
+          "rh_projections",
+          "rh_projections_a_verifier",
+          "prepa_paie_statut"
+        ],
+        "tests": [
+          "tests/test_coherence_rh.py",
+          "tests/test_coherence_rh_versions.py",
+          "tests/test_coherence_rh_migration.py",
+          "tests/test_absences_forfait_jour.py",
+          "tests/test_prestataire_paie.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md",
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Page, création/suppression, compteurs et affichage du chemin du dossier réservés à comptable/direction. Justificatif téléchargeable aussi par prestataire. api_jours_ouvres exige uniquement une connexion et ne renvoie pas de donnée de salarié. Création/suppression revérifient session et rôle dans la transaction.",
+        "scope": "Gestion centralisée de l’association ; création sur salarié actif hors prestataire, dont direction au forfait jours. Consultation historique et téléchargement par identifiant sans filtre de secteur.",
+        "conditions": [],
+        "sources": [
+          "blueprints/absences.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "BEGIN IMMEDIATE englobe disponibilité, absence, projections, compteurs et historique ; un conflit ou mois verrouillé annule l’ensemble.",
+        "Refuser les chevauchements avec absences/congés appliqués/récupérations reportées ; aucune priorité implicite entre motifs.",
+        "Chaque report récent conserve sa source dans rh_projections ; les suppressions conservent les sources d’autrui et ne restaurent qu’une source historique non ambiguë.",
+        "Les CP/CC de direction ne modifient pas les compteurs salariés : son suivi vient du calendrier forfait jours.",
+        "Une suppression de CP après clôture restitue le reliquat dans cp_a_prendre lorsque cp_pris a déjà été absorbé.",
+        "L’absence de justificatif sur un congé validé n’est pas un manque de pièce ; conserver la liste de motifs réellement attendus."
+      ],
+      "extension_points": [
+        "Réutiliser verifier_disponibilite, memoriser_projection et retirer_projection pour tout nouveau producteur de jours d’absence.",
+        "Étendre ensemble MOTIFS_ABSENCE, MOTIF_VERS_TYPE_FORFAIT et MOTIFS_ABSENCE_PAIE si un motif nécessite un nouveau traitement.",
+        "Avant une évolution des demi-journées ou du mi-temps thérapeutique, définir un modèle de fractions et les règles de compteurs ; le modèle courant porte une ligne par journée."
+      ],
+      "related_features": [
+        "interface.digest_direction",
+        "rh.cloture_soldes_conges",
+        "rh.preparation_paie",
+        "temps.coherence_absences",
+        "temps.forfait_jours",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Mi-temps thérapeutique est un motif de période entière, pas un créneau horaire.",
+        "Pas de route de modification directe : correction par suppression puis nouvelle saisie, avec réouverture préalable si un mois est verrouillé.",
+        "Les conflits historiques sont signalés, sans arbitrage automatique, dans une liste limitée à 100 paires."
+      ]
+    },
+    {
+      "id": "rh.variables_paie",
+      "title": "Variables mensuelles et heures supplémentaires payées",
+      "purpose": "Saisir les éléments variables à transmettre en paie et l’incidence des heures supplémentaires payées sur le compteur de récupération.",
+      "example_requests": [
+        "variables de paie septembre",
+        "payer heures supplémentaires",
+        "solder récupération CDD",
+        "acompte salarié",
+        "mutuelle paie"
+      ],
+      "capabilities": [
+        "Grille mensuelle pour mutuelle, nombre d’enfants, heures réelles/supplémentaires, transport, acompte, saisie sur salaire, prêt/avance, régularisation et commentaire.",
+        "Préremplir les mois sans saisie à partir des valeurs persistantes mutuelle/enfants/saisie sur salaire/prêt.",
+        "Afficher le solde de récupération pour aider à déterminer les heures à payer, hors direction.",
+        "Choisir si les heures supplémentaires payées sont déduites du compteur ; enregistrer et reprendre ce choix par mois.",
+        "Retirer la validation traité de préparation de paie lorsque les variables affichées changent réellement."
+      ],
+      "entry_points": [
+        "variables_paie_bp.variables_paie",
+        "variables_paie_bp.enregistrer_variables_paie"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/variables_paie.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "fiches_versions.py",
+          "prepa_paie_donnees.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/variables_paie.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "variables_paie",
+          "variables_paie_defauts",
+          "prepa_paie_statut",
+          "conges_cloture_mensuelle",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_variables_paie.py",
+          "tests/test_hs_payees.py",
+          "tests/test_fiches_versions.py",
+          "tests/test_prepa_paie.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md",
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Consultation et enregistrement réservés à comptable/direction après login_required ; responsable, salarié et prestataire refusés. La grille sélectionne les salariés actifs hors prestataires ; le POST traite la liste user_ids reçue sans refaire ce filtre d’activité.",
+        "scope": "Gestion mensuelle centralisée, tous secteurs. La direction peut avoir des variables mais pas de compteur horaire de récupération.",
+        "conditions": [],
+        "sources": [
+          "blueprints/variables_paie.py"
+        ]
+      },
+      "invariants": [
+        "Les valeurs persistantes restent séparées des montants/horaires ponctuels du mois.",
+        "Pour une nouvelle ligne, la déduction des HS du compteur est cochée par défaut ; les lignes historiques NULL/0 ne sont pas déduites rétroactivement.",
+        "L’incidence sur la récupération est calculée à partir des variables marquées hs_deduites_compteur ; ne pas diminuer une seconde fois le compteur.",
+        "Les lignes, valeurs persistantes, invalidations de paie et trace d’action sont commitées ensemble ; FicheVerrouillee entraîne rollback.",
+        "L’invalidation de paie porte sur les variables présentées et ne doit pas être déclenchée par une simple sauvegarde identique."
+      ],
+      "extension_points": [
+        "Réutiliser les variables mensuelles et le calcul total_hs_payees de utils plutôt que créer un second mécanisme de paiement des heures.",
+        "Pour tout champ de paie ajouté, mettre à jour la grille, _variables_modifiees et prepa_paie_donnees.donnees_salarie de manière cohérente."
+      ],
+      "related_features": [
+        "rh.cloture_soldes_conges",
+        "rh.preparation_paie",
+        "temps.versions_fiches"
+      ],
+      "limitations": [
+        "Les heures du formulaire sont des données de paie saisies ; ce parcours ne calcule pas automatiquement la paie depuis les heures brutes."
+      ]
+    },
+    {
+      "id": "rh.cloture_soldes_conges",
+      "title": "Clôture mensuelle et vue des soldes de congés",
+      "purpose": "Acquérir les droits mensuels CP/CC, traiter les sorties et consulter les soldes restants de l’effectif.",
+      "example_requests": [
+        "clôturer congés du mois",
+        "soldes congés salariés",
+        "congés conventionnels restants",
+        "acquisition CP fin de mois"
+      ],
+      "capabilities": [
+        "Déclencher une clôture mensuelle depuis Variables paie avec date, auteur, nombre de salariés et détail des acquisitions.",
+        "Acquérir 25/12 jours de CP mensuels, un jour de CC d’octobre à mai, avec prorata calendaire d’embauche.",
+        "En mai, transférer les CP acquis vers CP à prendre ; absorber les CP pris sans changer le solde restant.",
+        "Remettre les soldes à zéro en fin de contrat selon la règle de présence contractuelle après le dernier jour du mois.",
+        "Afficher CP à prendre/pris/solde, CC et total restant par salarié, triés par total décroissant avec mise en évidence du seuil CC du tableau de bord direction."
+      ],
+      "entry_points": [
+        "variables_paie_bp.variables_paie",
+        "variables_paie_bp.cloturer_conges",
+        "infos_salaries_bp.soldes_conges",
+        "absences_bp.api_compteurs_conges"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/variables_paie.py",
+          "blueprints/infos_salaries.py",
+          "blueprints/absences.py"
+        ],
+        "service_files": [
+          "blueprints/dashboard_direction.py",
+          "access_log.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/variables_paie.html",
+          "templates/soldes_conges.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "conges_cloture_mensuelle",
+          "journal_actions",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_variables_paie.py",
+          "tests/test_dashboard_direction.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Lecture des soldes et clôture réservées à directeur/comptable ; les routes ne délèguent pas cette capacité aux responsables.",
+        "scope": "Vue des soldes : salariés actifs hors directeur/prestataire. Acquisition : même effectif ; remise à zéro complémentaire des salariés inactifs sans contrat se poursuivant après la fin du mois.",
+        "conditions": [],
+        "sources": [
+          "blueprints/variables_paie.py",
+          "blueprints/infos_salaries.py",
+          "blueprints/absences.py"
+        ]
+      },
+      "invariants": [
+        "Une clôture déjà enregistrée pour mois/année est refusée ; conserver la trace et l’unicité du mois.",
+        "La référence du prorata est le début du plus ancien contrat encore valide après la fin du mois, pas users.date_entree.",
+        "Un contrat prenant fin exactement le dernier jour du mois entraîne la remise à zéro ; le test contractuel utilise date_fin > dernier jour.",
+        "CP acquis et CC sont arrondis à six décimales ; CP disponible = cp_a_prendre - cp_pris.",
+        "Ne pas appliquer ces compteurs à la direction au forfait jours."
+      ],
+      "extension_points": [
+        "Réutiliser les compteurs users et la clôture existante si une nouvelle vue récapitulative est demandée.",
+        "Pour une évolution multi-contrats, décider d’abord d’un solde par contrat et de son articulation avec la clôture et les absences."
+      ],
+      "related_features": [
+        "interface.mon_espace",
+        "rh.absences",
+        "rh.contrats_dossier",
+        "rh.variables_paie",
+        "temps.demandes_conges",
+        "temps.forfait_jours"
+      ],
+      "limitations": [
+        "Les compteurs sont par salarié, pas par contrat ; en présence de plusieurs contrats valides, le plus ancien sert de référence au prorata."
+      ]
+    },
+    {
+      "id": "rh.preparation_paie",
+      "title": "Préparation et vérification mensuelle de la paie",
+      "purpose": "Présenter au gestionnaire et au prestataire les contrats, absences, pièces liées et variables à vérifier pour chaque paie mensuelle.",
+      "example_requests": [
+        "préparer paie du mois",
+        "dossiers paie à vérifier",
+        "export Excel paie",
+        "paie modifiée depuis vérification"
+      ],
+      "capabilities": [
+        "Construire une grille mensuelle cohérente avec contrats actifs, absences, liens PDF/justificatifs, variables et état de vérification.",
+        "Inclure aussi un salarié sans contrat actif sur le mois s’il possède une variable ponctuelle pertinente ou un commentaire, par exemple solde d’heures d’un ancien CDD.",
+        "Marquer/démarquer traité avec une référence signée par ligne ; refuser les pages devenues anciennes.",
+        "Afficher Traité, À vérifier, Modifié depuis la dernière vérification ou traitement historique sans preuve ; conserver les dates de vérification et modification.",
+        "Exporter la grille en Excel avec les contrats supplémentaires sur des lignes distinctes et l’état réel de vérification."
+      ],
+      "entry_points": [
+        "prepa_paie_bp.prepa_paie",
+        "prepa_paie_bp.enregistrer_statut",
+        "prepa_paie_bp.export_excel"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/prepa_paie.py"
+        ],
+        "service_files": [
+          "prepa_paie_donnees.py",
+          "sessions_securite.py",
+          "access_log.py"
+        ],
+        "templates": [
+          "templates/prepa_paie.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "absences",
+          "variables_paie",
+          "prepa_paie_statut",
+          "paie_a_recalculer",
+          "journal_actions"
+        ],
+        "tests": [
+          "tests/test_prepa_paie.py",
+          "tests/test_prestataire_paie.py",
+          "tests/test_coherence_rh.py",
+          "tests/test_coherence_rh_migration.py",
+          "tests/test_coherence_rh_performance.py"
+        ],
+        "docs": [
+          "docs/coherence-rh.md"
+        ]
+      },
+      "access": {
+        "summary": "Comptable, directeur et prestataire ont les droits de consultation, export et enregistrement des statuts. Le POST revérifie session/rôle sous BEGIN IMMEDIATE et contrôle l’éligibilité de toutes les lignes soumises.",
+        "scope": "Tous secteurs, y compris salariés inactifs avec contrat sur le mois ou variables ponctuelles ; prestataires exclus des salariés traités.",
+        "conditions": [
+          "openpyxl nécessaire à l’export Excel."
+        ],
+        "sources": [
+          "blueprints/prepa_paie.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Traité référence l’empreinte SHA-256 des données réellement présentées, distincte de la signature d’une fiche mensuelle.",
+        "La référence signée inclut salarié, mois, année, empreinte et révision du statut ; toutes les lignes sont contrôlées avant toute écriture, même décochées.",
+        "Les changements affectant contrats/absences/variables et identité/secteur présentés invalident la preuve ; email et documents RH hors grille ne l’invalident pas.",
+        "Les reports persistants seuls (mutuelle, enfants, saisie sur salaire, prêt) n’incluent pas un salarié sans contrat du mois.",
+        "La page et l’export lisent une même transaction SQLite cohérente ; actualiser_statuts ne recalcule que les dossiers en file paie_a_recalculer."
+      ],
+      "extension_points": [
+        "Réutiliser donnees_salarie et son empreinte pour enrichir la grille sans dissocier ce qui est vu de ce qui est vérifié.",
+        "Tout nouveau producteur de donnée visible doit alimenter l’invalidation ciblée dans prepa_paie_donnees.creer_schema et ses tests de page périmée.",
+        "Réutiliser _get_salaries_avec_contrat_actif pour les parcours nécessitant le périmètre réel de cette paie."
+      ],
+      "related_features": [
+        "interface.tableau_bord_comptable",
+        "rh.absences",
+        "rh.contrats_dossier",
+        "rh.variables_paie",
+        "temps.validation_fiches"
+      ],
+      "limitations": [
+        "Les heures présentées sont variables_paie.heures_reelles/heures_supps, sans calcul direct de la fiche mensuelle.",
+        "Le statut traité atteste une vérification du dossier affiché ; il ne constitue pas une émission de bulletin ou une preuve de virement."
+      ]
+    },
+    {
+      "id": "rh.pesee_alisfa",
+      "title": "Pesée ALISFA et référentiel des postes",
+      "purpose": "Analyser une fiche de poste et gérer les niveaux de classification ALISFA réutilisables dans la génération des contrats.",
+      "example_requests": [
+        "peser fiche de poste",
+        "classification ALISFA",
+        "liste postes ALISFA",
+        "réanalyser critères de poste",
+        "points de pesée"
+      ],
+      "capabilities": [
+        "Lire une fiche de poste PDF, extraire les faits, proposer une cotation sur huit critères puis un diagnostic rédactionnel facultatif.",
+        "Fournir ETP, budget, famille métier et emploi repère pour contextualiser l’analyse.",
+        "Réduire les certitudes lorsqu’une information source manque et appliquer les bornes configurées de l’emploi repère sélectionné.",
+        "Relancer une cotation avec instructions de critères verrouillés.",
+        "Créer, lire, modifier et supprimer des postes avec niveaux des huit critères et total recalculé côté serveur.",
+        "Consulter en parallèle les pesées portées par les salariés actifs."
+      ],
+      "entry_points": [
+        "pesee_alisfa_bp.pesee_alisfa",
+        "pesee_alisfa_bp.postes_alisfa",
+        "pesee_alisfa_bp.api_analyze",
+        "pesee_alisfa_bp.api_reanalyze",
+        "pesee_alisfa_bp.api_creer_poste",
+        "pesee_alisfa_bp.api_modifier_poste",
+        "pesee_alisfa_bp.api_supprimer_poste",
+        "pesee_alisfa_bp.api_get_poste"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/pesee_alisfa.py"
+        ],
+        "service_files": [
+          "blueprints/api_keys.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/pesee_alisfa.html",
+          "templates/postes_alisfa.html"
+        ],
+        "tables": [
+          "postes_alisfa",
+          "users",
+          "secteurs",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_ai_models.py",
+          "tests/test_acces_routes_sensibles.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Toutes les pages, analyses et mutations API exigent login_required et profil directeur ou comptable ; pas de restriction par secteur à l’intérieur de ces profils.",
+        "scope": "Référentiel commun de postes ; comparaison avec les salariés actifs hors prestataires.",
+        "conditions": [
+          "Analyse/réanalyse : modèle rattaché à un fournisseur pris en charge et clé correspondante configurée.",
+          "PDF avec texte extractible par pdfplumber ; au moins 50 caractères après extraction. Le CRUD des postes ne nécessite pas d’appel IA."
+        ],
+        "sources": [
+          "blueprints/pesee_alisfa.py",
+          "blueprints/api_keys.py"
+        ]
+      },
+      "invariants": [
+        "Le total des postes enregistrés est calculé depuis les niveaux, sans reprendre un total arbitraire du navigateur.",
+        "Les bornes des emplois repères et points de CRITERES_ALISFA sont aussi consommés par génération_contrats.",
+        "Une analyse renvoie des propositions ; la persistance du poste est une action CRUD séparée, et la pesée du salarié est un champ users distinct.",
+        "Le diagnostic rédactionnel est facultatif : son échec conserve extraction et cotation."
+      ],
+      "extension_points": [
+        "Réutiliser CRITERES_ALISFA, FAMILLES_METIERS, EMPLOIS_REPERES et postes_alisfa pour les outils de classification et contrats.",
+        "Réutiliser le catalogue de modèles et call_ai pour les intégrations compatibles, sans dupliquer la configuration de fournisseur.",
+        "Si le verrouillage des critères doit être une garantie métier, ajouter un contrôle déterministe des valeurs en retour : aujourd’hui il est exprimé dans le prompt."
+      ],
+      "related_features": [
+        "finances.simulation_paie",
+        "rh.assistant_rh",
+        "rh.dossier_salarie",
+        "rh.generation_contrats"
+      ],
+      "limitations": [
+        "L’extraction IA reçoit les 8 000 premiers caractères ; le diagnostic utilise les 6 000 premiers. Le fichier PDF temporaire est supprimé après extraction.",
+        "La réanalyse transmet les critères verrouillés au modèle mais n’en réapplique pas explicitement les valeurs côté serveur après la réponse ; les bornes peuvent ensuite modifier les niveaux.",
+        "Les tests référencés couvrent modèles/transport IA et accès ; ils ne constituent pas une validation de justesse conventionnelle des propositions."
+      ]
+    },
+    {
+      "id": "rh.assistant_rh",
+      "title": "Assistant conversationnel RH",
+      "purpose": "Obtenir des orientations RH et ALISFA générées par un modèle avec sources suggérées et estimation de besoin de consultation d’un avocat.",
+      "example_requests": [
+        "poser une question RH",
+        "question convention ALISFA",
+        "assistant droit du travail",
+        "analyse situation RH"
+      ],
+      "capabilities": [
+        "Choisir un modèle disponible et transmettre la conversation à l’assistant RH.",
+        "Obtenir réponse, sources, pourcentage recommandé de consultation d’un avocat et motif.",
+        "Afficher une réponse textuelle de secours si le modèle ne respecte pas le JSON attendu."
+      ],
+      "entry_points": [
+        "assistant_rh_bp.assistant_rh",
+        "assistant_rh_bp.api_chat"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/assistant_rh.py"
+        ],
+        "service_files": [
+          "blueprints/pesee_alisfa.py",
+          "blueprints/api_keys.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/assistant_rh.html"
+        ],
+        "tables": [
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_ai_models.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Page et API réservées aux profils directeur/comptable après login_required ; refus 403 pour l’API hors profil.",
+        "scope": "Conversation fournie par l’utilisateur ; cette route ne charge pas automatiquement les dossiers des salariés.",
+        "conditions": [
+          "Modèle pris en charge et clé API configurée pour son fournisseur."
+        ],
+        "sources": [
+          "blueprints/assistant_rh.py",
+          "blueprints/pesee_alisfa.py"
+        ]
+      },
+      "invariants": [
+        "Le prompt cadre des orientations générales et impose une structure réponse/sources/recommandation_avocat_pct/motif_recommandation.",
+        "En cas de JSON illisible, conserver la réponse brute avec sources vides et pourcentage par défaut de 50.",
+        "Le serveur de ce blueprint reçoit l’historique dans messages ; il ne l’enregistre pas dans une table de conversation."
+      ],
+      "extension_points": [
+        "Réutiliser call_ai et get_available_models si les besoins RH requièrent le même transport IA.",
+        "Avant d’ajouter des données RH de contexte, définir explicitement les champs transmis et leur contrôle d’accès."
+      ],
+      "related_features": [
+        "administration.cles_api_ia",
+        "rh.pesee_alisfa"
+      ],
+      "limitations": [
+        "Les sources et le pourcentage sont produits par le modèle ; ce pourcentage ne mesure pas une probabilité validée.",
+        "Le blueprint ne réalise pas de recherche documentaire en ligne ou de vérification des sources retournées.",
+        "Le test référencé couvre le transport partagé et le catalogue de modèles ; il ne valide pas la justesse des réponses RH ni ce dialogue de bout en bout."
+      ]
+    },
+    {
+      "id": "rh.statistiques_rh",
+      "title": "Effectifs, ETP, maladie et heures supplémentaires",
+      "purpose": "Synthétiser l’effectif sous contrat et les indicateurs de maladie/heures supplémentaires par secteur et type de contrat.",
+      "example_requests": [
+        "effectif par secteur",
+        "ETP CDD CDI CEE",
+        "jours maladie par secteur",
+        "heures supplémentaires effectuées"
+      ],
+      "capabilities": [
+        "Compter salariés et ETP actuels par CDI, CDD, CEE et Autre, avec totaux par secteur.",
+        "Afficher les jours d’arrêt maladie et heures supplémentaires effectuées sur la période présentée comme douze mois glissants.",
+        "Fournir tableaux et graphiques par contrat/secteur."
+      ],
+      "entry_points": [
+        "rh_statistiques_bp.rh_statistiques"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/rh_statistiques.py"
+        ],
+        "service_files": [
+          "blueprints/worktime_metrics.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/rh_statistiques.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "absences",
+          "heures_reelles",
+          "planning_theorique",
+          "periodes_vacances",
+          "alternance_reference"
+        ],
+        "tests": [
+          "tests/test_nouvelles_fonctionnalites.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Consultation réservée à directeur/comptable après login_required ; aucune écriture métier dans la route.",
+        "scope": "Effectif courant : salariés actifs hors direction/prestataires, ayant un secteur existant et un contrat courant ; agrégation des indicateurs pour cet effectif.",
+        "conditions": [],
+        "sources": [
+          "blueprints/rh_statistiques.py"
+        ]
+      },
+      "invariants": [
+        "ETP CEE = constante applicative 0,12 ; autres contrats = temps_hebdo / 35 si positif, sinon 1.",
+        "Le contrat courant sélectionné par salarié est celui au plus grand id parmi les contrats actifs ; ce n’est pas un cumul de contrats.",
+        "Les HS effectuées additionnent les deltas journaliers positifs via compute_day_metrics ; les journées déficitaires ne réduisent pas ce total.",
+        "Préserver le calcul partagé des pauses rémunérées et des plannings historiques."
+      ],
+      "extension_points": [
+        "Réutiliser _calcul_etp et compute_day_metrics pour une nouvelle ventilation cohérente avec cette page.",
+        "Pour une statistique destinée aux subventions, préciser si l’on veut l’effectif actuel, l’effectif historique ou des ETP annuels moyens avant de reprendre ces totaux."
+      ],
+      "related_features": [
+        "interface.centre_controle",
+        "rh.absences",
+        "rh.contrats_dossier"
+      ],
+      "limitations": [
+        "La période est calculée comme aujourd’hui moins 365 jours. Les requêtes maladie/heures n’ajoutent pas de borne supérieure explicite.",
+        "Les jours maladie sont retenus par date_debut >= début de fenêtre et sommés en entier ; une absence commencée avant la fenêtre n’est pas proratisée.",
+        "Les salariés sans secteur, hors contrat courant ou sortis de l’effectif ne figurent pas dans les agrégations finales."
+      ]
+    },
+    {
+      "id": "rh.prevention_sante",
+      "title": "Messages personnels de prévention à partir des heures",
+      "purpose": "Afficher des conseils de prévention liés aux journées saisies et mémoriser leur prise de connaissance.",
+      "example_requests": [
+        "conseil pause journée longue",
+        "alerte repos entre deux journées",
+        "prévention santé heures",
+        "masquer conseil déjà lu"
+      ],
+      "capabilities": [
+        "Calculer des messages pour absence/pause courte après six heures, pauses réduites récurrentes, journées longues, amplitude étendue et repos inférieur à onze heures.",
+        "Détecter répétition de journées chargées ou sans pause, semaine de plus de 42 heures, heures supplémentaires sur trois semaines et hausse de charge.",
+        "Afficher les messages dans le tableau de bord salarié historique et masquer les conseils dont l’utilisateur a pris connaissance."
+      ],
+      "entry_points": [
+        "dashboard_bp.dashboard",
+        "dashboard_bp.prevention_dismiss"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard.py"
+        ],
+        "service_files": [
+          "blueprints/prevention_sante.py",
+          "blueprints/worktime_metrics.py",
+          "utils.py",
+          "interface_flux.py"
+        ],
+        "templates": [
+          "templates/dashboard.html"
+        ],
+        "tables": [
+          "heures_reelles",
+          "prevention_dismissals",
+          "jours_feries",
+          "planning_theorique",
+          "periodes_vacances",
+          "alternance_reference"
+        ],
+        "tests": [
+          "tests/test_dashboard_prevention_sante.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Les routes dashboard et prevention_dismiss exigent login_required. Le calcul et l’accusé de réception utilisent session.user_id ; aucune cible salarié libre dans la route de masquage. La page redirige selon profil et activation de l’interface sans menu.",
+        "scope": "Personnel : heures et conseils de l’utilisateur connecté. Le service accepte un user_id de son appelant, sans contrôle autonome de rôle.",
+        "conditions": [
+          "Au moins une journée travaillée dans les heures examinées ; la fonction retourne une liste vide sinon."
+        ],
+        "sources": [
+          "blueprints/dashboard.py",
+          "blueprints/prevention_sante.py",
+          "interface_flux.py"
+        ]
+      },
+      "invariants": [
+        "Les données chargées couvrent au maximum les 120 derniers jours jusqu’à aujourd’hui ; les conseils récents s’ancrent sur la dernière journée travaillée saisie.",
+        "Les messages possèdent une clé de situation/date ; le masquage est unique par user_id/message_key.",
+        "prevention_dismiss ne conserve que les clés prev: de longueur <= 200, dédupliquées, au maximum 50 par requête.",
+        "Réutiliser les métriques de journée partagées pour les pauses, la déclaration conforme et le planning applicable."
+      ],
+      "extension_points": [
+        "Réutiliser compute_prevention_messages pour un autre accueil personnel, en conservant session.user_id et la même clé d’accusé de réception.",
+        "Ajouter des situations sous forme de clés stables et de calculs déterministes avec dates injectables."
+      ],
+      "related_features": [
+        "interface.tableau_bord_salarie",
+        "rh.statistiques_rh",
+        "temps.alertes_surcharge"
+      ],
+      "limitations": [
+        "Ce service émet des messages ; il ne calcule pas à lui seul le score de santé organisationnel présenté dans d’autres tableaux de bord.",
+        "Le tableau de bord historique redirige plusieurs profils et les utilisateurs dont l’interface sans menu est active ; l’affichage des conseils n’est donc pas garanti sur chaque accueil."
+      ]
+    }
+  ]
+}
