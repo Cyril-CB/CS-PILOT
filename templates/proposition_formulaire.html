@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% from '_propositions_ui.html' import erreur %}
+{% block title %}Proposer une amélioration — CS PILOT{% endblock %}
+{% block content %}
+<div class="proposition-page">
+    <div class="proposition-entete">
+        <div><h1>Proposer une amélioration</h1>
+        <p>Expliquez ce que vous aimeriez pouvoir faire. Pas besoin de décrire une solution technique.</p></div>
+        <a href="{{ url_for('propositions_bp.liste') }}">Mes propositions</a>
+    </div>
+    {% if erreurs %}
+    <div class="alert alert-error" role="alert" tabindex="-1" id="proposition-erreurs">
+        <strong>Quelques informations sont à vérifier.</strong>
+        <ul>{% for nom, message in erreurs.items() %}<li>{{ message }}</li>{% endfor %}</ul>
+        <p>Votre texte est conservé. Si vous aviez choisi des fichiers, sélectionnez-les à nouveau.</p>
+    </div>
+    {% endif %}
+    {% if not email_pret %}
+    <div class="alert alert-warning">
+        <strong>La messagerie du centre n’est pas prête.</strong>
+        Votre proposition sera enregistrée avec ses pièces ; vous pourrez l’envoyer après configuration.
+        {% if gestionnaire %}<a href="{{ url_for('notifications_bp.configuration_email') }}">Configurer les emails</a>
+        {% else %}Demandez à la direction ou à la comptabilité d’activer les emails.{% endif %}
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('propositions_bp.nouvelle') }}" enctype="multipart/form-data" id="proposition-formulaire">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="envoyer">
+        <input type="hidden" name="contexte" value="{{ jeton }}">
+        <section class="proposition-carte">
+            <h2>Votre besoin</h2>
+            <div class="form-group">
+                <label for="besoin">Décrivez votre besoin en langage naturel <span aria-hidden="true">*</span></label>
+                <textarea id="besoin" name="besoin" rows="7" minlength="20" maxlength="10000" required
+                    aria-describedby="aide-besoin{% if erreurs.get('besoin') %} erreur-besoin{% endif %}"
+                    {% if erreurs.get('besoin') %}aria-invalid="true"{% endif %}
+                    placeholder="J’aimerais évaluer l’impact financier d’une baisse de fréquentation de la crèche : prestation de service CAF, participation des familles, repas en moins…">{{ valeurs.get('besoin', '') }}</textarea>
+                <p class="help-text" id="aide-besoin">Que cherchez-vous à faire ? Qu’est-ce qui vous bloque aujourd’hui ? Donnez un exemple concret.</p>
+                {{ erreur('besoin', erreurs) }}
+            </div>
+            <div class="form-group">
+                <label for="titre">Un titre pour retrouver votre proposition <span class="help-text">(facultatif)</span></label>
+                <input id="titre" name="titre" type="text" maxlength="120" value="{{ valeurs.get('titre', '') }}"
+                    placeholder="Ex. Impact de la fréquentation sur le budget de la crèche">
+                {{ erreur('titre', erreurs) }}
+            </div>
+            <div class="form-group">
+                <label for="pieces">Un outil existant ou un exemple à joindre <span class="help-text">(facultatif)</span></label>
+                <input id="pieces" name="pieces" type="file" multiple accept="{{ formats }}" aria-describedby="aide-pieces"
+                       data-max-fichier="{{ maximum_fichier }}" data-max-total="{{ maximum_total }}">
+                <p class="help-text" id="aide-pieces">3 fichiers maximum · {{ (maximum_fichier / 1048576)|round(2) }} Mo par fichier · {{ (maximum_total / 1048576)|round(2) }} Mo au total.<br>
+                Excel (.xlsx, .xls), .ods, .csv, PDF, Word (.docx), texte, PNG ou JPEG.
+                Joignez de préférence un exemple anonymisé, sans données personnelles inutiles.</p>
+                <ul id="proposition-pieces-liste" class="help-text" aria-live="polite"></ul>
+                {{ erreur('pieces', erreurs) }}
+            </div>
+        </section>
+        <details class="proposition-carte"{% if erreurs.get('resultat_attendu') or erreurs.get('solution_actuelle') or erreurs.get('personnes_concernees') or erreurs.get('frequence') or erreurs.get('echeance') or erreurs.get('raison_echeance') %} open{% endif %}>
+            <summary>Quelques précisions utiles <span class="help-text">(facultatif)</span></summary>
+            <p class="help-text">Renseignez seulement ce que vous savez. Ces éléments aideront à étudier votre demande.</p>
+            {% for nom, libelle, aide, maximum in [
+                ('resultat_attendu', 'Quel résultat attendez-vous ?', 'Un tableau, une simulation, un document… et comment vous l’utiliseriez.', 2000),
+                ('solution_actuelle', 'Comment faites-vous aujourd’hui ?', 'Votre fichier Excel, une double saisie, une recherche manuelle…', 2000),
+                ('personnes_concernees', 'À qui cela servirait-il ?', 'Les responsables de crèche, la comptabilité, toute l’équipe…', 1000)] %}
+            <div class="form-group">
+                <label for="{{ nom }}">{{ libelle }}</label>
+                <textarea id="{{ nom }}" name="{{ nom }}" rows="3" maxlength="{{ maximum }}" placeholder="{{ aide }}">{{ valeurs.get(nom, '') }}</textarea>
+                {{ erreur(nom, erreurs) }}
+            </div>
+            {% endfor %}
+            <div class="proposition-grille">
+                <div class="form-group"><label for="frequence">À quelle fréquence ?</label>
+                    <select id="frequence" name="frequence">{% for code, label in frequences.items() %}<option value="{{ code }}"{% if valeurs.get('frequence', '') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                    {{ erreur('frequence', erreurs) }}
+                </div>
+                <div class="form-group"><label for="echeance">Y a-t-il une échéance ?</label>
+                    <input type="date" id="echeance" name="echeance" value="{{ valeurs.get('echeance', '') }}">
+                    {{ erreur('echeance', erreurs) }}
+                </div>
+            </div>
+            <div class="form-group"><label for="raison_echeance">Pourquoi cette échéance ?</label>
+                <textarea id="raison_echeance" name="raison_echeance" rows="2" maxlength="1000" placeholder="Ex. Préparer un budget pour le prochain conseil d’administration.">{{ valeurs.get('raison_echeance', '') }}</textarea>
+                {{ erreur('raison_echeance', erreurs) }}
+            </div>
+        </details>
+        <section class="proposition-carte">
+            <h2>Pour vous répondre</h2>
+            <p><strong>{{ auteur.prenom }} {{ auteur.nom }}</strong> · {{ auteur.profil }}{% if auteur.secteur %} · {{ auteur.secteur }}{% endif %}</p>
+            <div class="form-group"><label for="email_reponse">Votre adresse email <span aria-hidden="true">*</span></label>
+                <input id="email_reponse" name="email_reponse" type="email" required maxlength="254" autocomplete="email"
+                    value="{{ valeurs.get('email_reponse', '') }}" aria-describedby="aide-email">
+                <p class="help-text" id="aide-email">Vous pourrez être recontacté pour préciser le besoin. Une correction ici ne modifie pas votre compte.</p>
+                {{ erreur('email_reponse', erreurs) }}
+            </div>
+            <details{% if valeurs.get('recherche') or erreurs.get('recherche') %} open{% endif %}>
+                <summary>Recherche et contexte repris</summary>
+                <div class="form-group"><label for="recherche">Recherche saisie</label>
+                    <input type="text" id="recherche" name="recherche" maxlength="200" value="{{ valeurs.get('recherche', '') }}">
+                    {{ erreur('recherche', erreurs) }}
+                </div>
+                <p class="help-text">{{ origines[contexte.origine] }}.
+                Le mail inclura aussi votre profil, votre secteur, le centre, la page d’origine et la version de CS PILOT.
+                Vous pouvez corriger ou retirer la recherche avant l’envoi.</p>
+            </details>
+        </section>
+        <div class="proposition-carte">
+            <p>Votre demande, vos coordonnées, le contexte affiché et les fichiers choisis seront transmis à <strong>{{ destinataire }}</strong> pour étudier l’amélioration.</p>
+            <p class="help-text">Une proposition ne garantit pas son développement. Vous retrouverez sa référence et son état d’envoi dans « Mes propositions ».</p>
+            <div class="proposition-actions">
+                <button type="submit" class="btn btn-primary" id="proposition-envoyer">{{ 'Envoyer ma proposition' if email_pret else 'Enregistrer ma proposition' }}</button>
+                <a href="{{ url_for('propositions_bp.liste') }}" class="btn btn-secondary">Annuler</a>
+            </div>
+            <p id="proposition-envoi-info" class="help-text" role="status"></p>
+        </div>
+    </form>
+</div>
+{% endblock %}

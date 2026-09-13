@@ -577,7 +577,8 @@
         "Activation/désactivation du service ; enregistrement d’une configuration active l’envoi.",
         "Envoi d’un email de test à l’adresse expéditrice.",
         "Service réutilisable d’envoi HTML individuel ou multiple, ce dernier conservant une seule connexion SMTP pour le lot.",
-        "Notifications prédéfinies pour demandes de récupération/congés, décisions, affectation de subvention, publications CSE et relances de fiches ; les modules métier déclenchent ces envois."
+        "Notifications prédéfinies pour demandes de récupération/congés, décisions, affectation de subvention, publications CSE et relances de fiches ; les modules métier déclenchent ces envois.",
+        "Transport MIME structuré avec texte et pièces jointes pour les propositions ; différencie refus certain, transmission incertaine et acceptation SMTP, même si QUIT échoue ensuite."
       ],
       "entry_points": [
         "notifications_bp.configuration_email",
@@ -600,10 +601,12 @@
           "users"
         ],
         "tests": [
-          "tests/test_email_notifications.py"
+          "tests/test_email_notifications.py",
+          "tests/test_propositions.py"
         ],
         "docs": [
-          "README.md"
+          "README.md",
+          "docs/propositions-amelioration.md"
         ]
       },
       "access": {
@@ -628,7 +631,7 @@
       ],
       "extension_points": [
         "Réutiliser envoyer_email et construire_lien pour un nouveau type de notification, avec contrôle du destinataire et échappement des valeurs.",
-        "Réutiliser le SMTP existant pour notifier une demande d’amélioration si le futur workflow le requiert ; créer séparément sa persistance et sa corrélation."
+        "Pour un mail durable, conserver l’état métier dans l’appelant de envoyer_message_structure et traiter explicitement les transmissions incertaines."
       ],
       "related_features": [
         "administration.authentification",
@@ -637,7 +640,8 @@
         "association.cse_messages",
         "interface.digest_direction",
         "temps.validation_demandes_absence",
-        "temps.validation_fiches"
+        "temps.validation_fiches",
+        "interface.propositions_amelioration"
       ],
       "limitations": [
         "Ce service envoie des emails ; il ne relève pas de boîte Outlook et ne lit pas les réponses.",
@@ -1048,7 +1052,8 @@
         "tests": [
           "tests/test_resilience.py",
           "tests/test_migrations_resilience.py",
-          "tests/test_resilience_parametres.py"
+          "tests/test_resilience_parametres.py",
+          "tests/test_propositions.py"
         ],
         "docs": [
           "docs/resilience.md",
@@ -1089,7 +1094,8 @@
         "administration.migrations_hors_ligne",
         "administration.sauvegardes_ponctuelles",
         "administration.stockage_documents",
-        "interface.digest_direction"
+        "interface.digest_direction",
+        "interface.propositions_amelioration"
       ],
       "limitations": [
         "L’archive exclut code, environnement virtuel, infrastructure, logs et sauvegardes précédentes ; elle ne sauvegarde pas le VPS OVH.",
@@ -1436,7 +1442,8 @@
         "nettoyer_document supprime une pièce interne stockée à plat ; refuse traversées, séparateurs, caractères dangereux et sortie du dossier réel.",
         "Nettoyage tolérant à un fichier déjà absent ; échec disque journalisé et renvoyé comme booléen, sans exposer le chemin système à l’utilisateur.",
         "resoudre_fichier gère les chemins relatifs des cinq stockages et la correspondance explicite restauration-chemins.json pour les anciens chemins absolus.",
-        "REPERTOIRES inventorie documents, factures, modeles_contrats, contrats_generes et exports ; le diagnostic de résilience vérifie les références des tables métier."
+        "REPERTOIRES inventorie documents, factures, modeles_contrats, contrats_generes et exports ; le diagnostic de résilience vérifie les références des tables métier.",
+        "Les pièces de propositions sont stockées dans documents/propositions avec des chemins relatifs, des noms aléatoires et une empreinte contrôlée à la lecture."
       ],
       "entry_points": [],
       "implementation": {
@@ -1445,7 +1452,8 @@
           "document_files.py",
           "stockage_restaure.py",
           "resilience.py",
-          "database.py"
+          "database.py",
+          "propositions.py"
         ],
         "templates": [],
         "tables": [
@@ -1457,12 +1465,14 @@
           "factures",
           "modeles_contrats",
           "contrats_generes",
-          "archives_export"
+          "archives_export",
+          "propositions_pieces"
         ],
         "tests": [
           "tests/test_nettoyage_documents.py",
           "tests/test_security.py",
-          "tests/test_resilience.py"
+          "tests/test_resilience.py",
+          "tests/test_propositions.py"
         ],
         "docs": [
           "docs/resilience.md"
@@ -1496,7 +1506,8 @@
         "association.subventions_documents",
         "finances.factures",
         "rh.documents_salaries",
-        "rh.generation_contrats"
+        "rh.generation_contrats",
+        "interface.propositions_amelioration"
       ],
       "limitations": [
         "En installation historique sans fichier de correspondance de restauration, resoudre_fichier conserve la compatibilité des chemins absolus ; il ne réalise pas à lui seul un contrôle de droit ou de confinement de tous ces anciens chemins."

@@ -29,6 +29,8 @@
     var RECHERCHE_GLOBALE = socle.getAttribute('data-recherche-globale') === '1';
     var URL_RECHERCHE = socle.getAttribute('data-recherche-url') || '/api/search/suggestions';
     var URL_ACCUEIL = socle.getAttribute('data-accueil') || '/accueil';
+    var URL_PROPOSITION = socle.getAttribute('data-proposition-url');
+    var origineProposition = 'insatisfait';
 
     var champ = document.getElementById('flxChamp');
     var barre = document.getElementById('flxBarre');
@@ -143,6 +145,10 @@
             palette.className = 'flx-palette';
             palette.innerHTML =
                 '<div class="flx-palette-corps" id="flxPaletteCorps"></div>' +
+                '<div class="proposition-recherche-aide" id="flxPaletteProposer" hidden>' +
+                '<p>Vous ne trouvez pas ce que vous vouliez ?</p>' +
+                '<a class="btn btn-secondary" data-proposer-amelioration href="' + ech(URL_PROPOSITION || '') +
+                '">Proposer une amélioration</a></div>' +
                 '<div class="flx-palette-pied"><span>↑↓ parcourir · ↵ ouvrir</span>' +
                 "<span>Échap : vue d'ensemble</span></div>";
             palette._voile = voile;
@@ -190,6 +196,17 @@
         if (nouveaux) resultats = nouveaux;
         if (selection >= resultats.length) selection = Math.max(0, resultats.length - 1);
         var corps = palette.querySelector('#flxPaletteCorps');
+        var proposition = palette.querySelector('#flxPaletteProposer');
+        var q = champ ? champ.value.trim() : '';
+        proposition.hidden = !q || !resultats.length || !URL_PROPOSITION;
+        if (!proposition.hidden) {
+            var lien = proposition.querySelector('a');
+            lien.dataset.recherche = q;
+            lien.dataset.origine = origineProposition;
+            proposition.querySelector('p').textContent = origineProposition === 'sans_resultat' ?
+                'Aucun résultat ne répond à cette recherche.' : 'Vous ne trouvez pas ce que vous vouliez ?';
+            if (window.CSPilotPropositions) window.CSPilotPropositions.memoriser(q, origineProposition);
+        }
         if (!resultats.length) {
             corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
             return;
@@ -254,6 +271,7 @@
             rechercheVaine = liste.some(function (s) {
                 return s.action !== 'ensemble';
             }) ? '' : q;
+            origineProposition = rechercheVaine ? 'sans_resultat' : 'insatisfait';
             selection = 0;
             rendrePalette(liste);
         }).catch(function (erreur) {
@@ -261,6 +279,7 @@
             if (numero !== numeroRecherche || !palette) return;
             /* Une recherche indisponible n'est pas une recherche sans résultat. */
             rechercheVaine = '';
+            origineProposition = 'recherche_indisponible';
             rendrePalette([{
                 entete: 'Recherche indisponible', icone: '⊕',
                 titre: "Voir tout l'espace", sous: 'Toutes les pages accessibles',
@@ -287,6 +306,8 @@
         }
         var corps = palette && palette.querySelector('#flxPaletteCorps');
         if (corps) corps.innerHTML = '<div class="flx-palette-vide">Recherche…</div>';
+        var proposer = palette && palette.querySelector('#flxPaletteProposer');
+        if (proposer) proposer.hidden = true;
         resultats = [];
         temporisateurRecherche = setTimeout(function () {
             chargerSuggestions(q, numero);
@@ -581,6 +602,8 @@
         }
 
         if (palette) {
+            // Laisser Entrée et Espace activer le lien atteint avec Tab.
+            if (e.target.closest && e.target.closest('#flxPaletteProposer')) return;
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 selection = (selection + 1) % Math.max(resultats.length, 1);

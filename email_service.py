@@ -9,6 +9,7 @@ import logging
 import html as html_module
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.utils import formataddr
 
 from flask import url_for
 
@@ -165,10 +166,14 @@ def _build_message(config, destinataire, sujet, contenu_html, destinataire_preno
 def _ouvrir_connexion_smtp(config):
     """Ouvre une connexion SMTP authentifiee. A fermer par l'appelant (quit)."""
     server = smtplib.SMTP(config['smtp_server'], int(config['smtp_port']), timeout=15)
-    server.ehlo()
-    server.starttls()
-    server.ehlo()
-    server.login(config['sender'], config['password'])
+    try:
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(config['sender'], config['password'])
+    except Exception:
+        server.close()
+        raise
     return server
 
 
@@ -230,6 +235,44 @@ def envoyer_email(destinataire, sujet, contenu_html, destinataire_prenom=''):
     except Exception as e:
         logger.error("Erreur envoi email : %s", str(e))
         return False, f"Erreur : {str(e)}"
+
+
+def envoyer_message_structure(message, destinataire):
+    """Transport d'un MIME déjà construit : état certain ou transmission à vérifier.
+
+    N'effectue aucun nouvel essai. Le module appelant conserve la demande et
+    décide d'une éventuelle reprise. Une erreur de QUIT après acceptation du
+    message ne transforme jamais l'envoi réussi en échec.
+    """
+    config = get_email_config()
+    if (config.get('enabled') != 'true' or not all(config.get(k) for k in
+            ('sender', 'password', 'smtp_server', 'smtp_port'))):
+        return 'a_envoyer', 'configuration'
+    server = None
+    emission = False
+    try:
+        message['From'] = formataddr((config.get('sender_name') or 'CS-PILOT', config['sender']))
+        message['To'] = destinataire
+        server = _ouvrir_connexion_smtp(config)
+        emission = True
+        refuses = server.send_message(message, from_addr=config['sender'], to_addrs=[destinataire])
+        return ('a_envoyer', 'smtp') if refuses else ('envoyee', None)
+    except (smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused,
+            smtplib.SMTPSenderRefused, smtplib.SMTPDataError):
+        return 'a_envoyer', 'smtp'
+    except Exception as exc:
+        # Ne pas exposer la configuration ou une réponse serveur dans le parcours utilisateur.
+        logger.warning('Transmission structurée interrompue (%s)', type(exc).__name__)
+        return ('incertain', 'incertain') if emission else ('a_envoyer', 'connexion')
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                try:
+                    server.close()
+                except Exception:
+                    pass
 
 
 def envoyer_email_multiple(destinataires, sujet, contenu_html):

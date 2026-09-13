@@ -351,6 +351,6 @@
     "Le vérificateur contrôle structure, identifiants, références, tables détectées statiquement, existence des endpoints déclarés, rattachement de chaque endpoint détecté à une fiche et couverture des fichiers blueprints ; il n'évalue pas la justesse de chaque description.",
     "Les entry_points sont des déclarations statiques vérifiées, pas une autorisation d'exécution ; les routes et hooks courants décident des droits réels.",
     "La couverture des fichiers blueprints et des endpoints détectés statiquement ne garantit pas l'exhaustivité des variantes métier, des services sans route ou des routes enregistrées dynamiquement ; relire le module concerné à chaque intervention.",
-    "Ce catalogue n'est pas chargé par l'application et ne configure aucun agent autonome, formulaire ou envoi de demande."
+    "Ce catalogue n’est pas chargé par l’application et ne configure aucun agent autonome. Le formulaire et le mail de proposition sont décrits dans interface.propositions_amelioration ; ils ne déclenchent aucun développement automatique."
   ]
 }

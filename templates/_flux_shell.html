@@ -13,6 +13,7 @@
      data-initiales="{{ nav_identite.initiales }}"
      data-accueil="{{ url_for('accueil_bp.accueil') }}"
      data-recherche-url="{{ url_for('recherche_bp.api_search_suggestions') }}"
+     data-proposition-url="{{ url_for('propositions_bp.nouvelle') }}"
      data-recherche-globale="{{ '1' if nav_recherche_globale else '0' }}"
      {% if nav_zone %}data-zone="{{ nav_zone.id }}"{% endif %}></div>
 
@@ -62,6 +63,8 @@
            class="flx-pied-lien{% if request.endpoint == 'accueil_bp.accueil' %} flx-actif{% endif %}"
            title="Vos décisions du jour">◈ Flux</a>
         <span id="flxSillage" style="display:contents;"></span>
+        <a href="{{ url_for('propositions_bp.nouvelle') }}" class="flx-pied-lien"
+           data-proposer-amelioration>Proposer une amélioration</a>
     </div>
 </div>
 

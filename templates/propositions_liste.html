@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% from '_propositions_ui.html' import statut %}
+{% block title %}{{ 'Propositions du centre' if centre else 'Mes propositions' }} — CS PILOT{% endblock %}
+{% block content %}
+<div class="proposition-page">
+    <div class="proposition-entete">
+        <div><h1>{{ 'Propositions du centre' if centre else 'Mes propositions' }}</h1><p>Retrouvez vos demandes et vérifiez leur transmission.</p></div>
+        <a class="btn btn-primary" href="{{ url_for('propositions_bp.nouvelle') }}" data-proposer-amelioration>Proposer une amélioration</a>
+    </div>
+    {% if gestionnaire %}<nav class="proposition-actions" aria-label="Périmètre des propositions">
+        <a href="{{ url_for('propositions_bp.liste') }}"{% if not centre %} aria-current="page"{% endif %}>Mes propositions</a>
+        <a href="{{ url_for('propositions_bp.liste', centre=1) }}"{% if centre %} aria-current="page"{% endif %}>Toutes les propositions du centre</a>
+    </nav>{% endif %}
+    {% for proposition in propositions %}
+    <article class="proposition-carte">
+        <div class="proposition-entete">
+            <h2><a href="{{ url_for('propositions_bp.detail', reference=proposition.suivi.id) }}">{{ proposition.contenu.demande.titre }}</a></h2>
+            {{ statut('incertain' if proposition.incertain else proposition.suivi.statut) }}
+        </div>
+        <p class="help-text">{{ proposition.suivi.cree_le[:10] }}{% if centre %} · {{ proposition.contenu.auteur.prenom }} {{ proposition.contenu.auteur.nom }}{% endif %}</p>
+        <p class="proposition-extrait">{{ proposition.contenu.demande.besoin[:240] }}{% if proposition.contenu.demande.besoin|length > 240 %}…{% endif %}</p>
+    </article>
+    {% else %}
+    <div class="proposition-carte"><h2>Aucune proposition pour le moment</h2>
+        <p>Un résultat manque ou ne répond pas à votre besoin ? Décrivez ce que vous aimeriez pouvoir faire.</p>
+    </div>
+    {% endfor %}
+    <nav class="proposition-actions" aria-label="Pagination">
+        {% if page > 1 %}<a href="{{ url_for('propositions_bp.liste', page=page-1, centre=1 if centre else 0) }}">Précédent</a>{% endif %}
+        {% if suite %}<a href="{{ url_for('propositions_bp.liste', page=page+1, centre=1 if centre else 0) }}">Suivant</a>{% endif %}
+    </nav>
+</div>
+{% endblock %}

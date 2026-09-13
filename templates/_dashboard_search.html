@@ -24,6 +24,8 @@
     var input = document.getElementById('dsSearchInput');
     var box = document.getElementById('dsSearchResults');
     if (!input || !box) return;
+    var numeroRecherche = 0;
+    var propositionUrl = {{ url_for('propositions_bp.nouvelle')|tojson }};
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -31,7 +33,16 @@
         });
     }
 
-    function render(v) {
+    function proposer(q, origine) {
+        return '<div class="proposition-recherche-aide"><p>Vous ne trouvez pas ce que vous vouliez ?</p>' +
+            '<a class="btn btn-secondary" href="' + esc(propositionUrl) + '" data-proposer-amelioration' +
+            ' data-recherche="' + esc(q) + '" data-origine="' + origine + '">Proposer une amélioration</a></div>';
+    }
+
+    function render(v, q) {
+        if (window.CSPilotPropositions) {
+            window.CSPilotPropositions.memoriser(q, v.type === 'none' ? 'sans_resultat' : 'insatisfait');
+        }
         box.style.display = '';
         if (v.type === 'redirect') {
             box.innerHTML = '<div class="ds-res-loading">Ouverture : ' + esc(v.label) + '…</div>';
@@ -46,7 +57,7 @@
                      (o.sous_titre ? '<span class="ds-res-sub">' + esc(o.sous_titre) + '</span>' : '') +
                      '</a>';
             });
-            box.innerHTML = h;
+            box.innerHTML = h + proposer(q, 'insatisfait');
             return;
         }
         // none
@@ -58,7 +69,7 @@
             });
             h += '</div>';
         }
-        box.innerHTML = h;
+        box.innerHTML = h + proposer(q, 'sans_resultat');
         box.querySelectorAll('.ds-res-chip').forEach(function (b) {
             b.addEventListener('click', function () {
                 input.value = b.getAttribute('data-q');
@@ -68,6 +79,7 @@
     }
 
     window.dsSearch = function () {
+        var numero = ++numeroRecherche;
         var q = (input.value || '').trim();
         if (!q) { box.style.display = 'none'; return; }
         box.style.display = '';
@@ -76,10 +88,14 @@
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({query: q})
-        }).then(function (r) { return r.json(); })
-          .then(render)
+        }).then(function (r) {
+            if (!r.ok) throw new Error('Recherche indisponible');
+            return r.json();
+        })
+          .then(function (v) { if (numero === numeroRecherche) render(v, q); })
           .catch(function () {
-              box.innerHTML = '<div class="ds-res-none">Erreur de recherche.</div>';
+              if (numero !== numeroRecherche) return;
+              box.innerHTML = '<div class="ds-res-none">Erreur de recherche.</div>' + proposer(q, 'recherche_indisponible');
           });
     };
 
@@ -88,6 +104,7 @@
         if (e.key === 'Escape') { box.style.display = 'none'; }
     });
     input.addEventListener('input', function () {
+        ++numeroRecherche;
         if (!input.value.trim()) box.style.display = 'none';
     });
 
