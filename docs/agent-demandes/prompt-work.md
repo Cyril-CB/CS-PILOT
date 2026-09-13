@@ -43,6 +43,10 @@ pas une autorisation ou un autre compte. Respecte une éventuelle pause.
    exigences, leurs critères, les questions restantes et l'impact sur les preuves.
 5. Évalue la grille avec preuves et hypothèses explicites. Exécute le calcul
    déterministe ou vérifie exactement sa formule si seul le triage est possible.
+   Renseigne `decision.version_perimetre` avec la version exacte de l'instantané
+   analysé. Avant de réutiliser score ou critères, vérifie que cet instantané
+   existe dans le dossier et correspond au périmètre courant ; sinon réévalue
+   et conserve l'ancienne décision sans changer sa référence historique.
    Une preuve ou une règle nécessaire inconnue arrête le développement. Pose
    au plus trois questions utiles, au plus deux cycles ; un champ facultatif
    vide n'est pas en soi une question. N'invente pas de réponses ni de barèmes.

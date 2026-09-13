@@ -18,7 +18,7 @@
     "Un besoin distinct reçoit un lien privé et une analyse séparée ; le pilote limité à une demande ne le développe pas automatiquement.",
     "Un changement indispensable mais ambigu impose une précision ciblée. L'agent peut trancher les choix courants d'implémentation en les justifiant.",
     "Incrémenter la version du périmètre quand les exigences ou décisions changent ; conserver la version précédente et l'événement source.",
-    "Réévaluer la grille sur le périmètre réellement proposé. Relier chaque exigence incluse à un critère testable avant de développer.",
+    "Réévaluer la grille sur le périmètre réellement proposé et renseigner decision.version_perimetre avec la version de cet instantané. Avant réemploi, vérifier l'existence de la version dans ce dossier et sa correspondance au périmètre courant ; conserver la référence de l'ancienne décision. Relier chaque exigence incluse à un critère testable avant de développer.",
     "Accuser réception des décisions et signaler les questions restantes, dans les limites d'envoi et de cycles. Une réponse entrante ne justifie pas une relance automatique.",
     "Si une PR existe déjà, analyser l'impact sur schéma, droits, tests et revue ; invalider les preuves affectées et actualiser la même PR si le besoin reste cohérent."
   ],
@@ -29,6 +29,7 @@
     "regle": "Un élément proposé ou à préciser n'est pas présenté comme accepté ou implémenté. Un élément différé garde son motif et sa destination."
   },
   "calibration": [
+    {"id": "decision_perimetre_obsolete", "evenement": "Une décision concerne le périmètre v1 ; une réponse fait évoluer le besoin vers v2.", "attendu": "Conserver la décision historique avec version_perimetre=1 ; réévaluer et enregistrer la nouvelle avec version_perimetre=2. Ne pas réutiliser score ou critères de v1 pour v2. Une référence absente ou invalide est refusée par le schéma ; une version inexistante ou différente du périmètre courant doit être détectée dans le journal avant réemploi."},
     {"id": "reponse_simple", "evenement": "Réponse sans JSON confirmant les droits mais pas le nombre d'établissements.", "attendu": "Accepter ; clore la question des droits et conserver celle des établissements ; besoin toujours incomplet."},
     {"id": "champ_convention", "evenement": "Ajout du code de convention collective à la fiche.", "attendu": "Même capacité : ajouter saisie, affichage et persistance sous les droits confirmés. Aucun barème de paie inventé ou appliqué."},
     {"id": "champs_adaptables", "evenement": "Possibilité éventuelle d'ajouter des champs adaptés au centre.", "attendu": "Distinguer libellé/valeur simple, calculs et formulaires dynamiques. Borner la variante simple, préciser si nécessaire et réévaluer sans promettre toutes les variantes."},

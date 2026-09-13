@@ -7,7 +7,7 @@
 - Calibration initiale : `calibration-v1.json` (15 cas synthétiques).
 - Compte rendu privé : `decision-v1.schema.json`.
 - Consignes d'une exécution : `prompt-work.md`.
-- Évolution du périmètre par mail : `evolutions-v1.json` (7 scénarios de calibration).
+- Évolution du périmètre par mail : `evolutions-v1.json` (8 scénarios de calibration).
 - Critères de fin et preuves par jalon : `definition-termine-v1.json`.
 - Moteur déterministe : `scripts/triage_agent.py`. Il contrôle une évaluation
   déjà faite ; il ne comprend pas le mail et ne prouve pas les justifications.
@@ -99,6 +99,22 @@ chaque ajout selon `evolutions-v1.json`. Les identifiants de messages, versions
 du périmètre et exigences stables permettent de suivre ce qui a changé et pourquoi.
 La réception d'une précision n'autorise pas à développer un autre besoin ou à
 élargir les permissions d'exécution.
+
+Chaque décision porte un `version_perimetre` obligatoire, entier supérieur ou
+égal à 1 : il référence l'instantané effectivement analysé dans ce dossier,
+pas la version du format JSON ni le commit des sources. Avant de réutiliser une
+décision, vérifier que l'instantané existe et correspond au périmètre courant.
+Le schéma contrôle la présence et le type ; il ne vérifie pas cette relation
+entre objets. Une évolution impose une réévaluation avec la nouvelle référence,
+sans réétiqueter la décision historique. Le résultat de `triage_agent.py` est
+un calcul partiel, pas un compte rendu complet conforme au schéma de décision.
+
+Ce durcissement du contrat v1 est proposé avant stabilisation du pilote. Les
+journaux anciens sans référence ne sont pas automatiquement valides : conserver
+leurs décisions et établir le lien seulement à partir d'un instantané prouvé ;
+à défaut, réévaluer. Ne pas attribuer par défaut la version courante aux anciennes
+décisions. Un pilote épinglé n'adopte le contrat corrigé qu'après validation de
+son propriétaire ; cette PR ne change pas son épinglage ni ses autorisations.
 
 Appliquer `definition-termine-v1.json` avant toute annonce : `pret_revue` après
 les contrôles techniques, `pret_recette` après traitement de la revue, `termine`

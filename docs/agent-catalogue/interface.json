@@ -923,7 +923,7 @@
         "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
       ],
       "extension_points": [
-        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Son activation et ses connexions sont configurées dans Work, pas par Flask.",
+        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask.",
         "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
       ],
       "related_features": [

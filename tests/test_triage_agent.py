@@ -80,3 +80,13 @@ def test_cles_json_dupliquees_refusees(tmp_path):
     path.write_text('{"source_verifiee":false,"source_verifiee":true}')
     with pytest.raises(ValueError, match="dupliquée"):
         load_json(path)
+
+
+def test_decision_exige_la_version_du_perimetre():
+    schema = load_json(ROOT / "docs/agent-demandes/decision-v1.schema.json")
+    assert "version_perimetre" in schema["required"]
+    regle = schema["properties"]["version_perimetre"]
+    assert regle["type"] == "integer"
+    assert regle["minimum"] == 1
+    assert "default" not in regle  # Ne jamais inventer l'instantané analysé.
+    assert schema["additionalProperties"] is False

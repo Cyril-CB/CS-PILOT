@@ -9,6 +9,7 @@
     "format",
     "version",
     "reference",
+    "version_perimetre",
     "manifest_sha256",
     "revision_sources",
     "date_analyse",
@@ -33,6 +34,11 @@
     "reference": {
       "type": "string",
       "pattern": "^[a-f0-9]{32}$"
+    },
+    "version_perimetre": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version exacte de l'instantané du périmètre analysé dans ce dossier ; distincte de la version du format et du commit des sources. Vérifier son existence et sa correspondance dans le journal avant de réutiliser la décision."
     },
     "manifest_sha256": {
       "type": "string",
