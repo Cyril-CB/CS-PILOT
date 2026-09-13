@@ -355,3 +355,51 @@ def test_echec_publication_ne_marque_pas_reussite(tmp_path, monkeypatch):
         engine.terminer(JOB, 'terminee')
     assert engine.state['active'] is None and engine.state['job']['phase'] == 'validation'
     service.ouvrir.assert_not_called()
+
+
+@pytest.mark.skipif(os.name != 'posix', reason='Environnement Python de recette Linux')
+def test_redemarrage_du_service_reprend_la_version_active(moteur, installation):
+    """Le lanceur d'origine doit reprendre le contrôleur/code isolés après redémarrage."""
+    import http.client
+    import socket
+    import subprocess
+    import time
+    engine, service = moteur
+    engine.traiter(dict(JOB))
+    assert engine.state['job']['phase'] == 'terminee'
+    service.arreter()
+    # Les dépendances du harnais représentent le venv déjà installé. Aucune
+    # connexion PyPI ; le choix du nouveau venv est couvert par le test dédié.
+    (engine.release_dir(JOB['id']) / 'venv').symlink_to(sys.prefix, target_is_directory=True)
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        port = sock.getsockname()[1]
+    env = dict(os.environ, CSPILOT_DATA_DIR=str(installation), PORT=str(port))
+    for name in ('CSPILOT_WORKER_TOKEN', 'CSPILOT_SUPERVISED_STDIN', 'CSPILOT_UPDATE_DIR', 'CSPILOT_INSTALL_DIR'):
+        env.pop(name, None)
+    process = subprocess.Popen([sys.executable, ROOT / 'superviseur.py'], cwd=ROOT,
+                               env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        fin = time.monotonic() + 15
+        state = {}
+        while time.monotonic() < fin:
+            assert process.poll() is None
+            conn = http.client.HTTPConnection('127.0.0.1', port, timeout=2)
+            try:
+                conn.request('GET', '/__cspilot__/mise-a-jour')
+                response = conn.getresponse()
+                state = json.loads(response.read())
+                if state['disponible']:
+                    break
+            except OSError:
+                pass
+            finally:
+                conn.close()
+            time.sleep(0.05)
+        assert state['disponible'] and state['phase'] == 'terminee'
+        # Le code d'origine refuse la migration 0072 fictive : cette santé
+        # prouve que le code isolé qui la connaît a bien été repris.
+        assert lire_json(engine.state_path)['active'] == JOB
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
