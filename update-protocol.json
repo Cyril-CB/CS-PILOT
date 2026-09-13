@@ -1,0 +1,4 @@
+{
+  "protocol": 1,
+  "data_paths": ["documents", "factures", "modeles_contrats", "contrats_generes", "exports"]
+}

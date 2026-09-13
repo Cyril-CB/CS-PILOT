@@ -250,3 +250,14 @@ les autorisations et cas d'erreur sont couverts, les données existantes restent
 compatibles, les tests ciblés et la suite pertinente passent, la documentation
 est cohérente, le catalogue fonctionnel est à jour et son contrôle statique
 passe, et `git diff` ne contient ni artefact ni modification étrangère à la tâche.
+
+### Mise à jour et démarrage supervisés
+
+- Lire `docs/mises-a-jour.md` avant toute évolution du démarrage, des migrations
+  de fichiers ou du protocole de mise à jour. Ne pas réintroduire la copie en
+  place, les migrations dans un worker actif ou un redémarrage sudo depuis Flask.
+- Une nouvelle catégorie de fichiers métier doit être couverte par la sauvegarde,
+  la restauration et `update-protocol.json` avant une migration qui y écrit.
+- Conserver le journal avant écriture, la publication atomique et les tests de
+  coupure/retour arrière. Ne jamais restaurer automatiquement après réouverture
+  possible de la version publiée.

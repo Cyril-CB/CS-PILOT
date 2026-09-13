@@ -372,3 +372,10 @@ Le numero de version suit le format `1.1.XXXX`, où `XXXX` correspond a la derni
 ---
 
 **Developpe avec** : Python, Flask, SQLite
+
+## Mises à jour depuis l’application
+
+Les directeurs et comptables peuvent vérifier puis installer les nouveautés depuis
+**Mise à jour**. Le lancement supervisé prend en charge sauvegarde complète,
+dépendances, migrations, redémarrage et contrôle de disponibilité. Voir le
+[parcours de mise à jour et son activation](docs/mises-a-jour.md).

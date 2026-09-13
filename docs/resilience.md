@@ -314,3 +314,9 @@ fictives dans cet audit ne représentent ni un transfert OVH ni le volume réel.
 6. Arrêter et supprimer **uniquement** le VPS de test, ses volumes et copies
    sensibles après conservation du rapport sans données métier. Vérifier les
    identifiants pour ne supprimer ni production ni sauvegarde d’origine.
+
+## Mises à jour courantes
+
+Le [parcours supervisé](mises-a-jour.md) appelle ces CLI après arrêt du processus
+applicatif et conserve une sauvegarde complète avant migration. Les commandes
+ci-dessus restent disponibles pour le diagnostic et la récupération exceptionnels.

@@ -4,6 +4,21 @@ Architecture en Blueprints Flask.
 """
 import os
 import sys
+
+# Le superviseur doit pouvoir servir la maintenance même si les imports ou le
+# contrôle des migrations de l'application échouent. Les imports WSGI/tests et
+# le mode de développement conservent leur point d'entrée habituel.
+if (__name__ == '__main__' and not getattr(sys, 'frozen', False)
+        and not os.environ.get('CSPILOT_WORKER_TOKEN')
+        and os.environ.get('FLASK_DEBUG', '0') != '1'):
+    from superviseur import main
+    main()
+    raise SystemExit(0)
+
+if __name__ == '__main__' and os.environ.get('CSPILOT_SUPERVISED_STDIN') == '1':
+    from update_worker import surveiller_superviseur
+    _verrou_worker = surveiller_superviseur()
+
 import secrets
 import sqlite3
 from dotenv import load_dotenv
@@ -706,8 +721,9 @@ if __name__ == '__main__':
     with closing(get_db()) as conn:
         verifier_parametres(conn, app.secret_key)
 
-    host = '0.0.0.0'
-    port = int(os.environ.get('PORT', 5000))
+    worker_token = os.environ.get('CSPILOT_WORKER_TOKEN')
+    host = '127.0.0.1' if worker_token else '0.0.0.0'
+    port = int(os.environ.get('CSPILOT_WORKER_PORT') if worker_token else os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_DEBUG', '0') == '1'
 
     print("=" * 60)
@@ -726,5 +742,10 @@ if __name__ == '__main__':
         print("   Serveur : Waitress (production)")
         print("   Threads : 4\n")
         print("=" * 60)
-        server = create_server(app, host=host, port=port, threads=4)
+        application = app
+        if worker_token:
+            from update_worker import WorkerMiddleware
+            application = WorkerMiddleware(app, worker_token)
+        server = create_server(application, host=host, port=port, threads=4,
+                               clear_untrusted_proxy_headers=not bool(worker_token))
         server.run()

@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 cls
 echo ============================================================
 echo    GESTION DU TEMPS DE TRAVAIL - DEMARRAGE
@@ -23,10 +24,11 @@ echo [OK] Python detecte
 echo.
 
 REM Vérifier si les dépendances sont installées
-pip show Flask >nul 2>&1
+python -c "import flask, waitress, requests, dotenv" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installation des dependances...
-    pip install -r requirements.txt
+    python -m pip install -r requirements.txt
+    if errorlevel 1 exit /b 1
     echo.
 )
 
@@ -41,13 +43,8 @@ echo.
 echo L'application va demarrer dans quelques secondes...
 echo.
 
-REM Charger les variables d'environnement depuis .env
-if exist .env (
-    for /f "usebackq tokens=1,* delims==" %%A in (".env") do set "%%A=%%B"
-)
-
-REM Lancer l'application
-python app.py
+REM Le superviseur charge .env avec python-dotenv, sans execution shell.
+python superviseur.py
 
 echo.
 echo ============================================================

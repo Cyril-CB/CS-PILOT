@@ -1019,7 +1019,8 @@
         "restaurer --archive --destination : déchiffrement, contrôles du manifeste et des données, publication dans une destination inexistante ; rapport JSON et table de correspondance des anciens chemins.",
         "Option --nouvelle-cle-fichier pour rechiffrer atomiquement app_settings au cours de la restauration ; --phrase-fichier et --cle-fichier pour secrets en fichiers privés.",
         "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false.",
-        "Vérification et rechiffrement des paramètres secrets sans modifier les traces historiques du digest ; parametres_verifies compte seulement les valeurs déchiffrées."
+        "Vérification et rechiffrement des paramètres secrets sans modifier les traces historiques du digest ; parametres_verifies compte seulement les valeurs déchiffrées.",
+        "Sauvegarde possible sans Git ; la provenance d’une version isolée vient de REVISION-SOURCES.txt, sans confondre le dépôt parent avec le code exécuté."
       ],
       "entry_points": [],
       "implementation": {
@@ -1046,7 +1047,8 @@
         ],
         "docs": [
           "docs/resilience.md",
-          "docs/audit-resilience.md"
+          "docs/audit-resilience.md",
+          "docs/mises-a-jour.md"
         ]
       },
       "access": {
@@ -1305,62 +1307,99 @@
     {
       "id": "administration.mise_a_jour",
       "title": "Vérification et installation des mises à jour",
-      "purpose": "Consulter la dernière release GitHub et installer une mise à jour du code ou de l’exécutable selon le mode de lancement.",
+      "purpose": "Installer une révision vérifiée de main avec sauvegarde complète, dépendances isolées, migrations hors ligne, contrôle du démarrage et retour arrière automatique.",
       "example_requests": [
         "vérifier une mise à jour",
         "installer la dernière version",
         "voir les notes de version"
       ],
       "capabilities": [
-        "Page affichant version courante, mode script/exécutable et système.",
-        "Interrogation de la dernière release GitHub Cyril-CB/CS-PILOT ; restitution de version, notes, date, URL et présence d’un asset exe.",
-        "En mode exécutable : téléchargement de l’asset exe, renommage de l’ancien en .old et remplacement ; tentative de restauration de l’ancien en cas d’échec.",
-        "En mode script : téléchargement de zipball/main, extraction et copie des fichiers en protégeant les noms déclarés dans PROTECTED_PATHS.",
-        "Après réussite en mode script, lancement d’une commande différée demandant sudo systemctl restart cspilot ; en mode exe, invitation au redémarrage."
+        "Parcours directeur/comptable : vérifier la révision de main puis installer ; le centre n’a plus à sauvegarder, migrer ou redémarrer manuellement.",
+        "Demande durable unique, révision complète vérifiée et conservée en session pendant 30 minutes ; fermer le navigateur ne coupe pas le traitement.",
+        "Préparation dans un répertoire et un venv propres à la version, installation de requirements.txt, pip check, compilation et contrôle d’espace avant maintenance.",
+        "Superviseur Waitress indépendant de Flask : maintenance HTTP 503 et suivi public minimal disponibles pendant l’arrêt applicatif.",
+        "Arrêt des nouvelles requêtes, attente des réponses en cours, arrêt du worker, sauvegarde complète chiffrée puis migrations via resilience_cli.py avec la clé effective.",
+        "Validation du schéma et des paramètres, santé privée liée au PID et requête /login avant publication atomique de la version active et réouverture.",
+        "Restauration de la version précédente, de son Python et des données après échec de migration/démarrage ; reprise après coupure avant publication ; maintenance persistante si récupération impossible.",
+        "Rétention des deux dernières versions réussies et de la version nécessaire au retour arrière ; conservation des dossiers d’échec pour le support.",
+        "Sources choisies par SHA et affichées distinctement de VERSION.txt ; installation en place et commande sudo systemctl supprimées."
       ],
       "entry_points": [
         "mise_a_jour_bp.mise_a_jour",
         "mise_a_jour_bp.verifier_mise_a_jour",
-        "mise_a_jour_bp.lancer_mise_a_jour"
+        "mise_a_jour_bp.lancer_mise_a_jour",
+        "mise_a_jour_bp.etat_mise_a_jour"
       ],
       "implementation": {
         "route_files": [
           "blueprints/mise_a_jour.py"
         ],
         "service_files": [
+          "app.py",
           "app_version.py",
-          "database.py"
+          "superviseur.py",
+          "update_engine.py",
+          "update_protocol.py",
+          "update_worker.py",
+          "update_task.py",
+          "resilience.py",
+          "resilience_cli.py",
+          "stockage_restaure.py",
+          "update-protocol.json",
+          "lancer.sh",
+          "LANCER.bat"
         ],
         "templates": [
           "templates/mise_a_jour.html"
         ],
-        "tables": [],
+        "tables": [
+          "users",
+          "schema_migrations",
+          "schema_migrations_tentatives",
+          "app_settings"
+        ],
         "tests": [
-          "tests/test_mise_a_jour.py"
+          "tests/test_mise_a_jour.py",
+          "tests/test_update_engine.py",
+          "tests/test_superviseur.py",
+          "tests/test_resilience.py",
+          "tests/test_migrations_resilience.py"
         ],
         "docs": [
+          "docs/mises-a-jour.md",
           "docs/resilience.md"
         ]
       },
       "access": {
-        "summary": "Page et API de vérification/lancement réservées aux profils directeur et comptable ; aucun contrôle n’autorise un autre profil à remplacer le code.",
-        "scope": "Installation locale, dépôt GitHub prédéfini dans le module.",
+        "summary": "Page et API métier réservées au directeur/comptable. Le lancement revalide compte, session et profil sous BEGIN IMMEDIATE ; CSRF conservé. Le statut HTTP du superviseur est public, en lecture seule et sans détails privés.",
+        "scope": "Une installation et un worker supervisé par CSPILOT_DATA_DIR ; dépôt public Cyril-CB/CS-PILOT prédéfini.",
         "conditions": [
-          "Réseau GitHub disponible.",
-          "Droits d’écriture sur le dossier de code ou de l’exécutable.",
-          "Mode script : commande de redémarrage attend un service systemd nommé cspilot et l’autorisation sudo appropriée."
+          "Lancement supervisé, hors exécutable et hors import WSGI personnalisé.",
+          "GitHub et index des dépendances accessibles ; espace disque suffisant.",
+          "Droits d’écriture de l’utilisateur du service sur les données et .cspilot-updates ; aucun nouveau droit sudo.",
+          "Aucun processus externe n’écrit dans les mêmes stockages."
         ],
         "sources": [
-          "blueprints/mise_a_jour.py"
+          "blueprints/mise_a_jour.py",
+          "superviseur.py",
+          "update_protocol.py",
+          "sessions_securite.py"
         ]
       },
       "invariants": [
-        "Les chemins protégés déclarés ne sont pas écrasés pendant la copie des sources.",
-        "Ne jamais confondre installation du code et application réussie des migrations."
+        "Aucune URL, commande ou destination fournie par le navigateur ; révision complète validée et demande exclusive.",
+        "Ne pas copier le nouveau code ni installer ses dépendances dans le code/venv actuellement utilisés.",
+        "Ne pas migrer si la sauvegarde complète est refusée ; ne pas reprendre automatiquement les erreurs historiques de migrations.",
+        "Maintenir DATA_DIR et la priorité de SECRET_KEY effective sur .env, sans exécuter .env ni créer une nouvelle clé.",
+        "Journal avant les opérations de données ; publication active/réussite en une écriture atomique avant réouverture ; aucun rollback automatique après acceptation possible de nouvelles écritures.",
+        "Après migration, restaurer données et code ensemble ; conserver les données de l’échec et ne jamais remplacer DATA_DIR entier.",
+        "Un seul superviseur ; arrêt des descendants à la perte de leur pipe parent ; verrou des écrivains avant restauration et contrôle de disponibilité.",
+        "Ne jamais exposer clé, phrase, sortie de commande, chemin ni contenu métier dans le statut public."
       ],
       "extension_points": [
-        "Réutiliser la consultation des releases pour afficher une version disponible.",
-        "Examiner la procédure de résilience et la cohérence code/données avant de faire évoluer le mécanisme d’installation."
+        "Lire docs/mises-a-jour.md avant de modifier protocole, stockage ou démarrage ; mettre à jour les tests de reprise et de retour arrière.",
+        "Un nouveau stockage métier ou une migration touchant des fichiers doit être inclus dans sauvegarde/restauration et dans update-protocol.json.",
+        "Conserver les tests de transparence HTTP (cookies, CSRF, IP/proxy, envois chunked et téléchargements) pour tout changement du frontal."
       ],
       "related_features": [
         "administration.migrations_web",
@@ -1368,10 +1407,12 @@
         "administration.resilience_hors_ligne"
       ],
       "limitations": [
-        "La mise à jour web n’est pas désactivée dans cette révision.",
-        "En mode script le code est pris sur main, même si l’interface affiche le tag de la dernière release ; ce ne sont pas nécessairement la même révision.",
-        "La copie script remplace progressivement les fichiers ; aucune bascule atomique du code, restauration automatique de l’arbre complet ou sauvegarde applicative préalable n’est réalisée par cette fonction.",
-        "Une commande de redémarrage lancée n’est pas une preuve que le service a redémarré correctement."
+        "Activation initiale nécessaire pour les services personnalisés et exécutables. Le premier redémarrage dépend encore du lanceur antérieur ; une intervention ponctuelle du support peut être nécessaire.",
+        "Linux/Python 3.12 testés avec processus réels. Le lanceur et la terminaison Windows demandent une recette Windows avant généralisation.",
+        "Protocole ou stockage incompatible, changement majeur de Python, clé perdue et migrations exigeant une décision humaine restent des cas de support.",
+        "Le superviseur déjà en mémoire reste stable ; ses propres sources et dépendances sont reprises au prochain redémarrage du service.",
+        "Sauvegardes locales avec phrase dans un fichier privé voisin : ne remplacent pas les sauvegardes extérieures. Les dossiers d’échec peuvent nécessiter un nettoyage par le support.",
+        "Le contrôle privé valide démarrage et page de connexion ; il ne prouve pas tous les parcours métier de la nouvelle version."
       ]
     },
     {
