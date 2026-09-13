@@ -87,6 +87,67 @@ def classeur():
     return f.getvalue()
 
 
+@pytest.mark.parametrize('interface_flux', [False, True])
+def test_liens_du_parcours_respectent_la_charte(
+        app, db, environnement, monkeypatch, tmp_path, interface_flux):
+    from app_options import set_option_bool
+
+    class LiensPage(HTMLParser):
+        def __init__(self, html):
+            super().__init__()
+            self.profondeur = 0
+            self.liens = []
+            self.feed(html)
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == 'div':
+                if self.profondeur or 'proposition-page' in attrs.get('class', '').split():
+                    self.profondeur += 1
+            if tag == 'a' and self.profondeur:
+                self.liens.append(attrs)
+
+        def handle_endtag(self, tag):
+            if tag == 'div' and self.profondeur:
+                self.profondeur -= 1
+
+    with app.app_context():
+        set_option_bool('interface_sans_menu_active', interface_flux)
+    client = connecter(app)
+    pages = {'formulaire': client.get('/propositions/nouvelle')}
+    data = preparer(client)
+    data['pieces'] = (io.BytesIO(b'Document synthetique'), 'exemple.txt')
+    assert soumettre(client, data).status_code == 302
+    reference = dernier(db)['id']
+    pages['detail'] = client.get(f'/propositions/{reference}')
+    # Couvrir également configuration absente et transmission en cours.
+    import blueprints.propositions as routes
+    monkeypatch.setattr(routes, 'is_email_configured', lambda: False)
+    pages['formulaire_sans_email'] = client.get('/propositions/nouvelle')
+    db.execute("UPDATE propositions_amelioration SET statut='en_cours', derniere_tentative=?",
+               (datetime.now(timezone.utc).isoformat(),))
+    db.commit()
+    pages['detail_en_cours'] = client.get(f'/propositions/{reference}')
+    pages['liste'] = client.get('/propositions')
+    pages['centre'] = client.get('/propositions?centre=1')
+    for nom, reponse in pages.items():
+        assert reponse.status_code == 200
+        liens = LiensPage(reponse.text).liens
+        assert liens, nom
+        for lien in liens:
+            classes = set(lien.get('class', '').split())
+            assert 'btn' in classes or 'proposition-lien-titre' in classes, (nom, lien)
+            if 'btn' in classes:
+                assert classes & {'btn-primary', 'btn-secondary'}, (nom, lien)
+        # Pages synthétiques disponibles dans le répertoire temporaire pour
+        # la vérification navigateur ; aucune donnée du centre ni appel SMTP réel.
+        (tmp_path / f'{nom}.html').write_text(reponse.text, encoding='utf-8')
+    for nom in ('liste', 'centre'):
+        actifs = [l for l in LiensPage(pages[nom].text).liens if l.get('aria-current') == 'page']
+        assert len(actifs) == 1
+        assert 'btn-primary' in actifs[0]['class'].split()
+
+
 def test_envoi_complet_et_mail_exploitable(app, db, environnement, sample_users):
     client = connecter(app)
     data = preparer(client)

@@ -995,7 +995,7 @@
         "Renseigner durée estimée, échéance facultative, préférence matin/après-midi, possibilité de découpage et taille minimale des blocs.",
         "Évaluer la priorité relative par comparaison avec une ou deux tâches personnelles ; proposer d’abord des références à échéance proche puis élargir.",
         "Replanifier automatiquement après les principales mutations ou manuellement ; moteur pur avec répartition de charge, blocs de longues missions et micro-pauses.",
-        "Déplacer un bloc par glisser-déposer et le verrouiller ; le déverrouiller pour revenir à la planification automatique.",
+        "Déplacer un bloc par glisser-déposer et le verrouiller ; refuser les dates antérieures au jour du fuseau applicatif (APP_TIMEZONE), sans modifier le bloc ni l’événement. Le déverrouiller pour revenir à la planification automatique.",
         "Marquer tâche ou bloc fait, rouvrir/annuler une tâche, reporter à une date et créer une tâche suite après réalisation partielle.",
         "Créer des récurrences quotidiennes/hebdomadaires/mensuelles, à jour imposé ou à placer dans une fenêtre ; supprimer une récurrence en conservant l’historique réalisé.",
         "Afficher les tâches ordinaires non placées ; libérer/replanifier les blocs de tâches lorsqu’une absence a été saisie après planification."

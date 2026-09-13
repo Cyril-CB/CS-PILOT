@@ -141,6 +141,19 @@ le dépôt n'en configure actuellement aucun.
 
 - Réutilisez le template de base, les macros, composants et classes CSS
   existants avant d'introduire une nouvelle variante.
+- **Respecter la charte graphique fait partie du résultat attendu**, y compris
+  pour les modules créés par le pilote. Comparer avec une page métier voisine
+  et réutiliser couleurs/variables, typographie, espacements, cartes, champs,
+  boutons et liens existants ; ne pas introduire de style navigateur par défaut
+  (par exemple lien bleu souligné) pour une action de l'application.
+- Utiliser les variantes `.btn`, `.btn-primary`, `.btn-secondary`, `.btn-sm`
+  pour les liens d'action selon leur importance ; conserver de vrais liens
+  pour naviguer/télécharger, des boutons pour agir et un focus clavier visible.
+  Ne pas masquer le soulignement globalement au détriment de l'accessibilité.
+- Vérifier le rendu réel ordinateur et mobile, ainsi que les états vide,
+  erreur, survol/focus et les interfaces classique/flux si concernées. Conserver
+  des preuves visuelles synthétiques ; un test HTML seul ne valide pas le rendu.
+  Une incohérence graphique constatée doit être corrigée avant prêt pour revue.
 - Jinja échappe le contenu par défaut : n'ajoutez `|safe` que pour du HTML
   généré et assaini de manière fiable.
 - Tous les formulaires mutatifs doivent conserver la protection CSRF. Les
