@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 echo "============================================================"
 echo "   GESTION DU TEMPS DE TRAVAIL - DEMARRAGE"
 echo "============================================================"
@@ -31,9 +32,9 @@ fi
 source venv/bin/activate
 
 # Verifier les dependances
-if ! python3 -c "import flask" &> /dev/null; then
+if ! python3 -c "import flask, waitress, requests, dotenv" &> /dev/null; then
     echo "[INFO] Installation des dependances..."
-    pip install -r requirements.txt
+    python3 -m pip install -r requirements.txt
     echo ""
 fi
 
@@ -50,4 +51,4 @@ echo ""
 echo "Pour arreter l'application : Ctrl+C"
 echo ""
 
-python3 app.py
+exec python3 superviseur.py

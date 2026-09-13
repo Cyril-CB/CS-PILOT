@@ -187,10 +187,11 @@ def test_t3_nouvelle_cle_rechiffrement_atomique(installation, sauvegarde, tmp_pa
     avant, apres = contenu_base(installation['source'] / 'cspilot.db'), contenu_base(dest / 'cspilot.db')
     assert avant.pop('app_settings') != apres.pop('app_settings')
     assert avant == apres
-    # Un service gardant une autre clé dans son environnement doit refuser de
-    # démarrer, pas masquer les paramètres indéchiffrables.
+    # Le processus applicatif gardant une autre clé doit refuser de démarrer.
+    # Le superviseur, lui, reste disponible en maintenance (test_superviseur).
     resultat = subprocess.run([sys.executable, 'app.py'], env={**os.environ,
-        'CSPILOT_DATA_DIR': str(dest), 'SECRET_KEY': 'cle-fictive-incorrecte-du-service'},
+        'CSPILOT_DATA_DIR': str(dest), 'SECRET_KEY': 'cle-fictive-incorrecte-du-service',
+        'CSPILOT_WORKER_TOKEN': 'jeton-prive-fictif'},
         capture_output=True, text=True, timeout=30)
     assert resultat.returncode != 0
     assert 'indéchiffrables' in resultat.stderr
@@ -436,3 +437,22 @@ def test_ancienne_sauvegarde_ne_requiert_pas_futurs_modules(tmp_path, monkeypatc
     assert resultat['diagnostic']['migrations']['en_attente']
     assert not resultat['ok']  # Mise à niveau explicite nécessaire avant service.
     assert contenu_base(destination / 'cspilot.db') == avant
+
+
+def test_sauvegarde_sans_git_et_revision_isolee(installation, tmp_path, monkeypatch):
+    """Une installation ZIP ne dépend pas de Git et n'hérite pas du HEAD d'un parent."""
+    code = tmp_path / 'version-isolee'
+    code.mkdir()
+    (code / 'requirements.txt').write_text('dependances-fictives')
+    (code / 'REVISION-SOURCES.txt').write_text('a' * 40)
+    r.shutil.copytree(Path(r.__file__).parent / 'migrations', code / 'migrations')
+    monkeypatch.setattr(r, '__file__', str(code / 'resilience.py'))
+    monkeypatch.setattr(r.shutil, 'which', lambda nom: None)
+    def interdit(*args, **kwargs):
+        raise AssertionError('Git ne doit pas être appelé pour ce code isolé')
+    monkeypatch.setattr(r.subprocess, 'run', interdit)
+    archive = tmp_path / 'sans-git.cspbackup'
+    assert r.sauvegarder(installation['source'], archive, PHRASE,
+                        arret_confirme=True, secret_key=CLE)['ok']
+    resultat = r.restaurer(archive, tmp_path / 'restauree-sans-git', PHRASE)
+    assert resultat['ok'] and resultat['revision_code'] == 'a' * 40

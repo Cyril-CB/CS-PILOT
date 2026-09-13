@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import platform
+import re
+import shutil
 import sqlite3
 import stat
 import subprocess
@@ -385,12 +387,22 @@ def sauvegarder(data_dir, archive_path, password, *, arret_confirme=False, secre
                          'stockages': list(REPERTOIRES), 'fichiers': {}, 'diagnostic': rapport,
                          'python': platform.python_version(), 'sqlite': sqlite3.sqlite_version}
             code = Path(__file__).resolve().parent
-            revision = subprocess.run(['git', '-C', str(code), 'rev-parse', 'HEAD'],
-                                      capture_output=True, text=True, check=False)
-            manifeste['revision_code'] = revision.stdout.strip() if revision.returncode == 0 else 'inconnue'
-            etat_code = subprocess.run(['git', '-C', str(code), 'status', '--porcelain', '--untracked-files=normal'],
-                                       capture_output=True, text=True, check=False)
-            manifeste['code_modifie'] = etat_code.returncode != 0 or bool(etat_code.stdout.strip())
+            # Une version isolée peut se trouver sous un ancien dépôt Git : ne
+            # jamais lui attribuer par accident le HEAD de ce dépôt parent.
+            manifeste['revision_code'] = 'inconnue'
+            manifeste['code_modifie'] = True  # Sans Git, conserver les sources exactes par prudence.
+            revision_sources = code / 'REVISION-SOURCES.txt'
+            if revision_sources.is_file():
+                revision = revision_sources.read_text(encoding='ascii').strip()
+                if re.fullmatch('[0-9a-f]{40}', revision):
+                    manifeste['revision_code'] = revision
+            if (code / '.git').exists() and shutil.which('git'):
+                revision = subprocess.run(['git', '-C', str(code), 'rev-parse', 'HEAD'],
+                                          capture_output=True, text=True, check=False, timeout=10)
+                manifeste['revision_code'] = revision.stdout.strip() if revision.returncode == 0 else 'inconnue'
+                etat_code = subprocess.run(['git', '-C', str(code), 'status', '--porcelain', '--untracked-files=normal'],
+                                           capture_output=True, text=True, check=False, timeout=10)
+                manifeste['code_modifie'] = etat_code.returncode != 0 or bool(etat_code.stdout.strip())
             manifeste['requirements_sha256'] = _hash(code / 'requirements.txt')
             zip_path = travail / 'sauvegarde.zip'
             with zipfile.ZipFile(zip_path, 'x', compression=zipfile.ZIP_DEFLATED) as archive:

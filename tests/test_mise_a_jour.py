@@ -1,267 +1,121 @@
-"""
-Tests pour le module de mise a jour semi-automatique de l'application.
-"""
-import os
-import sys
+"""Autorisation, cible vérifiée et prise en charge durable de l'installation."""
 import json
-import zipfile
-import tempfile
-from unittest.mock import patch, MagicMock
+import time
+from unittest.mock import Mock
 
 import pytest
+import requests
 
+from update_protocol import lire_json
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+SHA = 'a' * 40
+
+
+@pytest.fixture
+def supervise(monkeypatch, tmp_path):
+    monkeypatch.setenv('CSPILOT_WORKER_TOKEN', 'secret-fictif')
+    monkeypatch.setenv('CSPILOT_UPDATE_DIR', str(tmp_path))
+    return tmp_path
 
-
-FAKE_RELEASE = {
-    'tag_name': '1.0.30',
-    'name': 'Version 1.0.30',
-    'body': 'Notes de version test',
-    'published_at': '2026-03-15T00:00:00Z',
-    'html_url': 'https://github.com/Cyril-CB/CS-PILOT/releases/tag/1.0.30',
-    'zipball_url': 'https://api.github.com/repos/Cyril-CB/CS-PILOT/zipball/1.0.30',
-    'assets': [
-        {
-            'name': 'CS-PILOT.exe',
-            'size': 50000000,
-            'browser_download_url': 'https://github.com/Cyril-CB/CS-PILOT/releases/download/1.0.30/CS-PILOT.exe',
-        }
-    ],
-}
-
-
-def _mock_github_response(status_code=200, json_data=None):
-    """Cree un mock de reponse requests."""
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or FAKE_RELEASE
-    return resp
-
-
-# ---------------------------------------------------------------------------
-# Tests d'acces
-# ---------------------------------------------------------------------------
-
-
-def test_page_mise_a_jour_requiert_login(client, sample_users):
-    """La page de mise a jour doit rediriger si non connecte."""
-    response = client.get('/mise-a-jour', follow_redirects=False)
-    assert response.status_code in (302, 401)
-
-
-def test_page_mise_a_jour_interdit_salarie(auth_client):
-    """Un salarie ne doit pas pouvoir acceder a la page."""
-    response = auth_client.get('/mise-a-jour', follow_redirects=True)
-    assert b'Acces non autorise' in response.data
-
-
-def test_page_mise_a_jour_accessible_directeur(admin_client):
-    """Un directeur doit pouvoir acceder a la page."""
-    response = admin_client.get('/mise-a-jour')
-    assert response.status_code == 200
-    assert 'Mise a jour' in response.data.decode('utf-8')
-
-
-def test_api_verifier_requiert_login(client, sample_users):
-    """L'API de verification doit refuser un utilisateur non connecte."""
-    response = client.post('/api/mise-a-jour/verifier')
-    assert response.status_code in (302, 401)
-
-
-def test_api_verifier_interdit_salarie(auth_client):
-    """L'API de verification doit refuser un salarie."""
-    response = auth_client.post('/api/mise-a-jour/verifier')
-    assert response.status_code == 403
-
-
-def test_api_lancer_requiert_login(client, sample_users):
-    """L'API de lancement doit refuser un utilisateur non connecte."""
-    response = client.post('/api/mise-a-jour/lancer')
-    assert response.status_code in (302, 401)
-
-
-def test_api_lancer_interdit_salarie(auth_client):
-    """L'API de lancement doit refuser un salarie."""
-    response = auth_client.post('/api/mise-a-jour/lancer')
-    assert response.status_code == 403
-
-
-# ---------------------------------------------------------------------------
-# Tests de verification
-# ---------------------------------------------------------------------------
-
-
-@patch('blueprints.mise_a_jour.requests.get')
-def test_api_verifier_succes(mock_get, admin_client):
-    """La verification doit retourner les informations de la release."""
-    mock_get.return_value = _mock_github_response(200, FAKE_RELEASE)
-
-    response = admin_client.post('/api/mise-a-jour/verifier')
-    assert response.status_code == 200
-
-    data = response.get_json()
-    assert data['success'] is True
-    assert data['latest_version'] == '1.0.30'
-    assert data['release_name'] == 'Version 1.0.30'
-    assert data['mode'] == 'script'  # En mode test, pas frozen
-    assert data['has_exe_asset'] is True
-
-
-@patch('blueprints.mise_a_jour.requests.get')
-def test_api_verifier_github_erreur(mock_get, admin_client):
-    """La verification doit gerer une erreur GitHub."""
-    mock_get.return_value = _mock_github_response(500)
-
-    response = admin_client.post('/api/mise-a-jour/verifier')
-    assert response.status_code == 502
-
-    data = response.get_json()
-    assert 'error' in data
-
-
-@patch('blueprints.mise_a_jour.requests.get')
-def test_api_verifier_timeout(mock_get, admin_client):
-    """La verification doit gerer un timeout reseau."""
-    import requests as req
-    mock_get.side_effect = req.ConnectionError("Timeout")
-
-    response = admin_client.post('/api/mise-a-jour/verifier')
-    assert response.status_code == 502
-
-    data = response.get_json()
-    assert 'error' in data
-
-
-# ---------------------------------------------------------------------------
-# Tests des fonctions utilitaires
-# ---------------------------------------------------------------------------
-
-
-def test_is_protected():
-    """Les chemins proteges doivent etre detectes."""
-    from blueprints.mise_a_jour import _is_protected
-
-    assert _is_protected('.env') is True
-    assert _is_protected('.git') is True
-    assert _is_protected('cspilot.db') is True
-    assert _is_protected('backups') is True
-    assert _is_protected('backups/sauvegarde.zip') is True
-    assert _is_protected('documents') is True
-    assert _is_protected('documents/photo.jpg') is True
-    assert _is_protected('modeles_contrats') is True
-    assert _is_protected('contrats_generes') is True
-
-    assert _is_protected('app.py') is False
-    assert _is_protected('blueprints/auth.py') is False
-    assert _is_protected('templates/base.html') is False
-    assert _is_protected('static/css/style.css') is False
-    assert _is_protected('requirements.txt') is False
-
-
-def test_find_exe_asset():
-    """Doit trouver l'asset .exe dans la liste."""
-    from blueprints.mise_a_jour import _find_exe_asset
-
-    assets = [
-        {'name': 'CS-PILOT.exe', 'size': 50000000, 'download_url': 'http://example.com/CS-PILOT.exe'},
-        {'name': 'checksums.txt', 'size': 256, 'download_url': 'http://example.com/checksums.txt'},
-    ]
-    result = _find_exe_asset(assets)
-    assert result is not None
-    assert result['name'] == 'CS-PILOT.exe'
-
-
-def test_find_exe_asset_absent():
-    """Doit retourner None si aucun .exe dans les assets."""
-    from blueprints.mise_a_jour import _find_exe_asset
-
-    assets = [
-        {'name': 'checksums.txt', 'size': 256, 'download_url': 'http://example.com/checksums.txt'},
-    ]
-    result = _find_exe_asset(assets)
-    assert result is None
-
-
-# ---------------------------------------------------------------------------
-# Tests de la mise a jour sources
-# ---------------------------------------------------------------------------
-
-
-@patch('blueprints.mise_a_jour.requests.get')
-def test_update_sources_copie_fichiers(mock_get, app, tmp_path):
-    """La mise a jour sources doit copier les fichiers et proteger les donnees."""
-    from blueprints.mise_a_jour import _update_sources, _get_app_dir
-
-    # Creer un faux zip contenant des fichiers source
-    zip_path = str(tmp_path / 'fake.zip')
-    with zipfile.ZipFile(zip_path, 'w') as zf:
-        zf.writestr('Cyril-CB-CS-PILOT-abc123/app.py', 'print("new app")')
-        zf.writestr('Cyril-CB-CS-PILOT-abc123/blueprints/test.py', 'print("new bp")')
-        zf.writestr('Cyril-CB-CS-PILOT-abc123/.env', 'SECRET=should_not_copy')
-        zf.writestr('Cyril-CB-CS-PILOT-abc123/requirements.txt', 'flask==3.0')
-
-    # Mock le telechargement pour ecrire notre zip
-    def side_effect(url, **kwargs):
-        resp = MagicMock()
-        resp.status_code = 200
-        resp.raise_for_status = MagicMock()
-        with open(zip_path, 'rb') as f:
-            content = f.read()
-        resp.iter_content = MagicMock(return_value=[content])
-        return resp
-
-    mock_get.side_effect = side_effect
-
-    release_info = {'tag_name': '1.0.30', 'assets': []}
-
-    with app.app_context():
-        with patch('blueprints.mise_a_jour._get_app_dir', return_value=str(tmp_path / 'app_dir')):
-            target_dir = str(tmp_path / 'app_dir')
-            os.makedirs(target_dir, exist_ok=True)
-            os.makedirs(os.path.join(target_dir, 'blueprints'), exist_ok=True)
-
-            # Creer un .env existant qui ne doit pas etre ecrase
-            with open(os.path.join(target_dir, '.env'), 'w') as f:
-                f.write('SECRET=original')
-
-            success, message = _update_sources(release_info)
-
-    assert success is True
-    assert 'Mise a jour reussie' in message
-
-    # Verifier que les fichiers sources ont ete copies
-    assert os.path.exists(os.path.join(target_dir, 'app.py'))
-    assert os.path.exists(os.path.join(target_dir, 'requirements.txt'))
-
-    # Verifier que .env n'a pas ete ecrase
-    with open(os.path.join(target_dir, '.env')) as f:
-        assert f.read() == 'SECRET=original'
-
-
-# ---------------------------------------------------------------------------
-# Tests d'affichage de la page
-# ---------------------------------------------------------------------------
-
-
-def test_page_mise_a_jour_affiche_informations(admin_client):
-    """La page doit afficher les informations systeme."""
-    response = admin_client.get('/mise-a-jour')
-    html = response.data.decode('utf-8')
-
-    assert 'Version installee' in html
-    assert 'Derniere version' in html
-    assert 'Script' in html  # Mode script en test
-    assert 'Verifier les mises a jour' in html
-    assert 'github.com/Cyril-CB/CS-PILOT' in html
-
-
-def test_page_mise_a_jour_liens_navigation(admin_client):
-    """La page doit contenir les liens vers sauvegarde et administration."""
-    response = admin_client.get('/mise-a-jour')
-    html = response.data.decode('utf-8')
-
-    assert 'Sauvegardes' in html
-    assert 'Administration' in html
+
+@pytest.fixture
+def github(monkeypatch):
+    response = Mock()
+    response.json.return_value = {'sha': SHA, 'commit': {
+        'message': 'Une amélioration\nDétail', 'committer': {'date': '2026-09-13T10:00:00Z'}}}
+    appel = Mock(return_value=response)
+    monkeypatch.setattr('blueprints.mise_a_jour.requests.get', appel)
+    return appel
+
+
+@pytest.mark.parametrize('path,method', [('/mise-a-jour', 'get'),
+    ('/api/mise-a-jour/verifier', 'post'), ('/api/mise-a-jour/lancer', 'post'),
+    ('/api/mise-a-jour/etat', 'get')])
+def test_non_connecte(client, path, method):
+    assert getattr(client, method)(path).status_code in (302, 401)
+
+
+@pytest.mark.parametrize('profil', ['salarie', 'responsable', 'prestataire'])
+@pytest.mark.parametrize('path,method', [('/api/mise-a-jour/verifier', 'post'),
+    ('/api/mise-a-jour/lancer', 'post'), ('/api/mise-a-jour/etat', 'get')])
+def test_profils_refuses(admin_client, db, sample_users, profil, path, method, supervise, github):
+    db.execute('UPDATE users SET profil=? WHERE id=?', (profil, sample_users['directeur_id']))
+    db.commit()
+    assert getattr(admin_client, method)(path).status_code == 403
+    assert not (supervise / 'demande.json').exists()
+    github.assert_not_called()
+
+
+def test_page_salarie_refusee(auth_client):
+    assert auth_client.get('/mise-a-jour').status_code == 302
+
+
+@pytest.mark.parametrize('profil', ['directeur', 'comptable'])
+def test_verification_et_lancement(admin_client, db, sample_users, profil, supervise, github):
+    db.execute('UPDATE users SET profil=? WHERE id=?', (profil, sample_users['directeur_id']))
+    db.commit()
+    page = admin_client.get('/mise-a-jour')
+    assert page.status_code == 200
+    assert 'sauvegarde vos données et documents' in page.text
+    r = admin_client.post('/api/mise-a-jour/verifier')
+    assert r.status_code == 200 and r.json['disponible']
+    assert r.json['revision'] == SHA[:12]
+    assert github.call_args.args[0].endswith('/commits/main')
+    # Le navigateur ne choisit ni SHA arbitraire, ni URL, ni commande.
+    r = admin_client.post('/api/mise-a-jour/lancer', json={'sha': 'b'*40, 'url': 'http://evil.invalid'})
+    assert r.status_code == 202
+    assert lire_json(supervise / 'demande.json') == {'id': r.json['reference'], 'sha': SHA}
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 409
+
+
+def test_github_en_echec(admin_client, github):
+    github.side_effect = requests.ConnectionError('détail privé')
+    r = admin_client.post('/api/mise-a-jour/verifier')
+    assert r.status_code == 502
+    assert 'privé' not in r.text
+
+
+@pytest.mark.parametrize('sha', ['main', '../chemin', 'A'*40, None])
+def test_revision_invalide(admin_client, github, sha):
+    github.return_value.json.return_value['sha'] = sha
+    assert admin_client.post('/api/mise-a-jour/verifier').status_code == 502
+
+
+def test_mode_non_supervise(admin_client, github, monkeypatch):
+    monkeypatch.delenv('CSPILOT_WORKER_TOKEN', raising=False)
+    assert 'une seule fois' in admin_client.get('/mise-a-jour').text
+    admin_client.post('/api/mise-a-jour/verifier')
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 503
+
+
+def test_verification_requise_et_expiration(admin_client, supervise):
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 409
+    with admin_client.session_transaction() as session:
+        session['mise_a_jour_cible'] = {'sha': SHA, 'verifie_le': time.time() - 1801}
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 409
+    assert not (supervise / 'demande.json').exists()
+
+
+def test_revocation_apres_verification(admin_client, github, supervise, db, sample_users):
+    admin_client.post('/api/mise-a-jour/verifier')
+    db.execute('UPDATE users SET actif=0 WHERE id=?', (sample_users['directeur_id'],))
+    db.commit()
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 302
+    assert not (supervise / 'demande.json').exists()
+
+
+def test_csrf_requis(admin_client, app, supervise, github):
+    admin_client.post('/api/mise-a-jour/verifier')
+    app.config['WTF_CSRF_ENABLED'] = True
+    try:
+        r = admin_client.post('/api/mise-a-jour/lancer')
+        assert r.status_code == 302
+        assert not (supervise / 'demande.json').exists()
+    finally:
+        app.config['WTF_CSRF_ENABLED'] = False
+
+
+def test_pas_de_reinstallation(admin_client, github, supervise):
+    (supervise / 'etat.json').write_text(json.dumps({'active': {'sha': SHA}, 'job': None}))
+    assert admin_client.post('/api/mise-a-jour/verifier').json['disponible'] is False
+    assert admin_client.post('/api/mise-a-jour/lancer').status_code == 409
