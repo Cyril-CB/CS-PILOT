@@ -888,7 +888,12 @@
         ],
         "docs": [
           "docs/propositions-amelioration.md",
-          "docs/agent-demandes/proposition-v1.schema.json"
+          "docs/agent-demandes/proposition-v1.schema.json",
+          "docs/agent-demandes/pilote-work.md",
+          "docs/agent-demandes/prompt-work.md",
+          "docs/agent-demandes/grille-v1.json",
+          "docs/agent-demandes/calibration-v1.json",
+          "docs/agent-demandes/decision-v1.schema.json"
         ]
       },
       "access": {
@@ -916,7 +921,7 @@
         "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
       ],
       "extension_points": [
-        "Brancher ultérieurement un lecteur de boîte sur le contrat versionné, avec contrôles de provenance, déduplication, limites de lecture et évaluation selon le catalogue.",
+        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Son activation et ses connexions sont configurées dans Work, pas par Flask.",
         "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
       ],
       "related_features": [
@@ -926,7 +931,7 @@
         "administration.resilience_hors_ligne"
       ],
       "limitations": [
-        "Aucun lecteur Outlook, triage IA, développement automatique ou traitement des réponses livré à cette étape.",
+        "Aucun lecteur Outlook ni moteur autonome embarqué dans l'application. Le dépôt décrit et calibre un pilote Work externe ; les fichiers versionnés ne prouvent pas qu'une tâche est active ni que sa recette complète a réussi.",
         "Envoyée signifie acceptée par SMTP ; pas une preuve de réception/lecture. Une transmission interrompue peut être dupliquée après reprise explicite.",
         "Aucune purge automatique des propositions/pièces ni nouvelle tentative en arrière-plan. Une erreur de validation demande de sélectionner de nouveau les fichiers.",
         "Vérification des types et volumes sans antivirus ; les pièces, dont les anciens XLS, peuvent contenir du contenu actif.",

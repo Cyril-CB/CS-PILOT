@@ -37,6 +37,10 @@ que leurs propres demandes.
 « Envoyée » signifie que le service SMTP a accepté le mail. Cela ne prouve
 ni réception dans la boîte principale, ni lecture, ni décision de développement.
 Cette étape ne relève aucune boîte Outlook et ne développe aucun module.
+Le traitement externe dans Work est décrit dans
+[pilote-work.md](agent-demandes/pilote-work.md) : grille, calibration,
+consignes d'exécution et recette de la chaîne. Son activation relève de Work ;
+la présence de ces fichiers dans le dépôt ne crée aucune tâche automatiquement.
 
 ## Pièces et sauvegardes
 
