@@ -38,7 +38,7 @@ le lancement. Le nom de la base est `cspilot.db`.
 | `contrats_generes/` | DOCX effectivement produits, `contrats_generes.fichier_path` | Historique métier à conserver ; une nouvelle génération peut différer | Tous les fichiers présents ; ne reconstitue pas des versions déjà supprimées |
 | `exports/` | Anciens fichiers référencés par `archives_export.fichier_path` | Historique irremplaçable lorsqu’il s’agit du fichier d’époque | Tous les fichiers ; les nouveaux exports exacts résident dans SQLite |
 | `.env`, configuration effective | `SECRET_KEY`, `APP_TIMEZONE`, `BEHIND_PROXY`, `PORT`, `FLASK_DEBUG`, `MAX_UPLOAD_MO` ; autres valeurs du `.env` | Secrets/configuration nécessaires au démarrage | Configuration sérialisée **à l’intérieur de l’enveloppe chiffrée** ; environnement prioritaire comme au démarrage |
-| `app_settings` | Paramètres applicatifs, SMTP, mots de passe et clés API chiffrés | Secret nécessaire à la restauration : `SECRET_KEY` | Valeurs incluses dans SQLite ; déchiffrement intégral vérifié |
+| `app_settings` | Paramètres applicatifs, SMTP, mots de passe et clés API chiffrés ; traces quotidiennes de digest en clair | Secret nécessaire à la restauration : `SECRET_KEY` | Valeurs incluses dans SQLite ; paramètres déchiffrés et traces de digest conservées |
 | Code, migrations, templates, assets, `requirements.txt`, référence convention collective | Version applicative et dépendances | Reconstructible depuis Git à la révision archivée, si les sources restent disponibles | Révision Git et empreinte des dépendances dans le manifeste ; **code à conserver séparément** |
 | Configuration VPS | OS, paquets système, service de démarrage, chemins, propriétaire, reverse proxy, TLS, DNS, éventuels volumes et tâches | Recréable avec effort ; secrets d’exploitation à conserver séparément | Hors export applicatif ; inventaire réel à compléter par l’exploitant |
 | `.git`, environnement virtuel, caches, fichiers temporaires | Construction/exécution | Reconstructible | Exclus |
@@ -150,15 +150,23 @@ une autre entrée WSGI, exécuter ces contrôles explicitement avant d’activer
 
 ### Changer de SECRET_KEY
 
+Les traces quotidiennes `digest_direction_YYYY-MM-DD` dont la valeur est
+exactement `envoye` sont des marqueurs non secrets, écrits en clair par le digest.
+Le contrôle des paramètres et le rechiffrement les préservent à l'identique,
+sans les compter parmi les paramètres déchiffrés. La date doit être valide et
+au format indiqué ; toute autre valeur non chiffrée reste refusée. Une mauvaise
+clé ou un vrai paramètre altéré bloque toujours l'opération. Ne pas supprimer
+ces traces : elles empêchent un second envoi du résumé quotidien.
+
 Conserver la clé d’origine est le comportement par défaut. Elle dérive la clé
-Fernet de **tous** les `app_settings`, y compris les paramètres non secrets en
+Fernet des paramètres chiffrés de `app_settings`, y compris ceux non secrets en
 apparence. La changer sans rechiffrement rendrait ces valeurs illisibles.
 
 ```bash
 python resilience_cli.py restaurer --archive /srv/archives-privees/avant-maj.cspbackup --destination /srv/restauration-test --nouvelle-cle-fichier /chemin/prive/nouvelle-cle
 ```
 
-Tous les paramètres sont déchiffrés avant la première modification, puis
+Tous les paramètres chiffrés sont déchiffrés avant la première modification, puis
 rechiffrés dans une transaction. Un seul paramètre illisible annule l’opération.
 La nouvelle clé est écrite dans le `.env` privé de la destination. Les clés ne sont
 jamais affichées. Les sessions signées avec l’ancienne clé deviennent invalides :

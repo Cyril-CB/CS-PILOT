@@ -5,7 +5,7 @@ aucune migration appliquée et aucun appel réseau effectué par ces fonctions.
 """
 import base64
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import os
@@ -123,10 +123,28 @@ def fernet_pour(cle):
     return Fernet(base64.urlsafe_b64encode(hashlib.sha256(cle.encode()).digest()))
 
 
+def _est_trace_digest(cle, valeur):
+    """Trace non secrète écrite par _digest_tick, conservée telle quelle.
+
+    Ne pas dispenser tous les paramètres en clair du déchiffrement : seul le
+    couple historique digest_direction_YYYY-MM-DD / envoye est reconnu.
+    """
+    prefixe = 'digest_direction_'
+    if valeur != 'envoye' or not isinstance(cle, str) or not cle.startswith(prefixe):
+        return False
+    jour = cle[len(prefixe):]
+    try:
+        return date.fromisoformat(jour).isoformat() == jour
+    except ValueError:
+        return False
+
+
 def verifier_parametres(conn, cle):
     fernet = fernet_pour(cle)
     nb = 0
-    for valeur, in conn.execute('SELECT value FROM app_settings'):
+    for nom, valeur in conn.execute('SELECT key, value FROM app_settings'):
+        if _est_trace_digest(nom, valeur):
+            continue
         if valeur:
             try:
                 fernet.decrypt(valeur.encode()).decode('utf-8')
@@ -141,7 +159,8 @@ def rechiffrer_parametres(conn, ancienne, nouvelle):
     verifier_parametres(conn, ancienne)
     avant, apres = fernet_pour(ancienne), fernet_pour(nouvelle)
     valeurs = [(apres.encrypt(avant.decrypt(v.encode())).decode(), k)
-               for k, v in conn.execute('SELECT key, value FROM app_settings') if v]
+               for k, v in conn.execute('SELECT key, value FROM app_settings')
+               if v and not _est_trace_digest(k, v)]
     conn.executemany('UPDATE app_settings SET value=? WHERE key=?', valeurs)
 
 

@@ -312,7 +312,7 @@ def _preparer_digest(db, sample_users, monkeypatch, heure=9, jour=15):
     return envois
 
 
-def test_digest_envoye_une_seule_fois(admin_client, db, sample_users, monkeypatch):
+def test_digest_envoye_une_seule_fois(app, admin_client, db, sample_users, monkeypatch):
     import blueprints.dashboard_direction as dd
     envois = _preparer_digest(db, sample_users, monkeypatch)
     _seed_facture(db)   # au moins une action à raconter
@@ -320,6 +320,11 @@ def test_digest_envoye_une_seule_fois(admin_client, db, sample_users, monkeypatc
     admin_client.get('/dashboard_direction')
     assert {e[0] for e in envois} == {'dir@ex.fr', 'compta@ex.fr'}
     assert 'action(s) en attente' in envois[0][1]
+
+    # Un vrai envoi ne doit pas rendre les contrôles de démarrage/migration
+    # impossibles, même si sa réclamation atomique est une trace en clair.
+    from resilience import verifier_parametres
+    verifier_parametres(db, app.secret_key)
 
     # Second passage le même jour (mémo réinitialisé → la réclamation en base bloque).
     monkeypatch.setattr(dd, '_digest_date_traitee', None)

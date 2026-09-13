@@ -691,7 +691,8 @@
         "service_files": [
           "email_service.py",
           "dashboard_actions.py",
-          "utils.py"
+          "utils.py",
+          "resilience.py"
         ],
         "templates": [],
         "tables": [
@@ -703,7 +704,8 @@
         ],
         "tests": [
           "tests/test_dashboard_direction.py",
-          "tests/test_email_notifications.py"
+          "tests/test_email_notifications.py",
+          "tests/test_resilience_parametres.py"
         ],
         "docs": []
       },
@@ -722,7 +724,8 @@
       },
       "invariants": [
         "Le hook ne doit pas faire échouer la requête courante.",
-        "Conserver l'exclusion absences/forfait et la réclamation atomique quotidienne."
+        "Conserver l'exclusion absences/forfait et la réclamation atomique quotidienne.",
+        "La réclamation utilise app_settings.key=digest_direction_YYYY-MM-DD et value=envoye en clair. Préserver ces traces lors des sauvegardes, contrôles de démarrage et rechiffrements ; ne pas les confondre avec un paramètre secret indéchiffrable."
       ],
       "extension_points": [
         "Réutiliser _construire_file_actions et _composer_digest pour une synthèse cohérente avec l'écran.",
@@ -730,6 +733,8 @@
       ],
       "related_features": [
         "administration.configuration_email",
+        "administration.migrations_hors_ligne",
+        "administration.resilience_hors_ligne",
         "interface.accueil_flux",
         "interface.centre_controle",
         "rh.absences",
