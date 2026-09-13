@@ -31,12 +31,48 @@ class TestChatbotConfig:
 class TestChatbotSetModel:
     """Tests pour la sélection du modèle chatbot."""
 
-    def test_set_model_not_directeur(self, resp_client):
+    def test_set_model_responsable_refuse(self, resp_client):
         """Responsable → accès refusé."""
         resp = resp_client.post('/api/chatbot/model',
                                 json={'model': 'gpt-4.1-mini'},
                                 content_type='application/json')
         assert resp.status_code == 403
+
+    def test_set_model_salarie_refuse(self, auth_client):
+        """Salarié → accès refusé."""
+        resp = auth_client.post('/api/chatbot/model',
+                                json={'model': 'gpt-4.1-mini'},
+                                content_type='application/json')
+        assert resp.status_code == 403
+
+    def test_le_comptable_peut_desactiver_l_assistant(self, comptable_client):
+        """Il administre les clés API : le modèle qu'elles alimentent aussi."""
+        resp = comptable_client.post('/api/chatbot/model',
+                                     json={'model': ''},
+                                     content_type='application/json')
+        assert resp.status_code == 200
+        assert resp.get_json()['enabled'] is False
+
+    def test_le_comptable_peut_activer_l_assistant(self, comptable_client, app):
+        """Avec une clé configurée, il choisit le modèle comme la direction."""
+        with app.app_context():
+            from utils import save_setting
+            save_setting('openai_api_key', 'sk-test')
+
+        resp = comptable_client.post('/api/chatbot/model',
+                                     json={'model': 'gpt-4.1-mini'},
+                                     content_type='application/json')
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()['enabled'] is True
+
+    def test_le_comptable_voit_le_selecteur(self, comptable_client):
+        """Le réglage doit être visible là où il est autorisé.
+
+        Le nom du champ figure aussi dans le script de la page : on vise le
+        contenu de la carte, qui n'est rendu que pour un profil autorisé.
+        """
+        html = comptable_client.get('/gestion_cles_api').get_data(as_text=True)
+        assert "Desactiver l'assistant" in html
 
     def test_set_model_no_data(self, admin_client):
         """Pas de données → erreur."""

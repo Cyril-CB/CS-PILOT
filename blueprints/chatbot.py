@@ -1,11 +1,12 @@
 """
 Blueprint chatbot_bp.
 Assistant chatbot contextuel flottant pour guider les utilisateurs.
-Utilise le modèle IA configuré par le directeur dans gestion_cles_api.
+Utilise le modèle IA configuré depuis gestion_cles_api.
 """
 from flask import Blueprint, request, session, jsonify
 import requests as http_requests
 from utils import login_required, get_setting
+from blueprints.api_keys import PROFILS_AUTORISES
 
 chatbot_bp = Blueprint('chatbot_bp', __name__)
 
@@ -413,9 +414,15 @@ def chatbot_config():
 @chatbot_bp.route('/api/chatbot/model', methods=['POST'])
 @login_required
 def chatbot_set_model():
-    """Définit le modèle IA du chatbot (directeur uniquement)."""
-    if session.get('profil') != 'directeur':
-        return jsonify({'error': 'Accès réservé au directeur'}), 403
+    """Active, désactive ou change le modèle IA de l'assistant.
+
+    Même périmètre que la page qui porte ce réglage (`gestion_cles_api`) :
+    direction et comptabilité. La comptabilité y voyait déjà le sélecteur,
+    sans pouvoir s'en servir — elle administre les clés API des fournisseurs,
+    donc le modèle qu'elles alimentent.
+    """
+    if session.get('profil') not in PROFILS_AUTORISES:
+        return jsonify({'error': 'Accès non autorisé'}), 403
 
     data = request.get_json()
     if not data:

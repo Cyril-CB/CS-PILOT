@@ -190,8 +190,7 @@
         <div class="ak-success" id="akSuccess_anthropic"></div>
     </div>
 
-    <!-- Sélection du modèle chatbot -->
-    {% if session.profil == 'directeur' %}
+    <!-- Sélection du modèle chatbot : même périmètre que le reste de la page -->
     <div class="ak-card" style="border: 2px solid #7c3aed;">
         <div class="ak-provider-head">
             <div class="ak-provider-name">
@@ -219,7 +218,6 @@
         <div class="ak-error" id="akErrorChatbot"></div>
         <div class="ak-success" id="akSuccessChatbot"></div>
     </div>
-    {% endif %}
 </div>
 
 <script>
