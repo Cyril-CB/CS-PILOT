@@ -833,7 +833,7 @@
         "Identité, profil et secteur chargés en base ; email prérempli et corrigeable pour la demande seule ; contexte de page, recherche recalculée selon les droits, version et révision sources.",
         "Jusqu’à 3 pièces de 5 Mio chacune et 8 Mio au total : Excel, ODS, CSV, PDF, DOCX, texte, PNG/JPEG ; conservation privée, empreintes et téléchargement sous droits.",
         "Email texte et fiche JSON versionnée, référence globale, Message-ID stable, Reply-To et pièces indexées ; expéditeur SMTP du centre et destinataire imposé côté serveur.",
-        "Historique personnel paginé ; direction/comptabilité peuvent consulter les demandes du centre et réessayer un envoi.",
+        "Historique personnel paginé ; direction/comptabilité peuvent consulter les demandes du centre et réessayer un envoi. Les listes et la fiche affichent Transmission à vérifier dès qu’un envoi reste en cours depuis dix minutes, sans modifier l’état enregistré ni déclencher un renvoi.",
         "Demande conservée même sans SMTP ; double soumission idempotente ; refus du double envoi concurrent ; reprise explicite d’un résultat incertain ou d’une tentative interrompue depuis dix minutes.",
         "Migration 0072 ; tables et références de pièces couvertes par sauvegarde complète, restauration et retour arrière de mise à jour."
       ],

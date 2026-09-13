@@ -352,6 +352,42 @@ def test_envoi_deja_en_cours_et_reprise_apres_arret(app, db, environnement):
     assert dernier(db)['statut'] == 'envoyee'
 
 
+@pytest.mark.parametrize('centre', [False, True])
+@pytest.mark.parametrize('age_secondes,statut_attendu', [
+    (599, 'en_cours'), (600, 'incertain'), (660, 'incertain'),
+])
+def test_historique_signale_envoi_interrompu_comme_la_fiche(
+        app, db, environnement, monkeypatch, centre, age_secondes, statut_attendu):
+    import blueprints.propositions as routes
+
+    maintenant = datetime(2026, 9, 13, 12, 0, tzinfo=timezone.utc)
+
+    class HorlogeFixe(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return maintenant.astimezone(tz)
+
+    monkeypatch.setattr(routes, 'datetime', HorlogeFixe)
+    auteur = connecter(app, 'salarie_test', 'sal123')
+    with app.app_context():
+        email_service.set_email_enabled(False)
+    response = soumettre(auteur)
+    db.execute("UPDATE propositions_amelioration SET statut='en_cours', derniere_tentative=?",
+               ((maintenant - timedelta(seconds=age_secondes)).isoformat(),))
+    db.commit()
+    avant = dict(dernier(db))
+    lecteur = connecter(app) if centre else auteur
+    historique = lecteur.get('/propositions?centre=1' if centre else '/propositions')
+    fiche = lecteur.get(response.location)
+    badge = f'class="proposition-statut proposition-statut-{statut_attendu}"'
+    assert historique.status_code == fiche.status_code == 200
+    assert badge in historique.text
+    assert badge in fiche.text
+    assert response.location in historique.text
+    assert dict(dernier(db)) == avant
+    environnement.send_message.assert_not_called()
+
+
 def test_piece_absente_interdit_envoi_partiel(app, db, environnement):
     client = connecter(app)
     environnement.send_message.return_value = {'cspilot@outlook.fr': (550, b'refus')}

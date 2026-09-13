@@ -121,6 +121,9 @@ Un second envoi est refusé pendant ce traitement. Un refus certain permet un
 nouvel essai manuel ; une coupure pendant la transmission donne incertain.
 Un processus arrêté avec en_cours devient reprenable après dix minutes, avec
 confirmation explicite, sans prétendre savoir si le mail est arrivé.
+À partir de ce délai, « Transmission à vérifier » apparaît aussi bien dans
+l’historique personnel et celui du centre que dans la fiche. Consulter ces
+pages ne modifie pas l’état enregistré et ne déclenche aucun renvoi.
 
 SMTP ne garantit pas une livraison exactement une fois après une coupure
 ambiguë. La même référence et le même Message-ID aident l’agent à dédupliquer.

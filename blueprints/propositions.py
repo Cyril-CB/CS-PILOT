@@ -199,7 +199,8 @@ def liste():
             rows = conn.execute('''SELECT * FROM propositions_amelioration WHERE user_id=?
                 ORDER BY cree_le DESC, id DESC LIMIT 31 OFFSET ?''', (session['user_id'], (page - 1) * 30)).fetchall()
     return render_template('propositions_liste.html', propositions=[
-        {'suivi': p, 'contenu': json.loads(p['contenu_json'])} for p in rows[:30]],
+        {'suivi': p, 'contenu': json.loads(p['contenu_json']),
+         'incertain': _reprise_incertaine(p)} for p in rows[:30]],
         suite=len(rows) > 30, page=page, centre=centre,
         gestionnaire=session['profil'] in service.GESTIONNAIRES)
 

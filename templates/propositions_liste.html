@@ -15,7 +15,7 @@
     <article class="proposition-carte">
         <div class="proposition-entete">
             <h2><a href="{{ url_for('propositions_bp.detail', reference=proposition.suivi.id) }}">{{ proposition.contenu.demande.titre }}</a></h2>
-            {{ statut(proposition.suivi.statut) }}
+            {{ statut('incertain' if proposition.incertain else proposition.suivi.statut) }}
         </div>
         <p class="help-text">{{ proposition.suivi.cree_le[:10] }}{% if centre %} · {{ proposition.contenu.auteur.prenom }} {{ proposition.contenu.auteur.nom }}{% endif %}</p>
         <p class="proposition-extrait">{{ proposition.contenu.demande.besoin[:240] }}{% if proposition.contenu.demande.besoin|length > 240 %}…{% endif %}</p>
