@@ -17,10 +17,13 @@ from superviseur import Service
 from update_engine import (UpdateEngine, UpdateError, extraire_sources, python_venv,
                            REPERTOIRES)
 from update_protocol import demander_mise_a_jour, ecrire_json, etat_public, lire_json
+from database import ALL_MIGRATION_VERSIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 SHA = 'a' * 40
 JOB = {'id': 'b' * 32, 'sha': SHA}
+VERSION_TEST = f'{max(int(v) for v, _ in ALL_MIGRATION_VERSIONS) + 1:04d}'
+VERSION_ECHEC = f'{int(VERSION_TEST) + 1:04d}'
 
 
 def archive_sources(tmp_path, extra=None):
@@ -149,7 +152,7 @@ def moteur(installation, monkeypatch):
             shutil.copytree(ROOT / nom, code / nom, ignore=shutil.ignore_patterns('__pycache__'))
         shutil.copy2(ROOT / 'requirements.txt', code / 'requirements.txt')
         shutil.copy2(ROOT / 'VERSION.txt', code / 'VERSION.txt')
-        (code / 'migrations/0072_test_update.py').write_text('''
+        (code / f'migrations/{VERSION_TEST}_test_update.py').write_text('''
 NOM = 'Test de mise à jour'
 DESCRIPTION = 'Données fictives'
 def upgrade(conn):
@@ -174,8 +177,8 @@ def test_mise_a_jour_reelle_et_retour_arriere(moteur, installation, defaut, monk
         preparer(job)
         code = engine.runtime(job)[0]
         if defaut == 'migration':
-            # La 0072 a déjà modifié SQLite ET un document lorsque la 0073 échoue.
-            (code / 'migrations/0073_echec.py').write_text('''
+            # La première migration fictive a écrit en base et sur disque avant cet échec.
+            (code / f'migrations/{VERSION_ECHEC}_echec.py').write_text('''
 NOM='Échec fictif'
 DESCRIPTION='Test'
 def upgrade(conn): raise RuntimeError('échec fictif')
@@ -190,7 +193,7 @@ def downgrade(conn): pass
     assert state['job']['phase'] == ('terminee' if defaut is None else 'retablie')
     assert state['active'] == (JOB if defaut is None else None)
     with closing(sqlite3.connect(installation / 'cspilot.db')) as conn:
-        migration = conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version='0072'").fetchone()[0]
+        migration = conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version=?", (VERSION_TEST,)).fetchone()[0]
         valeur = conn.execute("SELECT value FROM app_settings WHERE key='smtp_password'").fetchone()[0]
     from cryptography.fernet import Fernet
     import hashlib, base64
@@ -260,7 +263,7 @@ def test_reprise_apres_coupure_pendant_restauration(moteur, installation, monkey
     assert reprise.state['job']['phase'] == 'retablie' and service.disponible
     assert (installation / 'documents/fictif.txt').read_text() == 'avant'
     with closing(sqlite3.connect(installation / 'cspilot.db')) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version='0072'").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM schema_migrations WHERE version=?", (VERSION_TEST,)).fetchone()[0] == 0
 
 
 def test_pas_de_retour_arriere_apres_publication(tmp_path):
@@ -397,7 +400,7 @@ def test_redemarrage_du_service_reprend_la_version_active(moteur, installation):
                 conn.close()
             time.sleep(0.05)
         assert state['disponible'] and state['phase'] == 'terminee'
-        # Le code d'origine refuse la migration 0072 fictive : cette santé
+        # Le code d'origine refuse la migration fictive supplémentaire : cette santé
         # prouve que le code isolé qui la connaît a bien été repris.
         assert lire_json(engine.state_path)['active'] == JOB
     finally:

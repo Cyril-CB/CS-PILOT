@@ -268,6 +268,14 @@ def lire_max_upload_mo():
 
 app.config['MAX_CONTENT_LENGTH'] = lire_max_upload_mo() * 1024 * 1024
 
+@app.before_request
+def limiter_requete_proposition():
+    # Avant CSRF, qui lit déjà les formulaires multipart. Le plafond du centre
+    # reste applicable s'il est inférieur au plafond propre aux emails.
+    if request.endpoint == 'propositions_bp.nouvelle':
+        from propositions import MAX_REQUETE
+        request.max_content_length = min(app.config['MAX_CONTENT_LENGTH'], MAX_REQUETE)
+
 # ==================== Initialisation des extensions ====================
 # Le jeton CSRF reste valide tant que la session l'est (pas d'expiration au
 # bout d'1h). Evite l'echec des enregistrements AJAX quand une page reste
@@ -335,6 +343,7 @@ from blueprints.cse import cse_bp
 from blueprints.planificateur import planificateur_bp
 from blueprints.contrats import contrats_bp
 from blueprints.recherche import recherche_bp
+from blueprints.propositions import propositions_bp
 from blueprints.accueil import accueil_bp
 
 app.register_blueprint(auth)
@@ -393,6 +402,7 @@ app.register_blueprint(cse_bp)
 app.register_blueprint(planificateur_bp)
 app.register_blueprint(contrats_bp)
 app.register_blueprint(recherche_bp)
+app.register_blueprint(propositions_bp)
 
 
 @app.context_processor
@@ -449,7 +459,7 @@ def inject_static_version():
     d'elle-même à chaque livraison, et jamais autrement.
     """
     empreintes = {}
-    for nom in ('css/style.css', 'js/flux.js'):
+    for nom in ('css/style.css', 'js/flux.js', 'js/propositions.js'):
         chemin = os.path.join(app.static_folder, nom)
         try:
             empreintes[nom] = str(int(os.path.getmtime(chemin)))
@@ -635,9 +645,10 @@ def ratelimit_handler(e):
     return render_template('login.html'), 429
 
 
-def _taille_max_lisible():
+def _taille_max_lisible(limite=None):
     """Retourne la taille maximale d'envoi formatée pour un message utilisateur."""
-    limite = app.config.get('MAX_CONTENT_LENGTH') or 0
+    if limite is None:
+        limite = app.config.get('MAX_CONTENT_LENGTH') or 0
     mo = limite / (1024 * 1024)
     if mo >= 1:
         return f"{mo:.0f} Mo" if mo == int(mo) else f"{mo:.1f} Mo"
@@ -676,7 +687,7 @@ def handle_request_entity_too_large(e):
     formulaires classiques reçoivent un message flash puis une redirection,
     conformément au schéma Post/Redirect/Get utilisé dans l'application.
     """
-    taille_max = _taille_max_lisible()
+    taille_max = _taille_max_lisible(request.max_content_length)
     message = (
         f"Envoi trop volumineux : la taille totale des fichiers ne doit pas "
         f"dépasser {taille_max}. Compressez le document ou envoyez-le en "

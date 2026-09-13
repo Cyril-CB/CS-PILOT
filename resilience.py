@@ -43,6 +43,7 @@ REFERENCES = (
     ('modeles_contrats', 'fichier_path', 'modeles_contrats'),
     ('contrats_generes', 'fichier_path', 'contrats_generes'),
     ('archives_export', 'fichier_path', 'exports'),
+    ('propositions_pieces', 'fichier_path', 'documents'),
 )
 # Catalogue exhaustif des tables persistantes, classées par migration d'ajout.
 # Le test de convergence le compare à init_db ET à chaque étape des migrations.
@@ -100,6 +101,7 @@ TABLES_REQUISES = {
     '0069': ('export_lignes', 'comptabilite_evenements'),
     '0070': ('budget_modes_comptes', 'budget_parametres'),
     '0071': ('schema_migrations_tentatives', 'plan_comptable_general'),
+    '0072': ('propositions_amelioration', 'propositions_pieces'),
 }
 
 

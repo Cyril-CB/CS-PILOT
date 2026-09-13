@@ -1,0 +1,9 @@
+{% macro statut(code) -%}
+<span class="proposition-statut proposition-statut-{{ code }}">
+{{ {'a_envoyer': 'À envoyer', 'en_cours': 'Envoi en cours', 'envoyee': 'Envoyée', 'incertain': 'Transmission à vérifier'}.get(code, 'À vérifier') }}
+</span>
+{%- endmacro %}
+
+{% macro erreur(nom, erreurs) -%}
+{% if erreurs.get(nom) %}<p class="proposition-erreur" id="erreur-{{ nom }}">{{ erreurs[nom] }}</p>{% endif %}
+{%- endmacro %}

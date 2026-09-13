@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cs-pilot.fr/schemas/proposition-v1.schema.json",
+  "title": "Proposition CS PILOT — format du mail v1",
+  "description": "Contrat de données, sans garantie cryptographique de provenance ni autorisation de développement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "reference",
+    "cree_le",
+    "demande",
+    "auteur",
+    "centre",
+    "contexte",
+    "pieces_jointes"
+  ],
+  "properties": {
+    "format": {
+      "const": "cspilot.proposition"
+    },
+    "version": {
+      "const": 1
+    },
+    "reference": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{32}$"
+    },
+    "cree_le": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "demande": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "titre",
+        "besoin",
+        "resultat_attendu",
+        "solution_actuelle",
+        "personnes_concernees",
+        "raison_echeance",
+        "frequence",
+        "echeance"
+      ],
+      "properties": {
+        "titre": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "besoin": {
+          "type": "string",
+          "maxLength": 10000,
+          "minLength": 20
+        },
+        "resultat_attendu": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "solution_actuelle": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "personnes_concernees": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "raison_echeance": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "frequence": {
+          "enum": [
+            "",
+            "ponctuel",
+            "quotidien",
+            "hebdomadaire",
+            "mensuel",
+            "annuel",
+            "occasionnel"
+          ]
+        },
+        "echeance": {
+          "anyOf": [
+            {
+              "const": ""
+            },
+            {
+              "type": "string",
+              "format": "date"
+            }
+          ]
+        }
+      }
+    },
+    "auteur": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id_local",
+        "nom",
+        "prenom",
+        "profil",
+        "secteur",
+        "email_reponse"
+      ],
+      "properties": {
+        "id_local": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "nom": {
+          "type": "string"
+        },
+        "prenom": {
+          "type": "string"
+        },
+        "profil": {
+          "enum": [
+            "directeur",
+            "comptable",
+            "responsable",
+            "salarie",
+            "prestataire"
+          ]
+        },
+        "secteur": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "email_reponse": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        }
+      }
+    },
+    "centre": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nom_expediteur",
+        "url_configuree"
+      ],
+      "properties": {
+        "nom_expediteur": {
+          "type": "string"
+        },
+        "url_configuree": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        }
+      }
+    },
+    "contexte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recherche",
+        "origine_declaree",
+        "page_declaree",
+        "recherche_recalculee",
+        "application"
+      ],
+      "properties": {
+        "recherche": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "origine_declaree": {
+          "enum": [
+            "sans_resultat",
+            "insatisfait",
+            "recherche_indisponible",
+            "spontanee"
+          ]
+        },
+        "page_declaree": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "endpoint",
+                "route"
+              ],
+              "properties": {
+                "endpoint": {
+                  "type": "string",
+                  "maxLength": 150
+                },
+                "route": {
+                  "type": "string",
+                  "maxLength": 300
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recherche_recalculee": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "effectuee",
+            "nombre_resultats",
+            "suggestions"
+          ],
+          "properties": {
+            "effectuee": {
+              "type": "boolean"
+            },
+            "nombre_resultats": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "suggestions": {
+              "type": "array",
+              "maxItems": 5,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "type",
+                  "titre"
+                ],
+                "properties": {
+                  "type": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "titre": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "application": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "revision",
+            "migration"
+          ],
+          "properties": {
+            "version": {
+              "type": "string"
+            },
+            "revision": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            "migration": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9]{4}$"
+            }
+          }
+        }
+      }
+    },
+    "pieces_jointes": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "nom",
+          "nom_email",
+          "taille",
+          "mime",
+          "sha256"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          },
+          "nom": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "nom_email": {
+            "type": "string",
+            "maxLength": 153
+          },
+          "taille": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5242880
+          },
+          "mime": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

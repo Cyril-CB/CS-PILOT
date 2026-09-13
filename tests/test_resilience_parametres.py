@@ -98,11 +98,13 @@ def test_cli_migre_0071_et_autorise_demarrage_apres_digest(tmp_path, monkeypatch
     with pytest.raises(RuntimeError, match='Migrations en attente'):
         database.preparer_demarrage()
 
-    retour = main(['migrer', '--data-dir', str(tmp_path), '--version', '0071',
+    # Depuis 0070, migrer jusqu'au schéma courant, y compris le correctif 0071.
+    retour = main(['migrer', '--data-dir', str(tmp_path),
                    '--application-arretee'])
 
     resultat = json.loads(capsys.readouterr().out)
     assert retour == 0 and resultat['ok'] and resultat['statut']['a_jour']
+    assert any(v == '0071' and ok for v, ok, _ in resultat['resultats'])
     database.preparer_demarrage()
     with sqlite3.connect(chemin) as conn:
         assert dict(conn.execute('SELECT key, value FROM app_settings')) == {

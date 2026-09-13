@@ -146,6 +146,16 @@ classique depuis « Mon espace ».
 - Relance manuelle de l’acteur attendu : salarié, responsable puis direction
 - Configuration via l'interface d'administration (identifiants chiffres en base)
 
+### Proposer une amélioration
+
+- Depuis la recherche ou l’accès permanent, décrire un besoin en langage naturel,
+  reprendre le contexte et joindre un outil ou un exemple (Excel, PDF, etc.).
+- Retrouver ses propositions et réessayer un mail en échec ; direction et
+  comptabilité peuvent aider à transmettre les demandes du centre.
+- Envoi à `cspilot@outlook.fr` via la messagerie configurée du centre, avec une
+  référence et une fiche JSON pour le futur agent.
+- [Parcours, pièces jointes et contrat du mail](docs/propositions-amelioration.md).
+
 ### Outils specifiques
 - ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques)
 - Pesee ALISFA (avec integration IA)

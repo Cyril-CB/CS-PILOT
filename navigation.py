@@ -365,6 +365,11 @@ ZONES = [
             _page('parametres_bp.parametres', 'Mes paramètres',
                   profils=('salarie',),
                   mots='parametre preference notification email personnel profil'),
+            _page('propositions_bp.liste', 'Mes propositions d’amélioration',
+                  profils=TOUS_PROFILS + ('prestataire',),
+                  resume='Décrire un besoin, joindre un exemple et suivre son envoi à CS PILOT.',
+                  mots='proposition amelioration suggerer idee besoin outil module developpement',
+                  expressions=('proposer une amélioration', 'mes propositions', 'suggérer une fonction')),
         ],
     },
 ]

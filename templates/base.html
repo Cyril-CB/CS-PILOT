@@ -382,6 +382,7 @@
 	        </nav>
 
         <div class="sidebar-footer">
+            <a href="{{ url_for('propositions_bp.liste') }}" class="sidebar-link">Mes propositions d’amélioration</a>
             {% if session.profil in ['salarie', 'prestataire'] %}
             <a href="{{ url_for('parametres_bp.parametres') }}" class="sidebar-link" title="Mes paramètres">&#9881; Paramètres</a>
             {% endif %}
@@ -436,8 +437,26 @@
 
         <footer>
             <p>CS-PILOT - Version {{ app_version }}</p>
+            {% if session.user_id and session.profil in ('directeur', 'comptable', 'responsable', 'salarie', 'prestataire') %}
+            <p class="proposition-liens">
+                <a href="{{ url_for('propositions_bp.nouvelle') }}" data-proposer-amelioration>Proposer une amélioration</a>
+                <a href="{{ url_for('propositions_bp.liste') }}">Mes propositions</a>
+            </p>
+            {% endif %}
         </footer>
     </div>
+
+    {% if session.user_id and session.profil in ('directeur', 'comptable', 'responsable', 'salarie', 'prestataire') %}
+    <form id="proposition-pont" method="post" action="{{ url_for('propositions_bp.nouvelle') }}" hidden
+          data-user="{{ session.user_id }}" data-session="{{ session.session_version }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="preparer">
+        <input type="hidden" name="recherche" value="">
+        <input type="hidden" name="origine" value="spontanee">
+        <input type="hidden" name="page" value="{{ request.endpoint or '' }}">
+    </form>
+    {% endif %}
+    <script src="{{ url_for('static', filename='js/propositions.js') }}?v={{ static_version['js/propositions.js'] }}"></script>
 
     {% if cse_message_actif and request.endpoint in cse_dashboard_endpoints %}
     {# ── Modale message du CSE ── #}

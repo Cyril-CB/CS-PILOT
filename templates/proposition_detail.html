@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% from '_propositions_ui.html' import statut %}
+{% block title %}{{ contenu.demande.titre }} — Proposition CS PILOT{% endblock %}
+{% block content %}
+<div class="proposition-page">
+    <p><a href="{{ url_for('propositions_bp.liste') }}">← Mes propositions</a></p>
+    <div class="proposition-entete"><h1>{{ contenu.demande.titre }}</h1>{{ statut('incertain' if incertain else suivi.statut) }}</div>
+    <p class="help-text">Référence : <span class="proposition-reference">{{ suivi.id }}</span> · {{ suivi.cree_le[:10] }}</p>
+    <section class="proposition-carte">
+        <h2>Transmission de la demande</h2>
+        {% if suivi.statut == 'envoyee' %}
+        <p>Le service de messagerie a accepté l’envoi à <strong>{{ destinataire }}</strong>.</p>
+        <p>Une réponse ou une demande de précision pourra être adressée à <strong>{{ contenu.auteur.email_reponse }}</strong>.
+        Le suivi ci-dessous concerne l’envoi du mail, pas la décision de développer l’amélioration.</p>
+        {% elif incertain %}
+        <p>L’envoi a été interrompu ou son résultat n’a pas été enregistré. Le mail a peut-être été transmis.</p>
+        <p>Vérifiez auprès de CS PILOT avec la référence avant de le renvoyer.</p>
+        {% elif suivi.statut == 'en_cours' %}
+        <p>La transmission est en cours. <a href="{{ url_for('propositions_bp.detail', reference=suivi.id) }}">Actualiser l’état</a>.</p>
+        {% else %}
+        <p>{{ erreurs_envoi.get(suivi.erreur_code, 'La proposition est enregistrée, mais n’a pas encore été envoyée.') }}</p>
+        {% endif %}
+        {% if not email_pret and suivi.statut != 'envoyee' %}
+        <p>{% if gestionnaire %}<a href="{{ url_for('notifications_bp.configuration_email') }}">Configurer la messagerie du centre</a>
+        {% else %}Demandez à la direction ou à la comptabilité de configurer les emails du centre.{% endif %}</p>
+        {% endif %}
+        {% if suivi.statut == 'a_envoyer' or incertain %}
+        <form method="post" action="{{ url_for('propositions_bp.envoyer', reference=suivi.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if incertain %}<p><label><input type="checkbox" name="confirmer_reenvoi" value="oui" required>
+                J’ai vérifié que la proposition doit être renvoyée ; un doublon reste possible.</label></p>{% endif %}
+            <button type="submit" class="btn btn-primary">Réessayer l’envoi</button>
+        </form>
+        {% endif %}
+        <p class="help-text">Le texte et les pièces restent conservés dans CS PILOT. La direction et la comptabilité peuvent consulter les propositions du centre et aider à leur transmission.</p>
+    </section>
+    <section class="proposition-carte">
+        <h2>Le besoin exprimé</h2><p class="proposition-texte">{{ contenu.demande.besoin }}</p>
+        {% for cle, libelle in [('resultat_attendu', 'Résultat attendu'), ('solution_actuelle', 'Solution actuelle'), ('personnes_concernees', 'Personnes concernées'), ('echeance', 'Échéance'), ('raison_echeance', 'Raison de l’échéance')] %}
+        {% if contenu.demande[cle] %}<h3>{{ libelle }}</h3><p class="proposition-texte">{{ contenu.demande[cle] }}</p>{% endif %}
+        {% endfor %}
+        {% if contenu.demande.frequence %}<p>Fréquence : {{ frequences[contenu.demande.frequence] }}</p>{% endif %}
+    </section>
+    <section class="proposition-carte"><h2>Pièces jointes</h2>
+        <ul>{% for piece in pieces %}<li><a href="{{ url_for('propositions_bp.telecharger_piece', reference=suivi.id, piece_id=piece.id) }}">{{ piece.nom }}</a> · {{ (piece.taille / 1024)|round(1) }} Ko</li>
+        {% else %}<li>Aucune pièce jointe.</li>{% endfor %}</ul>
+    </section>
+    <details class="proposition-carte"><summary>Coordonnées et contexte transmis</summary>
+        <p>{{ contenu.auteur.prenom }} {{ contenu.auteur.nom }} · {{ contenu.auteur.profil }}{% if contenu.auteur.secteur %} · {{ contenu.auteur.secteur }}{% endif %}</p>
+        <p>Adresse de réponse : {{ contenu.auteur.email_reponse }}</p>
+        <p>{{ origines[contenu.contexte.origine_declaree] }}</p>
+        <p>Recherche : {{ contenu.contexte.recherche or 'Aucune recherche reprise' }}</p>
+        <p>CS PILOT {{ contenu.contexte.application.version }}</p>
+        <p><a href="{{ url_for('propositions_bp.telecharger_fiche', reference=suivi.id) }}">Télécharger la fiche transmise avec le mail</a></p>
+    </details>
+</div>
+{% endblock %}

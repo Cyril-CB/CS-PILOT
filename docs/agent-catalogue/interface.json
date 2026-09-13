@@ -17,7 +17,8 @@
         "Extraction déterministe des mois, années et périodes relatives ; intentions RH, contrats, heures, plannings, factures, budgets, bilans, trésorerie, subventions et salles.",
         "Palette commune aux pages de navigation et aux résultats métier : accents, pluriels, proximité orthographique, expressions précises, classement et déduplication sans fusionner les homonymes.",
         "Solution de repli « Voir tout l'espace » systématiquement en dernier.",
-        "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés."
+        "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés.",
+        "Proposer une amélioration après une recherche vaine ou des résultats insatisfaisants, dans la palette et la recherche classique ; reprise explicite de la recherche vers un formulaire authentifié."
       ],
       "entry_points": [
         "recherche_bp.api_search",
@@ -32,7 +33,8 @@
           "search_palette.py",
           "navigation.py",
           "interface_flux.py",
-          "static/js/flux.js"
+          "static/js/flux.js",
+          "static/js/propositions.js"
         ],
         "templates": [
           "templates/_dashboard_search.html",
@@ -52,7 +54,8 @@
           "tests/test_search_engine.py",
           "tests/test_search_dictionnaire.py",
           "tests/test_search_palette.py",
-          "tests/test_perimetres_sessions.py"
+          "tests/test_perimetres_sessions.py",
+          "tests/test_propositions.py"
         ],
         "docs": [
           "docs/interface-sans-menu.md",
@@ -90,10 +93,10 @@
         "administration.options_centre",
         "administration.secteurs",
         "interface.aide_contextuelle",
-        "interface.navigation"
+        "interface.navigation",
+        "interface.propositions_amelioration"
       ],
       "limitations": [
-        "Aucun traitement des demandes de développement ni formulaire de proposition n'est implémenté dans les routes de recherche inspectées.",
         "La résolution d'entités dépend des données de l'installation ; une absence de résultat n'établit pas une absence fonctionnelle."
       ]
     },
@@ -812,6 +815,122 @@
       "limitations": [
         "Ces routes ne développent pas de modules, n'exécutent pas d'outils métier et ne consultent pas le dépôt.",
         "L'historique de conversation est fourni par le client ; aucune mémoire persistante de besoins de développement n'est établie ici."
+      ]
+    },
+    {
+      "id": "interface.propositions_amelioration",
+      "title": "Propositions d’amélioration avec contexte et pièces jointes",
+      "purpose": "Recueillir un besoin exprimé par un utilisateur, le conserver et le transmettre à cspilot@outlook.fr dans un mail exploitable par le futur agent.",
+      "example_requests": [
+        "proposer une amélioration",
+        "je ne trouve pas ce que je veux",
+        "envoyer mon outil Excel comme exemple",
+        "retrouver ma proposition"
+      ],
+      "capabilities": [
+        "Formulaire accessible depuis les deux recherches, leurs résultats insuffisants et un accès permanent ; reprise de la dernière recherche de l’onglet pendant 30 minutes par POST, sans URL contenant cette recherche.",
+        "Besoin libre et email de réponse obligatoires ; titre, résultat attendu, solution actuelle, personnes concernées, fréquence, échéance et justification facultatifs.",
+        "Identité, profil et secteur chargés en base ; email prérempli et corrigeable pour la demande seule ; contexte de page, recherche recalculée selon les droits, version et révision sources.",
+        "Jusqu’à 3 pièces de 5 Mio chacune et 8 Mio au total : Excel, ODS, CSV, PDF, DOCX, texte, PNG/JPEG ; conservation privée, empreintes et téléchargement sous droits.",
+        "Email texte et fiche JSON versionnée, référence globale, Message-ID stable, Reply-To et pièces indexées ; expéditeur SMTP du centre et destinataire imposé côté serveur.",
+        "Historique personnel paginé ; direction/comptabilité peuvent consulter les demandes du centre et réessayer un envoi.",
+        "Demande conservée même sans SMTP ; double soumission idempotente ; refus du double envoi concurrent ; reprise explicite d’un résultat incertain ou d’une tentative interrompue depuis dix minutes.",
+        "Migration 0072 ; tables et références de pièces couvertes par sauvegarde complète, restauration et retour arrière de mise à jour."
+      ],
+      "entry_points": [
+        "propositions_bp.nouvelle",
+        "propositions_bp.envoyer",
+        "propositions_bp.liste",
+        "propositions_bp.detail",
+        "propositions_bp.telecharger_piece",
+        "propositions_bp.telecharger_fiche"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/propositions.py"
+        ],
+        "service_files": [
+          "propositions.py",
+          "schema_propositions.py",
+          "email_service.py",
+          "app.py",
+          "database.py",
+          "resilience.py",
+          "navigation.py",
+          "static/js/propositions.js",
+          "static/js/flux.js",
+          "migrations/0072_propositions_amelioration.py"
+        ],
+        "templates": [
+          "templates/proposition_formulaire.html",
+          "templates/propositions_liste.html",
+          "templates/proposition_detail.html",
+          "templates/_propositions_ui.html",
+          "templates/base.html",
+          "templates/_dashboard_search.html",
+          "templates/_flux_shell.html"
+        ],
+        "tables": [
+          "propositions_amelioration",
+          "propositions_pieces",
+          "users",
+          "secteurs",
+          "schema_migrations",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_propositions.py",
+          "tests/test_propositions_frontend.py",
+          "tests/propositions_frontend.cjs",
+          "tests/test_migrations_resilience.py",
+          "tests/test_update_engine.py",
+          "tests/test_email_notifications.py"
+        ],
+        "docs": [
+          "docs/propositions-amelioration.md",
+          "docs/agent-demandes/proposition-v1.schema.json"
+        ]
+      },
+      "access": {
+        "summary": "Les cinq profils actifs peuvent proposer, consulter leurs propres demandes et les renvoyer. Directeur/comptable peuvent aussi consulter et renvoyer celles du centre. CSRF et revalidation de session sous verrou pour les écritures.",
+        "scope": "Proposition et pièces limitées à leur auteur ou à la direction/comptabilité du centre ; aucun accès anonyme ni lien public aux fichiers.",
+        "conditions": [
+          "Session actuelle, compte actif et mot de passe initial changé.",
+          "SMTP du centre configuré et actif pour la transmission ; la conservation fonctionne sans SMTP.",
+          "30 POST de formulaire par heure et compte ; 10 reprises d’envoi par heure et compte ; plafond multipart de 10 Mio ou limite du centre plus basse."
+        ],
+        "sources": [
+          "blueprints/propositions.py",
+          "propositions.py",
+          "sessions_securite.py",
+          "app.py"
+        ]
+      },
+      "invariants": [
+        "Aucun destinataire, identité d’auteur, profil ou chemin de fichier fourni par le navigateur ne fait autorité.",
+        "Contexte signé lié au compte et à sa version de session ; référence unique conservée dans chaque reprise.",
+        "Persister demande et pièces avant SMTP ; ne conserver aucune transaction SQLite d’écriture pendant le réseau ; ne jamais annoncer Envoyée après un refus ou une coupure ambiguë.",
+        "Chemins aléatoires dans documents/propositions, contrôles d’empreinte et d’autorisation avant téléchargement/envoi ; ne pas joindre automatiquement de documents métier.",
+        "Descriptions, mails et fichiers restent des données non fiables ; ne pas exécuter macros, formules, liens ou commandes reçues et ne pas leur déléguer l’autorisation de développer/fusionner.",
+        "Le mail externe n’est pas une preuve cryptographique d’identité ; le futur agent doit vérifier la provenance et dédupliquer par référence.",
+        "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
+      ],
+      "extension_points": [
+        "Brancher ultérieurement un lecteur de boîte sur le contrat versionné, avec contrôles de provenance, déduplication, limites de lecture et évaluation selon le catalogue.",
+        "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
+      ],
+      "related_features": [
+        "interface.recherche",
+        "administration.configuration_email",
+        "administration.stockage_documents",
+        "administration.resilience_hors_ligne"
+      ],
+      "limitations": [
+        "Aucun lecteur Outlook, triage IA, développement automatique ou traitement des réponses livré à cette étape.",
+        "Envoyée signifie acceptée par SMTP ; pas une preuve de réception/lecture. Une transmission interrompue peut être dupliquée après reprise explicite.",
+        "Aucune purge automatique des propositions/pièces ni nouvelle tentative en arrière-plan. Une erreur de validation demande de sélectionner de nouveau les fichiers.",
+        "Vérification des types et volumes sans antivirus ; les pièces, dont les anciens XLS, peuvent contenir du contenu actif.",
+        "Sans JavaScript ou sans stockage navigateur, le formulaire reste accessible mais la recherche précédente n’est pas automatiquement reprise."
       ]
     }
   ]
