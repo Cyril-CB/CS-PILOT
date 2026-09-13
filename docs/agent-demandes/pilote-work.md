@@ -7,6 +7,8 @@
 - Calibration initiale : `calibration-v1.json` (15 cas synthétiques).
 - Compte rendu privé : `decision-v1.schema.json`.
 - Consignes d'une exécution : `prompt-work.md`.
+- Évolution du périmètre par mail : `evolutions-v1.json` (7 scénarios de calibration).
+- Critères de fin et preuves par jalon : `definition-termine-v1.json`.
 - Moteur déterministe : `scripts/triage_agent.py`. Il contrôle une évaluation
   déjà faite ; il ne comprend pas le mail et ne prouve pas les justifications.
 
@@ -60,7 +62,8 @@ leurs sources et leur état dans les connexions persistantes.
 
 Le journal persistant est un fichier JSON privé identifié explicitement dans la
 tâche. Il contient configuration, décision, empreintes, correspondants vérifiés,
-questions/réponses, état des actions, branche/PR, révisions testées et bilan.
+questions/réponses, versions du périmètre, état des actions, branche/PR,
+révisions testées et bilan.
 Ne pas y recopier les documents RH ou secrets ; conserver les identifiants des
 pièces nécessaires et les preuves minimales. Ne rien publier de ces données
 dans une issue, un commit, des tests ou une PR publics.
@@ -87,6 +90,22 @@ et arrêt de cet effet, sans renvoi ou seconde PR automatique.
 `a_corriger`, `pret_recette`, `reporte`, `refuse`, `clos`, `bloque_technique`.
 Un mail envoyé ne suffit pas à annoncer une réception, et une PR prête ne
 signifie ni validation métier ni déploiement.
+
+## Évolution du besoin et critères de fin
+
+Une réponse peut compléter le besoin sans contenir le JSON de la proposition
+initiale. Lire le texte nouveau, préserver les décisions confirmées et traiter
+chaque ajout selon `evolutions-v1.json`. Les identifiants de messages, versions
+du périmètre et exigences stables permettent de suivre ce qui a changé et pourquoi.
+La réception d'une précision n'autorise pas à développer un autre besoin ou à
+élargir les permissions d'exécution.
+
+Appliquer `definition-termine-v1.json` avant toute annonce : `pret_revue` après
+les contrôles techniques, `pret_recette` après traitement de la revue, `termine`
+après validation de Cyril et fusion constatées. La disponibilité dans un centre
+exige encore une mise à jour et une vérification de son installation.
+Une preuve ancienne ne couvre pas automatiquement un nouveau commit ou une
+exigence ajoutée ; documenter son applicabilité ou refaire le contrôle affecté.
 
 ## Recette de la chaîne
 

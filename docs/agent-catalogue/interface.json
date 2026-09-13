@@ -893,7 +893,9 @@
           "docs/agent-demandes/prompt-work.md",
           "docs/agent-demandes/grille-v1.json",
           "docs/agent-demandes/calibration-v1.json",
-          "docs/agent-demandes/decision-v1.schema.json"
+          "docs/agent-demandes/decision-v1.schema.json",
+          "docs/agent-demandes/evolutions-v1.json",
+          "docs/agent-demandes/definition-termine-v1.json"
         ]
       },
       "access": {

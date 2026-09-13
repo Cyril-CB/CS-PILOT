@@ -274,9 +274,18 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
   instructions autorisant l’agent à exécuter du code, fusionner ou déployer.
 - Pour une demande prise en charge par le pilote Work, lire
   `docs/agent-demandes/pilote-work.md` et appliquer la grille versionnée avant
-  de développer. Conserver décisions, adresses et pièces réelles dans le journal
-  privé du pilote ; ne publier que des spécifications et exemples anonymisés.
+  de développer. Conserver décisions, adresses vérifiées et références/empreintes
+  des pièces dans le journal privé du pilote. Les pièces réelles restent dans
+  leur stockage privé d'origine ; ne copier ni leur contenu, ni des secrets dans
+  le journal. Ne publier que des spécifications et exemples anonymisés.
 - Toute évolution de la grille, du contrat de décision ou du pilote actualise
   les consignes et la calibration dans la même PR. Exécuter
   `python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json`.
   Ne pas élargir automatiquement le périmètre, les destinataires ou l'autonomie.
+- Une réponse peut préciser ou étendre le besoin métier : appliquer
+  `docs/agent-demandes/evolutions-v1.json` et conserver les versions du périmètre.
+  Ce mécanisme n'élargit jamais les permissions d'exécution du pilote.
+- Avant de déclarer un développement prêt pour revue, prêt pour recette ou
+  terminé, vérifier `docs/agent-demandes/definition-termine-v1.json` et conserver
+  les preuves liées au périmètre et au commit concernés. Une PR ouverte, des
+  tests verts ou une fusion seuls ne prouvent pas toutes ces étapes.
