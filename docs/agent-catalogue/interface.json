@@ -1,0 +1,813 @@
+{
+  "schema_version": 1,
+  "domain": "interface",
+  "features": [
+    {
+      "id": "interface.recherche",
+      "title": "Barre intelligente : recherche de pages et d'enregistrements",
+      "purpose": "Diriger une demande vers une page ou un enregistrement accessible, avec choix explicite en cas d'ambiguïté.",
+      "example_requests": [
+        "heures d'un salarié en septembre",
+        "budget prévisionnel d'un secteur",
+        "facture par numéro",
+        "SIRET asso"
+      ],
+      "capabilities": [
+        "API métier renvoyant redirect, choices ou none ; résolution des salariés, secteurs et synonymes, fournisseurs et alias, actions analytiques, subventions et numéros de facture.",
+        "Extraction déterministe des mois, années et périodes relatives ; intentions RH, contrats, heures, plannings, factures, budgets, bilans, trésorerie, subventions et salles.",
+        "Palette commune aux pages de navigation et aux résultats métier : accents, pluriels, proximité orthographique, expressions précises, classement et déduplication sans fusionner les homonymes.",
+        "Solution de repli « Voir tout l'espace » systématiquement en dernier.",
+        "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés."
+      ],
+      "entry_points": [
+        "recherche_bp.api_search",
+        "recherche_bp.api_search_suggestions"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/recherche.py"
+        ],
+        "service_files": [
+          "search_engine.py",
+          "search_palette.py",
+          "navigation.py",
+          "interface_flux.py",
+          "static/js/flux.js"
+        ],
+        "templates": [
+          "templates/_dashboard_search.html",
+          "templates/_flux_shell.html",
+          "templates/base.html"
+        ],
+        "tables": [
+          "recherche_log",
+          "users",
+          "secteurs",
+          "fournisseurs",
+          "comptabilite_actions",
+          "subventions",
+          "factures"
+        ],
+        "tests": [
+          "tests/test_search_engine.py",
+          "tests/test_search_dictionnaire.py",
+          "tests/test_search_palette.py",
+          "tests/test_perimetres_sessions.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md",
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "POST /api/search : directeur, comptable, responsable seulement. Suggestions : tout compte connecté, mais recherche métier seulement pour ces trois profils ; les autres reçoivent leur carte filtrée.",
+        "scope": "Responsable : salariés de son secteur, rattachés directs ou soi ; secteurs limités au sien ; autres entités selon leurs résolveurs, puis destinations filtrées. Direction/comptabilité : moteur transverse, les routes de destination restent responsables de leurs autorisations.",
+        "conditions": [
+          "Options et délégations filtrent la carte ; le détail facture est ajouté aux destinations d'un responsable qui a l'approbation.",
+          "Corps JSON objet avec query chaîne, tronquée à 200 caractères. Une recherche vaine n'est journalisée sur suggestions que si journal=true, longueur >=3 et aucun résultat précis."
+        ],
+        "sources": [
+          "blueprints/recherche.py",
+          "search_engine.py",
+          "search_palette.py",
+          "interface_flux.py",
+          "navigation.py"
+        ]
+      },
+      "invariants": [
+        "Le moteur de recherche est déterministe et n'appelle aucun fournisseur IA.",
+        "La carte de navigation décrit la visibilité, elle ne remplace pas une autorisation serveur.",
+        "Les exemple_requests du catalogue ne garantissent aucune reconnaissance effective ; « SIRET asso » est un cas de diagnostic, pas une intention implémentée.",
+        "Ne pas tracer chaque frappe ; conserver la vérification serveur du résultat vide et l'anonymisation existante."
+      ],
+      "extension_points": [
+        "Modifier navigation._page (mots/expressions) pour une page existante mal trouvée ; modifier search_engine seulement pour une nouvelle intention/entité/période.",
+        "Réutiliser construire_suggestions pour un résultat homogène et conserver les tests d'homonymie, droits et périodes.",
+        "Avant de proposer un module après none, vérifier présence de la fonction, données manquantes, options et droits."
+      ],
+      "related_features": [
+        "administration.journaux",
+        "administration.options_centre",
+        "administration.secteurs",
+        "interface.aide_contextuelle",
+        "interface.navigation"
+      ],
+      "limitations": [
+        "Aucun traitement des demandes de développement ni formulaire de proposition n'est implémenté dans les routes de recherche inspectées.",
+        "La résolution d'entités dépend des données de l'installation ; une absence de résultat n'établit pas une absence fonctionnelle."
+      ]
+    },
+    {
+      "id": "interface.navigation",
+      "title": "Navigation par zones, interface sans menu et préférences",
+      "purpose": "Présenter les accès pertinents pour l'utilisateur et basculer entre l'interface flux et le menu historique.",
+      "example_requests": [
+        "tout explorer",
+        "revenir au menu classique",
+        "où trouver une fonction"
+      ],
+      "capabilities": [
+        "Carte déclarative ZONES et ACCES_DIRECTS : endpoints, libellés, profils, conditions, résumé, vocabulaire et expressions.",
+        "Libellés adaptés au profil, voisinage des pages et vue d'ensemble par thèmes.",
+        "Activation par centre et préférence personnelle ; identité et fonction affichées dans le shell.",
+        "Navigation classique conservée sur téléphone selon détection User-Agent.",
+        "Bandeaux d'information contextuels sur factures, écritures, subventions, validation des fiches et dossiers/contrats : compteurs, état et lien d'action pertinents pour la page."
+      ],
+      "entry_points": [
+        "accueil_bp.api_basculer"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/accueil.py"
+        ],
+        "service_files": [
+          "navigation.py",
+          "interface_flux.py",
+          "app_options.py",
+          "static/js/flux.js",
+          "flux_infos.py"
+        ],
+        "templates": [
+          "templates/base.html",
+          "templates/_flux_shell.html",
+          "templates/_flux_page_entete.html"
+        ],
+        "tables": [
+          "app_settings",
+          "users",
+          "delegations_missions",
+          "delegations_benevoles",
+          "cse_membres"
+        ],
+        "tests": [
+          "tests/test_interface_flux.py",
+          "tests/test_options.py",
+          "tests/test_mobile_responsive_pages.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "Bascule permise seulement à navigation.est_eligible. Interface active si compte identifié, option globale, éligibilité, navigateur non téléphone et préférence non désactivée.",
+        "scope": "La préférence ne modifie que l'utilisateur courant. Profils flux : direction/comptabilité/responsable ; certains salariés avec délégation sont éligibles.",
+        "conditions": [
+          "interface_sans_menu_active",
+          "préférence interface_sans_menu_user_<user_id> évaluée par interface_flux._cle_preference",
+          "Drapeaux de délégation, membre CSE et options responsables évalués par interface_flux._drapeaux."
+        ],
+        "sources": [
+          "navigation.py",
+          "interface_flux.py",
+          "blueprints/accueil.py",
+          "app_options.py"
+        ]
+      },
+      "invariants": [
+        "L'option du centre prime sur le choix personnel.",
+        "Les contrôles de chaque route restent la source du droit réel, y compris si un groupe ou une page est visible.",
+        "Ne pas confondre le nom d'une page affiché au salarié avec le périmètre des données qu'il peut lire."
+      ],
+      "extension_points": [
+        "Ajouter ou enrichir une _page dans navigation.py avec un endpoint déjà protégé ; conserver profils, condition et expressions spécifiques.",
+        "Adapter les drapeaux si un nouveau droit explicite doit influencer l'affichage, puis vérifier menu classique, flux et suggestions.",
+        "Pour un bandeau de suivi sur une page, ajouter un constructeur à flux_infos.CONSTRUCTEURS et l'alimenter avec le contexte utilisateur transmis par interface_flux.flux_infos_page."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.options_centre",
+        "association.cse_budget",
+        "association.cse_messages",
+        "interface.accueil_flux",
+        "interface.mon_espace",
+        "interface.recherche"
+      ],
+      "limitations": [
+        "Les bandeaux sont définis uniquement pour les endpoints présents dans flux_infos.CONSTRUCTEURS ; une erreur de lecture produit un flux vide pour préserver la page."
+      ]
+    },
+    {
+      "id": "interface.accueil_flux",
+      "title": "Accueil en fil d'actions et échéances",
+      "purpose": "Faire apparaître les décisions à prendre et les échéances à venir dans le périmètre de l'utilisateur.",
+      "example_requests": [
+        "mes actions en attente",
+        "quelles validations sont en retard",
+        "échéances à venir"
+      ],
+      "capabilities": [
+        "Fil partagé avec les tableaux de bord : congés/récupérations, fiches, approbations, fournitures, budgets dépassés, tâches du jour et préparation paie selon profil.",
+        "Mode étendu direction/comptabilité intégrant seuils, surcharge, soldes de congés et relances.",
+        "Horizon RH et échéances : fins de contrat, retours d'absence autorisés, étapes subventions et tâches personnelles jusqu'à 120 jours.",
+        "Fragments HTML pour rafraîchir la file sans recharger la page.",
+        "Accusé déclaratif de signalement des cas particuliers de paie, nominatif pour l'acteur courant.",
+        "Bouton « Pourquoi ? » des cartes : déroulé explicatif des étapes, rôles, étape courante et conséquences de l'attente, adapté au circuit de la demande."
+      ],
+      "entry_points": [
+        "accueil_bp.accueil",
+        "accueil_bp.api_flux_fragment",
+        "accueil_bp.api_preparation_paie"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/accueil.py",
+          "blueprints/dashboard_direction.py"
+        ],
+        "service_files": [
+          "dashboard_actions.py",
+          "flux_accueil.py",
+          "flux_circuits.py",
+          "interface_flux.py"
+        ],
+        "templates": [
+          "templates/accueil_flux.html",
+          "templates/_flux_actions.html",
+          "templates/_flux_circuit.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "app_settings",
+          "contrats",
+          "absences",
+          "demandes_conges",
+          "demandes_recup",
+          "validations",
+          "factures",
+          "subventions",
+          "subventions_sous_elements",
+          "commandes_salaries",
+          "planif_taches"
+        ],
+        "tests": [
+          "tests/test_interface_flux.py",
+          "tests/test_dashboard_actions.py",
+          "tests/test_flux_circuits.py",
+          "tests/test_circuit_fiches.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md",
+          "docs/fiches-mensuelles.md"
+        ]
+      },
+      "access": {
+        "summary": "Page/fragment accessibles lorsque interface_flux.interface_active est vrai. Signalement paie : directeur ou responsable uniquement, période courante ou mois précédent.",
+        "scope": "Responsables selon secteur/rattachements et affectations ; salariés délégués selon missions, sans vue RH générale. Les tâches du planificateur restent personnelles.",
+        "conditions": [
+          "Interface sans menu active.",
+          "Seuils de direction dans dashboard_direction_seuils.",
+          "L'horizon des retours d'absence est réservé à directeur/comptable."
+        ],
+        "sources": [
+          "blueprints/accueil.py",
+          "dashboard_actions.py",
+          "flux_accueil.py",
+          "blueprints/dashboard_direction.py",
+          "interface_flux.py"
+        ]
+      },
+      "invariants": [
+        "Construire les cartes depuis les états métier et fiches versionnées ; ne pas réintroduire une action déjà effectuée sur la version courante.",
+        "La marque de préparation paie constate un signalement hors application, elle ne transmet ni ne clôture la paie.",
+        "L'horizon ne duplique pas les étapes de subvention imminentes déjà dans le fil.",
+        "Une carte ou un fragment ne dispense jamais la route d'action de contrôler les droits.",
+        "Le circuit affiché par flux_circuits est une représentation explicative : les états et contrôles d'autorisation restent ceux des services/routes métier."
+      ],
+      "extension_points": [
+        "Ajouter une source dans dashboard_actions.construire_actions/_actions_etendues et son circuit dans flux_circuits si une nouvelle décision métier apparaît.",
+        "Ajouter des échéances à flux_accueil.construire_horizon en conservant scope, déduplication et liens autorisés."
+      ],
+      "related_features": [
+        "administration.relances_fiches",
+        "association.commandes_fournitures",
+        "association.planificateur_personnel",
+        "association.subventions_suivi",
+        "finances.approbation_factures",
+        "interface.centre_controle",
+        "interface.digest_direction",
+        "interface.navigation",
+        "temps.validation_demandes_absence",
+        "temps.validation_fiches"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "interface.mon_espace",
+      "title": "Mon espace et suivi personnel",
+      "purpose": "Regrouper les compteurs personnels et les demandes de congés/récupération de l'utilisateur.",
+      "example_requests": [
+        "mes congés restants",
+        "suivre ma demande de récupération",
+        "mon espace"
+      ],
+      "capabilities": [
+        "Trois compteurs personnels CP, congés conventionnels et récupération, issus des champs users et du helper de solde de récupération.",
+        "Lecture des vingt dernières demandes de chaque type, puis affichage des douze plus récentes après fusion : statut, période et motif de refus.",
+        "Dépôt utilisant les types de congés autorisés au profil ; récupération non proposée à la direction au forfait jours.",
+        "Accès au choix personnel de navigation depuis le shell."
+      ],
+      "entry_points": [
+        "accueil_bp.mon_espace"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/accueil.py"
+        ],
+        "service_files": [
+          "interface_flux.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/mon_espace.html",
+          "templates/_flux_shell.html"
+        ],
+        "tables": [
+          "users",
+          "demandes_conges",
+          "demandes_recup",
+          "jours_feries"
+        ],
+        "tests": [
+          "tests/test_interface_flux.py",
+          "tests/test_demande_conge_direction.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "Compte connecté et interface sans menu active, sinon redirection dashboard.",
+        "scope": "user_id de session exclusivement, aucun sélecteur de dossier tiers.",
+        "conditions": [
+          "interface_flux.interface_active"
+        ],
+        "sources": [
+          "blueprints/accueil.py",
+          "interface_flux.py"
+        ]
+      },
+      "invariants": [
+        "Les demandes restent créées/validées dans les routes recup ; cette vue ne remplace pas leur workflow.",
+        "Ne pas déduire un droit sur autrui de l'affichage des compteurs."
+      ],
+      "extension_points": [
+        "Réutiliser mon_espace pour une information personnelle nouvelle ; garder les opérations dans les modules métier propriétaires."
+      ],
+      "related_features": [
+        "administration.authentification",
+        "administration.parametres_personnels",
+        "interface.navigation",
+        "rh.cloture_soldes_conges",
+        "temps.demandes_conges",
+        "temps.demandes_recuperation",
+        "temps.forfait_jours"
+      ],
+      "limitations": [
+        "Les trois compteurs sont construits aussi pour la direction ; ne pas les assimiler aux soldes spécifiques calculés depuis presence_forfait_jour dans le module forfait jours."
+      ]
+    },
+    {
+      "id": "interface.tableau_bord_salarie",
+      "title": "Tableau de bord personnel classique",
+      "purpose": "Présenter les dernières saisies, soldes et messages de prévention personnels lorsque le parcours utilise le tableau de bord classique.",
+      "example_requests": [
+        "mon tableau de bord",
+        "mes dernières heures",
+        "masquer un conseil prévention"
+      ],
+      "capabilities": [
+        "Routage initial selon profil et activation de l'interface flux.",
+        "Dernières saisies d'heures avec théorie/réel, compteurs de congés et récupération.",
+        "Messages de prévention calculés et possibilité de masquer des messages individuels.",
+        "Indication de préférence de notifications email."
+      ],
+      "entry_points": [
+        "dashboard_bp.dashboard",
+        "dashboard_bp.prevention_dismiss"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard.py"
+        ],
+        "service_files": [
+          "utils.py",
+          "interface_flux.py",
+          "blueprints/prevention_sante.py"
+        ],
+        "templates": [
+          "templates/dashboard.html"
+        ],
+        "tables": [
+          "users",
+          "heures_reelles",
+          "prevention_dismissals"
+        ],
+        "tests": [
+          "tests/test_dashboard_prevention_sante.py",
+          "tests/test_pause_remuneree.py",
+          "tests/test_interface_flux.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "login_required ; le point d'entrée redirige vers flux ou dashboard spécialisé selon profil. Masquage prévention disponible au compte connecté pour lui-même.",
+        "scope": "Données et clés de masquage rattachées au user_id de session.",
+        "conditions": [
+          "La page personnelle est le parcours de repli après les redirections profil/interface."
+        ],
+        "sources": [
+          "blueprints/dashboard.py",
+          "interface_flux.py"
+        ]
+      },
+      "invariants": [
+        "Calculer les heures avec les helpers existants, incluant déclaration conforme et pause.",
+        "Le masquage ne supprime ni mesure ni données : stockage par utilisateur/message ; clés prev: et quantité bornées."
+      ],
+      "extension_points": [
+        "Ajouter un indicateur personnel via les services existants sans dupliquer les calculs temps ou prévention."
+      ],
+      "related_features": [
+        "rh.prevention_sante",
+        "temps.saisie_heures"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "interface.tableau_bord_responsable",
+      "title": "Tableau de bord du responsable",
+      "purpose": "Suivre l'équipe, ses validations, les factures et les dossiers attribués.",
+      "example_requests": [
+        "vue de mon équipe",
+        "factures de mon secteur en attente",
+        "absences de mon équipe"
+      ],
+      "capabilities": [
+        "Effectifs et ETP issus des contrats, absences en cours et à venir, fiches et validations.",
+        "Demandes de congés/récupérations et actions à traiter.",
+        "Factures du secteur, budgets et subventions affectées au responsable.",
+        "Compteurs personnels du responsable."
+      ],
+      "entry_points": [
+        "dashboard_responsable_bp.dashboard_responsable"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard_responsable.py"
+        ],
+        "service_files": [
+          "dashboard_actions.py",
+          "fiches_versions.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/dashboard_responsable.html",
+          "templates/_dashboard_actions.html"
+        ],
+        "tables": [
+          "users",
+          "secteurs",
+          "contrats",
+          "absences",
+          "validations",
+          "demandes_conges",
+          "demandes_recup",
+          "factures",
+          "budgets",
+          "budget_reel_lignes",
+          "subventions"
+        ],
+        "tests": [
+          "tests/test_dashboard_responsable.py",
+          "tests/test_equipe_responsable.py",
+          "tests/test_dashboard_actions.py"
+        ],
+        "docs": [
+          "docs/sessions-et-perimetres.md"
+        ]
+      },
+      "access": {
+        "summary": "Profil responsable exclusivement ; sans secteur ni rattaché actif, redirection vers dashboard.",
+        "scope": "Équipe RH = secteur et rattachés directs ; factures/budgets du secteur ; subventions selon affectations. Les scopes ne sont pas interchangeables.",
+        "conditions": [],
+        "sources": [
+          "blueprints/dashboard_responsable.py",
+          "dashboard_actions.py"
+        ]
+      },
+      "invariants": [
+        "Un responsable sans secteur mais avec des rattachés doit garder sa vue équipe.",
+        "Les indicateurs sont des agrégats, les actions restent vérifiées dans leurs routes propriétaires."
+      ],
+      "extension_points": [
+        "Réutiliser le scope RH existant pour un nouvel indicateur d'équipe et vérifier séparément le périmètre analytique."
+      ],
+      "related_features": [
+        "rh.dossier_salarie",
+        "temps.equipe_hebdomadaire"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "interface.tableau_bord_comptable",
+      "title": "Tableau de bord du comptable",
+      "purpose": "Regrouper les suivis de paie, pièces manquantes, factures et imports utiles à la comptabilité.",
+      "example_requests": [
+        "contrats sans document",
+        "écritures à exporter",
+        "tableau de bord comptable"
+      ],
+      "capabilities": [
+        "Fiche et compteurs personnels ; état des validations de l'effectif.",
+        "Contrats et documents RH manquants, à partir d'une liste de types de pièces dans le code.",
+        "Factures en attente, écritures en brouillon/validées, derniers imports de bilan et trésorerie.",
+        "File d'actions commune réutilisée."
+      ],
+      "entry_points": [
+        "dashboard_comptable_bp.dashboard_comptable"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard_comptable.py"
+        ],
+        "service_files": [
+          "dashboard_actions.py",
+          "fiches_versions.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/dashboard_comptable.html",
+          "templates/_dashboard_actions.html"
+        ],
+        "tables": [
+          "users",
+          "contrats",
+          "documents_salaries",
+          "heures_reelles",
+          "validations",
+          "factures",
+          "ecritures_comptables",
+          "bilan_fec_imports",
+          "bilan_fec_donnees",
+          "tresorerie_donnees"
+        ],
+        "tests": [
+          "tests/test_dashboard_comptable.py",
+          "tests/test_circuit_fiches.py",
+          "tests/test_dashboard_actions.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Profil comptable exclusivement.",
+        "scope": "Indicateurs métier transverses ; partie temps personnelle limitée au compte connecté.",
+        "conditions": [],
+        "sources": [
+          "blueprints/dashboard_comptable.py",
+          "dashboard_actions.py"
+        ]
+      },
+      "invariants": [
+        "La liste DOCS_OBLIGATOIRES est un choix applicatif codé, pas une validation des obligations légales ni une politique de conservation.",
+        "Utiliser presenter_validation pour l'état d'une fiche signée/versionnée."
+      ],
+      "extension_points": [
+        "Ajouter les indicateurs au service métier partagé quand ils doivent aussi apparaître dans l'accueil flux."
+      ],
+      "related_features": [
+        "finances.exports_comptables",
+        "rh.documents_salaries",
+        "rh.preparation_paie"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "interface.centre_controle",
+      "title": "Centre de contrôle direction et seuils",
+      "purpose": "Fournir une vue transverse des effectifs, validations, budgets et alertes paramétrables.",
+      "example_requests": [
+        "centre de contrôle",
+        "régler les seuils d'alerte",
+        "quels salariés ont une surcharge"
+      ],
+      "capabilities": [
+        "Effectif, ETP, absences, anomalies, subventions accordées, validations, budgets dépassés et trésorerie.",
+        "File étendue de décisions et son fragment HTML rafraîchissable.",
+        "Seuils d'alerte configurables et activation du digest quotidien.",
+        "Accès aux suggestions de modules depuis le tableau."
+      ],
+      "entry_points": [
+        "dashboard_direction_bp.dashboard_direction",
+        "dashboard_direction_bp.api_seuils_save",
+        "dashboard_direction_bp.api_actions_fragment"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard_direction.py"
+        ],
+        "service_files": [
+          "dashboard_actions.py",
+          "fiches_versions.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/dashboard_direction.html",
+          "templates/_cc_actions_liste.html"
+        ],
+        "tables": [
+          "users",
+          "contrats",
+          "absences",
+          "anomalies",
+          "subventions",
+          "validations",
+          "budgets",
+          "budget_reel_lignes",
+          "tresorerie_solde_initial",
+          "tresorerie_donnees",
+          "tresorerie_comptes",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_dashboard_direction.py",
+          "tests/test_dashboard_actions.py",
+          "tests/test_circuit_fiches.py"
+        ],
+        "docs": [
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "Page, fragment et modification des seuils réservés à directeur/comptable.",
+        "scope": "Centre entier pour les indicateurs de contrôle ; paramètres de seuils communs au centre.",
+        "conditions": [
+          "Valeurs dashboard_direction_seuils avec valeurs par défaut.",
+          "Calcul surcharge toléré en échec pour préserver l'affichage de la page."
+        ],
+        "sources": [
+          "blueprints/dashboard_direction.py",
+          "dashboard_actions.py"
+        ]
+      },
+      "invariants": [
+        "Le mode étendu de l'accueil doit conserver les mêmes actions et seuils que le centre de contrôle.",
+        "Les seuils enregistrés sont des paramètres de suivi ; ne pas changer les règles de calcul des heures en les modifiant."
+      ],
+      "extension_points": [
+        "Partager la construction d'un nouvel indicateur/action entre ce tableau et _fil_du_profil de l'accueil."
+      ],
+      "related_features": [
+        "administration.relances_fiches",
+        "interface.accueil_flux",
+        "interface.digest_direction",
+        "rh.statistiques_rh",
+        "temps.alertes_surcharge"
+      ],
+      "limitations": []
+    },
+    {
+      "id": "interface.digest_direction",
+      "title": "Synthèse quotidienne par email",
+      "purpose": "Envoyer aux destinataires direction/comptabilité présents la synthèse des actions à traiter.",
+      "example_requests": [
+        "recevoir mes actions du jour",
+        "désactiver le mail quotidien"
+      ],
+      "capabilities": [
+        "Composition d'une synthèse HTML à partir de la file étendue, avec décompte des retards et urgences.",
+        "Déclenchement lors d'une requête applicative après 8 h, les jours ouvrés hors jours fériés.",
+        "Destinataires actifs direction/comptabilité avec email, sans absence ni journée forfait non travaillée.",
+        "Réclamation atomique en app_settings pour éviter plusieurs déclenchements quotidiens entre processus."
+      ],
+      "entry_points": [
+        "dashboard_direction_bp.api_seuils_save"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/dashboard_direction.py"
+        ],
+        "service_files": [
+          "email_service.py",
+          "dashboard_actions.py",
+          "utils.py"
+        ],
+        "templates": [],
+        "tables": [
+          "users",
+          "absences",
+          "presence_forfait_jour",
+          "jours_feries",
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_dashboard_direction.py",
+          "tests/test_email_notifications.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Activation dans les seuils par direction/comptabilité ; envoi par hook before_app_request, pas par une commande accessible au demandeur.",
+        "scope": "Synthèse du centre adressée aux profils directeur/comptable admissibles.",
+        "conditions": [
+          "SMTP configuré.",
+          "digest actif dans dashboard_direction_seuils.",
+          "Au moins une action à transmettre."
+        ],
+        "sources": [
+          "blueprints/dashboard_direction.py",
+          "email_service.py"
+        ]
+      },
+      "invariants": [
+        "Le hook ne doit pas faire échouer la requête courante.",
+        "Conserver l'exclusion absences/forfait et la réclamation atomique quotidienne."
+      ],
+      "extension_points": [
+        "Réutiliser _construire_file_actions et _composer_digest pour une synthèse cohérente avec l'écran.",
+        "Si une heure garantie ou des reprises après échec sont demandées, traiter explicitement l'ordonnancement et l'état de livraison."
+      ],
+      "related_features": [
+        "administration.configuration_email",
+        "interface.accueil_flux",
+        "interface.centre_controle",
+        "rh.absences",
+        "temps.forfait_jours"
+      ],
+      "limitations": [
+        "Aucun ordonnanceur externe : sans requête après l'heure cible, pas d'envoi à cette heure.",
+        "La journée est marquée avant l'envoi ; la marque ne prouve pas une livraison réussie à chaque destinataire."
+      ]
+    },
+    {
+      "id": "interface.aide_contextuelle",
+      "title": "Chatbot d'aide contextuelle",
+      "purpose": "Répondre aux questions d'utilisation à partir du contexte descriptif de la page et du message de l'utilisateur.",
+      "example_requests": [
+        "comment utiliser cette page",
+        "aide sur une facture",
+        "choisir le modèle de l'assistant"
+      ],
+      "capabilities": [
+        "API message construisant un prompt système depuis PAGE_CONTEXTS et les dix derniers éléments d'historique fournis par le navigateur.",
+        "Fournisseurs OpenAI, Groq et Anthropic via le modèle configuré ; API de consultation de l'état d'activation.",
+        "Choix ou désactivation du modèle par le directeur, après vérification du fournisseur et de la clé configurée."
+      ],
+      "entry_points": [
+        "chatbot_bp.chatbot_message",
+        "chatbot_bp.chatbot_config",
+        "chatbot_bp.chatbot_set_model"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/chatbot.py"
+        ],
+        "service_files": [
+          "blueprints/api_keys.py",
+          "utils.py"
+        ],
+        "templates": [
+          "templates/base.html"
+        ],
+        "tables": [
+          "app_settings"
+        ],
+        "tests": [
+          "tests/test_chatbot.py",
+          "tests/test_ai_models.py"
+        ],
+        "docs": []
+      },
+      "access": {
+        "summary": "Message/config : login_required sans restriction de profil supplémentaire dans ces routes. Choix du modèle : directeur seulement.",
+        "scope": "Contexte descriptif de page et historique transmis dans la requête ; les routes n'effectuent pas une recherche de dossiers métier.",
+        "conditions": [
+          "Setting chatbot_model présent.",
+          "Clé configurée pour le fournisseur sélectionné."
+        ],
+        "sources": [
+          "blueprints/chatbot.py",
+          "blueprints/api_keys.py"
+        ]
+      },
+      "invariants": [
+        "Aide contextuelle IA distincte du moteur de recherche déterministe.",
+        "PAGE_CONTEXTS est un texte d'aide rédigé ; ne pas le traiter comme une preuve des droits ou du comportement réel.",
+        "Ne pas injecter dans les prompts de nouvelles données métier sans contrôler leur périmètre et leur nécessité."
+      ],
+      "extension_points": [
+        "Mettre à jour le contexte de la page si son parcours change et rester cohérent avec les routes réelles.",
+        "Réutiliser le dispatcher fournisseur existant si le besoin appartient à l'assistance utilisateur."
+      ],
+      "related_features": [
+        "administration.cles_api_ia",
+        "interface.recherche"
+      ],
+      "limitations": [
+        "Ces routes ne développent pas de modules, n'exécutent pas d'outils métier et ne consultent pas le dépôt.",
+        "L'historique de conversation est fourni par le client ; aucune mémoire persistante de besoins de développement n'est établie ici."
+      ]
+    }
+  ]
+}

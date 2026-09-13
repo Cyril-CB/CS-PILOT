@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "product": "CS PILOT",
+  "repository": "Cyril-CB/CS-PILOT",
+  "source_snapshot": {
+    "branch": "main",
+    "last_full_inventory_commit": "fb0983bffb3fe3877f66a4cef3107dd062e3e493",
+    "method": "Lecture statique des routes, services, schémas, navigation, tests et documentation versionnés.",
+    "scope": "Capacités présentes dans le code de ce dépôt ; configuration, données et version effectivement déployées non inspectées.",
+    "refresh_rule": "Une mise à jour partielle de fiche ne change pas last_full_inventory_commit : ce champ identifie la dernière revue globale, pas la dernière modification du catalogue."
+  },
+  "agent_reading_order": [
+    "Lire AGENTS.md puis ce manifeste ; sélectionner les domaines selon le besoin et charger uniquement les fichiers correspondants.",
+    "Retrouver une fiche avec title, purpose, example_requests et capabilities ; suivre related_features pour les parcours transversaux.",
+    "Lire access, invariants et limitations avant de proposer une réutilisation ou un changement ; distinguer lecture, écriture, visibilité et scope des ressources.",
+    "Ouvrir les route_files et service_files actuels, les tests pertinents et les docs avant de décider ; en cas de divergence, le code effectif prévaut et la fiche doit être corrigée.",
+    "Inspecter la carte et les règles de recherche pour savoir si le problème vient du vocabulaire, d'une option, d'un droit ou de données manquantes.",
+    "Une fiche omise ou une recherche vide n'est jamais une preuve qu'une capacité n'existe pas ; compléter la recherche dans le code."
+  ],
+  "domains": [
+    {
+      "id": "interface",
+      "path": "docs/agent-catalogue/interface.json",
+      "topics": [
+        "recherche",
+        "barre intelligente",
+        "navigation",
+        "accueil",
+        "flux",
+        "horizon",
+        "tableaux de bord",
+        "synthèse quotidienne",
+        "aide contextuelle"
+      ]
+    },
+    {
+      "id": "temps",
+      "path": "docs/agent-catalogue/temps.json",
+      "topics": [
+        "heures",
+        "planning",
+        "signatures",
+        "verrouillage",
+        "validation",
+        "congés",
+        "récupération",
+        "forfait jours",
+        "équipe",
+        "annualisation",
+        "exports temps"
+      ]
+    },
+    {
+      "id": "rh",
+      "path": "docs/agent-catalogue/rh.json",
+      "topics": [
+        "dossier salarié",
+        "documents RH",
+        "contrats",
+        "génération DOCX",
+        "absences",
+        "variables",
+        "préparation paie",
+        "clôture congés",
+        "ALISFA",
+        "prévention",
+        "statistiques"
+      ]
+    },
+    {
+      "id": "finances",
+      "path": "docs/agent-catalogue/finances.json",
+      "topics": [
+        "budget",
+        "actualisé",
+        "simulateur paie",
+        "simulation CAF",
+        "factures",
+        "fournisseurs",
+        "écritures",
+        "export comptable",
+        "trésorerie",
+        "analytique",
+        "bilan",
+        "compte de résultat",
+        "indicateurs"
+      ]
+    },
+    {
+      "id": "association",
+      "path": "docs/agent-catalogue/association.json",
+      "topics": [
+        "subventions",
+        "bénévoles",
+        "activités",
+        "heures bénévoles",
+        "salles",
+        "récurrences",
+        "ALSH",
+        "fournitures",
+        "CSE",
+        "planificateur personnel"
+      ]
+    },
+    {
+      "id": "administration",
+      "path": "docs/agent-catalogue/administration.json",
+      "topics": [
+        "authentification",
+        "comptes",
+        "secteurs",
+        "options",
+        "délégations",
+        "paramètres",
+        "SMTP",
+        "fournisseurs IA",
+        "journaux",
+        "sauvegarde",
+        "restauration",
+        "migration",
+        "mise à jour"
+      ]
+    }
+  ],
+  "format": {
+    "domain_schema": "docs/agent-catalogue/feature.schema.json",
+    "language": "fr",
+    "feature_id": "Stable : domaine.identifiant_metier ; conserver lors d'un renommage d'écran.",
+    "granularity": "Une capacité métier cohérente et ses variantes, pas une fiche par route HTTP ; un même blueprint peut porter plusieurs capacités.",
+    "example_requests": "Formulations pour retrouver la fiche dans ce catalogue. Elles ne sont ni injectées dans la barre intelligente ni certifiées reconnues par le moteur.",
+    "entry_points": "Noms d'endpoints Flask vérifiés dans le code ; chaque endpoint détecté statiquement doit être rattaché à au moins une fiche, même dans un fichier déjà référencé. Paramètres/URL et droits détaillés se lisent dans les routes. Une liste vide identifie un service ou une capacité CLI.",
+    "implementation": "Chemins relatifs exacts au dépôt et noms des principales tables persistées ; listes choisies pour l'investigation, non inventaire exhaustif des dépendances transitives.",
+    "tests": "Fichiers existants à consulter/exécuter selon le changement ; leur mention n'affirme ni exécution ni couverture exhaustive.",
+    "extension_points": "Conseils de réutilisation fondés sur le code ; ne décrivent pas de fonctionnalités déjà livrées.",
+    "limitations": "Frontières et divergences observées ; elles sont à revérifier avant changement et ne constituent pas un audit de sécurité exhaustif."
+  },
+  "search_contract": {
+    "sources": [
+      {
+        "path": "navigation.py",
+        "symbols": [
+          "_page",
+          "ZONES",
+          "ACCES_DIRECTS",
+          "carte_navigation",
+          "est_eligible"
+        ],
+        "purpose": "Source des pages visibles, profils, conditions, résumés, mots et expressions. L'agent doit lire l'entrée réelle au lieu de copier un dictionnaire qui pourrait devenir périmé."
+      },
+      {
+        "path": "interface_flux.py",
+        "symbols": [
+          "interface_active",
+          "carte_pour_utilisateur",
+          "endpoints_recherche_autorises",
+          "_drapeaux"
+        ],
+        "purpose": "Activation, scopes de visibilité et destinations admissibles selon l'utilisateur."
+      },
+      {
+        "path": "search_engine.py",
+        "symbols": [
+          "analyser_recherche",
+          "_analyser_recherche",
+          "_extraire_periode",
+          "_resoudre_salarie",
+          "_resoudre_secteur",
+          "_resoudre_fournisseur",
+          "_resoudre_action",
+          "_resoudre_subvention",
+          "_resoudre_facture_numero",
+          "_filtrer_verdict"
+        ],
+        "purpose": "Intention, entité et période ; routage métier déterministe."
+      },
+      {
+        "path": "search_palette.py",
+        "symbols": [
+          "construire_suggestions"
+        ],
+        "purpose": "Classement unifié, tolérance lexicale, précision, déduplication et repli."
+      },
+      {
+        "path": "blueprints/recherche.py",
+        "symbols": [
+          "api_search",
+          "api_search_suggestions",
+          "_journaliser_recherche"
+        ],
+        "purpose": "API, profils admis, validation du corps, déclenchement du journal et masquage des noms."
+      },
+      {
+        "path": "static/js/flux.js",
+        "symbols": [],
+        "purpose": "Interactions de la palette et de l'interface flux."
+      },
+      {
+        "path": "blueprints/securite.py",
+        "symbols": [],
+        "purpose": "Consultation du journal des recherches, des accès et des actions."
+      }
+    ],
+    "tests": [
+      "tests/test_search_engine.py",
+      "tests/test_search_palette.py",
+      "tests/test_search_dictionnaire.py",
+      "tests/test_interface_flux.py",
+      "tests/test_perimetres_sessions.py"
+    ],
+    "extension_rules": [
+      "Page existante mal trouvée : examiner mots/expressions/labels dans navigation.py et le classement de la palette avant d'ajouter du code métier.",
+      "Entité ou période nouvelle : examiner résolveurs et intentions dans search_engine.py, puis les filtres de droits ; ne pas construire une URL arbitraire depuis le texte utilisateur.",
+      "Capacité ajoutée : prévoir entrée accessible et vocabulaire précis si pertinent ; une API interne ou un service CLI n'impose pas une nouvelle page.",
+      "Tester demandes naturelles et ambiguïtés par profil ; garder une distinction entre résultat vide, accès refusé, option désactivée et donnée absente.",
+      "Ne pas utiliser les prompts PAGE_CONTEXTS du chatbot comme catalogue de vérité : ils sont des textes d'aide pouvant différer du comportement effectif."
+    ]
+  },
+  "cross_cutting_sources": [
+    {
+      "concern": "Enregistrement des blueprints, configuration, protection CSRF et erreurs HTTP",
+      "paths": [
+        "app.py",
+        "extensions.py",
+        "database.py"
+      ]
+    },
+    {
+      "concern": "Session, profil actuel et helpers d'autorisation",
+      "paths": [
+        "blueprints/auth.py",
+        "sessions_securite.py",
+        "utils.py",
+        "docs/sessions-et-perimetres.md"
+      ]
+    },
+    {
+      "concern": "Options et délégations",
+      "paths": [
+        "app_options.py",
+        "blueprints/delegations.py",
+        "blueprints/admin.py"
+      ]
+    },
+    {
+      "concern": "Cohérence temps/absences/fiches signées",
+      "paths": [
+        "fiches_circuit.py",
+        "fiches_contenu.py",
+        "fiches_versions.py",
+        "fiches_db.py",
+        "absences_coherence.py",
+        "docs/fiches-mensuelles.md",
+        "docs/coherence-rh.md"
+      ]
+    },
+    {
+      "concern": "Préparation paie et fraîcheur du contrôle",
+      "paths": [
+        "prepa_paie_donnees.py",
+        "blueprints/prepa_paie.py",
+        "blueprints/variables_paie.py"
+      ]
+    },
+    {
+      "concern": "Calculs budget et charges salariales simulées",
+      "paths": [
+        "budget_calculs.py",
+        "budget_charges.py",
+        "docs/budget-actualise.md"
+      ]
+    },
+    {
+      "concern": "Pièces comptables et fichier d'export exact",
+      "paths": [
+        "exports_comptables.py",
+        "docs/exports-comptables.md"
+      ]
+    },
+    {
+      "concern": "Fichiers et exploitation",
+      "paths": [
+        "document_files.py",
+        "resilience.py",
+        "stockage_restaure.py",
+        "schema_resilience.py",
+        "migration_manager.py",
+        "docs/resilience.md"
+      ]
+    },
+    {
+      "concern": "Actions, horizon et circuits visibles",
+      "paths": [
+        "dashboard_actions.py",
+        "flux_accueil.py",
+        "flux_infos.py",
+        "flux_circuits.py"
+      ]
+    },
+    {
+      "concern": "Tests isolés et données factices",
+      "paths": [
+        "tests/conftest.py",
+        "requirements.txt"
+      ]
+    }
+  ],
+  "triage_order": [
+    {
+      "decision": "retrouver_existant",
+      "when": "Résultat métier déjà offert et accessible : indiquer le point d'entrée ou enrichir la recherche."
+    },
+    {
+      "decision": "renseigner_ou_configurer",
+      "when": "Capacité déjà offerte mais référentiel/donnée/option manquant ; suivre l'acteur et les droits existants."
+    },
+    {
+      "decision": "clarifier_acces",
+      "when": "Un droit ou un périmètre explique l'absence de résultat ; ne pas élargir les droits pour contourner le problème."
+    },
+    {
+      "decision": "corriger_ou_etendre",
+      "when": "Comportement défectueux ou besoin voisin ; s'appuyer sur les modules, services, tables et invariants identifiés."
+    },
+    {
+      "decision": "preciser_besoin",
+      "when": "Résultat, données ou règle métier indispensables encore inconnus ; poser des questions ciblées."
+    },
+    {
+      "decision": "envisager_nouvelle_capacite",
+      "when": "Aucune capacité compatible retrouvée après vérification du code ; expliciter valeur, réemploi, données, entretien et liens avant de proposer un module."
+    }
+  ],
+  "maintenance": {
+    "required_for": [
+      "ajout de fonctionnalité",
+      "changement de capacité ou règle métier",
+      "changement de droits/périmètre",
+      "ajout ou modification d'option",
+      "évolution des données/imports/exports",
+      "nouveau point d'entrée ou vocabulaire de recherche",
+      "renommage/déplacement/suppression d'un fichier référencé",
+      "retrait ou remplacement d'une fonction"
+    ],
+    "same_change": "Actualiser les fiches et relations concernées dans la même PR que le code ; compléter capabilities/invariants/limitations et références plutôt que créer automatiquement une nouvelle fiche.",
+    "new_domain": "Créer le fichier conforme au schéma et l'ajouter à domains ; ne créer un domaine que s'il ne tient pas dans les domaines existants.",
+    "removed_capability": "Retirer ou corriger la capacité et ses relations ; si une autre fiche la remplace, mettre à jour les références entrantes. L'historique Git conserve l'état précédent.",
+    "validation_command": "python scripts/validate_feature_catalogue.py",
+    "review_note": "Dans le compte rendu/PR, citer les IDs actualisés ; si la modification n'affecte pas le catalogue, expliquer brièvement pourquoi."
+  },
+  "validation_limits": [
+    "Le vérificateur contrôle structure, identifiants, références, tables détectées statiquement, existence des endpoints déclarés, rattachement de chaque endpoint détecté à une fiche et couverture des fichiers blueprints ; il n'évalue pas la justesse de chaque description.",
+    "Les entry_points sont des déclarations statiques vérifiées, pas une autorisation d'exécution ; les routes et hooks courants décident des droits réels.",
+    "La couverture des fichiers blueprints et des endpoints détectés statiquement ne garantit pas l'exhaustivité des variantes métier, des services sans route ou des routes enregistrées dynamiquement ; relire le module concerné à chaque intervention.",
+    "Ce catalogue n'est pas chargé par l'application et ne configure aucun agent autonome, formulaire ou envoi de demande."
+  ]
+}
