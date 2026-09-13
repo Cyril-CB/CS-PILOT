@@ -817,6 +817,7 @@
         ],
         "service_files": [
           "access_log.py",
+          "superviseur.py",
           "utils.py"
         ],
         "templates": [
@@ -832,9 +833,12 @@
         ],
         "tests": [
           "tests/test_securite.py",
+          "tests/test_superviseur.py",
           "tests/test_perimetres_sessions.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/mises-a-jour.md"
+        ]
       },
       "access": {
         "summary": "Consultation et exports réservés aux profils directeur et comptable, avec contrôle serveur sur chaque route.",
@@ -849,6 +853,7 @@
       "invariants": [
         "journaliser_action participe à la transaction de l’appelant, sans commit interne et sans absorption de l’erreur : une action sensible doit échouer si sa trace échoue.",
         "enregistrer_acces est indépendant et tolère une erreur de journalisation pour ne pas bloquer l’authentification.",
+        "En accès direct via le superviseur, les en-têtes proxy fournis par le client sont retirés ; les connexions réussies et échouées sont tracées avec l’IP de la connexion réelle. Leur conservation exige BEHIND_PROXY actif et un proxy de confiance.",
         "Les filtres sont paramétrés en SQL et les types d’événement/action sont pris dans une liste fermée.",
         "Les détails d’audit ne doivent contenir ni mots de passe, ni clés, ni données salariales sensibles."
       ],
@@ -1362,6 +1367,7 @@
           "tests/test_mise_a_jour.py",
           "tests/test_update_engine.py",
           "tests/test_superviseur.py",
+          "tests/test_demarrage.py",
           "tests/test_resilience.py",
           "tests/test_migrations_resilience.py"
         ],
@@ -1391,6 +1397,8 @@
         "Ne pas copier le nouveau code ni installer ses dépendances dans le code/venv actuellement utilisés.",
         "Ne pas migrer si la sauvegarde complète est refusée ; ne pas reprendre automatiquement les erreurs historiques de migrations.",
         "Maintenir DATA_DIR et la priorité de SECRET_KEY effective sur .env, sans exécuter .env ni créer une nouvelle clé.",
+        "python app.py lit le .env du dossier de données avant le choix du mode ; FLASK_DEBUG de l’environnement reste prioritaire et le dossier sélectionné reste stable. La délégation au superviseur précède les imports Flask et base de données.",
+        "Sans BEHIND_PROXY, le frontal supprime Forwarded, X-Forwarded-* et X-Real-IP ; leur conservation exige un proxy de confiance et un accès direct au port restreint.",
         "Journal avant les opérations de données ; publication active/réussite en une écriture atomique avant réouverture ; aucun rollback automatique après acceptation possible de nouvelles écritures.",
         "Après migration, restaurer données et code ensemble ; conserver les données de l’échec et ne jamais remplacer DATA_DIR entier.",
         "Un seul superviseur ; arrêt des descendants à la perte de leur pipe parent ; verrou des écrivains avant restauration et contrôle de disponibilité.",

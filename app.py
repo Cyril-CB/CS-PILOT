@@ -4,16 +4,22 @@ Architecture en Blueprints Flask.
 """
 import os
 import sys
+from dotenv import load_dotenv
 
 # Le superviseur doit pouvoir servir la maintenance même si les imports ou le
 # contrôle des migrations de l'application échouent. Les imports WSGI/tests et
 # le mode de développement conservent leur point d'entrée habituel.
 if (__name__ == '__main__' and not getattr(sys, 'frozen', False)
-        and not os.environ.get('CSPILOT_WORKER_TOKEN')
-        and os.environ.get('FLASK_DEBUG', '0') != '1'):
-    from superviseur import main
-    main()
-    raise SystemExit(0)
+        and not os.environ.get('CSPILOT_WORKER_TOKEN')):
+    # Même .env que Flask, avant de choisir le mode de démarrage. Fixer le
+    # dossier avant sa lecture garde le même stockage pour Flask et le superviseur.
+    _data_dir = os.path.abspath(os.environ.get('CSPILOT_DATA_DIR') or os.path.dirname(__file__))
+    os.environ['CSPILOT_DATA_DIR'] = _data_dir
+    load_dotenv(dotenv_path=os.path.join(_data_dir, '.env'))
+    if os.environ.get('FLASK_DEBUG', '0') != '1':
+        from superviseur import main
+        main()
+        raise SystemExit(0)
 
 if __name__ == '__main__' and os.environ.get('CSPILOT_SUPERVISED_STDIN') == '1':
     from update_worker import surveiller_superviseur
@@ -21,7 +27,6 @@ if __name__ == '__main__' and os.environ.get('CSPILOT_SUPERVISED_STDIN') == '1':
 
 import secrets
 import sqlite3
-from dotenv import load_dotenv
 from flask import Flask, session, render_template, flash, redirect, url_for, request, jsonify
 from flask_wtf.csrf import CSRFError
 from werkzeug.middleware.proxy_fix import ProxyFix

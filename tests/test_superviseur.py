@@ -50,7 +50,8 @@ def demander(port, path='/', method='GET', body=None, headers=None, chunked=Fals
 
 
 @pytest.fixture
-def frontal(tmp_path):
+def frontal(tmp_path, monkeypatch):
+    monkeypatch.setenv('BEHIND_PROXY', 'true')
     service = Service(tmp_path, tmp_path)
     service.engine = Mock()
     service.engine.snapshot.return_value = {'job': {'phase': 'migration', 'id': 'test-public',
@@ -130,20 +131,61 @@ def test_maintenance_independante_du_processus_et_sans_mutation(frontal):
     assert demander(public, STATUS_PATH, 'POST')[0] == 404
 
 
-def test_transfert_sans_proxy_ne_change_pas_ip(tmp_path):
+def test_transfert_sans_proxy_ne_change_pas_ip(tmp_path, monkeypatch):
+    monkeypatch.delenv('BEHIND_PROXY', raising=False)
     service = Service(tmp_path, tmp_path)
     service.token = 'jeton'
     service.engine = Mock()
     def app(environ, start_response):
-        body = environ['REMOTE_ADDR'].encode()
+        body = json.dumps({'remote': environ['REMOTE_ADDR'],
+            'proxy_headers': {k: v for k, v in environ.items()
+                if k.startswith('HTTP_X_FORWARDED_')
+                or k in ('HTTP_FORWARDED', 'HTTP_X_REAL_IP')}}).encode()
         start_response('200 OK', [('Content-Length', str(len(body)))])
         return [body]
     with serveur(WorkerMiddleware(app, service.token)) as prive:
         service.port = prive
         service.ouvrir()
         with serveur(service.application) as public:
-            assert demander(public, headers={'X-Forwarded-For': '192.0.2.12',
-                'X-Cspilot-Remote': '192.0.2.99'})[2] == b'127.0.0.1'
+            status, _, body = demander(public, headers={
+                'X-Forwarded-For': '192.0.2.12', 'X-Real-IP': '192.0.2.13',
+                'X-Forwarded-Proto': 'https', 'X-Forwarded-Host': 'faux.example',
+                'X-Forwarded-Port': '443', 'X-Forwarded-Prefix': '/faux',
+                'Forwarded': 'for=192.0.2.14;proto=https',
+                'X-Cspilot-Remote': '192.0.2.99'})
+            assert status == 200
+            assert json.loads(body) == {'remote': '127.0.0.1', 'proxy_headers': {}}
+
+
+@pytest.mark.parametrize('proxy', [None, 'false', 'true'])
+@pytest.mark.parametrize('header', ['X-Forwarded-For', 'X-Real-IP'])
+def test_ip_journal_connexions_via_frontal(app, db, sample_users, tmp_path,
+                                        monkeypatch, proxy, header):
+    """Le journal réel ne doit pas prendre une IP fournie par un client direct."""
+    if proxy is None:
+        monkeypatch.delenv('BEHIND_PROXY', raising=False)
+    else:
+        monkeypatch.setenv('BEHIND_PROXY', proxy)
+    service = Service(tmp_path, tmp_path)
+    service.token = 'jeton-fictif-journal'
+    application = app
+    if proxy == 'true':
+        application = ProxyFix(application, x_for=1, x_proto=1, x_host=1)
+    with serveur(WorkerMiddleware(application, service.token)) as prive:
+        service.port = prive
+        service.ouvrir()
+        with serveur(service.application) as public:
+            for password, statut in (('incorrect', 200), ('Admin1234', 302)):
+                assert demander(public, '/login', 'POST',
+                    f'login=admin&password={password}',
+                    {'Content-Type': 'application/x-www-form-urlencoded',
+                     header: '192.0.2.45', 'X-Cspilot-Remote': '192.0.2.99'})[0] == statut
+    rows = db.execute(
+        'SELECT evenement, adresse_ip FROM journal_acces ORDER BY id'
+    ).fetchall()
+    adresse = '192.0.2.45' if proxy == 'true' else '127.0.0.1'
+    assert [tuple(row) for row in rows] == [
+        ('echec_connexion', adresse), ('connexion_reussie', adresse)]
 
 
 def test_attente_des_requetes_et_annulation_du_drain(tmp_path):

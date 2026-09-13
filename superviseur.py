@@ -55,6 +55,7 @@ class Service:
     def __init__(self, data_dir, install_dir):
         self.data = Path(data_dir)
         self.install = Path(install_dir)
+        self.behind_proxy = os.environ.get('BEHIND_PROXY', '').lower() in ('1', 'true', 'yes')
         self.condition = threading.Condition()
         self.disponible = False
         self.actives = 0
@@ -182,6 +183,11 @@ class Service:
                 header = name[5:].replace('_', '-')
                 if header.lower() in interdits or header.lower().startswith('x-cspilot-'):
                     continue
+                # En accès direct, ces valeurs viennent du client. Les retirer
+                # aussi pour les helpers d'audit qui lisent X-Real-IP sans ProxyFix.
+                if not self.behind_proxy and (header.lower().startswith('x-forwarded-')
+                        or header.lower() in ('forwarded', 'x-real-ip')):
+                    continue
                 conn.putheader(header, value)
             if environ.get('CONTENT_TYPE'):
                 conn.putheader('Content-Type', environ['CONTENT_TYPE'])
@@ -274,7 +280,7 @@ def main():
         max_mo = 256
     server = create_server(service.application, host='0.0.0.0', port=port, threads=8,
                            max_request_body_size=(max_mo if max_mo > 0 else 256) * 1024**2,
-                           clear_untrusted_proxy_headers=False)
+                           clear_untrusted_proxy_headers=not service.behind_proxy)
 
     def interrompre(signum, frame):
         service.stop.set()

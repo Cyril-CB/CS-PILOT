@@ -32,6 +32,13 @@ ces fichiers, puis effectuer son dernier redémarrage habituel. `lancer.sh`
 et `LANCER.bat` lancent ensuite le superviseur. `python app.py` le lance également
 hors mode debug et hors exécutable. Aucun nouveau droit sudo n'est nécessaire.
 
+Pour le développement, `python app.py` lit le `.env` du dossier de données
+avant de choisir son mode : `FLASK_DEBUG=1` y active le serveur de développement.
+Une valeur déjà définie dans l'environnement reste prioritaire, y compris
+`FLASK_DEBUG=0`. Le dossier est celui de `CSPILOT_DATA_DIR` s'il est défini,
+sinon celui du projet ; le répertoire de travail ne change pas ce choix.
+Les lanceurs de production continuent à utiliser le superviseur.
+
 Le premier redémarrage dépend encore de l'ancien mécanisme : si son appel
 `sudo systemctl restart cspilot` n'était pas autorisé, le support doit réaliser
 ce redémarrage une fois. Les installations qui importent directement `app:app`
@@ -66,6 +73,9 @@ contournés : suivre le [diagnostic de résilience](resilience.md) avant activat
   téléchargements, en-têtes CSRF et contexte client. La configuration
   `BEHIND_PROXY` conserve son sens : ne l'activer que derrière un proxy de
   confiance et restreindre l'accès direct au port public dans ce cas.
+  Sans cette option, le frontal retire `Forwarded`, `X-Forwarded-*` et
+  `X-Real-IP` : les journaux utilisent alors l'adresse de la connexion réelle,
+  même si le client tente de fournir une autre IP dans ses en-têtes.
 - Le superviseur refuse les nouvelles requêtes pendant la maintenance et attend
   jusqu'à deux minutes la fin des réponses en cours. Si elles ne se terminent
   pas, il annule l'opération et laisse fonctionner la version précédente.
