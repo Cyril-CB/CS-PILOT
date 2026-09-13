@@ -6,6 +6,8 @@ Usage : python scripts/validate_feature_catalogue.py [--root CHEMIN_DEPOT]
 Le schéma JSON décrit les fichiers de domaine ; ce contrôle sans dépendance en
 vérifie les formes puis les références au dépôt. L'analyse statique des routes
 reconnaît Blueprint('nom') et les décorateurs route/get/post/put/patch/delete.
+Chaque endpoint ainsi découvert doit figurer dans les entry_points d'une fiche,
+même si son fichier est déjà référencé ailleurs dans le catalogue.
 Les tables sont des noms déclarés par CREATE TABLE/VIEW dans database.py, les
 migrations et les helpers Python racine (schémas délégués). Ce n'est ni une
 preuve du schéma déployé ni une validation des règles métier et permissions.
@@ -279,7 +281,7 @@ def source_inventory(root, errors):
 
 def validate_feature(root, feature, domain, label, errors, endpoints, tables):
     if not object_fields(feature, FEATURE_FIELDS, label, errors):
-        return None, set(), []
+        return None, set(), [], []
     feature_id = feature["id"]
     if text_value(feature_id, label + ".id", errors):
         if not FEATURE_ID.fullmatch(feature_id) or not feature_id.startswith(domain + "."):
@@ -314,7 +316,7 @@ def validate_feature(root, feature, domain, label, errors, endpoints, tables):
             text_value(access[field], label + ".access." + field, errors)
         text_list(access["conditions"], label + ".access.conditions", errors)
         path_list(root, access["sources"], label + ".access.sources", errors)
-    return feature_id, covered, related
+    return feature_id, covered, related, entries
 
 
 def validate(root):
@@ -326,6 +328,7 @@ def validate(root):
     validate_manifest_references(root, manifest, errors)
     endpoints, tables, expected = source_inventory(root, errors)
     seen_domains, seen_paths, feature_ids, covered, relationships = set(), set(), set(), set(), []
+    catalogued_endpoints = set()
     for index, domain_entry in enumerate(manifest["domains"]):
         label = "catalogue.json.domains[{}]".format(index)
         if not isinstance(domain_entry, dict):
@@ -356,8 +359,9 @@ def validate(root):
             continue
         for number, feature in enumerate(data["features"]):
             label = "{}.features[{}]".format(path.relative_to(root), number)
-            feature_id, paths, related = validate_feature(root, feature, domain, label, errors, endpoints, tables)
+            feature_id, paths, related, entries = validate_feature(root, feature, domain, label, errors, endpoints, tables)
             covered.update(paths)
+            catalogued_endpoints.update(entries)
             if feature_id:
                 if feature_id in feature_ids:
                     errors.append(label + " : ID dupliqué : " + feature_id)
@@ -371,6 +375,9 @@ def validate(root):
                 errors.append(feature_id + " : related_features inconnu : " + target)
     for missing in sorted(expected - covered):
         errors.append("blueprint sans fiche (route_files/service_files) : " + missing)
+    discovered_endpoints = set().union(*endpoints.values())
+    for missing in sorted(discovered_endpoints - catalogued_endpoints):
+        errors.append("endpoint sans fiche (entry_points) : " + missing)
     return errors, len(feature_ids), len(expected)
 
 

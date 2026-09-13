@@ -233,7 +233,10 @@ justifie pas à elle seule une hausse de version.
   reste celui de la dernière revue globale ; ne le réécrivez pas après une
   simple mise à jour partielle.
 - Exécutez `python scripts/validate_feature_catalogue.py` avant livraison et
-  corrigez les références cassées. Ce contrôle est statique, sans démarrage de
+  corrigez les références cassées et les endpoints non catalogués. Chaque
+  endpoint détecté doit figurer dans les `entry_points` d'au moins une fiche,
+  même si son fichier figure déjà dans `route_files` ou `service_files`.
+  Ce contrôle est statique, sans démarrage de
   Flask, accès à la base ni appel externe ; il ne prouve pas l'exactitude métier
   des descriptions et ne remplace pas les tests du changement.
 - Dans le compte rendu ou la PR, indiquez les IDs actualisés. Si une
