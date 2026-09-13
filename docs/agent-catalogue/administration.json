@@ -1018,7 +1018,8 @@
         "Manifeste avec inventaire, tailles, SHA-256, version Python/SQLite, révision Git, état modifié du code et empreinte de requirements.txt.",
         "restaurer --archive --destination : déchiffrement, contrôles du manifeste et des données, publication dans une destination inexistante ; rapport JSON et table de correspondance des anciens chemins.",
         "Option --nouvelle-cle-fichier pour rechiffrer atomiquement app_settings au cours de la restauration ; --phrase-fichier et --cle-fichier pour secrets en fichiers privés.",
-        "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false."
+        "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false.",
+        "Vérification et rechiffrement des paramètres secrets sans modifier les traces historiques du digest ; parametres_verifies compte seulement les valeurs déchiffrées."
       ],
       "entry_points": [],
       "implementation": {
@@ -1040,7 +1041,8 @@
         ],
         "tests": [
           "tests/test_resilience.py",
-          "tests/test_migrations_resilience.py"
+          "tests/test_migrations_resilience.py",
+          "tests/test_resilience_parametres.py"
         ],
         "docs": [
           "docs/resilience.md",
@@ -1069,16 +1071,18 @@
         "Refuser écrasement, chemins sortants, archive incohérente, preuves altérées ou clé inutilisable.",
         "Ne pas réécrire les preuves historiques pour adapter des chemins ; utiliser restauration-chemins.json et resoudre_fichier.",
         "Maintenir resilience.TABLES_REQUISES par version d’introduction et resilience.REFERENCES lors de tout ajout de table ou stockage documentaire.",
-        "Aucune migration, activation SMTP, émission IA ou mise en route applicative n’est déclenchée par sauvegarder/restaurer/diagnostic."
+        "Aucune migration, activation SMTP, émission IA ou mise en route applicative n’est déclenchée par sauvegarder/restaurer/diagnostic.",
+        "Les traces digest_direction_YYYY-MM-DD de date valide et de valeur exacte envoye sont non secrètes : les conserver en clair ; tous les autres paramètres non vides doivent rester déchiffrables avec la clé effective."
       ],
       "extension_points": [
         "Ajouter toute nouvelle table au catalogue TABLES_REQUISES avec sa migration et tout fichier référencé à REFERENCES/REPERTOIRES selon le stockage.",
         "Réutiliser diagnostiquer pour vérifier une copie avant une reprise ou une migration de serveur."
       ],
       "related_features": [
-        "administration.sauvegardes_ponctuelles",
         "administration.migrations_hors_ligne",
-        "administration.stockage_documents"
+        "administration.sauvegardes_ponctuelles",
+        "administration.stockage_documents",
+        "interface.digest_direction"
       ],
       "limitations": [
         "L’archive exclut code, environnement virtuel, infrastructure, logs et sauvegardes précédentes ; elle ne sauvegarde pas le VPS OVH.",
@@ -1197,7 +1201,8 @@
         ],
         "tests": [
           "tests/test_migrations_resilience.py",
-          "tests/test_resilience.py"
+          "tests/test_resilience.py",
+          "tests/test_resilience_parametres.py"
         ],
         "docs": [
           "docs/resilience.md"
@@ -1220,14 +1225,16 @@
       "invariants": [
         "Même moteur atomique et mêmes contrôles d’ordre/inconnues que la voie web.",
         "Une version inconnue du code bloque même --reprise-historique.",
-        "Un résultat non à jour produit un code de retour non nul ; ne pas le traiter comme autorisation de remise en service."
+        "Un résultat non à jour produit un code de retour non nul ; ne pas le traiter comme autorisation de remise en service.",
+        "Les traces digest_direction_YYYY-MM-DD de date valide et de valeur exacte envoye sont non secrètes : les conserver en clair ; tous les autres paramètres non vides doivent rester déchiffrables avec la clé effective."
       ],
       "extension_points": [
         "Utiliser ce CLI dans une procédure d’exploitation contrôlée ; gérer arrêt, sauvegarde préalable et remise en service à l’extérieur du CLI."
       ],
       "related_features": [
         "administration.migrations_web",
-        "administration.resilience_hors_ligne"
+        "administration.resilience_hors_ligne",
+        "interface.digest_direction"
       ],
       "limitations": [
         "Le CLI n’arrête ni ne redémarre lui-même les processus et n’orchestre pas le déploiement du code."

@@ -79,6 +79,10 @@ def installation(app, db, sample_users, fiche_complete, piece, tmp_path):
         save_setting('smtp_enabled', '0')
         save_setting('openai_api_key', 'api-SECRET-FICTIF')
         save_setting('nom_structure', 'Centre de test B4')
+    # Le digest écrit historiquement cette trace en clair dans app_settings.
+    # Elle doit survivre aux sauvegardes/restaurations et au rechiffrement.
+    db.execute("INSERT INTO app_settings(key, value) VALUES ('digest_direction_2026-09-11', 'envoye')")
+    db.commit()
     direction = client_role(app, sample_users, 'directeur')
     from tests.test_coherence_rh import traiter
     assert traiter(direction, uid).status_code == 200
@@ -179,6 +183,7 @@ def test_t3_nouvelle_cle_rechiffrement_atomique(installation, sauvegarde, tmp_pa
     with closing(r.ouvrir_lecture(dest / 'cspilot.db')) as conn:
         valeur = conn.execute("SELECT value FROM app_settings WHERE key='smtp_password'").fetchone()[0]
         assert r.fernet_pour(nouvelle).decrypt(valeur.encode()) == b'smtp-SECRET-FICTIF'
+        assert conn.execute("SELECT value FROM app_settings WHERE key='digest_direction_2026-09-11'").fetchone()[0] == 'envoye'
     avant, apres = contenu_base(installation['source'] / 'cspilot.db'), contenu_base(dest / 'cspilot.db')
     assert avant.pop('app_settings') != apres.pop('app_settings')
     assert avant == apres
