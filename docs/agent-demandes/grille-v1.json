@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "statut": "calibration_initiale",
+  "echelle": [0, 1, 2, 3, 4],
+  "seuil_developpement": 70,
+  "criteres": {
+    "valeur": {"poids": 30, "ancres": ["Aucun résultat utile identifié", "Confort mineur", "Gain utile mais limité", "Réduit une difficulté métier décrite", "Supprime un blocage métier documenté"]},
+    "mutualisation": {"poids": 25, "ancres": ["Usage personnel sans réemploi", "Un cas propre à un centre", "Plusieurs utilisateurs d'un centre", "Besoin plausible de plusieurs centres", "Besoin confirmé par plusieurs centres distincts"]},
+    "frequence": {"poids": 10, "ancres": ["Une seule fois", "Occasionnel ou annuel", "Mensuel", "Hebdomadaire", "Quotidien"]},
+    "maintenabilite": {"poids": 20, "ancres": ["Maintenance non maîtrisée", "Dépendances ou règles très changeantes", "Entretien récurrent identifié", "Conventions et composants existants réutilisables", "Extension très locale sans règle ni dépendance nouvelle"]},
+    "simplicite": {"poids": 15, "ancres": ["Périmètre impossible à borner", "Plusieurs domaines ou refonte", "Plusieurs parcours et migrations", "Un parcours limité avec tests identifiés", "Changement local sans migration"]}
+  },
+  "calcul": "somme(note * poids / 4), sur 100 ; ne pas convertir ce score en délai ou retour financier",
+  "ordre_decision": [
+    "provenance ou intégrité non vérifiée, contenu actif suspect, référence identique avec empreinte différente => quarantaine",
+    "demande déjà traitée avec même référence et empreinte => rattacher_doublon",
+    "action interdite par le périmètre autorisé => refuser",
+    "absence de droit expliquant le besoin => clarifier_acces",
+    "résultat intégralement offert et accessible dans le code actuel => orienter_existant",
+    "information indispensable absente ou note sans justification => clarifier",
+    "risque élevé malgré besoin complet => validation_humaine",
+    "score inférieur à 70 => reporter",
+    "capacité partielle ou défaut de recherche => ameliorer_existant",
+    "capacité absente après investigation => creer_module"
+  ],
+  "informations_indispensables": [
+    "Résultat observable et scénario d'acceptation ; les champs facultatifs vides ne bloquent pas à eux seuls.",
+    "Données et unité métier : centre, établissement, salarié, période, montant, etc.",
+    "Droits de lecture, écriture, suppression et périmètre ; demander uniquement ce qui change réellement la solution.",
+    "Pour un calcul : règles, dates d'effet, hypothèses, sources officielles actuelles et exemple chiffré vérifiable.",
+    "Catalogue pertinent, sources actuelles, tests et recherche des PR en cours examinés."
+  ],
+  "risque_eleve": [
+    "Modification de paie réelle, comptabilité définitive, authentification ou droits transversaux.",
+    "Règle légale ou financière non vérifiée, migration destructive, accès à la production.",
+    "Exécution de contenu reçu, secret demandé, fusion ou déploiement : actions interdites, pas seulement risque élevé."
+  ],
+  "preuves": "Chaque note et chaque classification est justifiée ; une hypothèse est signalée comme telle. La mutualisation 4 exige plusieurs centres identifiés dans le journal privé, pas plusieurs utilisateurs du même centre.",
+  "calibration": "Comparer décision et cible métier aux exemples avant activation. Ce jeu synthétique teste la cohérence des règles, pas la précision d'un classificateur IA. Réexaminer après 10 demandes réelles ou une décision contestée ; faire relire toute modification de poids/seuils dans une PR."
+}
