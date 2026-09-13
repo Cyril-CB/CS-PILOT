@@ -19,6 +19,123 @@ from access_log import (journaliser_action, ACTION_VALIDATION_MOIS,
 validation_bp = Blueprint('validation_bp', __name__)
 
 
+# ── Ordre de validation d'une fiche d'heures ────────────────────────────────
+# Le circuit est séquentiel : le salarié déclare, le responsable contrôle, la
+# direction arrête. Chaque signature atteste de la précédente ; une direction
+# qui signerait avant le salarié arrêterait une fiche que son titulaire n'a pas
+# encore reconnue.
+ORDRE_VALIDATION = ('salarie', 'responsable', 'directeur')
+
+ETAPES_LABELS = {
+    'salarie': 'le salarié',
+    'responsable': 'le responsable',
+    'directeur': 'la direction',
+}
+
+# Nom porté par une signature posée par l'application, faute de signataire.
+# Écrit par la migration 0067 sur les fiches verrouillées avant l'ordre de
+# validation : elles étaient closes sans que le salarié ait jamais signé.
+SIGNATURE_AUTOMATIQUE = 'Validation automatique'
+
+
+def etapes_posees(validation, version_id, proprietaire_est_responsable):
+    """Les étapes qui ne sont plus attendues sur cette version de la fiche.
+
+    Une signature ne compte que si elle porte sur la version en cours : une
+    fiche modifiée depuis rend caduques les signatures précédentes, et le
+    circuit repart de son début (même lecture que `presenter_validation`).
+
+    S'y ajoute, sur la fiche d'un responsable, l'étape « responsable »
+    elle-même : il n'a personne au-dessus de lui hormis la direction, il signe
+    donc comme salarié et la direction prend la suite.
+    """
+    posees = set()
+    if validation is not None:
+        for etape in ORDRE_VALIDATION:
+            signature = validation[f'version_{etape}_id']
+            if signature is not None and signature == version_id:
+                posees.add(etape)
+    if proprietaire_est_responsable:
+        posees.add('responsable')
+    return posees
+
+
+def etape_attendue(validation, version_id, proprietaire_est_responsable):
+    """Quelle signature la fiche attend-elle ? None quand le circuit est clos."""
+    posees = etapes_posees(validation, version_id, proprietaire_est_responsable)
+    for etape in ORDRE_VALIDATION:
+        if etape not in posees:
+            return etape
+    return None
+
+
+def signatures_recevables(validation, version_id, types_demandes,
+                          proprietaire_est_responsable):
+    """Les signatures que cette action peut réellement poser, dans l'ordre.
+
+    On remonte le circuit depuis le début et on s'arrête à la première étape
+    manquante que ce valideur ne peut pas poser : rien ne se signe par-dessus
+    un trou. Une même action peut en poser plusieurs — un directeur également
+    responsable du salarié pose les deux d'un coup, et l'ordre est respecté
+    puisqu'elles s'enchaînent dans la foulée.
+
+    Une étape déjà signée sur cette version n'est jamais reposée : sa date dit
+    quand l'accord a été donné, elle ne doit pas glisser.
+    """
+    posees = etapes_posees(validation, version_id, proprietaire_est_responsable)
+    retenues = []
+    for etape in ORDRE_VALIDATION:
+        if etape in posees:
+            continue
+        if etape not in types_demandes:
+            break
+        retenues.append(etape)
+        posees.add(etape)
+    return retenues
+
+
+def message_ordre_validation(validation, version_id, proprietaire_est_responsable):
+    """Pourquoi cette validation n'a-t-elle pas lieu d'être ?"""
+    attendue = etape_attendue(validation, version_id, proprietaire_est_responsable)
+    if attendue is None:
+        return 'Cette fiche est déjà validée.'
+    return (f"Cette fiche attend d'abord la validation par "
+            f"{ETAPES_LABELS[attendue]}.")
+
+
+def types_validation_possibles(conn, valideur_id, profil, user_id_cible):
+    """Les rôles de validation que ce valideur peut poser sur cette fiche.
+
+    Indépendant de l'ordre : dit qui a le droit de signer quoi, pas quand. Un
+    même utilisateur peut en cumuler plusieurs. Cas notable : un directeur qui
+    est aussi responsable du secteur du salarié doit poser à la fois la
+    validation responsable ET directeur, sinon la fiche ne se verrouille
+    jamais.
+    """
+    if user_id_cible == valideur_id:
+        return ['salarie']
+
+    types = []
+    # Validation responsable : le valideur est responsable du salarié. Deux
+    # façons de l'être (helper commun est_dans_equipe_responsable, utilisé par
+    # toutes les vues) :
+    #  - être responsable de son secteur (même secteur_id) ;
+    #  - être son responsable hiérarchique direct (responsable_id).
+    # Le second cas couvre un salarié rattaché hors de son secteur analytique
+    # (ex. entretien en logistique, encadré par la responsable crèche) et un
+    # directeur désigné comme responsable hiérarchique (le champ liste aussi
+    # les directeurs, cf. admin.py).
+    if profil in ('responsable', 'directeur'):
+        if est_dans_equipe_responsable(conn, valideur_id, user_id_cible):
+            types.append('responsable')
+
+    # Validation directeur : un directeur peut valider toute fiche.
+    if profil == 'directeur':
+        types.append('directeur')
+
+    return types
+
+
 @validation_bp.route('/valider_mois', methods=['POST'])
 @login_required
 def valider_mois():
@@ -47,33 +164,10 @@ def valider_mois():
         refus = verifier_action(conn)
         if refus is not None:
             return refus
-        # Vérifier les droits
-        # Un même utilisateur peut cumuler plusieurs rôles de validation.
-        # Cas notable : un directeur qui est aussi responsable du secteur du
-        # salarié doit poser à la fois la validation responsable ET directeur,
-        # sinon la fiche ne se verrouille jamais (cf. verrouillage plus bas).
-        types_validation = []
+        # Vérifier les droits : qui a le droit de signer quoi.
         profil = session.get('profil')
-
-        if user_id == session['user_id']:
-            types_validation.append('salarie')
-        else:
-            # Validation responsable : le valideur est responsable du salarié.
-            # Deux façons d'être responsable d'un salarié (helper commun
-            # est_dans_equipe_responsable, utilisé par toutes les vues) :
-            #  - être responsable de son secteur (même secteur_id) ;
-            #  - être son responsable hiérarchique direct (responsable_id).
-            # Le second cas couvre un salarié rattaché hors de son secteur
-            # analytique (ex. entretien en logistique, encadré par la
-            # responsable crèche) et un directeur désigné comme responsable
-            # hiérarchique (le champ liste aussi les directeurs, cf. admin.py).
-            if profil in ('responsable', 'directeur'):
-                if est_dans_equipe_responsable(conn, session['user_id'], user_id):
-                    types_validation.append('responsable')
-
-            # Validation directeur : un directeur peut valider toute fiche.
-            if profil == 'directeur':
-                types_validation.append('directeur')
+        types_validation = types_validation_possibles(
+            conn, session['user_id'], profil, user_id)
 
         if not types_validation:
             flash('Vous n\'avez pas le droit de valider cette fiche', 'error')
@@ -102,6 +196,25 @@ def valider_mois():
             return redirect(url_for('validation_bp.vue_mensuelle', user_id=user_id, mois=mois, annee=annee))
 
         version_id = enregistrer_version(conn, contenu, 'signature')
+
+        # Puis l'ordre : qui a le droit de signer *maintenant*. Le circuit est
+        # séquentiel — salarié, responsable, direction — et rien ne se signe
+        # par-dessus une étape manquante. Les signatures se comptent sur la
+        # version qu'on s'apprête à signer : une fiche modifiée depuis fait
+        # repartir le circuit de son début.
+        user_valide = conn.execute(
+            'SELECT profil FROM users WHERE id = ?', (user_id,)
+        ).fetchone()
+        valide_est_responsable = bool(user_valide and user_valide['profil'] == 'responsable')
+
+        types_validation = signatures_recevables(
+            validation, version_id, types_validation, valide_est_responsable)
+        if not types_validation:
+            flash(message_ordre_validation(validation, version_id,
+                                           valide_est_responsable), 'error')
+            return redirect(url_for('validation_bp.vue_mensuelle',
+                                    user_id=user_id, mois=mois, annee=annee))
+
         now = maintenant().strftime('%Y-%m-%d %H:%M:%S')
         user_info = conn.execute('SELECT prenom, nom FROM users WHERE id=?', (session['user_id'],)).fetchone()
         validation_nom = f"{user_info['prenom']} {user_info['nom']}"
@@ -139,25 +252,17 @@ def valider_mois():
             WHERE user_id = ? AND mois = ? AND annee = ?
         ''', params)
 
-        # Vérifier si la fiche doit être verrouillée.
-        # Cas général : validation responsable ET directeur.
-        # Cas des responsables : ils n'ont pas de supérieur au-dessus d'eux
-        # (hormis le directeur), donc la validation directeur suffit à
-        # verrouiller leur fiche.
+        # La fiche se verrouille quand le circuit est complet — c'est-à-dire
+        # quand plus aucune étape n'est attendue sur cette version. Même
+        # lecture que celle qui ordonne les signatures : une seule définition
+        # du circuit, donc pas de fiche close par une combinaison que l'ordre
+        # n'aurait pas permise.
         validation_updated = conn.execute('''
             SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?
         ''', (user_id, mois, annee)).fetchone()
 
-        user_valide = conn.execute(
-            'SELECT profil FROM users WHERE id = ?', (user_id,)
-        ).fetchone()
-        valide_est_responsable = bool(user_valide and user_valide['profil'] == 'responsable')
-
-        doit_verrouiller = bool(
-            validation_updated
-            and validation_updated['version_directeur_id'] == version_id
-            and (validation_updated['version_responsable_id'] == version_id or valide_est_responsable)
-        )
+        doit_verrouiller = etape_attendue(
+            validation_updated, version_id, valide_est_responsable) is None
 
         if doit_verrouiller:
             conn.execute('''
@@ -444,21 +549,30 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
     mois_demande = datetime(annee, mois, 1)
     mois_est_termine = (annee, mois) < (today.year, today.month)
 
+    # Le circuit est séquentiel : le bouton n'apparaît qu'à celui dont c'est le
+    # tour. Mêmes fonctions que l'action de validation, pour que l'écran ne
+    # promette rien que la route refuserait — et n'en cache rien qu'elle
+    # accepterait. La version signée serait celle du contenu affiché.
+    proprietaire_est_responsable = user_affiche['profil'] == 'responsable'
+    version_affichee = validation['version_courante_id'] if validation else None
+    attente_validation = None
     peut_valider_mois = False
     if not validation or not validation['bloque']:
-        if not mois_est_termine:
-            peut_valider_mois = False
-        elif nb_jours_non_declares > 0:
-            peut_valider_mois = False
-        elif user_id_a_afficher == session['user_id'] and session.get('profil') != 'directeur':
-            peut_valider_mois = True
-        elif session.get('profil') == 'directeur':
-            peut_valider_mois = True
-        elif session.get('profil') == 'responsable':
-            # Même règle que l'action de validation : secteur commun OU
-            # rattachement hiérarchique direct.
-            if est_dans_equipe_responsable(conn, session['user_id'], user_id_a_afficher):
-                peut_valider_mois = True
+        signatures = signatures_recevables(
+            validation, version_affichee,
+            types_validation_possibles(conn, session['user_id'],
+                                       session.get('profil'), user_id_a_afficher),
+            proprietaire_est_responsable,
+        )
+        peut_valider_mois = (bool(signatures) and mois_est_termine
+                             and nb_jours_non_declares == 0)
+        if not signatures and mois_est_termine:
+            # Rien à signer pour ce lecteur : soit ce n'est pas son tour, soit
+            # il a déjà signé. Le dire évite de chercher un bouton absent.
+            attendue = etape_attendue(validation, version_affichee,
+                                      proprietaire_est_responsable)
+            if attendue is not None:
+                attente_validation = ETAPES_LABELS[attendue]
 
     peut_modifier = False
     if not (validation and validation['bloque']):
@@ -511,6 +625,8 @@ def _get_vue_mensuelle_data_impl(conn, mois, annee, user_id_param, redirect_rout
         users_accessibles=users_accessibles,
         user_id_a_afficher=user_id_a_afficher,
         peut_modifier=peut_modifier,
+        # Étape que la fiche attend, quand ce n'est pas au lecteur de signer.
+        attente_validation=attente_validation,
         validation=presenter_validation(validation),
         peut_valider_mois=peut_valider_mois,
         mois_est_termine=mois_est_termine,

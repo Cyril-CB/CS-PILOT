@@ -65,22 +65,32 @@ def fiche_complete(app, db, sample_users, sample_contrat, sample_planning):
 
 
 def test_signature_ancienne_ne_verrouille_pas(app, sample_users, fiche_complete):
+    """Modifier la fiche fait repartir le circuit depuis sa première étape."""
     responsable = client_role(app, sample_users, 'responsable')
     direction = client_role(app, sample_users, 'directeur')
     salarie = client_role(app, sample_users, 'salarie')
+    signer(salarie, fiche_complete)
     signer(responsable, fiche_complete)
     salarie.post('/saisie_heures', data={
         'date': '2026-08-03', 'heure_debut_matin': '08:30',
         'heure_fin_matin': '12:00', 'heure_debut_aprem': '13:30',
         'heure_fin_aprem': '18:00', 'type_saisie': 'normal',
     })
+    # Les deux signatures portent sur la version d'avant : la direction ne
+    # peut pas arrêter une fiche que plus personne n'a reconnue.
     signer(direction, fiche_complete)
     assert not validation(fiche_complete)['bloque']
+    assert validation(fiche_complete)['version_directeur_id'] is None
+
+    signer(salarie, fiche_complete)
     signer(responsable, fiche_complete)
+    assert not validation(fiche_complete)['bloque']
+    signer(direction, fiche_complete)
     assert validation(fiche_complete)['bloque']
 
 
 def test_absence_ne_change_pas_une_fiche_verrouillee(app, sample_users, fiche_complete):
+    signer(client_role(app, sample_users, 'salarie'), fiche_complete)
     signer(client_role(app, sample_users, 'responsable'), fiche_complete)
     direction = client_role(app, sample_users, 'directeur')
     signer(direction, fiche_complete)
@@ -104,11 +114,12 @@ def test_absence_ne_change_pas_une_fiche_verrouillee(app, sample_users, fiche_co
 def test_post_fiche_incomplete_ne_cree_pas_de_signature(app, db, sample_users, fiche_complete):
     db.execute('DELETE FROM heures_reelles WHERE user_id=?', (fiche_complete,))
     db.commit()
-    signer(client_role(app, sample_users, 'responsable'), fiche_complete)
+    signer(client_role(app, sample_users, 'salarie'), fiche_complete)
     assert validation(fiche_complete) is None
     # La même fiche devient signable une fois les journées réellement saisies.
     from tests.test_validation import _creer_saisie_mois
     _creer_saisie_mois(db, fiche_complete, MOIS, ANNEE)
+    signer(client_role(app, sample_users, 'salarie'), fiche_complete)
     signer(client_role(app, sample_users, 'responsable'), fiche_complete)
     v = validation(fiche_complete)
     assert v['version_responsable_id'] == v['version_courante_id']
@@ -116,6 +127,12 @@ def test_post_fiche_incomplete_ne_cree_pas_de_signature(app, db, sample_users, f
 
 
 def verrouiller(app, users, user_id):
+    """Le circuit complet, dans l'ordre imposé : salarié, responsable, direction.
+
+    Le titulaire signe depuis son propre compte ; les fiches de ces tests sont
+    celles du salarié, sauf mention contraire.
+    """
+    signer(client_role(app, users, 'salarie'), user_id)
     signer(client_role(app, users, 'responsable'), user_id)
     signer(client_role(app, users, 'directeur'), user_id)
     assert validation(user_id)['bloque']
@@ -193,8 +210,13 @@ def test_controle_central_annule_toute_la_transaction(
     assert etat_metier(uid) == avant
 
 
-@pytest.mark.parametrize('premier,second', [('responsable', 'directeur'), ('directeur', 'responsable')])
-def test_ordre_libre_signatures_et_meme_seconde(app, db, monkeypatch, sample_users, fiche_complete, premier, second):
+def test_signatures_dans_la_meme_seconde_et_version_qui_change(
+        app, db, monkeypatch, sample_users, fiche_complete):
+    """Une modification, même à la seconde près, disqualifie les signatures.
+
+    L'ordre des signatures, lui, n'est plus libre : le circuit repart de son
+    début — salarié, responsable, direction — à chaque nouvelle version.
+    """
     from datetime import datetime
     import fiches_versions
     import blueprints.validation as routes
@@ -202,27 +224,37 @@ def test_ordre_libre_signatures_et_meme_seconde(app, db, monkeypatch, sample_use
     monkeypatch.setattr(fiches_versions, 'maintenant', lambda: instant)
     monkeypatch.setattr(routes, 'maintenant', lambda: instant)
     uid = fiche_complete
-    signer(client_role(app, sample_users, premier), uid)
+    signer(client_role(app, sample_users, 'salarie'), uid)
+    signer(client_role(app, sample_users, 'responsable'), uid)
     v1 = validation(uid)['version_courante_id']
+
     db.execute("UPDATE heures_reelles SET commentaire='Correction dans la même seconde' "
                "WHERE user_id=? AND date='2026-08-03'", (uid,))
     db.commit()
     v2 = validation(uid)['version_courante_id']
     assert v2 != v1
-    signer(client_role(app, sample_users, second), uid)
+
+    # Les deux signatures portent sur v1 : la direction ne peut pas conclure.
+    signer(client_role(app, sample_users, 'directeur'), uid)
     v = validation(uid)
     assert not v['bloque']
-    assert v[f'version_{premier}_id'] == v1
-    assert v[f'version_{second}_id'] == v2
-    signer(client_role(app, sample_users, premier), uid)
+    assert v['version_responsable_id'] == v1
+    assert v['version_directeur_id'] is None
+
+    signer(client_role(app, sample_users, 'salarie'), uid)
+    signer(client_role(app, sample_users, 'responsable'), uid)
+    signer(client_role(app, sample_users, 'directeur'), uid)
     v = validation(uid)
-    assert v['bloque'] and v['version_directeur_id'] == v['version_responsable_id'] == v2
+    assert v['bloque']
+    assert v['version_salarie_id'] == v['version_responsable_id'] == v2
+    assert v['version_directeur_id'] == v2
     assert v['date_directeur'] == v['date_responsable']
 
 
 def test_formulaire_ancien_refuse_sans_mutation(app, db, sample_users, fiche_complete):
     from tests.conftest import _reference_fiche
     uid = fiche_complete
+    signer(client_role(app, sample_users, 'salarie'), uid)
     responsable = client_role(app, sample_users, 'responsable')
     ref = _reference_fiche(responsable, uid, MOIS, ANNEE)
     db.execute("UPDATE heures_reelles SET commentaire='Changement pendant la lecture' WHERE user_id=?", (uid,))
@@ -275,9 +307,10 @@ def test_reouverture_explicite_et_nouvelles_signatures(app, sample_users, fiche_
     assert validation(uid) is None
     direction.post('/absences', data={'user_id': uid, 'motif': 'Arrêt maladie',
                                      'date_debut': '2026-08-03', 'date_fin': '2026-08-03'})
-    signer(direction, uid)
-    assert not validation(uid)['bloque']
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
+    assert not validation(uid)['bloque']
+    signer(direction, uid)
     v = validation(uid)
     assert v['bloque'] and v['version_courante_id'] != ancienne
     conn = get_db()
@@ -287,7 +320,8 @@ def test_reouverture_explicite_et_nouvelles_signatures(app, sample_users, fiche_
         ouverture = next(e for e in events if e['evenement'] == 'reouverture')
         assert 'Arrêt reçu après clôture' in ouverture['details']
         assert ouverture['auteur_id'] == sample_users['directeur_id']
-        assert len([e for e in events if e['evenement'] == 'signature']) == 4
+        # Deux circuits complets : salarié, responsable, direction, deux fois.
+        assert len([e for e in events if e['evenement'] == 'signature']) == 6
     finally:
         conn.close()
 
@@ -322,6 +356,7 @@ def test_absence_multi_mois_et_conge_apres_signature(app, db, sample_users, fich
     uid = fiche_complete
     responsable = client_role(app, sample_users, 'responsable')
     direction = client_role(app, sample_users, 'directeur')
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(responsable, uid)
     v1 = validation(uid)['version_courante_id']
     direction.post('/absences', data={'user_id': uid, 'motif': 'Arrêt maladie',
@@ -391,6 +426,7 @@ def test_completude_backend_conserve_les_jours_non_dus(app, db, sample_users, fi
         db.execute("UPDATE contrats SET date_fin='2026-07-31' WHERE user_id=?", (uid,))
         db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut) VALUES (?,'CDD','2026-08-04')", (uid,))
     db.commit()
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
     assert validation(uid)['version_responsable_id']
 
@@ -494,9 +530,10 @@ def test_migration_historique_idempotente(app, db, sample_users, fiche_complete,
         assert fermee['version_courante_id'] and fermee['version_directeur_id'] is None
     finally:
         old.close()
-    signer(client_role(app, sample_users, 'directeur'), uid)
-    assert not validation(uid)['bloque']
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
+    assert not validation(uid)['bloque']
+    signer(client_role(app, sample_users, 'directeur'), uid)
     assert validation(uid)['bloque']
 
 
@@ -506,6 +543,7 @@ def test_signature_concurrente_et_modification_ont_un_ordre_atomique(app, sample
     import blueprints.validation as routes
     from fiches_versions import FicheVerrouillee
     uid = fiche_complete
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
     verifiee, modification_commencee, continuer = Event(), Event(), Event()
     original = routes.enregistrer_version
@@ -546,6 +584,7 @@ def test_modification_concurrente_rend_la_page_de_signature_perimee(app, sample_
     from threading import Event
     from tests.conftest import _reference_fiche
     uid = fiche_complete
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
     direction = client_role(app, sample_users, 'directeur')
     reference = _reference_fiche(direction, uid, MOIS, ANNEE)
@@ -587,11 +626,15 @@ def test_pdf_reproduit_les_totaux_figes(app, sample_users, fiche_complete):
 def test_directeur_responsable_signe_la_nouvelle_version_dans_les_deux_roles(
         app, db, sample_users, fiche_complete):
     uid = fiche_complete
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'responsable'), uid)
     precedente = validation(uid)['version_courante_id']
     db.execute("UPDATE heures_reelles SET commentaire='Correction avant double signature' WHERE user_id=?", (uid,))
     db.execute('UPDATE users SET responsable_id=? WHERE id=?', (sample_users['directeur_id'], uid))
     db.commit()
+    # Le circuit repart du salarié ; le directeur, désormais responsable du
+    # salarié, pose ensuite les deux signatures restantes en une action.
+    signer(client_role(app, sample_users, 'salarie'), uid)
     signer(client_role(app, sample_users, 'directeur'), uid)
     v = validation(uid)
     assert v['bloque'] and v['version_courante_id'] != precedente
@@ -608,16 +651,21 @@ def test_fiche_personnelle_responsable_et_signature_salarie_obsolete_dans_pdf(
     db.commit()
     propre_client = client_role(app, {**sample_users, 'responsable_id': uid}, 'responsable')
     signer(propre_client, uid)
-    ancienne = validation(uid)['version_salarie_id']
-    db.execute("UPDATE validations SET date_salarie='2001-02-03 04:05:06' WHERE user_id=?", (uid,))
-    db.execute("UPDATE heures_reelles SET commentaire='Correction personnelle' WHERE user_id=?", (uid,))
-    db.commit()
     direction = client_role(app, sample_users, 'directeur')
     signer(direction, uid)
     v = validation(uid)
     assert v['bloque'] and v['version_directeur_id'] == v['version_courante_id']
+    # Fiche d'un responsable : pas d'étape responsable, il signe comme salarié.
     assert v['version_responsable_id'] is None
-    assert v['version_salarie_id'] == ancienne != v['version_courante_id']
+
+    # Une signature devenue caduque — état que les routes ne produisent plus
+    # depuis l'ordre imposé, mais que porte encore une fiche reprise d'avant.
+    db.execute("UPDATE validations SET version_salarie_id = ?, "
+               "date_salarie='2001-02-03 04:05:06' WHERE user_id=?",
+               (v['version_courante_id'] + 1000, uid))
+    db.commit()
+    v = validation(uid)
+    assert v['version_salarie_id'] != v['version_courante_id']
     presentee = presenter_validation(v)
     assert not presentee['historique_non_versionne']
     assert presentee['validation_salarie'] is None and presentee['date_salarie'] is None

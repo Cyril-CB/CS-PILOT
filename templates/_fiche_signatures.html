@@ -16,7 +16,8 @@ Les signatures antérieures ont été conservées ; leur contenu exact d'origine
     <ul>
     {% set libelles = {'signature': 'Signature', 'modification': 'Contenu modifié',
        'verrouillage': 'Verrouillage', 'reouverture': 'Réouverture motivée',
-       'reprise_historique': 'Reprise du contenu historique'} %}
+       'reprise_historique': 'Reprise du contenu historique',
+       'validation_salarie_auto': 'Validation salarié posée automatiquement'} %}
     {% for evt in evenements_fiche %}
         <li>{{ evt.date_evenement[:19]|replace('T', ' ') }} —
             {{ libelles.get(evt.evenement, evt.evenement) }}

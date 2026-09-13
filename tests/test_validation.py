@@ -1,7 +1,7 @@
 """
 Tests pour le module validation.py :
-- Validation par salarié, responsable, directeur
-- Verrouillage après double validation (responsable + directeur)
+- Validation par salarié, responsable, directeur, dans cet ordre imposé
+- Verrouillage une fois le circuit complet
 - Déverrouillage par directeur
 - Contrôles d'accès sur la vue d'ensemble
 """
@@ -33,6 +33,41 @@ def _creer_saisie_mois(db, user_id, mois, annee):
             )
         jour += timedelta(days=1)
     db.commit()
+
+
+# Comptes de test et mots de passe (cf. conftest.sample_users), par profil.
+COMPTES = {
+    'salarie': ('salarie_test', 'sal123'),
+    'responsable': ('resp_test', 'resp123'),
+    'directeur': ('admin', 'Admin1234'),
+    'comptable': ('compta_test', 'compta123'),
+}
+
+
+def _client(app, compte):
+    """Un client connecté avec l'un des comptes de test."""
+    login, mot_de_passe = COMPTES[compte]
+    client = app.test_client()
+    client.post('/login', data={'login': login, 'password': mot_de_passe})
+    return client
+
+
+def _signer(client, user_id, mois, annee):
+    """Pose une signature via le vrai formulaire, référence de fiche comprise."""
+    return client.post('/valider_mois', data={
+        'user_id': user_id, 'mois': mois, 'annee': annee,
+        'empreinte_fiche': _reference_fiche(client, user_id, mois, annee),
+    }, follow_redirects=True)
+
+
+def _signature_salarie(app, user_id, mois, annee, compte='salarie'):
+    """Première étape du circuit, posée par le titulaire lui-même.
+
+    La validation suit un ordre imposé — salarié, responsable, direction :
+    sans cette signature, les suivantes sont refusées. Elle passe par la route
+    pour être rattachée à la version de fiche signée, comme en production.
+    """
+    return _signer(_client(app, compte), user_id, mois, annee)
 
 
 def _ajouter_jour_ferie(db, date_str, libelle):
@@ -122,6 +157,7 @@ class TestValidationMois:
         mois, annee = 11, 2024
         with app.app_context():
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _signature_salarie(app, sample_users['salarie_id'], mois, annee)
 
             response = resp_client.post('/valider_mois', data={
                 'user_id': sample_users['salarie_id'],
@@ -138,11 +174,12 @@ class TestValidationMois:
             assert validation is not None
             assert validation['validation_responsable'] is not None
 
-    def test_verrouillage_double_validation(self, app, db, sample_users):
-        """La fiche est verrouillée quand responsable ET directeur ont validé."""
+    def test_verrouillage_circuit_complet(self, app, db, sample_users):
+        """La fiche est verrouillée quand les trois signatures sont posées."""
         mois, annee = 10, 2024
         with app.app_context():
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _signature_salarie(app, sample_users['salarie_id'], mois, annee)
 
             # Client 1 : responsable
             client_resp = app.test_client()
@@ -189,6 +226,7 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _signature_salarie(app, sample_users['salarie_id'], mois, annee)
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -231,6 +269,7 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['salarie_id'], mois, annee)
+            _signature_salarie(app, sample_users['salarie_id'], mois, annee)
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -268,6 +307,8 @@ class TestValidationMois:
             db.commit()
 
             _creer_saisie_mois(db, sample_users['comptable_id'], mois, annee)
+            _signature_salarie(app, sample_users['comptable_id'], mois, annee,
+                               compte='comptable')
 
             client_dir = app.test_client()
             client_dir.post('/login', data={'login': 'admin', 'password': 'Admin1234'})
@@ -919,3 +960,277 @@ class TestPlanningTheoriqueAffichage:
         assert '13:00 - 17:00' in html
         assert '4.0h' in html
         assert 'Non travaillé' not in html
+
+
+# ── Ordre de validation : salarié, puis responsable, puis direction ─────────
+
+
+class TestOrdreValidation:
+    """Le circuit est séquentiel, et rien ne se signe par-dessus un trou.
+
+    Chaque signature atteste de la précédente : une direction qui signerait
+    avant le salarié arrêterait une fiche que son titulaire n'a pas reconnue.
+    """
+
+    MOIS, ANNEE = 9, 2024
+
+    def _fiche(self, db, user_id):
+        return db.execute(
+            "SELECT * FROM validations WHERE user_id = ? AND mois = ? AND annee = ?",
+            (user_id, self.MOIS, self.ANNEE)
+        ).fetchone()
+
+    def _valider_sans_reference(self, client, user_id, db):
+        """Signature tentée hors tour : la page ne propose plus de référence.
+
+        Le bouton disparaît pour qui n'est pas de tour ; la route doit refuser
+        de son côté, en supposant une référence obtenue autrement.
+        """
+        from fiches_contenu import calculer_contenu
+        from fiches_versions import empreinte
+        reference = empreinte(calculer_contenu(db, user_id, self.MOIS, self.ANNEE))
+        return client.post('/valider_mois', data={
+            'user_id': user_id, 'mois': self.MOIS, 'annee': self.ANNEE,
+            'empreinte_fiche': reference,
+        }, follow_redirects=True)
+
+    def test_le_responsable_ne_peut_pas_signer_avant_le_salarie(
+            self, app, db, sample_users):
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+
+            reponse = self._valider_sans_reference(
+                _client(app, 'responsable'), salarie, db)
+
+            # Jinja échappe l'apostrophe : on vise la fin de la phrase.
+            assert 'la validation par le salarié' in reponse.get_data(as_text=True)
+            assert self._fiche(db, salarie) is None
+
+    def test_la_direction_ne_peut_pas_signer_avant_le_responsable(
+            self, app, db, sample_users):
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+            _signature_salarie(app, salarie, self.MOIS, self.ANNEE)
+
+            reponse = self._valider_sans_reference(
+                _client(app, 'directeur'), salarie, db)
+
+            assert 'la validation par le responsable' in reponse.get_data(as_text=True)
+            fiche = self._fiche(db, salarie)
+            assert fiche['validation_directeur'] is None
+            assert fiche['bloque'] == 0
+
+    def test_le_circuit_complet_dans_l_ordre_verrouille(self, app, db, sample_users):
+        """Salarié, puis responsable, puis direction : la fiche se ferme."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+
+            _signature_salarie(app, salarie, self.MOIS, self.ANNEE)
+            assert self._fiche(db, salarie)['validation_salarie'] is not None
+            assert self._fiche(db, salarie)['bloque'] == 0
+
+            _signer(_client(app, 'responsable'), salarie, self.MOIS, self.ANNEE)
+            assert self._fiche(db, salarie)['validation_responsable'] is not None
+            assert self._fiche(db, salarie)['bloque'] == 0
+
+            _signer(_client(app, 'directeur'), salarie, self.MOIS, self.ANNEE)
+            assert self._fiche(db, salarie)['bloque'] == 1
+
+    def test_la_fiche_d_un_responsable_n_a_pas_d_etape_responsable(
+            self, app, db, sample_users):
+        """Il signe comme salarié ; la direction prend ensuite la suite."""
+        responsable = sample_users['responsable_id']
+        with app.app_context():
+            _creer_saisie_mois(db, responsable, self.MOIS, self.ANNEE)
+            _signature_salarie(app, responsable, self.MOIS, self.ANNEE,
+                               compte='responsable')
+
+            _signer(_client(app, 'directeur'), responsable, self.MOIS, self.ANNEE)
+
+            fiche = self._fiche(db, responsable)
+            assert fiche['validation_responsable'] is None
+            assert fiche['bloque'] == 1
+
+    def test_mais_la_direction_attend_quand_meme_sa_signature(
+            self, app, db, sample_users):
+        """Sauter l'étape responsable ne dispense pas de la première."""
+        responsable = sample_users['responsable_id']
+        with app.app_context():
+            _creer_saisie_mois(db, responsable, self.MOIS, self.ANNEE)
+
+            reponse = self._valider_sans_reference(
+                _client(app, 'directeur'), responsable, db)
+
+            assert 'la validation par le salarié' in reponse.get_data(as_text=True)
+            assert self._fiche(db, responsable) is None
+
+    def test_une_signature_posee_n_est_jamais_reposee(self, app, db, sample_users):
+        """Sa date dit quand l'accord a été donné : elle ne doit pas glisser."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+            _signature_salarie(app, salarie, self.MOIS, self.ANNEE)
+            client = _client(app, 'responsable')
+            _signer(client, salarie, self.MOIS, self.ANNEE)
+            date_posee = self._fiche(db, salarie)['date_responsable']
+
+            self._valider_sans_reference(client, salarie, db)
+
+            assert self._fiche(db, salarie)['date_responsable'] == date_posee
+
+    def test_la_fiche_dit_qui_elle_attend(self, app, db, sample_users):
+        """Pas de bouton pour qui n'est pas de tour, mais une explication."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+
+        with app.test_request_context(
+                f'/vue_mensuelle?mois={self.MOIS}&annee={self.ANNEE}'):
+            from flask import session
+
+            session['user_id'] = sample_users['directeur_id']
+            session['profil'] = 'directeur'
+            conn = get_db()
+            try:
+                data, erreur = _get_vue_mensuelle_data_impl(
+                    conn, self.MOIS, self.ANNEE, salarie,
+                    'validation_bp.vue_mensuelle')
+            finally:
+                conn.close()
+
+        assert erreur is None
+        assert data['peut_valider_mois'] is False
+        assert data['attente_validation'] == 'le salarié'
+
+    def test_une_fiche_modifiee_fait_repartir_le_circuit(
+            self, app, db, sample_users):
+        """Les signatures caduques ne comptent plus : le salarié resigne."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            _creer_saisie_mois(db, salarie, self.MOIS, self.ANNEE)
+            _signature_salarie(app, salarie, self.MOIS, self.ANNEE)
+
+            # La fiche change : la signature du salarié devient caduque.
+            db.execute(
+                "UPDATE heures_reelles SET heure_fin_aprem = '18:30' "
+                "WHERE user_id = ? AND date = ?",
+                (salarie, f'{self.ANNEE}-{self.MOIS:02d}-02'))
+            db.commit()
+
+            reponse = self._valider_sans_reference(
+                _client(app, 'responsable'), salarie, db)
+
+            assert 'la validation par le salarié' in reponse.get_data(as_text=True)
+            assert self._fiche(db, salarie)['validation_responsable'] is None
+
+
+# ── Migration 0067 : fiches verrouillées sans validation du salarié ─────────
+
+
+def _migration_0067():
+    import importlib.util
+    import os
+
+    chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          'migrations', '0067_validation_salarie_retroactive.py')
+    spec = importlib.util.spec_from_file_location('migration_0067', chemin)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    return migration
+
+
+class TestMigrationValidationSalarieRetroactive:
+    """Les fiches closes avant l'ordre de validation sont régularisées.
+
+    Elles ont été verrouillées quand deux signatures suffisaient. Les laisser
+    ainsi les mettrait dans un état que la règle nouvelle interdit.
+    """
+
+    def _fiche_verrouillee(self, db, user_id, mois, annee, salarie=None):
+        db.execute(
+            '''INSERT INTO validations (user_id, mois, annee, validation_salarie,
+                   validation_responsable, validation_directeur, bloque)
+               VALUES (?, ?, ?, ?, 'Dupont Marie', 'Admin Systeme', 1)''',
+            (user_id, mois, annee, salarie)
+        )
+        db.commit()
+
+    def test_la_signature_manquante_est_posee_au_nom_de_l_application(
+            self, app, db, sample_users):
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            self._fiche_verrouillee(db, salarie, 3, 2025)
+
+            _migration_0067().upgrade(db)
+
+            fiche = db.execute(
+                "SELECT * FROM validations WHERE user_id = ? AND mois = 3",
+                (salarie,)).fetchone()
+            assert fiche['validation_salarie'] == 'Validation automatique'
+            assert fiche['date_salarie'] is not None
+            assert fiche['bloque'] == 1
+
+    def test_l_historique_de_la_fiche_le_note_sans_auteur(
+            self, app, db, sample_users):
+        """Personne n'a signé : la trace ne doit désigner personne."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            self._fiche_verrouillee(db, salarie, 3, 2025)
+
+            _migration_0067().upgrade(db)
+
+            traces = db.execute(
+                "SELECT * FROM fiches_evenements "
+                "WHERE evenement = 'validation_salarie_auto'").fetchall()
+            assert len(traces) == 1
+            assert traces[0]['user_id'] == salarie
+            assert traces[0]['auteur_id'] is None
+            assert traces[0]['auteur_nom'] is None
+            assert traces[0]['role'] == 'salarie'
+            assert 'ordre de validation' in traces[0]['details']
+
+    def test_une_fiche_deja_signee_n_est_pas_touchee(self, app, db, sample_users):
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            self._fiche_verrouillee(db, salarie, 3, 2025, salarie='Martin Jean')
+
+            _migration_0067().upgrade(db)
+
+            fiche = db.execute(
+                "SELECT validation_salarie FROM validations WHERE user_id = ?",
+                (salarie,)).fetchone()
+            assert fiche['validation_salarie'] == 'Martin Jean'
+
+    def test_une_fiche_non_verrouillee_reste_en_circuit(self, app, db, sample_users):
+        """Une fiche encore ouverte suit l'ordre : rien à régulariser."""
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            db.execute(
+                "INSERT INTO validations (user_id, mois, annee, "
+                "validation_directeur, bloque) VALUES (?, 3, 2025, 'Admin', 0)",
+                (salarie,))
+            db.commit()
+
+            _migration_0067().upgrade(db)
+
+            fiche = db.execute(
+                "SELECT validation_salarie FROM validations WHERE user_id = ?",
+                (salarie,)).fetchone()
+            assert fiche['validation_salarie'] is None
+
+    def test_rejouer_la_migration_ne_double_rien(self, app, db, sample_users):
+        salarie = sample_users['salarie_id']
+        with app.app_context():
+            self._fiche_verrouillee(db, salarie, 3, 2025)
+
+            migration = _migration_0067()
+            migration.upgrade(db)
+            migration.upgrade(db)
+
+            traces = db.execute(
+                "SELECT COUNT(*) AS nb FROM fiches_evenements "
+                "WHERE evenement = 'validation_salarie_auto'").fetchone()
+            assert traces['nb'] == 1
