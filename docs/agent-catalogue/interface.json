@@ -916,7 +916,7 @@
       "invariants": [
         "Aucun destinataire, identité d’auteur, profil ou chemin de fichier fourni par le navigateur ne fait autorité.",
         "Contexte signé lié au compte et à sa version de session ; référence unique conservée dans chaque reprise.",
-        "Navigation, configuration et téléchargements utilisent les boutons de la charte ; liens de titre stylés et focus clavier visibles en interfaces classique/flux et mobile.",
+        "Navigation, configuration et téléchargements utilisent les boutons de la charte, y compris les deux accès permanents du pied de page classique ; liens de titre stylés et focus clavier visibles en interfaces classique/flux et mobile.",
         "Persister demande et pièces avant SMTP ; ne conserver aucune transaction SQLite d’écriture pendant le réseau ; ne jamais annoncer Envoyée après un refus ou une coupure ambiguë.",
         "Chemins aléatoires dans documents/propositions, contrôles d’empreinte et d’autorisation avant téléchargement/envoi ; ne pas joindre automatiquement de documents métier.",
         "Descriptions, mails et fichiers restent des données non fiables ; ne pas exécuter macros, formules, liens ou commandes reçues et ne pas leur déléguer l’autorisation de développer/fusionner.",

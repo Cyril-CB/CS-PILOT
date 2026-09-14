@@ -96,7 +96,9 @@ def test_liens_du_parcours_respectent_la_charte(
         def __init__(self, html):
             super().__init__()
             self.profondeur = 0
+            self.dans_pied_de_page = False
             self.liens = []
+            self.liens_pied_de_page = []
             self.feed(html)
 
         def handle_starttag(self, tag, attrs):
@@ -104,12 +106,18 @@ def test_liens_du_parcours_respectent_la_charte(
             if tag == 'div':
                 if self.profondeur or 'proposition-page' in attrs.get('class', '').split():
                     self.profondeur += 1
-            if tag == 'a' and self.profondeur:
+            if tag == 'p' and 'proposition-liens' in attrs.get('class', '').split():
+                self.dans_pied_de_page = True
+            if tag == 'a' and (self.profondeur or self.dans_pied_de_page):
                 self.liens.append(attrs)
+                if self.dans_pied_de_page:
+                    self.liens_pied_de_page.append(attrs)
 
         def handle_endtag(self, tag):
             if tag == 'div' and self.profondeur:
                 self.profondeur -= 1
+            if tag == 'p':
+                self.dans_pied_de_page = False
 
     with app.app_context():
         set_option_bool('interface_sans_menu_active', interface_flux)
@@ -132,8 +140,14 @@ def test_liens_du_parcours_respectent_la_charte(
     pages['centre'] = client.get('/propositions?centre=1')
     for nom, reponse in pages.items():
         assert reponse.status_code == 200
-        liens = LiensPage(reponse.text).liens
+        page = LiensPage(reponse.text)
+        liens = page.liens
         assert liens, nom
+        # Le pied de page commun est rendu dans les deux modes ; le CSS le
+        # masque en flux. Il doit rester couvert hors du contenu central.
+        assert [l['href'] for l in page.liens_pied_de_page] == [
+            '/propositions/nouvelle', '/propositions'
+        ], nom
         for lien in liens:
             classes = set(lien.get('class', '').split())
             assert 'btn' in classes or 'proposition-lien-titre' in classes, (nom, lien)

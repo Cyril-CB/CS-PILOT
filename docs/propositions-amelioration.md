@@ -3,7 +3,8 @@
 ## Parcours du centre
 
 Les liens de navigation, configuration et téléchargement reprennent les boutons
-de l'application. Le périmètre sélectionné est signalé visuellement et par
+de l'application, y compris les deux accès permanents du pied de page classique.
+Le périmètre sélectionné est signalé visuellement et par
 `aria-current` ; les titres restent des liens textuels aux couleurs de la charte,
 avec survol et focus clavier visibles, en interface classique comme en flux.
 

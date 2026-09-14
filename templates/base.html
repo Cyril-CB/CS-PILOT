@@ -439,8 +439,8 @@
             <p>CS-PILOT - Version {{ app_version }}</p>
             {% if session.user_id and session.profil in ('directeur', 'comptable', 'responsable', 'salarie', 'prestataire') %}
             <p class="proposition-liens">
-                <a href="{{ url_for('propositions_bp.nouvelle') }}" data-proposer-amelioration>Proposer une amélioration</a>
-                <a href="{{ url_for('propositions_bp.liste') }}">Mes propositions</a>
+                <a href="{{ url_for('propositions_bp.nouvelle') }}" class="btn btn-secondary btn-sm" data-proposer-amelioration>Proposer une amélioration</a>
+                <a href="{{ url_for('propositions_bp.liste') }}" class="btn btn-secondary btn-sm">Mes propositions</a>
             </p>
             {% endif %}
         </footer>
