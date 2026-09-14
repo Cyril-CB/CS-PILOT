@@ -113,6 +113,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0070', 'Référence annuelle et modes des comptes du budget'),
     ('0071', 'Résilience et convergence du schéma'),
     ('0072', 'Propositions d’amélioration'),
+    ('0073', 'Fiche d’identité du centre'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2139,6 +2140,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_resilience(conn)
     from schema_propositions import creer_schema as creer_schema_propositions
     creer_schema_propositions(conn)
+    from schema_identite_centre import creer_schema as creer_schema_identite_centre
+    creer_schema_identite_centre(conn)
 
 
 def preparer_demarrage():

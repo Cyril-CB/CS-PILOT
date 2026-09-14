@@ -379,7 +379,10 @@
                 <a href="{{ url_for('validation_bp.vue_ensemble_validation') }}" class="sidebar-link">📋 Vue ensemble</a>
                 {% endif %}
  	            {% endif %}
-	        </nav>
+            {% if session.profil in ('directeur', 'comptable', 'responsable') %}
+            <a href="{{ url_for('identite_centre_bp.fiche') }}" class="sidebar-link">⌂ Identité du centre</a>
+            {% endif %}
+        </nav>
 
         <div class="sidebar-footer">
             <a href="{{ url_for('propositions_bp.liste') }}" class="sidebar-link">Mes propositions d’amélioration</a>

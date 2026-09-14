@@ -161,11 +161,12 @@
       ],
       "extension_points": [
         "Réutiliser les autorisations de dossier et le rattachement aux étapes pour les pièces propres aux subventions.",
-        "Pour une fiche d’identité associative ou des statuts partagés, prévoir une identité de document indépendante du dossier : les champs actuels représentent une pièce remplaçable par dossier/étape."
+        "Pour une fiche d'identité associative ou des statuts partagés, réutiliser association.identite_centre ; les pièces actuelles restent propres à un dossier/étape."
       ],
       "related_features": [
         "administration.stockage_documents",
-        "association.subventions_suivi"
+        "association.subventions_suivi",
+        "association.identite_centre"
       ],
       "limitations": [
         "Stockage d’une seule pièce par dossier et d’une seule pièce par étape, remplacée à chaque nouvel upload ; pas d’historique de versions dans ces tables.",
@@ -1090,6 +1091,104 @@
         "Les absences sont interprétées comme journées indisponibles par _jours_absences_set ; ce helper ne soustrait pas des créneaux partiels.",
         "Les occurrences récurrentes impossibles à placer sont exclues des alertes de non-placement.",
         "La phrase introductive du blueprint évoquant une phase réservée au comptable est obsolète ; PROFILS_AUTORISES, planif_required et les tests permettent les quatre profils internes."
+      ]
+    },
+    {
+      "id": "association.identite_centre",
+      "title": "Fiche d’identité et documents communs du centre",
+      "purpose": "Retrouver et maintenir les données légales et pièces récurrentes de l'établissement, indépendamment des subventions.",
+      "example_requests": [
+        "SIRET asso",
+        "SIREN association",
+        "statuts association",
+        "code de convention collective"
+      ],
+      "capabilities": [
+        "Une fiche unique par installation : nom, SIREN, SIRET, APE/NAF et code de convention collective informatif ; saisie progressive facultative.",
+        "30 champs libellé (80 caractères) et valeur texte (2000 caractères), uniques après normalisation de la casse Unicode ; création/modification/suppression sous droits ; aucun calcul.",
+        "50 documents de 5 Mio maximum, un fichier par ajout ; titre, téléchargement en pièce jointe et suppression après commit ; contrôle de nom, format, taille, empreinte et chemin.",
+        "Contrôle de version de fiche pour refuser l'écrasement d'une modification concurrente ; session et profil revérifiés sous transaction.",
+        "Accès par la barre intelligente et Tout explorer, interfaces classique/flux et mobile.",
+        "Migration 0073 idempotente et schéma neuf commun ; tables/références couvertes par sauvegarde, restauration et protocole de mise à jour."
+      ],
+      "entry_points": [
+        "identite_centre_bp.fiche",
+        "identite_centre_bp.telecharger"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/identite_centre.py"
+        ],
+        "service_files": [
+          "identite_centre.py",
+          "schema_identite_centre.py",
+          "propositions.py",
+          "document_files.py",
+          "stockage_restaure.py",
+          "resilience.py",
+          "database.py",
+          "app.py",
+          "navigation.py",
+          "static/css/style.css",
+          "migrations/0073_identite_centre.py"
+        ],
+        "templates": [
+          "templates/identite_centre.html",
+          "templates/base.html"
+        ],
+        "tables": [
+          "identite_centre",
+          "identite_centre_champs",
+          "identite_centre_documents",
+          "users"
+        ],
+        "tests": [
+          "tests/test_identite_centre.py",
+          "tests/test_propositions.py",
+          "tests/test_migrations_resilience.py",
+          "tests/test_update_engine.py"
+        ],
+        "docs": [
+          "docs/identite-centre.md",
+          "docs/mises-a-jour.md"
+        ]
+      },
+      "access": {
+        "summary": "Direction/comptabilité : lecture et toutes les écritures. Responsable : lecture et téléchargement seulement. Salarié, prestataire et visiteur : refus, même par URL directe.",
+        "scope": "Fiche et documents communs à l'unique établissement de l'installation ; aucune assignation à un dossier ni délégation implicite.",
+        "conditions": [
+          "Compte actif et session courante ; profil revérifié pour chaque écriture.",
+          "CSRF et révision courante requis pour les POST ; corps plafonné à 6 Mio avant lecture CSRF, limite du centre prioritaire."
+        ],
+        "sources": [
+          "blueprints/identite_centre.py",
+          "sessions_securite.py",
+          "app.py",
+          "utils.py"
+        ]
+      },
+      "invariants": [
+        "Les zéros initiaux des identifiants sont conservés ; formats contrôlés, préfixe SIREN/SIRET cohérent quand les deux sont saisis.",
+        "Code de convention collective purement informatif ; textes et formules reçues jamais exécutés.",
+        "Fichiers privés sous documents/identite-centre, nom interne aléatoire, empreinte vérifiée au téléchargement ; aucune URL de stockage exposée.",
+        "Refus de version obsolète sans mutation ; rollback nettoie uniquement les fichiers nouvellement écrits ; suppression disque après commit.",
+        "Boutons, formulaires, cartes, couleurs et focus de l'application réutilisés ; interfaces classique/flux et mobile."
+      ],
+      "extension_points": [
+        "Réutiliser cette fiche pour les informations communes ; conserver les pièces spécifiques dans les dossiers de subvention.",
+        "Réutiliser les validations de pièces de propositions.py ; une évolution des formats doit vérifier les deux parcours.",
+        "Ne pas convertir les champs libres en moteur de calcul ou multiplier les établissements sans nouveau périmètre."
+      ],
+      "related_features": [
+        "association.subventions_documents",
+        "administration.stockage_documents",
+        "interface.recherche"
+      ],
+      "limitations": [
+        "Aucune vérification auprès d'un registre officiel ni certification des identifiants ; aucun barème de paie.",
+        "Pas de multi-établissements, d'historique de versions des documents ni de corbeille ; restauration via sauvegarde.",
+        "Contrôles de formats hérités des propositions, sans analyse antivirus ; les documents restent des contenus non fiables.",
+        "Nettoyage disque non bloquant après commit ; un échec peut laisser un fichier orphelin privé, sans rétablir son accès par l'application."
       ]
     }
   ]
