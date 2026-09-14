@@ -1,5 +1,48 @@
 # Pilote de développement dans Work
 
+## Passage aux demandes multiples (v2)
+
+Le pilote initial à une référence reste décrit ci-dessous pour les exécutions
+épinglées en v1. Le fonctionnement élargi suit désormais
+`multi-demandes-v2.json`, `prompt-work-v2.md`, `evolutions-v2.json` et
+`definition-termine-v2.json`. Ne pas mélanger les plafonds des deux versions.
+La grille et le format du formulaire restent v1. La fusion de la PR de
+configuration par le propriétaire valide le candidat à épingler ; la présence
+de ces fichiers n'active aucune tâche et ne change aucun épinglage existant.
+
+- Ouverture à toutes les propositions du formulaire, avec provenance et
+  correspondant vérifiés pour chaque dossier ; une source inconnue attend sa
+  vérification dans Work et ne bloque pas les autres demandes.
+- Trois développements indépendants non intégrés maximum, branches depuis dev
+  et PR vers dev ; les demandes en attente de précisions avant développement
+  restent suivies. Délégation seulement si elle est autorisée et disponible.
+- Report des correctifs main vers dev proposé par PR ; gestion exclusive du
+  schéma, inventaire des numéros sur main/dev/PR et tests d'ordre des migrations.
+- Validation du résultat intégré puis PR dev vers main ; toutes les fusions
+  et les mises en production restent humaines.
+
+`scripts/file_agent.py` fournit des transitions pures pour préparer les états
+privés : réservations, plafonds, dépendances, déduplication, intentions et
+résultats d'effets. Il ne classe pas les mails, n'accorde aucun droit, ne lance
+pas de sous-agent et ne réalise pas le remplacement Library. Le coordinateur
+effectue les lectures et publications sous CAS réel. Ne jamais présenter les
+tests de concurrence simulée comme une exécution autonome observée.
+
+```bash
+python -m pytest -q tests/test_file_agent.py tests/test_triage_agent.py
+python -m scripts.file_agent --verifier /chemin/prive/file-demandes.json
+python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json
+python scripts/validate_feature_catalogue.py
+```
+
+Les scénarios de file sont répertoriés dans `calibration-file-v2.json` et
+exécutés par `test_file_agent.py`. Conserver l'ancien dossier clos dans le
+journal, ajouter `file_demandes` v2 et garder séparées la configuration proposée
+et celle active jusqu'à validation de l'épinglage. La chaîne Excel reçue dans
+Outlook reste à vérifier si aucun fichier métier n'a été reçu ; les tests SMTP
+locaux ne remplacent pas cette preuve. Un dossier dont une pièce indispensable
+ne peut pas être vérifiée attend, sans suspendre toute la file.
+
 ## Contrats versionnés
 
 - Entrée du formulaire : `proposition-v1.schema.json`.

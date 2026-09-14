@@ -1,0 +1,68 @@
+{
+  "format": "cspilot.calibration-file",
+  "version": 2,
+  "commande": "python -m pytest -q tests/test_file_agent.py",
+  "portee": "Scénarios déterministes de file ; CAS simulé distinct du CAS Library, aucune prétention de concurrence Work ou de réception Outlook réelle.",
+  "cas": [
+    {
+      "id": "trois_et_quatrieme",
+      "attendu": "Trois développements démarrent ; le quatrième attend, mais ses réponses sont traitées."
+    },
+    {
+      "id": "pr_non_integree",
+      "attendu": "Une PR en revue, recette ou bloquée continue à occuper son créneau."
+    },
+    {
+      "id": "integration_dev",
+      "attendu": "L'intégration dev libère un créneau sans clore la livraison."
+    },
+    {
+      "id": "ressources",
+      "attendu": "Les ressources communes ou le schéma sont séquencés ; les demandes indépendantes progressent."
+    },
+    {
+      "id": "dependance",
+      "attendu": "Une dépendance non intégrée interdit le démarrage."
+    },
+    {
+      "id": "migration",
+      "attendu": "Réservation après inventaire des branches et PR ; aucune double réservation."
+    },
+    {
+      "id": "verrou",
+      "attendu": "Aucun vol de verrou ; les autres dossiers restent disponibles."
+    },
+    {
+      "id": "pause",
+      "attendu": "La pause interdit les transitions mutatives."
+    },
+    {
+      "id": "perimetre",
+      "attendu": "Une décision ancienne ne permet pas de démarrer un périmètre nouveau."
+    },
+    {
+      "id": "grille",
+      "attendu": "Une grille non favorable interdit la réservation, même si un ancien score était bon."
+    },
+    {
+      "id": "doublons",
+      "attendu": "Hash initial conflictuel refusé sans écrasement ; réponses nouvelles conservées."
+    },
+    {
+      "id": "effet_incertain",
+      "attendu": "Une intention confirmée ou incertaine ne peut pas être recréée."
+    },
+    {
+      "id": "plafonds",
+      "attendu": "Deux précisions, trois corrections par dossier ; compteurs indépendants."
+    },
+    {
+      "id": "interdictions",
+      "attendu": "Fusion, déploiement et reply-all refusés."
+    },
+    {
+      "id": "cas",
+      "attendu": "Deux candidats au même numéro de version : seul le premier gagne."
+    }
+  ]
+}

@@ -277,6 +277,25 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
 
 ### Propositions destinées à l’agent de développement
 
+- Pour le traitement de plusieurs demandes, lire
+  `docs/agent-demandes/multi-demandes-v2.json` et `prompt-work-v2.md` dans ce
+  même dossier. Une branche isolée par demande depuis `dev`, PR vers `dev`,
+  au plus trois développements non intégrés. L'analyse et les précisions des
+  autres demandes continuent ; les dépendances et les migrations sont séquencées.
+- Le coordinateur peut déléguer les demandes indépendantes à des sous-agents
+  autorisés, chacun dans un checkout distinct. Il conserve seul les écritures
+  du journal partagé, sous contrôle de version, avec des verrous courts et des
+  réservations par dossier. Aucun verrou abandonné repris automatiquement.
+- Les correctifs urgents restent proposés depuis `main` ; leur report vers
+  `dev` fait l'objet d'une PR. Aucune écriture directe ou forcée sur main/dev,
+  aucune fusion par l'agent. Tester les migrations et le résultat intégré avant
+  une PR de livraison dev vers main ; toutes les fusions restent humaines.
+- V2 distingue `integre_dev`, `livre_main` et disponibilité dans le centre.
+  Appliquer `definition-termine-v2.json` et `evolutions-v2.json` avec les
+  consignes v2 ; les fichiers v1 sont conservés pour les anciens épinglages.
+  Exécuter aussi `python -m pytest -q tests/test_file_agent.py` et vérifier la
+  file privée avec `python -m scripts.file_agent --verifier <fichier_prive>`.
+
 - Lire `docs/propositions-amelioration.md` pour tout changement du formulaire,
   des pièces, du suivi SMTP ou du format du mail. Actualiser dans la même PR
   le schéma JSON versionné et les fiches du catalogue concernées.

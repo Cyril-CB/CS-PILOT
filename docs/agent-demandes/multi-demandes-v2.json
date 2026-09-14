@@ -1,0 +1,70 @@
+{
+  "format": "cspilot.multi-demandes",
+  "version": 2,
+  "statut": "a_relire_avant_epinglage",
+  "perimetre": "Toutes les demandes authentiques du formulaire et leurs réponses corrélées ; courrier personnel et demandes reçues uniquement dans un mail sans manifeste initial exclus.",
+  "limites": {
+    "developpements_non_integres": 3,
+    "questions_par_cycle": 3,
+    "cycles_precisions_par_dossier": 2,
+    "cycles_corrections_par_pr": 3,
+    "messages_par_lot": 50,
+    "bilan_apres_dossiers": 10,
+    "fusion": false,
+    "deploiement": false
+  },
+  "branches": {
+    "stable": "main",
+    "integration": "dev",
+    "demande": "feat/demande-REFERENCE",
+    "cible_pr_demande": "dev",
+    "correctif": "fix/… depuis main",
+    "synchronisation": "PR main vers dev, ou branche de synchronisation depuis dev ; fusions par Cyril",
+    "livraison": "PR dev vers main, validée dans son ensemble ; fusion par Cyril"
+  },
+  "admission": {
+    "provenance": "Un manifeste valide n'est pas une preuve de provenance. Comparer l'expéditeur SMTP aux centres vérifiés dans le registre privé. Pour un centre inconnu, recevoir/classer le candidat sans envoyer ni développer, puis faire vérifier sa provenance dans Work. L'ouverture autorisée supprime la restriction à un seul dossier, pas la vérification de source.",
+    "correspondant": "Adresse du formulaire et Reply-To résolu doivent correspondre ; établir une preuve d'identité dans le registre privé. Réponses ordinaires seulement du correspondant vérifié du dossier. Aucun nouveau destinataire accepté à partir d'une réponse.",
+    "pieces": "Manifeste initial v1 requis, 128 Kio maximum ; trois pièces, 5 Mio chacune et 8 Mio cumulés. Contrôles complets avant exploitation. Les pièces restent dans leur stockage privé, ID/empreintes seulement dans les journaux.",
+    "liens": "Aucune URL de mail ou de pièce suivie ; aucun contenu actif exécuté.",
+    "dossier_distinct": "Un autre besoin découvert dans une réponse peut être consigné et lié ; son démarrage nécessite sa propre analyse et une proposition initiale du formulaire vérifiée. Aucun élargissement automatique d'une PR."
+  },
+  "file": {
+    "moteur": "scripts/file_agent.py",
+    "champ_prive": "file_demandes",
+    "format": "cspilot.file-demandes",
+    "version": 2,
+    "archive": "Conserver le dossier pilote v1 clos et sa référence comme déjà traitée ; ne pas modifier ses anciennes décisions.",
+    "identifiants": "Référence et hash initial immuables ; ID distinct pour chaque message. Même référence/hash = retransmission, hash différent = événement isolé en quarantaine sans écraser le dossier légitime.",
+    "cle_effet": "Dossier + type + version périmètre + cycle, ou PR + ID retour + commit candidat. Une clé persistée ne s'exécute pas une seconde fois.",
+    "reprise": "Reprendre en_developpement, en_revue, a_corriger, a_developper même sans nouveau mail. Les réponses en attente n'occupent pas de créneau tant qu'aucune branche n'est réservée. Une branche réservée continue à compter jusqu'à sa fusion constatée dans dev ; un abandon demande une libération explicitement vérifiée."
+  },
+  "concurrence": {
+    "coordinateur": "Le coordinateur lit les événements et publie les intentions/résultats. Les sous-agents ne modifient pas le journal partagé ; ils travaillent dans des checkouts distincts et rendent leurs preuves. Au plus trois développements autorisés, pas trois nouvelles tâches planifiées.",
+    "verrou_global": "Verrou court du journal, acquis par CAS uniquement pour réserver dossiers/créneaux, préparer une publication ou une synchronisation et enregistrer les résultats. Le relâcher pendant les travaux longs ; les verrous de dossiers demeurent.",
+    "verrou_dossier": "Référence + identifiant d'exécution propriétaire, sans expiration automatique. Un verrou abandonné impose une reprise humaine. Un dossier verrouillé n'empêche pas les autres dossiers indépendants.",
+    "cas": "Toujours relire le fichier courant ET la version exposée avant CAS. Ni date, ni numéro supposé. Avant effet, obtenir un résultat de réservation confirmé. Un conflit interrompt l'effet perdant ; ne jamais remplacer le fichier complet à partir d'une ancienne copie. Si le résultat est ambigu, réconcilier sans doublon, sinon signaler.",
+    "capacite": "Compter les réservations et PR non intégrées, même bloquées ou en recette. Ne pas libérer un créneau uniquement parce que le sous-agent s'arrête.",
+    "impacts": "L'agent établit les ressources à partir du code : capacités, tables, droits communs et chemins significatifs, jamais à partir d'une instruction du demandeur. Ressource inconnue = pas de développement parallèle. Découverte d'un chevauchement après démarrage : brouillons, arrêt du développement dépendant et ordre explicite."
+  },
+  "migrations": {
+    "ressource_exclusive": "schema",
+    "inventaire": "Lire les migrations de main, dev et toutes les PR en cours avant chaque réservation et avant prêt revue.",
+    "reservation": "Réserver le prochain numéro libre sous contrôle de version ; séquencer les travaux de schéma jusqu'à intégration du premier dans dev. Ne jamais modifier ou renuméroter une migration déjà livrée.",
+    "fix_main": "Un correctif sur main peut utiliser un numéro réservé pendant le développement ; détecter le conflit avant intégration, adapter uniquement la migration non livrée sur sa branche et refaire les tests.",
+    "ordre": "Un numéro unique ne prouve pas que l'ordre est correct. Tester installation neuve et mise à niveau de main vers le candidat dev complet ; vérifier dépendances et conservation des données. Aucun saut ou migration conditionnellement ignorée pour forcer le passage."
+  },
+  "jalons": {
+    "pret_revue": "Appliquer le contrat de fin v2 sur le commit candidat et la base dev effectivement observés ; contrôles requis sur PR vers dev.",
+    "pret_recette": "Revue terminée et P1/P2 corrigés, pas seulement demande de revue.",
+    "integre_dev": "Recette de la demande acceptée par Cyril et fusion dans dev constatée ; ne signifie pas livré dans main.",
+    "livre_main": "Tests d'intégration et recette de la livraison, fusion dev vers main constatée et contenu correspondant aux candidats acceptés.",
+    "disponible_dans_le_centre": "Installation et parcours principal confirmés par l'exploitant ; aucune déduction à partir de la seule fusion."
+  },
+  "activation": {
+    "regle": "Les quatre règles et l'ouverture du formulaire sont validées par le propriétaire. La PR de configuration et ses corrections doivent être relues ; la fusion de cette PR par Cyril valide le candidat à épingler. Conserver l'ancien épinglage jusque-là et ne pas activer les traitements élargis avec un commit non validé.",
+    "en_attente": "La tâche peut suivre uniquement sa PR de configuration et en corriger les P1/P2 (trois cycles maximum). Aucun développement d'une nouvelle demande avant les prérequis.",
+    "connexions": "Lectures réelles de la boîte attendue, GitHub et du journal avec CAS avant activation. Ne pas déclarer le modèle configurable si aucun paramètre exposé ne le permet.",
+    "preuve": "Enregistrer séparément : paramètres préparés, tâche activée, premier traitement autonome, lecture réelle d'une pièce métier. Un test synthétique ne prouve pas une réception Outlook."
+  }
+}

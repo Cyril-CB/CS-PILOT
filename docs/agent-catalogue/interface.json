@@ -859,7 +859,8 @@
           "navigation.py",
           "static/js/propositions.js",
           "static/js/flux.js",
-          "migrations/0072_propositions_amelioration.py"
+          "migrations/0072_propositions_amelioration.py",
+          "scripts/file_agent.py"
         ],
         "templates": [
           "templates/proposition_formulaire.html",
@@ -884,7 +885,8 @@
           "tests/propositions_frontend.cjs",
           "tests/test_migrations_resilience.py",
           "tests/test_update_engine.py",
-          "tests/test_email_notifications.py"
+          "tests/test_email_notifications.py",
+          "tests/test_file_agent.py"
         ],
         "docs": [
           "docs/propositions-amelioration.md",
@@ -895,7 +897,12 @@
           "docs/agent-demandes/calibration-v1.json",
           "docs/agent-demandes/decision-v1.schema.json",
           "docs/agent-demandes/evolutions-v1.json",
-          "docs/agent-demandes/definition-termine-v1.json"
+          "docs/agent-demandes/definition-termine-v1.json",
+          "docs/agent-demandes/evolutions-v2.json",
+          "docs/agent-demandes/definition-termine-v2.json",
+          "docs/agent-demandes/calibration-file-v2.json",
+          "docs/agent-demandes/multi-demandes-v2.json",
+          "docs/agent-demandes/prompt-work-v2.md"
         ]
       },
       "access": {
@@ -924,7 +931,7 @@
         "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
       ],
       "extension_points": [
-        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask.",
+        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask. Le contrat v2 multi-demandes-v2.json prévoit trois développements non intégrés, PR vers dev, report des correctifs main et validation du résultat intégré ; scripts/file_agent.py prépare les transitions privées sans effectuer de mutation externe.",
         "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
       ],
       "related_features": [
