@@ -95,6 +95,10 @@
     {
       "id": "instantane_complet",
       "attendu": "Enregistrement initial et évolution : instantané complet exigé et stocké avec les analyses ; après sérialisation, exigences, critères, questions, sources et versions restent disponibles. Champs manquants, critères vides, sources incohérentes, décision divergente ou lien d'analyse invalide sont refusés. Aucune modification d'instantané sous la même version."
+    },
+    {
+      "id": "coherence_entre_versions",
+      "attendu": "Refus d’un ID d’exigence antérieur disparu, d’une source d’évolution sans réception/analyse sur la même version et d’un effet futur ou sans instantané. Préservation des retraits/report motivés et des intentions historiques non exécutables."
     }
   ]
 }

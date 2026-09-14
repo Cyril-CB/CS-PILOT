@@ -643,6 +643,101 @@ def test_initialisation_ancien_journal_exige_reconstruction_explicite(file):
     assert agent.demarrer_developpement(file, ref(1), "execution-1")
 
 
+@pytest.mark.parametrize("defaut", ["id_remplace", "retrograde", "retrait_sans_motif"])
+def test_evolution_conserve_exigences_acquises(file, defaut):
+    file = recevoir(demarrer(file, 1))
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    e = p["exigences"][0]
+    if defaut == "id_remplace":
+        e["id_stable"] = "E2"
+    elif defaut == "retrograde":
+        e["statut"] = "proposee"
+    else:
+        e.update(statut="retiree", motif="")
+        p["exigences"].append({**deepcopy(e), "id_stable": "E2", "statut": "incluse"})
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Instantané"):
+        integrer(file, instantane=p)
+    assert file == avant
+    # Même défaut injecté dans un journal publié : la reprise le refuse.
+    invalide = integrer(file)
+    invalide["dossiers"][ref(1)]["perimetres"]["2"] = p
+    with pytest.raises(ValueError, match="Instantané"):
+        agent.reprendre_developpement(json.loads(json.dumps(invalide)), ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("statut", ["retiree", "differee"])
+def test_retrait_explicite_preserve_identite_et_ancien_critere(file, statut):
+    file = recevoir(demarrer(file, 1))
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    p["exigences"].append({**deepcopy(p["exigences"][0]), "id_stable": "E2"})
+    p["exigences"][0].update(statut=statut, motif="Retrait confirmé dans la réponse")
+    file = json.loads(json.dumps(integrer(file, instantane=p)))
+    file = integrer(recevoir(file, "reponse-2"))
+    d = file["dossiers"][ref(1)]
+    assert d["perimetres"]["1"]["exigences"][0]["statut"] == "incluse"
+    assert d["perimetres"]["3"]["exigences"][0]["statut"] == statut
+    assert agent.reprendre_developpement(file, ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("defaut", ["deux_traces", "analyse", "reception", "version", "sans_changement"])
+def test_source_evolution_exige_reception_et_analyse(file, defaut):
+    file = integrer(recevoir(demarrer(file, 1)))
+    file = integrer(recevoir(file, "reponse-2"))
+    d = file["dossiers"][ref(1)]
+    # Vérifier aussi une source historique, pas seulement celle de v3.
+    if defaut in {"deux_traces", "reception"}:
+        d["evenements"].remove("reponse-1")
+    if defaut in {"deux_traces", "analyse"}:
+        del d["analyses_reponses"]["reponse-1"]
+    elif defaut == "version":
+        d["analyses_reponses"]["reponse-1"]["version_perimetre"] = 1
+        d["analyses_reponses"]["reponse-1"]["perimetre_modifie"] = False
+    else:
+        d["analyses_reponses"]["reponse-1"]["perimetre_modifie"] = False
+    with pytest.raises(ValueError):
+        agent.reprendre_developpement(json.loads(json.dumps(file)), ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("etat", ["intention", "confirme", "incertain", "echec_certain"])
+@pytest.mark.parametrize("defaut", ["future", "sans_instantane"])
+def test_effet_exige_version_existante_des_la_lecture(file, etat, defaut):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "effet-v1", "pr")
+    if etat != "intention":
+        file = agent.resultat_effet(file, ref(1), "execution-1", "effet-v1", etat, "Preuve synthétique")
+    d = file["dossiers"][ref(1)]
+    if defaut == "future":
+        d["effets"]["effet-v1"]["version_perimetre"] = 2
+    else:
+        d["perimetres"] = {}
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Effet"):
+        agent.valider_file(json.loads(json.dumps(file)))
+    # Une réponse légitime ne peut rendre valable une intention future.
+    with pytest.raises(ValueError, match="Effet"):
+        recevoir(file)
+    assert file == avant
+
+
+def test_effet_ancien_reste_historique_sans_redevenir_executable(file):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "effet-v1", "pr")
+    file = integrer(recevoir(file))
+    assert agent.valider_file(json.loads(json.dumps(file)))
+    with pytest.raises(ValueError, match="ancien périmètre"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "effet-v1")
+    file = agent.resultat_effet(file, ref(1), "execution-1", "effet-v1", "echec_certain", "Appel non effectué")
+    assert agent.preparer_effet(file, ref(1), "execution-1", "effet-v2", "pr")
+
+
+def test_mail_exige_aussi_instantane_initial(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    del file["dossiers"][ref(1)]["perimetres"]
+    with pytest.raises(ValueError, match="Instantané"):
+        agent.preparer_effet(file, ref(1), "execution-1", "clarification", "mail_precisions")
+
+
 
 def test_analyse_persistante_reprise_complete_et_historique(file):
     file = agent.prendre_dossier(file, ref(1), "execution-1")

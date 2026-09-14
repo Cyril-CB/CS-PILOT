@@ -113,6 +113,17 @@ def _instantane_correspond(d, p):
             and p["impacts"]["dependances"] == d["dependances"])
 
 
+def _valider_evolution(precedent, courant):
+    exigences = {e["id_stable"]: e for e in courant["exigences"]}
+    for ancienne in precedent["exigences"]:
+        actuelle = exigences.get(ancienne["id_stable"])
+        if actuelle is None:
+            raise ValueError("Instantané : exigence antérieure disparue, conserver son ID stable")
+        if (ancienne["statut"] == "incluse"
+                and actuelle["statut"] not in {"incluse", "retiree", "differee"}):
+            raise ValueError("Instantané : retrait d'une exigence incluse à expliciter avec motif")
+
+
 def _exiger_instantane_courant(d):
     p = d.get("perimetres", {}).get(str(d["version_perimetre"]))
     if p is None or not _instantane_correspond(d, p):
@@ -171,6 +182,14 @@ def valider_file(file):
                 raise ValueError("Instantané : historique des versions incomplet")
         if perimetres:
             _exiger_instantane_courant(d)
+        for p in perimetres.values():
+            if p["version_precedente"] is not None:
+                _valider_evolution(perimetres[str(p["version_precedente"])], p)
+        for effet in d["effets"].values():
+            version = effet.get("version_perimetre")
+            if version is not None and (version > d["version_perimetre"]
+                                        or str(version) not in perimetres):
+                raise ValueError("Effet : périmètre futur ou instantané absent")
         analyses = d.get("analyses_reponses", {})
         if (len(set(d["evenements"])) != len(d["evenements"])
                 or not isinstance(analyses, dict)
@@ -184,6 +203,13 @@ def valider_file(file):
                        or not _texte_non_vide(a.get("preuve"))
                        for message, a in analyses.items())):
             raise ValueError("Historique d'analyse des réponses invalide")
+        for p in perimetres.values():
+            if p["version_precedente"] is not None and any(
+                    message not in d["evenements"] or message not in analyses
+                    or analyses[message]["version_perimetre"] != p["version"]
+                    or not analyses[message]["perimetre_modifie"]
+                    for message in p["source_evenement"]):
+                raise ValueError("Instantané : réponse source sans réception et analyse correspondantes")
         if not isinstance(d.get("historique_perimetres", []), list):
             raise ValueError("Historique des périmètres invalide")
         if d["verrou"] is not None and (not isinstance(d["verrou"], str) or not d["verrou"]):
@@ -451,6 +477,7 @@ def reserver_migration(file, reference, execution, versions_observees):
 def preparer_effet(file, reference, execution, cle, type_effet):
     resultat, d = _detenir(file, reference, execution)
     _exiger_reponses_analysees(d)
+    _exiger_instantane_courant(d)
     if not d["source_verifiee"] or d["etat"] == "quarantaine":
         raise ValueError("Provenance non vérifiée")
     if not isinstance(type_effet, str) or type_effet not in TYPES_EFFETS:

@@ -125,6 +125,12 @@ dans `historique_perimetres`. Sans incidence, l'instantané entier reste identiq
 version, exigences, critères, sources, décision,
 ressources et jalon restent identiques avec une justification explicite.
 La publication CAS doit réussir avant de poursuivre. Une analyse construite
+ne peut supprimer un ID d'exigence antérieur. Un retrait ou report reste
+explicite et motivé. Chaque source d'évolution a une réception et une analyse
+sur la même version ; ces liens sont vérifiés dans les deux sens, pour tout
+l'historique. Toute version d'effet doit référencer un instantané existant et
+non futur. Une intention nouvelle exige aussi l'instantané avant un mail.
+Une analyse construite
 avant une réponse supplémentaire ne peut pas acquitter cette dernière.
 
 Les gardes couvrent démarrage, reprise sur branche existante, migration et

@@ -36,6 +36,10 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    evolutions-v2. La transition vérifie elle-même sa structure et sa concordance
    avec version, décision, impacts et messages sources, puis le conserve dans
    `perimetres` avec les acquittements. Une preuve libre ne le remplace pas.
+   Conserver les IDs stables des exigences antérieures : tout retrait ou report
+   d'une exigence incluse reste explicite et motivé. Le moteur contrôle aussi
+   les liens inverses : chaque source d'évolution a sa réception et son analyse
+   sur la même version, y compris dans les anciens instantanés.
    Publier sous CAS l'ensemble avant toute reprise. Une réponse supplémentaire
    ou un conflit CAS rend l'analyse candidate périmée : repartir des données
    courantes, sans supprimer ni acquitter la nouvelle réponse.
@@ -50,7 +54,9 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    Envoi seulement vers le correspondant vérifié, sans reply-all ni relance.
    Après la première analyse du formulaire, utiliser
    `enregistrer_perimetre_initial` avec l'instantané v1 complet, avant toute
-   réservation. Un ancien journal sans instantané exige une reconstitution
+   réservation ou intention d'effet, y compris un mail. Une version d'effet
+   future ou sans instantané est refusée dès la lecture du journal.
+   Un ancien journal sans instantané exige une reconstitution
    depuis les sources vérifiées ; ne pas inventer les versions manquantes.
    Les références d'analyses déjà acquittées sans instantané sont invalides.
 
