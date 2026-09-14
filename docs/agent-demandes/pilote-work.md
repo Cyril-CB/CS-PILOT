@@ -135,8 +135,13 @@ avant une réponse supplémentaire ne peut pas acquitter cette dernière.
 
 Les gardes couvrent démarrage, reprise sur branche existante, migration et
 préparation d'effets. Revalider aussi toute intention déjà préparée avec
-`verifier_effet_a_executer` sur une lecture fraîche avant l'appel externe :
-une intention de l'ancien périmètre n'est pas réutilisable. Les constats d'effets
+`verifier_effet_a_executer` sur une lecture fraîche avant l'appel externe.
+Cette transition retourne la file candidate avec `tentative` et le propriétaire
+de la tentative ; publier ce candidat sous CAS avant tout appel. Seul le gagnant
+du CAS peut effectuer un appel dans la continuité de cette publication confirmée.
+Une reprise qui lit `tentative` ne rappelle pas le service : elle vérifie l'issue
+puis utilise `reconcilier_effet` avec preuve. Une intention de l'ancien périmètre
+n'est pas réutilisable. Les constats d'effets
 déjà tentés restent enregistrables pendant l'attente d'analyse. Aucun nouveau
 verrou ne peut reprendre automatiquement celui d'une exécution interrompue.
 
@@ -173,7 +178,8 @@ Dédupliquer par référence et empreinte du manifeste et de ses pièces, pas pa
 `isRead` ni par date seule. Une réponse ultérieure complète le dossier existant ;
 elle n'est pas un doublon à ignorer parce que l'objet conserve la référence.
 Avant de créer une PR ou un mail, vérifier les effets déjà enregistrés et leur
-existence distante. Conserver l'intention avant appel. En cas de résultat réseau
+existence distante. Conserver l'intention avant appel et, en v2, publier aussi
+l'état `tentative` sous CAS avant de contacter le service. En cas de résultat réseau
 ambigu, rechercher l'effet ; si le résultat reste indéterminé, état `incertain`
 et arrêt de cet effet, sans renvoi ou seconde PR automatique.
 

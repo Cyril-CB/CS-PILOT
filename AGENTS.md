@@ -299,6 +299,12 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
   attente persistantes avant toute reprise ou publication, même si la collecte
   ne renvoie que des doublons. Publier l'analyse et le périmètre ensemble avant
   de reprendre ; recontrôler aussi une intention préparée avant la réponse.
+- En v2, `verifier_effet_a_executer` retourne une file candidate à l'état
+  `tentative`. La publier sous CAS avant l'appel : seul le gagnant poursuit
+  immédiatement, une fois. Une reprise qui lit cet état vérifie l'issue et
+  réconcilie avec preuve, sans rappeler le service. Conserver aussi description,
+  critères acquis et origines des exigences ; un remplacement retire l'ancien
+  élément avec motif et reçoit un nouvel ID.
 
 - Lire `docs/propositions-amelioration.md` pour tout changement du formulaire,
   des pièces, du suivi SMTP ou du format du mail. Actualiser dans la même PR

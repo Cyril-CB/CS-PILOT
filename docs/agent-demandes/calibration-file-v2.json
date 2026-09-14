@@ -99,6 +99,14 @@
     {
       "id": "coherence_entre_versions",
       "attendu": "Refus d’un ID d’exigence antérieur disparu, d’une source d’évolution sans réception/analyse sur la même version et d’un effet futur ou sans instantané. Préservation des retraits/report motivés et des intentions historiques non exécutables."
+    },
+    {
+      "id": "tentative_avant_appel",
+      "attendu": "CAS de la tentative avant appel. Après coupure avant/après réseau, refuser rejeu et nouvelles actions tant que la tentative n’est pas réconciliée. Deux candidats concurrents : seul gagnant CAS poursuit. Une tentative ne prouve pas un envoi."
+    },
+    {
+      "id": "identite_exigence_complete",
+      "attendu": "Description, critères acquis et origines antérieures préservés sous le même ID ; remplacement par retrait motivé + nouvel ID."
     }
   ]
 }

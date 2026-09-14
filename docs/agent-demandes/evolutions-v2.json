@@ -71,7 +71,8 @@
       "integration": "integrer_reponses reçoit et persiste l'instantané complet et les acquittements dans un seul candidat CAS ; chaque analyse conserve version_perimetre, perimetre_modifie et preuve.",
       "sans_incidence": "Conserver exactement le même instantané ; la réponse est explicitement analysée sans modification. Aucun critère ne change silencieusement sous la même version.",
       "continuite": "Chaque instantané conserve tous les IDs stables du précédent, y compris les éléments retirés ou différés. Une exigence incluse peut rester incluse, ou être retirée/différée avec motif ; elle ne disparaît pas et ne redevient pas implicitement proposée.",
-      "sources_inversees": "Toute source d’un instantané après v1 doit aussi figurer dans evenements et analyses_reponses, avec périmètre modifié et la version exacte de cet instantané. Contrôle de tous les instantanés historiques, dans les deux directions."
+      "sources_inversees": "Toute source d’un instantané après v1 doit aussi figurer dans evenements et analyses_reponses, avec périmètre modifié et la version exacte de cet instantané. Contrôle de tous les instantanés historiques, dans les deux directions.",
+      "identite_complete": "Sous un même ID stable : description inchangée, critères acquis et origines antérieures conservés. Enrichir par ajout de critères/sources est possible. Remplacer ou corriger le contenu exige de conserver l’ancien élément retiré/différé avec motif et de créer un nouvel ID."
     }
   },
   "calibration": [
@@ -139,6 +140,11 @@
       "id": "coherence_historique",
       "evenement": "Après reprise, une exigence, une preuve de réponse ou la version d’une intention a été altérée.",
       "attendu": "Refuser perte d’ID stable, source sans réception/analyse correspondantes et effet futur/sans instantané. Retrait explicite motivé et intentions historiques non exécutables restent conservés."
+    },
+    {
+      "id": "identite_complete",
+      "evenement": "E1 garde son ID mais son contenu est remplacé.",
+      "attendu": "Refuser description remplacée, critères ou origines perdus. Accepter enrichissement préservant les acquis et remplacement explicite E1 retirée avec motif + E2."
     }
   ]
 }

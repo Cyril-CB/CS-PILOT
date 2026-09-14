@@ -53,6 +53,14 @@ def file():
     return file
 
 
+
+def constater_resultat(file, reference, execution, cle, etat, preuve):
+    """Construire un résultat observé après la réservation de sa tentative."""
+    if etat != "echec_certain" and file["dossiers"][reference]["effets"][cle]["etat"] == "intention":
+        file = agent.verifier_effet_a_executer(file, reference, execution, cle)
+    return agent.resultat_effet(file, reference, execution, cle, etat, preuve)
+
+
 def demarrer(file, n):
     synchroniser_instantanes_fixture(file)
     file = agent.prendre_dossier(file, ref(n), f"execution-{n}")
@@ -198,7 +206,7 @@ def test_reference_alteree_ne_remplace_pas_le_dossier(file):
 def test_effet_incertain_jamais_repete(file):
     file = agent.prendre_dossier(file, ref(1), "x")
     file = agent.preparer_effet(file, ref(1), "x", "question-v1", "mail_precisions")
-    file = agent.resultat_effet(file, ref(1), "x", "question-v1", "incertain", "Coupure réseau")
+    file = constater_resultat(file, ref(1), "x", "question-v1", "incertain", "Coupure réseau")
     with pytest.raises(ValueError, match="répéter"):
         agent.preparer_effet(file, ref(1), "x", "question-v1", "mail_precisions")
     with pytest.raises(ValueError, match="transition"):
@@ -304,11 +312,11 @@ def test_verificateur_accepte_historique_effets_valide(file, etat, tmp_path, mon
     file["dossiers"][ref(1)]["pr"] = 101
     for type_effet in ("mail_precisions", "mail_suivi", "branche", "correction", "revue"):
         file = agent.preparer_effet(file, ref(1), "execution-1", type_effet, type_effet)
-    # Les intentions précèdent les résultats : l'incertitude doit empêcher
-    # toute nouvelle intention, pas l'enregistrement des résultats déjà dus.
+    # Validation structurelle d'un historique déjà reçu ; ce test ne simule
+    # pas l'exécution simultanée de ces effets.
     if etat != "intention":
-        for cle in file["dossiers"][ref(1)]["effets"]:
-            file = agent.resultat_effet(file, ref(1), "execution-1", cle, etat, "Preuve synthétique")
+        for effet in file["dossiers"][ref(1)]["effets"].values():
+            effet.update(etat=etat, preuve="Preuve synthétique", execution_tentative="execution-1")
     chemin = tmp_path / "file.json"
     chemin.write_text(json.dumps(file), encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
@@ -330,7 +338,7 @@ def test_intention_pr_non_echouee_interdit_autre_cle(file, etat):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
     if etat != "intention":
-        file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", etat, "Preuve synthétique")
+        file = constater_resultat(file, ref(1), "execution-1", "pr-v1", etat, "Preuve synthétique")
     avant = deepcopy(file)
     with pytest.raises(ValueError, match="PR déjà"):
         agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr")
@@ -346,7 +354,7 @@ def test_mail_incertain_bloque_toute_nouvelle_action_du_dossier(file, type_effet
     if type_effet in {"correction", "revue"}:
         file["dossiers"][ref(1)]["pr"] = 101
     file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_precisions")
-    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "incertain", "Coupure réseau")
+    file = constater_resultat(file, ref(1), "execution-1", "mail-v1", "incertain", "Coupure réseau")
     avant = deepcopy(file)
     with pytest.raises(ValueError, match="incertain"):
         agent.preparer_effet(file, ref(1), "execution-1", "autre-cle-v2", type_effet)
@@ -367,7 +375,7 @@ def test_tout_type_de_resultat_incertain_bloque_un_nouvel_effet(file, type_initi
     if type_initial in {"correction", "revue"}:
         file["dossiers"][ref(1)]["pr"] = 101
     file = agent.preparer_effet(file, ref(1), "execution-1", "initial", type_initial)
-    file = agent.resultat_effet(file, ref(1), "execution-1", "initial", "incertain", "Résultat non déterminé")
+    file = constater_resultat(file, ref(1), "execution-1", "initial", "incertain", "Résultat non déterminé")
     avant = deepcopy(file)
     with pytest.raises(ValueError, match="incertain"):
         agent.preparer_effet(file, ref(1), "execution-1", "suivi", "mail_suivi")
@@ -378,7 +386,7 @@ def test_tout_type_de_resultat_incertain_bloque_un_nouvel_effet(file, type_initi
 def test_reconcilier_effet_incertain_preserve_ambiguite_et_reprend(file, etat_final):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
-    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "incertain",
+    file = constater_resultat(file, ref(1), "execution-1", "mail-v1", "incertain",
                                "Coupure avant réception de la réponse")
     with pytest.raises(ValueError, match="transition"):
         agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", etat_final,
@@ -388,6 +396,7 @@ def test_reconcilier_effet_incertain_preserve_ambiguite_et_reprend(file, etat_fi
     effet = file["dossiers"][ref(1)]["effets"]["mail-v1"]
     assert effet == {
         "type": "mail_suivi",
+        "execution_tentative": "execution-1",
         "version_perimetre": 1,
         "etat": etat_final,
         "preuve": "Vérification distante concluante",
@@ -411,7 +420,7 @@ def test_reconciliation_refuse_transition_ou_preuve_invalide(file, etat_depart, 
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
     if etat_depart != "intention":
-        file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", etat_depart,
+        file = constater_resultat(file, ref(1), "execution-1", "mail-v1", etat_depart,
                                    "Preuve initiale")
     avant = deepcopy(file)
     with pytest.raises(ValueError, match="réconciliation"):
@@ -426,7 +435,7 @@ def test_reconciliation_refuse_transition_ou_preuve_invalide(file, etat_depart, 
 def test_verificateur_refuse_historique_reconciliation_invalide(file, historique):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
-    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "confirme", "Trouvé")
+    file = constater_resultat(file, ref(1), "execution-1", "mail-v1", "confirme", "Trouvé")
     file["dossiers"][ref(1)]["effets"]["mail-v1"]["historique"] = historique
     avec_erreur = deepcopy(file)
     with pytest.raises(ValueError, match="historique"):
@@ -437,7 +446,7 @@ def test_verificateur_refuse_historique_reconciliation_invalide(file, historique
 def test_nouvelle_intention_pr_apres_echec_certain_uniquement(file):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
-    file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", "echec_certain",
+    file = constater_resultat(file, ref(1), "execution-1", "pr-v1", "echec_certain",
                                "Refus explicite du service ; aucune PR créée")
     with pytest.raises(ValueError, match="répéter"):
         agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
@@ -705,7 +714,7 @@ def test_effet_exige_version_existante_des_la_lecture(file, etat, defaut):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "effet-v1", "pr")
     if etat != "intention":
-        file = agent.resultat_effet(file, ref(1), "execution-1", "effet-v1", etat, "Preuve synthétique")
+        file = constater_resultat(file, ref(1), "execution-1", "effet-v1", etat, "Preuve synthétique")
     d = file["dossiers"][ref(1)]
     if defaut == "future":
         d["effets"]["effet-v1"]["version_perimetre"] = 2
@@ -727,7 +736,7 @@ def test_effet_ancien_reste_historique_sans_redevenir_executable(file):
     assert agent.valider_file(json.loads(json.dumps(file)))
     with pytest.raises(ValueError, match="ancien périmètre"):
         agent.verifier_effet_a_executer(file, ref(1), "execution-1", "effet-v1")
-    file = agent.resultat_effet(file, ref(1), "execution-1", "effet-v1", "echec_certain", "Appel non effectué")
+    file = constater_resultat(file, ref(1), "execution-1", "effet-v1", "echec_certain", "Appel non effectué")
     assert agent.preparer_effet(file, ref(1), "execution-1", "effet-v2", "pr")
 
 
@@ -736,6 +745,121 @@ def test_mail_exige_aussi_instantane_initial(file):
     del file["dossiers"][ref(1)]["perimetres"]
     with pytest.raises(ValueError, match="Instantané"):
         agent.preparer_effet(file, ref(1), "execution-1", "clarification", "mail_precisions")
+
+
+@pytest.mark.parametrize("type_effet", sorted(agent.TYPES_EFFETS))
+def test_tentative_publiee_interdit_rejeu_apres_interruption(file, type_effet):
+    file = demarrer(file, 1)
+    if type_effet in {"correction", "revue"}:
+        file["dossiers"][ref(1)]["pr"] = 101
+    file = agent.preparer_effet(file, ref(1), "execution-1", "action", type_effet)
+    avant = deepcopy(file)
+    candidat = agent.verifier_effet_a_executer(file, ref(1), "execution-1", "action")
+    assert file == avant  # Rien n'est exécuté avant publication du candidat.
+    persiste = json.loads(json.dumps(candidat))
+    effet = persiste["dossiers"][ref(1)]["effets"]["action"]
+    assert effet["etat"] == "tentative" and effet["execution_tentative"] == "execution-1"
+    with pytest.raises(ValueError, match="déjà traitée"):
+        agent.verifier_effet_a_executer(persiste, ref(1), "execution-1", "action")
+    with pytest.raises(ValueError, match="incertain"):
+        agent.preparer_effet(persiste, ref(1), "execution-1", "autre", "mail_suivi")
+    assert agent.resultat_effet(persiste, ref(1), "execution-1", "action", "confirme", "Résultat réellement observé")
+
+
+@pytest.mark.parametrize("appel_effectue", [False, True])
+@pytest.mark.parametrize("issue", ["confirme", "echec_certain"])
+def test_coupure_apres_cas_exige_reconciliation_sans_second_appel(file, appel_effectue, issue):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail", "mail_suivi")
+    file = agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail")
+    appels = ["envoi"] if appel_effectue else []
+    file = json.loads(json.dumps(file))  # Coupure avant ou après l'appel, sans résultat.
+    with pytest.raises(ValueError):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail")
+    # L'issue fournie vient d'une vérification externe, pas de la seule tentative.
+    file = agent.reconcilier_effet(file, ref(1), "execution-1", "mail", issue, "Vérification distante de l'issue")
+    e = file["dossiers"][ref(1)]["effets"]["mail"]
+    assert e["historique"][0]["etat"] == "tentative"
+    assert e["execution_tentative"] == "execution-1" and len(appels) == int(appel_effectue)
+    with pytest.raises(ValueError):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail")
+
+
+def test_cas_de_tentative_un_seul_gagnant_peut_appeler(file):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail", "mail_suivi")
+    # Deux lectures de la même version : les candidats seuls n'autorisent pas l'appel.
+    candidats = [agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail") for _ in range(2)]
+    version = 1
+    appels = []
+    for candidat in candidats:
+        if version != 1:  # Le stockage rejette le second CAS ; aucun effet perdant.
+            continue
+        file = json.loads(json.dumps(candidat))
+        version += 1
+        appels.append("appel après CAS confirmé")
+    assert len(appels) == 1
+    with pytest.raises(ValueError):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail")
+
+
+@pytest.mark.parametrize("etat", ["confirme", "incertain"])
+def test_resultat_observe_exige_tentative_precedente(file, etat):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail", "mail_suivi")
+    with pytest.raises(ValueError, match="transition"):
+        agent.resultat_effet(file, ref(1), "execution-1", "mail", etat, "Preuve")
+
+
+@pytest.mark.parametrize("defaut", ["proprietaire_absent", "proprietaire_vide", "perimetre_absent", "retour_intention"])
+def test_tentative_malformee_refusee_a_la_relecture(file, defaut):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail", "mail_suivi")
+    file = agent.verifier_effet_a_executer(file, ref(1), "execution-1", "mail")
+    e = file["dossiers"][ref(1)]["effets"]["mail"]
+    if defaut == "proprietaire_absent":
+        del e["execution_tentative"]
+    elif defaut == "proprietaire_vide":
+        e["execution_tentative"] = ""
+    elif defaut == "perimetre_absent":
+        del e["version_perimetre"]
+    else:
+        e["etat"] = "intention"
+    with pytest.raises(ValueError, match="Effet"):
+        agent.valider_file(json.loads(json.dumps(file)))
+
+
+@pytest.mark.parametrize("champ", ["description", "criteres_recette", "origine"])
+def test_identite_exigence_ne_se_remplace_pas_sous_meme_id(file, champ):
+    file = recevoir(demarrer(file, 1))
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    p["exigences"][0][champ] = "Autre besoin" if champ == "description" else ["Autre contenu"]
+    with pytest.raises(ValueError, match="identité"):
+        integrer(file, instantane=p)
+    invalide = integrer(file)
+    invalide["dossiers"][ref(1)]["perimetres"]["2"] = p
+    with pytest.raises(ValueError, match="identité"):
+        agent.valider_file(json.loads(json.dumps(invalide)))
+
+
+def test_enrichissement_conserve_criteres_et_sources_anterieurs(file):
+    file = recevoir(demarrer(file, 1))
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    p["exigences"][0]["criteres_recette"].append("Le résultat est également consultable au clavier")
+    p["exigences"][0]["origine"].append("reponse-1")
+    file = integrer(file, instantane=p)
+    assert agent.reprendre_developpement(json.loads(json.dumps(file)), ref(1), "execution-1")
+
+
+def test_remplacement_explicitement_relie_a_un_nouvel_id(file):
+    file = recevoir(demarrer(file, 1))
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    p["exigences"][0].update(statut="retiree", motif="Remplacée par E2 selon la réponse")
+    p["exigences"].append({"id_stable": "E2", "description": "Nouveau besoin confirmé",
+                         "criteres_recette": ["Nouveau résultat mesurable"], "origine": ["reponse-1"],
+                         "statut": "incluse", "motif": "Remplace E1"})
+    file = integrer(file, instantane=p)
+    assert agent.reprendre_developpement(json.loads(json.dumps(file)), ref(1), "execution-1")
 
 
 
@@ -888,7 +1012,8 @@ def test_reanalyse_recontrole_conflits_et_dependances_sur_branche_existante(file
 def test_ancienne_intention_revalidee_avant_execution_et_resultat_du_preserve(file):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
-    assert agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")["version_perimetre"] == 1
+    file = agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")
+    assert file["dossiers"][ref(1)]["effets"]["pr-v1"]["version_perimetre"] == 1
     file = recevoir(file)
     with pytest.raises(ValueError, match="réponse.*analyser"):
         agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")
@@ -896,12 +1021,13 @@ def test_ancienne_intention_revalidee_avant_execution_et_resultat_du_preserve(fi
     with pytest.raises(ValueError, match="ancien périmètre"):
         agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")
     # Le résultat d'une action déjà tentée doit pouvoir être consigné.
-    file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", "incertain", "Réseau interrompu")
+    file = constater_resultat(file, ref(1), "execution-1", "pr-v1", "incertain", "Réseau interrompu")
     file = recevoir(file, "reponse-2")
     file = agent.reconcilier_effet(file, ref(1), "execution-1", "pr-v1", "echec_certain", "Absence vérifiée")
     file = integrer(file)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v3", "pr")
-    assert agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v3")["version_perimetre"] == 3
+    candidat = agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v3")
+    assert candidat["dossiers"][ref(1)]["effets"]["pr-v3"]["version_perimetre"] == 3
 
 
 def test_journal_ancien_ne_presume_pas_que_reponses_sont_analysees(file):

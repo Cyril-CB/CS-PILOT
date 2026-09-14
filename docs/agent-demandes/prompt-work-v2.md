@@ -38,6 +38,9 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    `perimetres` avec les acquittements. Une preuve libre ne le remplace pas.
    Conserver les IDs stables des exigences antérieures : tout retrait ou report
    d'une exigence incluse reste explicite et motivé. Le moteur contrôle aussi
+   la description, les critères acquis et les origines antérieures. Un
+   enrichissement peut ajouter critères/sources ; un remplacement conserve
+   l'ancienne exigence retirée avec motif et utilise un nouvel ID.
    les liens inverses : chaque source d'évolution a sa réception et son analyse
    sur la même version, y compris dans les anciens instantanés.
    Publier sous CAS l'ensemble avant toute reprise. Une réponse supplémentaire
@@ -115,20 +118,30 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
     Persister l'intention sous CAS. Aucun effet après conflit ou résultat
     ambigu ; réconcilier le résultat, sinon conserver incertain sans répéter.
     Juste avant l'appel externe, relire le journal sous verrou et utiliser
-    `verifier_effet_a_executer` : l'intention doit concerner le périmètre actuel
-    et aucune réponse ne doit rester à analyser. Une intention préparée avant
+    `verifier_effet_a_executer` : cette transition renvoie maintenant un candidat
+    de file avec l'état `tentative` et `execution_tentative`. Elle vérifie le
+    périmètre actuel et l'absence de réponse à analyser. Publier ce candidat
+    sous CAS AVANT l'appel externe. Seul le gagnant du CAS, dans la continuité
+    de cette publication confirmée, peut appeler le service une fois. Un CAS
+    perdant ou ambigu interdit l'appel ; une reprise qui lit `tentative` doit
+    vérifier le résultat distant puis réconcilier, même si l'appel n'a finalement
+    pas eu lieu. Ne jamais ramener une tentative à intention.
+    Une intention préparée avant
     une évolution ne devient pas exécutable après l'analyse. Ne pas la supprimer :
     constater son résultat ou son absence distante, puis enregistrer la preuve
     avec `resultat_effet` ou `reconcilier_effet`. Une intention ancienne sans
     version n'est pas automatiquement exécutable. Un retour de fonction ne
     prouve ni l'envoi ni le résultat de l'appel externe.
-    Tant qu'un effet du dossier reste incertain, refuser tout nouvel effet de
+    Tant qu'un effet du dossier reste `tentative` ou `incertain`, refuser tout nouvel effet de
     ce dossier, quelle que soit sa clé ou son type (mail, branche, PR, correction,
     revue). Les lectures, réponses entrantes et preuves de résultats déjà dus
     restent traitables ; les dossiers indépendants continuent. Ne pas effacer
     l'incertitude pour reprendre : établir l'issue à partir des preuves distantes,
     puis utiliser `reconcilier_effet` vers `confirme` ou `echec_certain` avec une
-    preuve texte non vide. Cette transition conserve dans l'effet l'état et la
+    preuve texte non vide. Un résultat observé passe de tentative à résultat via
+    `resultat_effet` ; une intention jamais tentée peut seulement être annulée
+    en échec certain avec preuve. `reconcilier_effet` traite une tentative
+    interrompue comme une issue incertaine. Cette transition conserve l'état et la
     preuve de l'ambiguïté précédente ; la publier sous CAS avant toute nouvelle
     intention. Si l'issue reste inconnue, signaler le blocage dans Work.
     Les mutations du journal sont faites par le coordinateur depuis une version

@@ -21,6 +21,7 @@ ETATS = {"recu", "quarantaine", "analyse", "attente_precisions",
          "reporte", "refuse", "bloque_technique", "abandonne"}
 TYPES_EFFETS = {"mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"}
 ETATS_RESULTATS = {"confirme", "incertain", "echec_certain"}
+ETATS_A_RECONCILIER = {"tentative", "incertain"}
 EFFETS_DEVELOPPEMENT = {"branche", "pr", "correction", "revue"}
 
 
@@ -34,19 +35,28 @@ def _valider_effets(effets):
                 or not isinstance(effet.get("type"), str)
                 or effet["type"] not in TYPES_EFFETS
                 or not isinstance(effet.get("etat"), str)
-                or effet["etat"] not in ETATS_RESULTATS | {"intention"}):
+                or effet["etat"] not in ETATS_RESULTATS | {"intention", "tentative"}):
             raise ValueError("Effet invalide : clé, type ou état manquant/inconnu")
-        if ((effet["etat"] != "intention" or "preuve" in effet)
+        if ((effet["etat"] in ETATS_RESULTATS or "preuve" in effet)
                 and not _texte_non_vide(effet.get("preuve"))):
             raise ValueError("Effet invalide : preuve absente ou vide")
+        if ((effet["etat"] == "tentative" or "execution_tentative" in effet)
+                and (not _texte_non_vide(effet.get("execution_tentative"))
+                     or "version_perimetre" not in effet)):
+            raise ValueError("Effet invalide : propriétaire ou périmètre de tentative absent")
+        if effet["etat"] == "intention" and "execution_tentative" in effet:
+            raise ValueError("Effet invalide : une tentative ne redevient pas intention")
         if "version_perimetre" in effet and (type(effet["version_perimetre"]) is not int
                                              or effet["version_perimetre"] < 1):
             raise ValueError("Effet invalide : version de périmètre incorrecte")
         historique = effet.get("historique", [])
         if (not isinstance(historique, list)
                 or any(not isinstance(entree, dict)
-                       or entree.get("etat") != "incertain"
+                       or not isinstance(entree.get("etat"), str)
+                       or entree.get("etat") not in ETATS_A_RECONCILIER
                        or not _texte_non_vide(entree.get("preuve"))
+                       or (entree["etat"] == "tentative"
+                           and not _texte_non_vide(effet.get("execution_tentative")))
                        for entree in historique)
                 or historique and effet["etat"] not in {"confirme", "echec_certain"}):
             raise ValueError("Effet invalide : historique de réconciliation incorrect")
@@ -119,6 +129,10 @@ def _valider_evolution(precedent, courant):
         actuelle = exigences.get(ancienne["id_stable"])
         if actuelle is None:
             raise ValueError("Instantané : exigence antérieure disparue, conserver son ID stable")
+        if (actuelle["description"] != ancienne["description"]
+                or not set(ancienne["criteres_recette"]) <= set(actuelle["criteres_recette"])
+                or not set(ancienne["origine"]) <= set(actuelle["origine"])):
+            raise ValueError("Instantané : identité d'exigence remplacée, retirer l'ancienne et créer un nouvel ID")
         if (ancienne["statut"] == "incluse"
                 and actuelle["statut"] not in {"incluse", "retiree", "differee"}):
             raise ValueError("Instantané : retrait d'une exigence incluse à expliciter avec motif")
@@ -489,7 +503,7 @@ def preparer_effet(file, reference, execution, cle, type_effet):
     if type_effet == "pr" and (d["pr"] is not None or any(
             e["type"] == "pr" and e["etat"] != "echec_certain" for e in d["effets"].values())):
         raise ValueError("PR déjà enregistrée ou création à réconcilier")
-    if any(e["etat"] == "incertain" for e in d["effets"].values()):
+    if any(e["etat"] in ETATS_A_RECONCILIER for e in d["effets"].values()):
         raise ValueError("Résultat incertain dans ce dossier : réconcilier avant tout nouvel effet")
     if type_effet in {"correction", "revue"} and d["pr"] is None:
         raise ValueError("PR absente")
@@ -504,10 +518,12 @@ def preparer_effet(file, reference, execution, cle, type_effet):
 
 
 def verifier_effet_a_executer(file, reference, execution, cle):
-    """À appeler sur une relecture CAS fraîche juste avant l'appel externe.
+    """Réserver durablement la tentative sur une lecture fraîche avant l'appel.
 
-    N'exécute rien et n'autorise jamais à rejouer une intention déjà tentée.
-    Les résultats dus restent enregistrables même après une nouvelle réponse.
+    Retourne le candidat FILE à publier sous CAS, et non une autorisation nue.
+    Seul le gagnant du CAS peut appeler une fois le service dans cette continuité.
+    Une reprise qui lit « tentative » doit réconcilier ; elle ne rejoue pas l'appel.
+    Aucun réseau ici. Les résultats dus restent enregistrables après une réponse.
     """
     resultat, d = _detenir(file, reference, execution)
     _exiger_reponses_analysees(d)
@@ -517,7 +533,7 @@ def verifier_effet_a_executer(file, reference, execution, cle):
         raise ValueError("Intention absente, déjà traitée ou liée à un ancien périmètre")
     if not d["source_verifiee"] or d["etat"] == "quarantaine":
         raise ValueError("Provenance non vérifiée")
-    if any(e["etat"] == "incertain" for e in d["effets"].values()):
+    if any(e["etat"] in ETATS_A_RECONCILIER for e in d["effets"].values()):
         raise ValueError("Résultat incertain à réconcilier")
     if effet["type"] == "pr" and (d["pr"] is not None or any(
             k != cle and e["type"] == "pr" and e["etat"] != "echec_certain"
@@ -529,13 +545,16 @@ def verifier_effet_a_executer(file, reference, execution, cle):
         _verifier_developpement(resultat, reference, d)
         if not occupe_creneau(d):
             raise ValueError("Créneau de développement non réservé")
-    return deepcopy(effet)
+    effet.update(etat="tentative", execution_tentative=execution)
+    return valider_file(resultat)
 
 
 def resultat_effet(file, reference, execution, cle, etat, preuve):
     resultat, d = _detenir(file, reference, execution)
     effet = d["effets"][cle]
-    if (effet["etat"] != "intention" or not isinstance(etat, str) or etat not in ETATS_RESULTATS
+    if (not isinstance(etat, str) or etat not in ETATS_RESULTATS
+            or not (effet["etat"] == "tentative"
+                    or (effet["etat"] == "intention" and etat == "echec_certain"))
             or not _texte_non_vide(preuve)):
         raise ValueError("Résultat ou transition d'effet invalide")
     effet.update(etat=etat, preuve=preuve)
@@ -546,12 +565,13 @@ def reconcilier_effet(file, reference, execution, cle, etat, preuve):
     """Conclut une issue incertaine sans supprimer la preuve de l'ambiguïté."""
     resultat, d = _detenir(file, reference, execution)
     effet = d["effets"].get(cle)
-    if (not isinstance(effet, dict) or effet.get("etat") != "incertain"
+    if (not isinstance(effet, dict) or effet.get("etat") not in ETATS_A_RECONCILIER
             or not isinstance(etat, str) or etat not in {"confirme", "echec_certain"}
             or not _texte_non_vide(preuve)):
         raise ValueError("Transition de réconciliation invalide")
     historique = list(effet.get("historique", []))
-    historique.append({"etat": "incertain", "preuve": effet["preuve"]})
+    historique.append({"etat": effet["etat"], "preuve": effet.get("preuve") or
+                       "Tentative réservée avant appel ; résultat absent"})
     effet.update(etat=etat, preuve=preuve, historique=historique)
     return valider_file(resultat)
 
