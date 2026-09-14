@@ -78,7 +78,7 @@ classique depuis « Mon espace ».
 - [Fonctionnement, migration et limites du lot B7/B8/B9](docs/coherence-rh.md)
 
 ### Forfait jours
-- Calendrier forfait jour (jours ouvres pre-remplis en "travaille", hors feries)
+- Calendrier forfait jour (jours ouvres pre-remplis en "travaille", hors feries) et décompte annuel informatif des samedis, dimanches et jours fériés travaillés, sans compteur de récupération
 - Saisie previsionnelle des absences (conges, RTT...), y compris sur dates futures
 - Tableau de bord dedie
 

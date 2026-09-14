@@ -879,6 +879,7 @@
       "example_requests": [
         "Mon calendrier forfait jours",
         "Combien de jours me reste-t-il à travailler ?",
+        "Combien de samedis, dimanches ou jours fériés ai-je travaillés cette année ?",
         "Noter les horaires de ma journée forfait",
         "Rapport mensuel forfait en PDF"
       ],
@@ -886,6 +887,7 @@
         "Préremplir une année encore vierge en journées travaillées du lundi au vendredi hors jours fériés.",
         "Saisir le type de journée, commentaire et horaires facultatifs matin/après-midi, y compris dans le futur.",
         "Afficher statistiques annuelles et soldes travail/CP/CC/repos forfait.",
+        "Décompter séparément les samedis, dimanches et jours fériés déclarés travaillés, avec un total de dates distinctes et sans créer de récupération.",
         "Rapport PDF mensuel détaillant types, commentaires, totaux, heures facultatives renseignées et espaces de signature directeur/Comité de présidence.",
         "Les congés et absences transmis par les circuits RH alimentent également ce calendrier."
       ],
@@ -937,6 +939,7 @@
       "invariants": [
         "Ne pas écraser les saisies existantes lors d’une initialisation annuelle.",
         "forfait_jour et repos_forfait consomment le même compteur de repos.",
+        "Le décompte des week-ends et jours fériés travaillés est informatif : il ne crédite ni ne débite aucun solde et ne modifie pas le total des jours travaillés.",
         "Une journée issue d’une absence active ne peut pas être remplacée par une édition manuelle du calendrier."
       ],
       "extension_points": [
