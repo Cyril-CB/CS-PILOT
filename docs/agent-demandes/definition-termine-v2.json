@@ -1,0 +1,145 @@
+{
+  "format": "cspilot.definition-termine",
+  "version": 2,
+  "statut": "a_relire_avant_epinglage",
+  "principe": "Distinguer prêt revue, prêt recette, intégré à dev, livré dans main, disponible dans le centre ; l'agent ne fusionne ni ne déploie.",
+  "preuves": {
+    "champs": [
+      "version_perimetre",
+      "commit_candidat",
+      "date_verification",
+      "controle",
+      "resultat",
+      "source_preuve"
+    ],
+    "resultats": [
+      "reussi",
+      "echoue",
+      "non_execute",
+      "sans_objet"
+    ],
+    "sans_objet": "Justification concrète obligatoire, fondée sur le changement ; aucune dispense implicite.",
+    "nouveau_commit": "Identifier les preuves invalidées par le diff ; refaire les contrôles affectés et justifier l'applicabilité des autres. Ne jamais présenter un ancien test comme exécuté sur le nouveau commit.",
+    "nouvelle_exigence": "Versionner le périmètre et ajouter ses critères et preuves. Aucun jalon ne couvre implicitement un ajout ultérieur.",
+    "confidentialite": "Références, empreintes et résultats minimaux dans le journal privé ; documents réels dans leur source privée. Preuves publiques avec données synthétiques uniquement.",
+    "base_integration": "Conserver les SHA de main et dev observés, la liste des PR incluses et le candidat testé. Un mouvement de la base impose de vérifier l'intégration et de renouveler les preuves affectées ; deux suites isolées vertes ne prouvent pas leur combinaison."
+  },
+  "jalons": [
+    {
+      "id": "pret_revue",
+      "acteur": "agent",
+      "conditions": [
+        "Périmètre identifié ; résultat métier, droits et règles nécessaires connus ; aucune question bloquante ouverte.",
+        "Chaque exigence incluse est reliée à un scénario observable, au résultat attendu, à l'implémentation et à une preuve. Aucun ajout reçu avant livraison n'est oublié.",
+        "Contrôles applicables ci-dessous réussis ; contrôles requis en échec ou non exécutés explicitement bloquants.",
+        "Branche et PR publiées avec problème, solution, droits, données, migration éventuelle, limites et procédure de test par Cyril.",
+        "Diff sans secret, document réel, modification non autorisée ou changement sans rapport.",
+        "PR de demande vers dev, ressources et dépendances analysées ; main/dev/PR et migrations recontrôlés avant livraison du candidat. Tests du résultat intégré selon multi-demandes-v2.json."
+      ],
+      "signification": "La revue technique peut commencer ; elle peut encore demander des corrections."
+    },
+    {
+      "id": "pret_recette",
+      "acteur": "agent",
+      "conditions": [
+        "Les conditions de pret_revue restent vraies pour le candidat et le périmètre actuels.",
+        "La revue requise est terminée, pas seulement lancée ou silencieuse ; son résultat couvre le candidat courant et les corrections ont été vérifiées.",
+        "Aucun retour P0/P1/P2 fondé laissé ouvert. Un retour corrigé possède une preuve ; un retour contesté est argumenté et son arbitrage obtenu.",
+        "Aucun contrôle masqué ou désactivé pour obtenir ce jalon.",
+        "Cyril dispose d'un parcours de recette court, reproductible, avec profils, résultats attendus et limites connues."
+      ],
+      "signification": "Développement prêt à tester par Cyril ; aucune validation métier encore présumée."
+    },
+    {
+      "id": "integre_dev",
+      "acteur": "Cyril pour la recette et la fusion ; agent pour leur constat",
+      "conditions": [
+        "Validation explicite de la recette par Cyril, avec référence au périmètre et au candidat testés.",
+        "Fusion effectivement constatée dans dev après recette par Cyril ; PR, base et commit de fusion conservés.",
+        "Correspondance entre contenu fusionné et candidat validé, y compris squash/rebase ; impact de toute modification supplémentaire vérifié.",
+        "Éléments différés et limitations acceptées visibles. Une nouvelle demande ultérieure ouvre une nouvelle version ou un dossier lié sans réécrire l'historique."
+      ],
+      "signification": "Demande intégrée dans dev ; le créneau est libéré, la livraison main et la disponibilité restent à constater."
+    },
+    {
+      "id": "livre_main",
+      "acteur": "Cyril pour la recette globale et la fusion ; agent pour leur constat",
+      "conditions": [
+        "Les demandes incluses sont acceptées et intégrées à dev ; leurs versions de périmètre et candidats sont identifiés.",
+        "Les correctifs de main sont intégrés ; suite complète et tests d'intégration sur le candidat commun, y compris migrations depuis main, installation neuve et conservation, réussis.",
+        "La revue de la livraison et sa recette globale sont acceptées ; aucun composant instable embarqué silencieusement.",
+        "La fusion dev vers main est constatée et son contenu correspond au candidat validé ; les différences sont explicitement contrôlées."
+      ],
+      "signification": "Développement livré dans main ; aucune disponibilité dans un centre présumée."
+    },
+    {
+      "id": "disponible_dans_le_centre",
+      "acteur": "Cyril ou exploitant autorisé ; agent pour le constat",
+      "conditions": [
+        "La version installée dans le centre contient le développement fusionné.",
+        "Démarrage et migrations éventuelles réussis ; parcours principal vérifié dans cette installation.",
+        "Confirmation de l'exploitant ou preuve autorisée conservée. Aucun accès au VPS ou aux données réelles pour fabriquer une preuve."
+      ],
+      "signification": "Disponibilité confirmée dans ce centre ; aucun déploiement automatique autorisé."
+    }
+  ],
+  "controles": [
+    {
+      "id": "besoin",
+      "quand": "toujours",
+      "attendu": "Exigences incluses reliées à des critères testables ; questions, écarts et éléments différés explicites."
+    },
+    {
+      "id": "droits",
+      "quand": "accès à des routes, données ou documents",
+      "attendu": "Lecture, écriture, suppression et téléchargement par profil/périmètre ; refus serveur non connecté, mauvais profil et ressource hors périmètre."
+    },
+    {
+      "id": "regles_metier",
+      "quand": "calculs, compteurs, règles financières ou légales",
+      "attendu": "Hypothèses, sources actuelles nécessaires, dates d'effet, exemples chiffrés, bornes et arrondis ; aucun barème inventé ou changement silencieux."
+    },
+    {
+      "id": "donnees",
+      "quand": "schéma ou persistance modifiés",
+      "attendu": "Installation neuve, migration depuis l'état précédent, idempotence et conservation ; sauvegarde/restauration et protocole de mise à jour couverts selon le changement."
+    },
+    {
+      "id": "fichiers",
+      "quand": "upload, stockage, téléchargement ou export",
+      "attendu": "Formats, tailles, chemins confinés, isolation, contenu actif non exécuté, droits au téléchargement et sauvegarde des fichiers."
+    },
+    {
+      "id": "parcours",
+      "quand": "interface modifiée",
+      "attendu": "Parcours principal, erreurs et état vide ; ordinateur, mobile, français, clavier et absence de fuite d'information."
+    },
+    {
+      "id": "recherche",
+      "quand": "capacité destinée à la barre intelligente",
+      "attendu": "Formulations métier orientant vers la bonne page pour les profils autorisés ; résultats existants préservés, aucune visibilité induite pour les profils interdits."
+    },
+    {
+      "id": "tests",
+      "quand": "selon AGENTS.md",
+      "attendu": "Commandes et résultats réels des tests ciblés, de la suite requise et de la CI ; commit couvert identifié et échecs non masqués."
+    },
+    {
+      "id": "catalogue_docs",
+      "quand": "toujours",
+      "attendu": "Catalogue et docs actualisés ; contrôle statique réussi ; absence d'impact justifiée lorsque aucune fiche ne doit changer."
+    },
+    {
+      "id": "revue",
+      "quand": "avant pret_recette",
+      "attendu": "Revue terminée et retours traités avec preuves sur le candidat ; limites de cycles respectées."
+    },
+    {
+      "id": "integration",
+      "quand": "mise à jour de base, fusion dans dev ou livraison dev vers main",
+      "attendu": "Vérifier l'ensemble combiné sur le candidat et les bases exactes : dépendances, migrations, droits communs, régressions et revue. La recette d'une branche isolée ne valide pas toutes les combinaisons."
+    }
+  ],
+  "echec_preexistant": "Reproduire sur la base de référence et isoler la cause. Cela explique l'échec sans le transformer en réussite. Un contrôle requis rouge reste bloquant sauf acceptation explicite et limitée de Cyril, liée au test, au candidat et au risque. Ne pas supprimer le test ni généraliser cette exception.",
+  "arret": "Question bloquante, échec technique, résultat ambigu, retour sérieux non résolu ou plafond atteint : conserver le travail, indiquer le blocage et la prochaine action ; ne pas annoncer terminé."
+}

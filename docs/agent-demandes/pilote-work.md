@@ -1,5 +1,48 @@
 # Pilote de développement dans Work
 
+## Passage aux demandes multiples (v2)
+
+Le pilote initial à une référence reste décrit ci-dessous pour les exécutions
+épinglées en v1. Le fonctionnement élargi suit désormais
+`multi-demandes-v2.json`, `prompt-work-v2.md`, `evolutions-v2.json` et
+`definition-termine-v2.json`. Ne pas mélanger les plafonds des deux versions.
+La grille et le format du formulaire restent v1. La fusion de la PR de
+configuration par le propriétaire valide le candidat à épingler ; la présence
+de ces fichiers n'active aucune tâche et ne change aucun épinglage existant.
+
+- Ouverture à toutes les propositions du formulaire, avec provenance et
+  correspondant vérifiés pour chaque dossier ; une source inconnue attend sa
+  vérification dans Work et ne bloque pas les autres demandes.
+- Trois développements indépendants non intégrés maximum, branches depuis dev
+  et PR vers dev ; les demandes en attente de précisions avant développement
+  restent suivies. Délégation seulement si elle est autorisée et disponible.
+- Report des correctifs main vers dev proposé par PR ; gestion exclusive du
+  schéma, inventaire des numéros sur main/dev/PR et tests d'ordre des migrations.
+- Validation du résultat intégré puis PR dev vers main ; toutes les fusions
+  et les mises en production restent humaines.
+
+`scripts/file_agent.py` fournit des transitions pures pour préparer les états
+privés : réservations, plafonds, dépendances, déduplication, intentions et
+résultats d'effets. Il ne classe pas les mails, n'accorde aucun droit, ne lance
+pas de sous-agent et ne réalise pas le remplacement Library. Le coordinateur
+effectue les lectures et publications sous CAS réel. Ne jamais présenter les
+tests de concurrence simulée comme une exécution autonome observée.
+
+```bash
+python -m pytest -q tests/test_file_agent.py tests/test_triage_agent.py
+python -m scripts.file_agent --verifier /chemin/prive/file-demandes.json
+python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json
+python scripts/validate_feature_catalogue.py
+```
+
+Les scénarios de file sont répertoriés dans `calibration-file-v2.json` et
+exécutés par `test_file_agent.py`. Conserver l'ancien dossier clos dans le
+journal, ajouter `file_demandes` v2 et garder séparées la configuration proposée
+et celle active jusqu'à validation de l'épinglage. La chaîne Excel reçue dans
+Outlook reste à vérifier si aucun fichier métier n'a été reçu ; les tests SMTP
+locaux ne remplacent pas cette preuve. Un dossier dont une pièce indispensable
+ne peut pas être vérifiée attend, sans suspendre toute la file.
+
 ## Contrats versionnés
 
 - Entrée du formulaire : `proposition-v1.schema.json`.
@@ -60,6 +103,76 @@ leurs sources et leur état dans les connexions persistantes.
 
 ## État privé et reprise
 
+### Réponses persistantes de la file v2
+
+Après vérification effective d'un centre dans Work, `confirmer_source` enregistre
+la preuve et l'ID de cet événement sous verrou du dossier, avec l'empreinte exacte
+du manifeste initial. Publier le candidat sous CAS. Une retransmission identique
+reste un doublon et ne prouve jamais la provenance. Sans décision préalable,
+le dossier revient à `recu` pour analyse initiale. Si une décision existe déjà,
+son instantané reste intact et l'événement Work devient à analyser : réévaluer
+la grille et publier la décision dans la version suivante avec `integrer_reponses`.
+La confirmation seule n'autorise aucun développement ni aucun envoi et ne
+supprime pas les autres motifs de quarantaine ou de précision. Une confirmation
+identique est idempotente ; sa preuve ne peut pas être remplacée.
+`source_verifiee_initialement` distingue une admission déjà vérifiée d'une
+confirmation ultérieure. Ce fait initial reste conservé ; une confirmation
+ultérieure sans `verification_source` est refusée au rechargement. Un ancien
+JSON privé sans provenance initiale explicite exige sa reconstruction depuis
+les sources : ne jamais déduire cette origine de `source_verifiee` courant.
+
+Dans la file v2, `evenements` conserve les identifiants reçus et
+`analyses_reponses` les preuves de leur analyse, liées à une version du
+périmètre. `reponses_en_attente` fait la différence ; les anciens identifiants
+sans preuve restent en attente, sans suppression ni interprétation optimiste.
+La réception et le retour « doublon » ne suffisent pas à autoriser la reprise.
+
+`enregistrer_perimetre_initial` établit le premier instantané complet depuis
+la proposition vérifiée. `integrer_reponses` exige ensuite la liste exacte
+des réponses en attente et un `instantane` complet conforme à evolutions-v2.
+La transition valide elle-même exigences, critères, questions et sources,
+les conserve dans `perimetres` et lie chaque analyse à sa version dans le
+même candidat JSON. Elle vérifie l'égalité avec la décision et les impacts.
+Une analyse acquittée dont l'instantané manque est refusée par le vérificateur.
+La transition ne comprend pas le texte et ne certifie pas sa vérité métier.
+Un changement utilise la version suivante et conserve tous les instantanés
+antérieurs dans `perimetres` ; le résumé historique de décision/impacts reste
+dans `historique_perimetres`. Sans incidence, l'instantané entier reste identique :
+version, exigences, critères, sources, décision,
+ressources et jalon restent identiques avec une justification explicite.
+La publication CAS doit réussir avant de poursuivre. Au rechargement, refuser plusieurs créations de PR non échouées, un historique au-delà des plafonds, une provenance rétrogradée ou contradictoire et plusieurs réservations de migration pour le même dossier. Une analyse construite
+ne peut supprimer un ID d'exigence antérieur. Un retrait ou report reste
+explicite et motivé. Chaque source d'évolution a une réception et une analyse
+sur la même version ; ces liens sont vérifiés dans les deux sens, pour tout
+l'historique. Toute version d'effet doit référencer un instantané existant et
+non futur. Une intention nouvelle exige aussi l'instantané avant un mail.
+Une analyse construite
+avant une réponse supplémentaire ne peut pas acquitter cette dernière.
+
+Les gardes couvrent démarrage, reprise sur branche existante, migration et
+préparation d'effets. Revalider aussi toute intention déjà préparée avec
+`verifier_effet_a_executer` sur une lecture fraîche avant l'appel externe.
+Cette transition retourne la file candidate avec `tentative` et le propriétaire
+de la tentative ; publier ce candidat sous CAS avant tout appel. Seul le gagnant
+du CAS peut effectuer un appel dans la continuité de cette publication confirmée.
+Une reprise qui lit `tentative` ne rappelle pas le service : elle vérifie l'issue
+puis utilise `reconcilier_effet` avec preuve. Une intention de l'ancien périmètre
+n'est pas réutilisable. Les constats d'effets
+déjà tentés restent enregistrables pendant l'attente d'analyse. Aucun nouveau
+verrou ne peut reprendre automatiquement celui d'une exécution interrompue.
+
+Après une évolution, une PR existante reste réservée et revient en correction
+si la grille reste favorable ; les ressources/dépendances sont recontrôlées
+avant reprise et publication. Un résultat devenu incomplet ou risqué attend
+les précisions ou la validation nécessaires. Les autres demandes indépendantes
+continuent. Après intégration/clôture, conserver l'ajout et arbitrer un dossier
+lié ; ne pas réouvrir automatiquement une PR déjà fusionnée.
+
+Les invariants sont exercés dans `tests/test_file_agent.py` : sérialisation et
+reprise, plusieurs réponses, analyse périmée, décision défavorable, changement
+de ressources, intention ancienne, CAS perdant et historique ancien. Il s'agit
+de tests du moteur pur, pas de coupures provoquées dans Outlook ou Work.
+
 Le journal persistant est un fichier JSON privé identifié explicitement dans la
 tâche. Il contient configuration, décision, empreintes, correspondants vérifiés,
 questions/réponses, versions du périmètre, état des actions, branche/PR,
@@ -81,7 +194,8 @@ Dédupliquer par référence et empreinte du manifeste et de ses pièces, pas pa
 `isRead` ni par date seule. Une réponse ultérieure complète le dossier existant ;
 elle n'est pas un doublon à ignorer parce que l'objet conserve la référence.
 Avant de créer une PR ou un mail, vérifier les effets déjà enregistrés et leur
-existence distante. Conserver l'intention avant appel. En cas de résultat réseau
+existence distante. Conserver l'intention avant appel et, en v2, publier aussi
+l'état `tentative` sous CAS avant de contacter le service. En cas de résultat réseau
 ambigu, rechercher l'effet ; si le résultat reste indéterminé, état `incertain`
 et arrêt de cet effet, sans renvoi ou seconde PR automatique.
 
