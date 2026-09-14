@@ -841,13 +841,15 @@
       "capabilities": [
         "Publier titre facultatif, contenu obligatoire et date de validité.",
         "Afficher le message actif via le contexte global de l’application aux utilisateurs internes ; consulter les archives dans l’espace membres.",
+        "Mémoriser l’ouverture du message actif pour l’utilisateur connecté et masquer ensuite sa bannière, sans modifier sa visibilité pour les autres utilisateurs.",
         "Archiver manuellement un message ou automatiquement les messages expirés à l’ouverture des pages de gestion.",
         "Notifier la publication par email si demandé, avec audience personnel actif hors prestataires et consentement individuel."
       ],
       "entry_points": [
         "cse_bp.cse_messages",
         "cse_bp.creer_message",
-        "cse_bp.archiver_message"
+        "cse_bp.archiver_message",
+        "cse_bp.lire_message"
       ],
       "implementation": {
         "route_files": [
@@ -855,7 +857,8 @@
         ],
         "service_files": [
           "email_service.py",
-          "app.py"
+          "app.py",
+          "schema_cse_lectures.py"
         ],
         "templates": [
           "templates/cse_messages.html",
@@ -863,19 +866,21 @@
         ],
         "tables": [
           "cse_messages",
+          "cse_messages_lectures",
           "cse_membres",
           "users"
         ],
         "tests": [
-          "tests/test_cse.py"
+          "tests/test_cse.py",
+          "tests/test_cse_lectures.py"
         ],
         "docs": [
           "README.md"
         ]
       },
       "access": {
-        "summary": "Gestion et archives : membre CSE obligatoire, sans dérogation de profil directeur/comptable. Lecture du message actif : contexte app.inject_cse_context pour utilisateurs connectés hors prestataires.",
-        "scope": "Archives réservées CSE ; publication active diffusée au personnel interne, sans restriction d’équipe.",
+        "summary": "Gestion et archives : membre CSE obligatoire, sans dérogation de profil directeur/comptable. Lecture du message actif : contexte app.inject_cse_context pour utilisateurs connectés hors prestataires ; l’ouverture ne peut enregistrer que l’utilisateur de la session.",
+        "scope": "Archives réservées CSE ; publication active diffusée au personnel interne, sans restriction d’équipe. L’état lu/non lu est individuel par couple message-utilisateur.",
         "conditions": [
           "Date de validité au moins égale à aujourd’hui à la publication.",
           "Email optionnel : notifier_email, service configuré, adresse et consentement individuel."
@@ -891,6 +896,7 @@
       "invariants": [
         "Publier archive tous les précédents messages actifs avant insertion du nouveau.",
         "get_message_actif exclut une date expirée même si l’archivage matériel n’a pas encore eu lieu.",
+        "Une lecture ne masque que le message concerné pour l’utilisateur connecté ; un nouveau message est non lu indépendamment.",
         "La publication est conservée même en cas d’échec email."
       ],
       "extension_points": [

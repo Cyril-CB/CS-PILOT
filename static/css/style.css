@@ -4226,9 +4226,19 @@ a.btn-icon:-webkit-any-link {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
+.cse-banner[hidden] {
+    display: none;
+}
+
 .cse-banner:hover {
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
+}
+
+.cse-banner:focus-visible,
+.cse-message-modal button:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
 }
 
 .cse-banner-icon {
