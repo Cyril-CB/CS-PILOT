@@ -105,6 +105,17 @@ leurs sources et leur état dans les connexions persistantes.
 
 ### Réponses persistantes de la file v2
 
+Après vérification effective d'un centre dans Work, `confirmer_source` enregistre
+la preuve et l'ID de cet événement sous verrou du dossier, avec l'empreinte exacte
+du manifeste initial. Publier le candidat sous CAS. Une retransmission identique
+reste un doublon et ne prouve jamais la provenance. Sans décision préalable,
+le dossier revient à `recu` pour analyse initiale. Si une décision existe déjà,
+son instantané reste intact et l'événement Work devient à analyser : réévaluer
+la grille et publier la décision dans la version suivante avec `integrer_reponses`.
+La confirmation seule n'autorise aucun développement ni aucun envoi et ne
+supprime pas les autres motifs de quarantaine ou de précision. Une confirmation
+identique est idempotente ; sa preuve ne peut pas être remplacée.
+
 Dans la file v2, `evenements` conserve les identifiants reçus et
 `analyses_reponses` les preuves de leur analyse, liées à une version du
 périmètre. `reponses_en_attente` fait la différence ; les anciens identifiants

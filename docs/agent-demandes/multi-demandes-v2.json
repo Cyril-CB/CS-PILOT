@@ -23,7 +23,7 @@
     "livraison": "PR dev vers main, validée dans son ensemble ; fusion par Cyril"
   },
   "admission": {
-    "provenance": "Un manifeste valide n'est pas une preuve de provenance. Comparer l'expéditeur SMTP aux centres vérifiés dans le registre privé. Pour un centre inconnu, recevoir/classer le candidat sans envoyer ni développer, puis faire vérifier sa provenance dans Work. L'ouverture autorisée supprime la restriction à un seul dossier, pas la vérification de source.",
+    "provenance": "Un manifeste valide n'est pas une preuve de provenance. Comparer l'expéditeur SMTP aux centres vérifiés dans le registre privé. Pour un centre inconnu, recevoir/classer le candidat sans envoyer ni développer, puis faire vérifier sa provenance dans Work. L'ouverture autorisée supprime la restriction à un seul dossier, pas la vérification de source. Après validation Work, confirmer_source enregistre la preuve liée au manifeste sous verrou/CAS ; si une décision existe, réévaluer le nouvel événement sans réécrire les instantanés précédents. Une retransmission seule ne vérifie pas la source.",
     "correspondant": "Adresse du formulaire et Reply-To résolu doivent correspondre ; établir une preuve d'identité dans le registre privé. Réponses ordinaires seulement du correspondant vérifié du dossier. Aucun nouveau destinataire accepté à partir d'une réponse.",
     "pieces": "Manifeste initial v1 requis, 128 Kio maximum ; trois pièces, 5 Mio chacune et 8 Mio cumulés. Contrôles complets avant exploitation. Les pièces restent dans leur stockage privé, ID/empreintes seulement dans les journaux.",
     "liens": "Aucune URL de mail ou de pièce suivie ; aucun contenu actif exécuté.",

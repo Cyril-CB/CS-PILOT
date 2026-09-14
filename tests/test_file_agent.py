@@ -203,6 +203,89 @@ def test_reference_alteree_ne_remplace_pas_le_dossier(file):
     assert agent.ajouter_reponse(file, ref(1), "x", "reponse-2")[1] == "a_analyser"
 
 
+def source_inconnue():
+    f = agent.nouvelle_file()
+    f["actif"] = True
+    f, _ = agent.enregistrer_proposition(f, ref(1), "a" * 64)
+    return agent.prendre_dossier(f, ref(1), "execution-1")
+
+
+def test_source_inconnue_verifiee_puis_developpement_apres_reprise(file):
+    f = source_inconnue()
+    double, statut = agent.enregistrer_proposition(f, ref(1), "a" * 64, True)
+    assert statut == "doublon" and double == f  # un mail répété n'est pas une preuve Work
+    avant = deepcopy(f)
+    f = agent.confirmer_source(f, ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work")
+    assert avant["dossiers"][ref(1)]["source_verifiee"] is False
+    f = json.loads(json.dumps(f))
+    assert f["dossiers"][ref(1)]["etat"] == "recu"
+    assert agent.confirmer_source(f, ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work") == f
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    f = agent.enregistrer_perimetre_initial(f, ref(1), "execution-1", p)
+    f = agent.demarrer_developpement(f, ref(1), "execution-1")
+    assert f["dossiers"][ref(1)]["branche"]
+    assert agent.enregistrer_proposition(f, ref(1), "a" * 64, False)[0] == f
+    with pytest.raises(ValueError, match="déjà vérifiée"):
+        agent.confirmer_source(f, ref(1), "execution-1", "a" * 64, "autre", "Autre preuve")
+
+
+@pytest.mark.parametrize("besoin_complet", [True, False])
+def test_verification_source_reevalue_decision_sans_effacer_quarantaine(file, besoin_complet):
+    f = source_inconnue()
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    evaluation = deepcopy(p["decision"]["evaluation"])
+    evaluation.update(source_verifiee=False, besoin_complet=besoin_complet)
+    p["decision"] = {"version_perimetre": 1, "evaluation": evaluation, **evaluer(evaluation)}
+    f = agent.enregistrer_perimetre_initial(f, ref(1), "execution-1", p)
+    f = agent.confirmer_source(f, ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work")
+    f = json.loads(json.dumps(f))
+    assert f["dossiers"][ref(1)]["perimetres"]["1"] == p
+    assert agent.reponses_en_attente(f["dossiers"][ref(1)]) == ["work-verification"]
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.demarrer_developpement(f, ref(1), "execution-1")
+    evaluation = deepcopy(evaluation)
+    evaluation["source_verifiee"] = True
+    decision = {"version_perimetre": 2, "evaluation": evaluation, **evaluer(evaluation)}
+    f = json.loads(json.dumps(integrer(f, decision=decision)))
+    assert f["dossiers"][ref(1)]["perimetres"]["1"] == p
+    assert f["dossiers"][ref(1)]["etat"] == ("a_developper" if besoin_complet else "attente_precisions")
+    if besoin_complet:
+        assert agent.demarrer_developpement(f, ref(1), "execution-1")
+    else:
+        with pytest.raises(ValueError, match="Grille"):
+            agent.demarrer_developpement(f, ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("defaut", ["pause", "verrou", "empreinte", "preuve", "evenement", "collision"])
+def test_verification_source_refuse_sans_preuve_et_verrou(defaut):
+    f = source_inconnue()
+    args = [f, ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work"]
+    if defaut == "pause":
+        f["actif"] = False
+    elif defaut == "verrou":
+        args[2] = "autre"
+    elif defaut == "empreinte":
+        args[3] = "b" * 64
+    elif defaut == "preuve":
+        args[5] = " "
+    elif defaut == "evenement":
+        args[4] = " "
+    else:
+        f["dossiers"][ref(1)]["evenements"].append("work-verification")
+    avant = deepcopy(f)
+    with pytest.raises(ValueError):
+        agent.confirmer_source(*args)
+    assert f == avant
+
+
+@pytest.mark.parametrize("champ", ["preuve", "manifest_sha256", "execution", "evenement_id", "analyse_requise"])
+def test_preuve_source_malformee_refusee_au_rechargement(champ):
+    f = agent.confirmer_source(source_inconnue(), ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work")
+    del f["dossiers"][ref(1)]["verification_source"][champ]
+    with pytest.raises(ValueError, match="provenance"):
+        agent.valider_file(json.loads(json.dumps(f)))
+
+
 def test_effet_incertain_jamais_repete(file):
     file = agent.prendre_dossier(file, ref(1), "x")
     file = agent.preparer_effet(file, ref(1), "x", "question-v1", "mail_precisions")

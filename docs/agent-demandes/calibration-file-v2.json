@@ -107,6 +107,10 @@
     {
       "id": "identite_exigence_complete",
       "attendu": "Description, critères acquis et origines antérieures préservés sous le même ID ; remplacement par retrait motivé + nouvel ID."
+    },
+    {
+      "id": "source_quarantaine_verifiee",
+      "attendu": "Un doublon ne vérifie pas la source. Une confirmation Work avec preuve et empreinte exacte, sous verrou/CAS, permet la reprise ; toute décision antérieure est conservée et réévaluée via un nouvel événement. Pause, mauvaise empreinte, absence de preuve, collision et remplacement de preuve refusés."
     }
   ]
 }

@@ -320,6 +320,10 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
   des pièces dans le journal privé du pilote. Les pièces réelles restent dans
   leur stockage privé d'origine ; ne copier ni leur contenu, ni des secrets dans
   le journal. Ne publier que des spécifications et exemples anonymisés.
+- Pour valider une source inconnue après vérification Work, `confirmer_source`
+  exige verrou, empreinte initiale et preuve Work, puis publication CAS.
+  Une décision antérieure reste à réévaluer sans écraser son instantané.
+  Une retransmission ne vérifie jamais à elle seule la provenance.
 - Toute évolution de la grille, du contrat de décision ou du pilote actualise
   les consignes et la calibration dans la même PR. Exécuter
   `python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json`.

@@ -185,6 +185,16 @@ def valider_file(file):
                 or not isinstance(d.get("effets"), dict)):
             raise ValueError("Dossier invalide : " + ref)
         _valider_effets(d["effets"])
+        verification = d.get("verification_source")
+        if verification is not None and (
+                not isinstance(verification, dict) or not d["source_verifiee"]
+                or verification.get("manifest_sha256") != d["manifest_sha256"]
+                or any(not _texte_non_vide(verification.get(k))
+                       for k in ("evenement_id", "preuve", "execution"))
+                or type(verification.get("analyse_requise")) is not bool
+                or (verification["analyse_requise"]
+                    and verification["evenement_id"] not in d["evenements"])):
+            raise ValueError("Preuve de vérification de provenance invalide")
         perimetres = d.get("perimetres", {})
         if not isinstance(perimetres, dict):
             raise ValueError("Instantanés des périmètres invalides")
@@ -302,6 +312,39 @@ def liberer_dossier(file, reference, execution):
     resultat, d = _detenir(file, reference, execution)
     d["verrou"] = None
     return resultat
+
+
+def confirmer_source(file, reference, execution, empreinte, evenement_id, preuve):
+    """Consigner la vérification Work, sans la déduire d'une retransmission.
+
+    Le coordinateur vérifie la preuve puis publie ce candidat sous CAS. Si une
+    décision existe, l'événement Work rejoint les éléments à réévaluer dans un
+    nouvel instantané ; aucune décision passée n'est réécrite ici.
+    """
+    resultat, d = _detenir(file, reference, execution)
+    if (not _hex(empreinte, 64) or empreinte != d["manifest_sha256"]
+            or not _texte_non_vide(evenement_id) or not _texte_non_vide(preuve)):
+        raise ValueError("Vérification de provenance : empreinte ou preuve invalide")
+    precedente = d.get("verification_source")
+    if d["source_verifiee"]:
+        if (precedente and precedente["evenement_id"] == evenement_id
+                and precedente["preuve"] == preuve):
+            return resultat
+        raise ValueError("Source déjà vérifiée : ne pas remplacer sa preuve")
+    if d["etat"] != "quarantaine" or evenement_id in d["evenements"]:
+        raise ValueError("Vérification de provenance : état ou événement incompatible")
+    analyse_requise = d["decision"] is not None
+    if analyse_requise:
+        _exiger_instantane_courant(d)
+        d["evenements"].append(evenement_id)
+    else:
+        d["etat"] = "recu"
+    d["source_verifiee"] = True
+    d["verification_source"] = {
+        "manifest_sha256": empreinte, "evenement_id": evenement_id,
+        "preuve": preuve, "execution": execution, "analyse_requise": analyse_requise,
+    }
+    return valider_file(resultat)
 
 
 def ajouter_reponse(file, reference, execution, message_id):
