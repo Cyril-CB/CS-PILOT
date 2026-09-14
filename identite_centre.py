@@ -4,6 +4,7 @@ import hashlib
 import os
 from pathlib import Path
 import re
+import unicodedata
 
 import database
 from document_files import nettoyer_document
@@ -30,6 +31,11 @@ def texte(valeur, maximum, libelle, obligatoire=False):
     if obligatoire and not valeur:
         raise ValueError(f'{libelle} est obligatoire.')
     return valeur
+
+
+def cle_libelle(libelle):
+    """Clé Unicode stable pour comparer les libellés sans perdre leur affichage."""
+    return unicodedata.normalize('NFKC', libelle).casefold()
 
 
 def valider_identite(form):

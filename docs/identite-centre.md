@@ -22,7 +22,8 @@ Les droits sont vérifiés côté serveur, y compris pour les téléchargements.
 
 Les champs complémentaires sont limités à 30 : libellé de 80 caractères et
 valeur de 2 000 caractères, sans formule ni calcul. Un libellé déjà utilisé est
-refusé. Une fiche modifiée depuis son ouverture doit être rechargée avant une
+refusé, y compris s'il ne diffère que par la casse Unicode (`É`/`é`) ou par une
+forme Unicode équivalente. Une fiche modifiée depuis son ouverture doit être rechargée avant une
 nouvelle écriture, pour éviter d’écraser le travail d’une autre personne.
 
 Jusqu’à 50 documents communs peuvent être conservés, indépendamment des dossiers

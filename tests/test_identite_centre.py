@@ -137,10 +137,14 @@ def test_bornes_champs_et_echappement(app, db, environnement):
     assert modifier(client, db, 'ajouter_champ', libelle='x', valeur='v'*2001).status_code == 400
     assert modifier(client, db, 'ajouter_champ', libelle='RNA', valeur='<script>secret()</script>').status_code == 302
     assert modifier(client, db, 'ajouter_champ', libelle='rna', valeur='doublon').status_code == 400
+    assert modifier(client, db, 'ajouter_champ', libelle='Échéance', valeur='premier').status_code == 302
+    assert modifier(client, db, 'ajouter_champ', libelle='échéance', valeur='doublon accentué').status_code == 400
     page = client.get(URL)
     assert '<script>secret()' not in page.text and '&lt;script&gt;' in page.text
-    db.executemany('INSERT INTO identite_centre_champs(libelle,valeur) VALUES (?,?)',
-                   [(f'Champ {n}', '') for n in range(service.MAX_CHAMPS-1)])
+    db.executemany('''INSERT INTO identite_centre_champs(libelle,libelle_cle,valeur)
+                      VALUES (?,?,?)''',
+                   [(f'Champ {n}', service.cle_libelle(f'Champ {n}'), '')
+                    for n in range(service.MAX_CHAMPS-2)])
     db.commit()
     assert modifier(client, db, 'ajouter_champ', libelle='En trop', valeur='').status_code == 400
     assert db.execute('SELECT COUNT(*) FROM identite_centre_champs').fetchone()[0] == 30
@@ -274,7 +278,8 @@ def test_schema_neuf_et_migration_idempotente(app, db, environnement):
         db.execute(f'DROP TABLE {t}')
     migration.upgrade(db)
     db.execute("UPDATE identite_centre SET nom='À conserver'")
-    db.execute("INSERT INTO identite_centre_champs(libelle,valeur) VALUES ('RNA','fictif')")
+    db.execute("""INSERT INTO identite_centre_champs(libelle,libelle_cle,valeur)
+                  VALUES ('RNA','rna','fictif')""")
     migration.upgrade(db)
     assert db.execute('SELECT nom FROM identite_centre').fetchall()[0][0] == 'À conserver'
     assert db.execute('SELECT COUNT(*) FROM identite_centre').fetchone()[0] == 1

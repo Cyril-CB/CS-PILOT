@@ -1105,7 +1105,7 @@
       ],
       "capabilities": [
         "Une fiche unique par installation : nom, SIREN, SIRET, APE/NAF et code de convention collective informatif ; saisie progressive facultative.",
-        "30 champs libellé (80 caractères) et valeur texte (2000 caractères), création/modification/suppression sous droits ; aucun calcul.",
+        "30 champs libellé (80 caractères) et valeur texte (2000 caractères), uniques après normalisation de la casse Unicode ; création/modification/suppression sous droits ; aucun calcul.",
         "50 documents de 5 Mio maximum, un fichier par ajout ; titre, téléchargement en pièce jointe et suppression après commit ; contrôle de nom, format, taille, empreinte et chemin.",
         "Contrôle de version de fiche pour refuser l'écrasement d'une modification concurrente ; session et profil revérifiés sous transaction.",
         "Accès par la barre intelligente et Tout explorer, interfaces classique/flux et mobile.",

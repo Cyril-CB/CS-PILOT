@@ -54,17 +54,20 @@ def _modifier(conn, ecrits, a_supprimer):
             conn.execute('DELETE FROM identite_centre_champs WHERE id=?', (identifiant,))
         else:
             libelle = service.texte(request.form.get('libelle', ''), 80, 'Libellé', True)
+            libelle_cle = service.cle_libelle(libelle)
             valeur = service.texte(request.form.get('valeur', ''), 2000, 'Valeur')
-            if conn.execute('SELECT 1 FROM identite_centre_champs WHERE libelle=? AND id!=?',
-                            (libelle, identifiant if action == 'modifier_champ' else -1)).fetchone():
+            if conn.execute('SELECT 1 FROM identite_centre_champs WHERE libelle_cle=? AND id!=?',
+                            (libelle_cle, identifiant if action == 'modifier_champ' else -1)).fetchone():
                 raise ValueError('Un champ porte déjà ce libellé.')
             if action == 'ajouter_champ':
                 if conn.execute('SELECT COUNT(*) FROM identite_centre_champs').fetchone()[0] >= service.MAX_CHAMPS:
                     raise ValueError(f'La fiche peut contenir au maximum {service.MAX_CHAMPS} champs supplémentaires.')
-                conn.execute('INSERT INTO identite_centre_champs(libelle, valeur) VALUES (?, ?)', (libelle, valeur))
+                conn.execute('''INSERT INTO identite_centre_champs(libelle, libelle_cle, valeur)
+                                VALUES (?, ?, ?)''', (libelle, libelle_cle, valeur))
             else:
-                conn.execute('UPDATE identite_centre_champs SET libelle=?, valeur=? WHERE id=?',
-                             (libelle, valeur, identifiant))
+                conn.execute('''UPDATE identite_centre_champs
+                                SET libelle=?, libelle_cle=?, valeur=? WHERE id=?''',
+                             (libelle, libelle_cle, valeur, identifiant))
     elif action == 'ajouter_document':
         service.ajouter_document(conn, request.form, request.files.getlist('document'), session['user_id'], ecrits)
     elif action == 'supprimer_document':

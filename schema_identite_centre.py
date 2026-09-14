@@ -16,7 +16,8 @@ def creer_schema(conn):
     conn.execute('INSERT OR IGNORE INTO identite_centre(id) VALUES (1)')
     conn.execute('''CREATE TABLE IF NOT EXISTS identite_centre_champs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        libelle TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        libelle TEXT NOT NULL,
+        libelle_cle TEXT NOT NULL UNIQUE,
         valeur TEXT NOT NULL
     )''')
     conn.execute('''CREATE TABLE IF NOT EXISTS identite_centre_documents (
