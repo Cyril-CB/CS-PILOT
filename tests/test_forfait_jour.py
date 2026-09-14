@@ -160,6 +160,94 @@ def test_acces_refuse_non_directeur(auth_client):
     assert resp.status_code == 200
     assert b'Calendrier Forfait Jour' not in resp.data
 
+    dashboard = auth_client.get('/dashboard_forfait_jour', follow_redirects=True)
+    assert dashboard.status_code == 200
+    assert b'Week-ends et jours f' not in dashboard.data
+
+
+def _enregistrer_jour_travaille(admin_client, date):
+    return admin_client.post('/calendrier_forfait_jour', data={
+        'date': date,
+        'type_journee': 'travaille',
+        'commentaire': 'Saisie explicite',
+    }, follow_redirects=True)
+
+
+def test_decompte_annuel_weekends_et_feries_sans_recuperation(
+        app, admin_client, sample_users):
+    """Le détail peut se chevaucher, tandis que le total déduplique les dates."""
+    import utils
+
+    annee = 2026
+    samedi_ferie = '2026-01-03'
+    dimanche = '2026-01-04'
+    lundi_ferie = '2026-01-05'
+    mardi_ordinaire = '2026-01-06'
+    _ajouter_ferie(app, annee, samedi_ferie, 'Férié du samedi')
+    _ajouter_ferie(app, annee, lundi_ferie, 'Férié de semaine')
+    for date in (samedi_ferie, dimanche, lundi_ferie, mardi_ordinaire):
+        assert _enregistrer_jour_travaille(admin_client, date).status_code == 200
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(sample_users['directeur_id'], annee)
+
+    assert stats['travaille'] == 4
+    assert stats['jours_travailles_particuliers'] == {
+        'total': 3,
+        'samedis': 1,
+        'dimanches': 1,
+        'feries': 2,
+        'dates': [samedi_ferie, dimanche, lundi_ferie],
+        'dates_samedis': [samedi_ferie],
+        'dates_dimanches': [dimanche],
+        'dates_feries': [samedi_ferie, lundi_ferie],
+    }
+    assert 'recuper' not in ' '.join(stats['jours_travailles_particuliers']).lower()
+
+    # Modifier puis supprimer une présence suffit : aucun solde parallèle n'existe.
+    admin_client.post('/calendrier_forfait_jour', data={
+        'date': samedi_ferie,
+        'type_journee': 'repos_forfait',
+        'commentaire': '',
+    })
+    import database
+    with app.app_context():
+        conn = database.get_db()
+        conn.execute(
+            'DELETE FROM presence_forfait_jour WHERE user_id = ? AND date = ?',
+            (sample_users['directeur_id'], dimanche),
+        )
+        conn.commit()
+        stats_apres = utils.calculer_stats_forfait_jour(
+            sample_users['directeur_id'], annee
+        )
+    assert stats_apres['jours_travailles_particuliers']['total'] == 1
+    assert stats_apres['jours_travailles_particuliers']['feries'] == 1
+    assert stats_apres['soldes']['repos_forfait_restants'] == (
+        stats['soldes']['repos_forfait_restants'] - 1
+    )
+
+
+def test_dashboard_affiche_le_decompte_particulier(
+        app, admin_client, sample_users):
+    annee = 2026
+    _ajouter_ferie(app, annee, '2026-01-03', 'Férié du samedi')
+    _enregistrer_jour_travaille(admin_client, '2026-01-03')
+    _enregistrer_jour_travaille(admin_client, '2026-01-04')
+
+    html = admin_client.get(
+        f'/dashboard_forfait_jour?annee={annee}'
+    ).get_data(as_text=True)
+
+    assert 'Week-ends et jours fériés travaillés' in html
+    assert f'Décompte informatif pour {annee}' in html
+    assert 'il ne crée aucun droit à récupération' in html
+    assert 'data-testid="forfait-particuliers-total"' in html
+    assert 'Total distinct' in html
+    assert 'Samedis' in html
+    assert 'Dimanches' in html
+    assert 'Jours fériés' in html
+
 
 # --- Suivi facultatif des heures travaillées (horaires matin / après-midi) ---
 

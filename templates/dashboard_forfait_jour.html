@@ -55,6 +55,39 @@
             </div>
         </div>
     </div>
+
+    <div class="section" aria-labelledby="jours-particuliers-title">
+        <h2 id="jours-particuliers-title">Week-ends et jours fériés travaillés</h2>
+        <p class="subtitle">Décompte informatif pour {{ annee }} — il ne crée aucun droit à récupération.</p>
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+            <div class="stat-card" data-testid="forfait-particuliers-total">
+                <div class="stat-icon" style="font-size: 2rem;">📅</div>
+                <div class="stat-content">
+                    <h3>Total distinct</h3>
+                    <p class="stat-value">{{ stats.jours_travailles_particuliers.total }}</p>
+                    <span style="color: var(--gray-500); font-size: 0.85rem;">Une même date ne compte qu'une fois</span>
+                </div>
+            </div>
+            <div class="stat-card" data-testid="forfait-particuliers-samedis">
+                <div class="stat-content">
+                    <h3>Samedis</h3>
+                    <p class="stat-value">{{ stats.jours_travailles_particuliers.samedis }}</p>
+                </div>
+            </div>
+            <div class="stat-card" data-testid="forfait-particuliers-dimanches">
+                <div class="stat-content">
+                    <h3>Dimanches</h3>
+                    <p class="stat-value">{{ stats.jours_travailles_particuliers.dimanches }}</p>
+                </div>
+            </div>
+            <div class="stat-card" data-testid="forfait-particuliers-feries">
+                <div class="stat-content">
+                    <h3>Jours fériés</h3>
+                    <p class="stat-value">{{ stats.jours_travailles_particuliers.feries }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="section">
         <h2>Autres absences</h2>

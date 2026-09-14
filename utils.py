@@ -646,6 +646,46 @@ def calculer_stats_forfait_jour(user_id, annee):
         if type_j in stats:
             stats[type_j] += p['nb']
 
+    jours_travailles = conn.execute('''
+        SELECT date
+        FROM presence_forfait_jour
+        WHERE user_id = ? AND strftime('%Y', date) = ?
+          AND type_journee = 'travaille'
+        ORDER BY date
+    ''', (user_id, str(annee))).fetchall()
+    feries_travailles = {
+        row['date'] for row in conn.execute('''
+            SELECT date FROM jours_feries WHERE annee = ?
+        ''', (annee,)).fetchall()
+    }
+    dates_samedis = []
+    dates_dimanches = []
+    dates_feries = []
+    dates_particulieres = set()
+    for presence in jours_travailles:
+        date_str = presence['date']
+        jour_semaine = datetime.strptime(date_str, '%Y-%m-%d').weekday()
+        if jour_semaine == 5:
+            dates_samedis.append(date_str)
+            dates_particulieres.add(date_str)
+        elif jour_semaine == 6:
+            dates_dimanches.append(date_str)
+            dates_particulieres.add(date_str)
+        if date_str in feries_travailles:
+            dates_feries.append(date_str)
+            dates_particulieres.add(date_str)
+
+    stats['jours_travailles_particuliers'] = {
+        'total': len(dates_particulieres),
+        'samedis': len(dates_samedis),
+        'dimanches': len(dates_dimanches),
+        'feries': len(dates_feries),
+        'dates': sorted(dates_particulieres),
+        'dates_samedis': dates_samedis,
+        'dates_dimanches': dates_dimanches,
+        'dates_feries': dates_feries,
+    }
+
     stats['config'] = {
         'jours_contrat': JOURS_CONTRAT,
         'jours_conges_payes': JOURS_CONGES_PAYES,
