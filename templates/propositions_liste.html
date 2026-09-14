@@ -8,13 +8,13 @@
         <a class="btn btn-primary" href="{{ url_for('propositions_bp.nouvelle') }}" data-proposer-amelioration>Proposer une amélioration</a>
     </div>
     {% if gestionnaire %}<nav class="proposition-actions" aria-label="Périmètre des propositions">
-        <a href="{{ url_for('propositions_bp.liste') }}"{% if not centre %} aria-current="page"{% endif %}>Mes propositions</a>
-        <a href="{{ url_for('propositions_bp.liste', centre=1) }}"{% if centre %} aria-current="page"{% endif %}>Toutes les propositions du centre</a>
+        <a class="btn {{ 'btn-primary' if not centre else 'btn-secondary' }}" href="{{ url_for('propositions_bp.liste') }}"{% if not centre %} aria-current="page"{% endif %}>Mes propositions</a>
+        <a class="btn {{ 'btn-primary' if centre else 'btn-secondary' }}" href="{{ url_for('propositions_bp.liste', centre=1) }}"{% if centre %} aria-current="page"{% endif %}>Toutes les propositions du centre</a>
     </nav>{% endif %}
     {% for proposition in propositions %}
     <article class="proposition-carte">
         <div class="proposition-entete">
-            <h2><a href="{{ url_for('propositions_bp.detail', reference=proposition.suivi.id) }}">{{ proposition.contenu.demande.titre }}</a></h2>
+            <h2><a class="proposition-lien-titre" href="{{ url_for('propositions_bp.detail', reference=proposition.suivi.id) }}">{{ proposition.contenu.demande.titre }}</a></h2>
             {{ statut('incertain' if proposition.incertain else proposition.suivi.statut) }}
         </div>
         <p class="help-text">{{ proposition.suivi.cree_le[:10] }}{% if centre %} · {{ proposition.contenu.auteur.prenom }} {{ proposition.contenu.auteur.nom }}{% endif %}</p>
@@ -26,8 +26,8 @@
     </div>
     {% endfor %}
     <nav class="proposition-actions" aria-label="Pagination">
-        {% if page > 1 %}<a href="{{ url_for('propositions_bp.liste', page=page-1, centre=1 if centre else 0) }}">Précédent</a>{% endif %}
-        {% if suite %}<a href="{{ url_for('propositions_bp.liste', page=page+1, centre=1 if centre else 0) }}">Suivant</a>{% endif %}
+        {% if page > 1 %}<a class="btn btn-secondary" href="{{ url_for('propositions_bp.liste', page=page-1, centre=1 if centre else 0) }}">Précédent</a>{% endif %}
+        {% if suite %}<a class="btn btn-secondary" href="{{ url_for('propositions_bp.liste', page=page+1, centre=1 if centre else 0) }}">Suivant</a>{% endif %}
     </nav>
 </div>
 {% endblock %}

@@ -6,7 +6,7 @@
     <div class="proposition-entete">
         <div><h1>Proposer une amélioration</h1>
         <p>Expliquez ce que vous aimeriez pouvoir faire. Pas besoin de décrire une solution technique.</p></div>
-        <a href="{{ url_for('propositions_bp.liste') }}">Mes propositions</a>
+        <a class="btn btn-secondary" href="{{ url_for('propositions_bp.liste') }}">Mes propositions</a>
     </div>
     {% if erreurs %}
     <div class="alert alert-error" role="alert" tabindex="-1" id="proposition-erreurs">
@@ -19,7 +19,7 @@
     <div class="alert alert-warning">
         <strong>La messagerie du centre n’est pas prête.</strong>
         Votre proposition sera enregistrée avec ses pièces ; vous pourrez l’envoyer après configuration.
-        {% if gestionnaire %}<a href="{{ url_for('notifications_bp.configuration_email') }}">Configurer les emails</a>
+        {% if gestionnaire %}<a class="btn btn-secondary btn-sm" href="{{ url_for('notifications_bp.configuration_email') }}">Configurer les emails</a>
         {% else %}Demandez à la direction ou à la comptabilité d’activer les emails.{% endif %}
     </div>
     {% endif %}

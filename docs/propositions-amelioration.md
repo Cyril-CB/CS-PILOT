@@ -2,6 +2,12 @@
 
 ## Parcours du centre
 
+Les liens de navigation, configuration et téléchargement reprennent les boutons
+de l'application, y compris les deux accès permanents du pied de page classique.
+Le périmètre sélectionné est signalé visuellement et par
+`aria-current` ; les titres restent des liens textuels aux couleurs de la charte,
+avec survol et focus clavier visibles, en interface classique comme en flux.
+
 Après une recherche, « Proposer une amélioration » est disponible si aucun
 résultat précis n’est trouvé ou si les résultats ne conviennent pas. L’accès
 permanent dans le pied de page et la barre du bas permet aussi de proposer
