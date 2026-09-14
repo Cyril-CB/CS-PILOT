@@ -72,6 +72,13 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
 ## Résultats et livraison
 
 11. Avant chaque mail/publication, contrôler l'effet distant déjà enregistré.
+    Vérifier chaque effet du journal : clé non vide, type et état autorisés ;
+    un résultat confirmé, incertain ou en échec certain exige une preuve texte
+    non vide. Un historique incomplet est bloquant, jamais supprimé pour passer
+    le contrôle. Une PR enregistrée ou une intention de PR sans échec certain
+    interdit une autre création, même avec une nouvelle clé. Après un échec
+    certain documenté et vérification distante, une nouvelle intention distincte
+    peut être préparée ; conserver l'ancienne et ne jamais réutiliser sa clé.
     Persister l'intention sous CAS. Aucun effet après conflit ou résultat
     ambigu ; réconcilier le résultat, sinon conserver incertain sans répéter.
     Les mutations du journal sont faites par le coordinateur depuis une version

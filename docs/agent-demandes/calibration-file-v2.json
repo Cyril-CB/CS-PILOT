@@ -53,6 +53,14 @@
       "attendu": "Une intention confirmée ou incertaine ne peut pas être recréée."
     },
     {
+      "id": "effet_inexploitable",
+      "attendu": "Le vérificateur CLI et les transitions refusent tout effet tronqué, type/état inconnu ou résultat sans preuve texte non vide, sans mutation ; les historiques conformes restent valides."
+    },
+    {
+      "id": "pr_unique",
+      "attendu": "PR enregistrée ou intention de PR non échouée : nouvelle création refusée même sous une autre clé. Reprise seulement après échec certain documenté, sans effacer l'historique ni bloquer un autre dossier."
+    },
+    {
       "id": "plafonds",
       "attendu": "Deux précisions, trois corrections par dossier ; compteurs indépendants."
     },

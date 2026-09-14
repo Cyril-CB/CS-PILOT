@@ -1,6 +1,8 @@
 """Scénarios de reprise et de coordination du pilote, sans effets externes."""
 
 from copy import deepcopy
+import json
+import sys
 
 import pytest
 
@@ -206,3 +208,93 @@ def test_marqueur_fusion_incoherent_ne_libere_pas_un_creneau(file):
     file["dossiers"][ref(1)].update(pr=101, fusion_dev="b" * 40)
     with pytest.raises(ValueError, match="incompatible"):
         demarrer(file, 2)
+
+
+@pytest.mark.parametrize("effets", [
+    {"mail-1": {}},
+    {"mail-1": None},
+    {"mail-1": []},
+    {"mail-1": {"type": "mail_precisions"}},
+    {"mail-1": {"etat": "intention"}},
+    {"mail-1": {"type": "fusion", "etat": "intention"}},
+    {"mail-1": {"type": [], "etat": "intention"}},
+    {"mail-1": {"type": "mail_suivi", "etat": []}},
+    {"mail-1": {"type": "mail_suivi", "etat": "inconnu"}},
+    {"mail-1": {"type": "mail_suivi", "etat": "confirme"}},
+    {"mail-1": {"type": "mail_suivi", "etat": "incertain", "preuve": ""}},
+    {"mail-1": {"type": "pr", "etat": "echec_certain", "preuve": "  "}},
+    {"mail-1": {"type": "mail_suivi", "etat": "confirme", "preuve": 42}},
+    {"mail-1": {"type": "mail_suivi", "etat": "intention", "preuve": None}},
+    {"": {"type": "mail_suivi", "etat": "intention"}},
+    {"  ": {"type": "mail_suivi", "etat": "intention"}},
+])
+def test_verificateur_refuse_effet_inexploitable(file, effets, tmp_path, monkeypatch, capsys):
+    file = agent.prendre_dossier(file, ref(1), "x")
+    file["dossiers"][ref(1)]["effets"] = effets
+    avant = deepcopy(file)
+    chemin = tmp_path / "file.json"
+    chemin.write_text(json.dumps(file), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
+    assert agent.main() == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+    with pytest.raises(ValueError, match="Effet"):
+        agent.preparer_effet(file, ref(1), "x", "nouveau", "mail_precisions")
+    assert file == avant
+
+
+@pytest.mark.parametrize("etat", ["intention", "confirme", "incertain", "echec_certain"])
+def test_verificateur_accepte_historique_effets_valide(file, etat, tmp_path, monkeypatch, capsys):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr", "pr")
+    if etat != "intention":
+        file = agent.resultat_effet(file, ref(1), "execution-1", "pr", etat, "Preuve synthétique")
+    file["dossiers"][ref(1)]["pr"] = 101
+    for type_effet in ("mail_precisions", "mail_suivi", "branche", "correction", "revue"):
+        file = agent.preparer_effet(file, ref(1), "execution-1", type_effet, type_effet)
+        if etat != "intention":
+            file = agent.resultat_effet(file, ref(1), "execution-1", type_effet, etat, "Preuve synthétique")
+    chemin = tmp_path / "file.json"
+    chemin.write_text(json.dumps(file), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
+    assert agent.main() == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+def test_pr_enregistree_interdit_nouvelle_intention(file):
+    file = demarrer(file, 1)
+    file["dossiers"][ref(1)]["pr"] = 101
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="PR déjà"):
+        agent.preparer_effet(file, ref(1), "execution-1", "nouvelle-cle", "pr")
+    assert file == avant
+
+
+@pytest.mark.parametrize("etat", ["intention", "confirme", "incertain"])
+def test_intention_pr_non_echouee_interdit_autre_cle(file, etat):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
+    if etat != "intention":
+        file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", etat, "Preuve synthétique")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="PR déjà"):
+        agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr")
+    assert file == avant
+    # Le refus n'empêche pas la première PR d'un dossier indépendant.
+    autre = demarrer(file, 2)
+    assert agent.preparer_effet(autre, ref(2), "execution-2", "pr-v1", "pr")
+
+
+def test_nouvelle_intention_pr_apres_echec_certain_uniquement(file):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
+    file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", "echec_certain",
+                               "Refus explicite du service ; aucune PR créée")
+    with pytest.raises(ValueError, match="répéter"):
+        agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
+    reprise = agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr")
+    assert reprise["dossiers"][ref(1)]["effets"]["pr-v1"]["etat"] == "echec_certain"
+    assert reprise["dossiers"][ref(1)]["effets"]["pr-v2"]["etat"] == "intention"
+    # Une PR retrouvée à distance interdit la reprise, même avec cet historique.
+    file["dossiers"][ref(1)]["pr"] = 101
+    with pytest.raises(ValueError, match="PR déjà"):
+        agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr")

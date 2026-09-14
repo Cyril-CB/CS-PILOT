@@ -18,6 +18,25 @@ ETATS = {"recu", "quarantaine", "analyse", "attente_precisions",
          "attente_validation", "a_developper", "en_developpement", "en_revue",
          "a_corriger", "pret_recette", "integre_dev", "livre_main", "clos",
          "reporte", "refuse", "bloque_technique", "abandonne"}
+TYPES_EFFETS = {"mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"}
+ETATS_RESULTATS = {"confirme", "incertain", "echec_certain"}
+
+
+def _texte_non_vide(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _valider_effets(effets):
+    for cle, effet in effets.items():
+        if (not _texte_non_vide(cle) or not isinstance(effet, dict)
+                or not isinstance(effet.get("type"), str)
+                or effet["type"] not in TYPES_EFFETS
+                or not isinstance(effet.get("etat"), str)
+                or effet["etat"] not in ETATS_RESULTATS | {"intention"}):
+            raise ValueError("Effet invalide : clé, type ou état manquant/inconnu")
+        if ((effet["etat"] != "intention" or "preuve" in effet)
+                and not _texte_non_vide(effet.get("preuve"))):
+            raise ValueError("Effet invalide : preuve absente ou vide")
 
 
 def _hex(value, taille):
@@ -63,6 +82,7 @@ def valider_file(file):
                 or any(not isinstance(e, str) or not e for e in d["evenements"])
                 or not isinstance(d.get("effets"), dict)):
             raise ValueError("Dossier invalide : " + ref)
+        _valider_effets(d["effets"])
         if d["verrou"] is not None and (not isinstance(d["verrou"], str) or not d["verrou"]):
             raise ValueError("Propriétaire de verrou invalide")
         if d["branche"] is not None:
@@ -212,12 +232,15 @@ def preparer_effet(file, reference, execution, cle, type_effet):
     resultat, d = _detenir(file, reference, execution)
     if not d["source_verifiee"] or d["etat"] == "quarantaine":
         raise ValueError("Provenance non vérifiée")
-    if type_effet not in {"mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"}:
+    if not isinstance(type_effet, str) or type_effet not in TYPES_EFFETS:
         raise ValueError("Effet non autorisé")
-    if not isinstance(cle, str) or not cle or cle in d["effets"]:
+    if not _texte_non_vide(cle) or cle in d["effets"]:
         raise ValueError("Effet déjà enregistré : réconcilier, ne pas répéter")
     if type_effet in {"branche", "pr"} and not occupe_creneau(d):
         raise ValueError("Créneau de développement non réservé")
+    if type_effet == "pr" and (d["pr"] is not None or any(
+            e["type"] == "pr" and e["etat"] != "echec_certain" for e in d["effets"].values())):
+        raise ValueError("PR déjà enregistrée ou création à réconcilier")
     if type_effet in {"correction", "revue"} and d["pr"] is None:
         raise ValueError("PR absente")
     plafond = {"mail_precisions": 2, "correction": 3}.get(type_effet)
@@ -230,8 +253,8 @@ def preparer_effet(file, reference, execution, cle, type_effet):
 def resultat_effet(file, reference, execution, cle, etat, preuve):
     resultat, d = _detenir(file, reference, execution)
     effet = d["effets"][cle]
-    if (effet["etat"] != "intention" or etat not in {"confirme", "incertain", "echec_certain"}
-            or not isinstance(preuve, str) or not preuve):
+    if (effet["etat"] != "intention" or not isinstance(etat, str) or etat not in ETATS_RESULTATS
+            or not _texte_non_vide(preuve)):
         raise ValueError("Résultat ou transition d'effet invalide")
     effet.update(etat=etat, preuve=preuve)
     return resultat

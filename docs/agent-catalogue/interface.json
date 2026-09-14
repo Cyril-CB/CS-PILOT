@@ -931,7 +931,7 @@
         "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
       ],
       "extension_points": [
-        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask. Le contrat v2 multi-demandes-v2.json prévoit trois développements non intégrés, PR vers dev, report des correctifs main et validation du résultat intégré ; scripts/file_agent.py prépare les transitions privées sans effectuer de mutation externe.",
+        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask. Le contrat v2 multi-demandes-v2.json prévoit trois développements non intégrés, PR vers dev, report des correctifs main et validation du résultat intégré ; scripts/file_agent.py prépare les transitions privées sans effectuer de mutation externe. Il valide chaque effet persistant (type, état, preuve de résultat) et refuse une seconde intention de PR tant qu'une PR est enregistrée ou qu'une création antérieure n'a pas échoué de façon certaine.",
         "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
       ],
       "related_features": [
