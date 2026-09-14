@@ -14,6 +14,30 @@ def ref(n):
     return f"{n:032x}"
 
 
+def instantane_initial(d, reference):
+    return {
+        "version": 1, "version_precedente": None,
+        "source_evenement": [reference], "date": "2026-01-02T10:00:00+00:00",
+        "resume": "Besoin synthétique du formulaire",
+        "exigences": [{"id_stable": "E1", "description": "Afficher la valeur saisie",
+                      "statut": "incluse", "origine": [reference],
+                      "criteres_recette": ["La valeur enregistrée est affichée après rechargement"],
+                      "motif": "Besoin confirmé"}],
+        "questions_ouvertes": [], "decision": deepcopy(d["decision"]),
+        "impacts": {"ressources": deepcopy(d["ressources"]), "dependances": deepcopy(d["dependances"])},
+    }
+
+
+def synchroniser_instantanes_fixture(file):
+    # Les scénarios construisent leur état initial avant d'exercer une transition.
+    for d in file["dossiers"].values():
+        p = d.get("perimetres", {}).get(str(d["version_perimetre"]))
+        if p is not None:
+            p["decision"] = deepcopy(d["decision"])
+            p["impacts"] = {"ressources": deepcopy(d["ressources"]),
+                            "dependances": deepcopy(d["dependances"])}
+
+
 @pytest.fixture
 def file():
     file = agent.nouvelle_file()
@@ -25,10 +49,12 @@ def file():
         d.update(etat="a_developper", ressources=[f"table:domaine{n}"],
                  decision={"version_perimetre": 1, "evaluation": deepcopy(evaluation),
                            **evaluer(evaluation)})
+        d["perimetres"] = {"1": instantane_initial(d, ref(n))}
     return file
 
 
 def demarrer(file, n):
+    synchroniser_instantanes_fixture(file)
     file = agent.prendre_dossier(file, ref(n), f"execution-{n}")
     return agent.demarrer_developpement(file, ref(n), f"execution-{n}")
 
@@ -37,6 +63,7 @@ def demarrer(file, n):
                                     "correction", "revue", "mail_suivi", "mail_precisions"])
 def test_reponse_persistee_bloque_action_sur_ancien_perimetre(file, action):
     file["dossiers"][ref(1)]["ressources"] = ["schema"]
+    synchroniser_instantanes_fixture(file)
     if action == "demarrer":
         file = agent.prendre_dossier(file, ref(1), "execution-1")
     else:
@@ -432,13 +459,189 @@ def integrer(file, *, modifie=True, messages=None, **changements):
                    dependances=deepcopy(d["dependances"]),
                    preuve="Analyse synthétique et critères conservés dans l'instantané privé")
     analyse.update(changements)
+    messages = messages if messages is not None else agent.reponses_en_attente(d)
+    instantane = deepcopy(d["perimetres"][str(d["version_perimetre"])])
+    if modifie:
+        instantane.update(version=analyse["version_perimetre"],
+                          version_precedente=d["version_perimetre"],
+                          source_evenement=messages, resume="Besoin synthétique actualisé")
+    instantane["decision"] = deepcopy(analyse["decision"])
+    instantane["impacts"] = {"ressources": deepcopy(analyse["ressources"]),
+                             "dependances": deepcopy(analyse["dependances"])}
+    analyse.setdefault("instantane", instantane)
     return agent.integrer_reponses(
-        file, ref(1), "execution-1",
-        messages if messages is not None else agent.reponses_en_attente(d), **analyse)
+        file, ref(1), "execution-1", messages, **analyse)
 
 
 def recevoir(file, message="reponse-1"):
     return agent.ajouter_reponse(file, ref(1), "execution-1", message)[0]
+
+
+def test_integration_refuse_de_solder_reponse_sans_instantane(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    d = file["dossiers"][ref(1)]
+    decision = {**deepcopy(d["decision"]), "version_perimetre": 2}
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Instantané"):
+        agent.integrer_reponses(
+            file, ref(1), "execution-1", ["reponse-1"], perimetre_modifie=True,
+            version_perimetre=2, decision=decision, ressources=d["ressources"],
+            dependances=[], preuve="Texte libre sans instantané")
+    assert file == avant
+
+
+def test_reprise_reconstruit_exigences_criteres_et_sources_depuis_json(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    original = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    file = recevoir(recevoir(file), "reponse-2")
+    file = json.loads(json.dumps(integrer(file)))
+    d = file["dossiers"][ref(1)]
+    version = d["analyses_reponses"]["reponse-2"]["version_perimetre"]
+    p = d["perimetres"][str(version)]
+    assert p["version"] == 2 and p["version_precedente"] == 1
+    assert p["source_evenement"] == ["reponse-1", "reponse-2"]
+    assert p["exigences"][0]["description"] == original["exigences"][0]["description"]
+    assert p["exigences"][0]["criteres_recette"]
+    assert p["exigences"][0]["origine"] == [ref(1)]
+    assert p["questions_ouvertes"] == []
+    assert p["decision"] == d["decision"]
+    assert p["impacts"]["ressources"] == d["ressources"]
+    assert d["perimetres"]["1"] == original
+    assert agent.demarrer_developpement(file, ref(1), "execution-1")
+    # L'effacement de l'instantané n'est pas une reprise valide.
+    del d["perimetres"]["2"]
+    with pytest.raises(ValueError, match="Instantané"):
+        agent.valider_file(file)
+
+
+@pytest.mark.parametrize("champ", ["version", "version_precedente", "source_evenement", "date",
+                                  "resume", "exigences", "questions_ouvertes", "decision", "impacts"])
+def test_instantane_incomplet_refuse_avant_acquittement(file, champ):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    del p[champ]
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Instantané"):
+        integrer(file, instantane=p)
+    assert file == avant
+    assert agent.reponses_en_attente(file["dossiers"][ref(1)]) == ["reponse-1"]
+
+
+@pytest.mark.parametrize("defaut", [
+    "criteres", "origine", "statut", "ids_doubles", "sans_exigence",
+    "question_bloquante", "date", "precedente", "sources", "decision", "impacts",
+])
+def test_instantane_malforme_ou_desaccord_refuse(file, defaut):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    p = deepcopy(integrer(file)["dossiers"][ref(1)]["perimetres"]["2"])
+    if defaut == "criteres":
+        p["exigences"][0]["criteres_recette"] = []
+    elif defaut == "origine":
+        p["exigences"][0]["origine"] = []
+    elif defaut == "statut":
+        p["exigences"][0]["statut"] = "inventé"
+    elif defaut == "ids_doubles":
+        p["exigences"].append(deepcopy(p["exigences"][0]))
+    elif defaut == "sans_exigence":
+        p["exigences"] = []
+    elif defaut == "question_bloquante":
+        p["questions_ouvertes"] = ["Droit de modification inconnu"]
+    elif defaut == "date":
+        p["date"] = "date inconnue"
+    elif defaut == "precedente":
+        p["version_precedente"] = 2
+    elif defaut == "sources":
+        p["source_evenement"] = ["autre-message"]
+    elif defaut == "decision":
+        p["decision"]["motif"] = "Autre décision"
+    else:
+        p["impacts"]["ressources"] = ["table:autre"]
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Instantané"):
+        integrer(file, instantane=p)
+    assert file == avant
+
+
+def test_meme_version_ne_peut_pas_modifier_criteres(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    p["exigences"][0]["criteres_recette"] = ["Un autre résultat"]
+    with pytest.raises(ValueError, match="nouveau périmètre"):
+        integrer(file, modifie=False, instantane=p)
+
+
+@pytest.mark.parametrize("defaut", ["version_absente", "source_incoherente", "decision_divergente"])
+def test_journal_refuse_lien_analyse_instantane_incoherent(file, defaut):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = integrer(recevoir(file))
+    d = file["dossiers"][ref(1)]
+    if defaut == "version_absente":
+        d["analyses_reponses"]["reponse-1"]["version_perimetre"] = 3
+    elif defaut == "source_incoherente":
+        d["analyses_reponses"]["reponse-1"]["version_perimetre"] = 1
+    else:
+        d["decision"]["motif"] = "Modification hors de l'instantané"
+    with pytest.raises(ValueError):
+        agent.valider_file(json.loads(json.dumps(file)))
+
+
+def test_questions_ouvertes_retrouvees_apres_reprise(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    evaluation = deepcopy(file["dossiers"][ref(1)]["decision"]["evaluation"])
+    evaluation["besoin_complet"] = False
+    decision = {"version_perimetre": 2, "evaluation": evaluation, **evaluer(evaluation)}
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    p.update(version=2, version_precedente=1, source_evenement=["reponse-1"],
+             decision=decision, questions_ouvertes=["Quel profil peut modifier la valeur ?"])
+    file = json.loads(json.dumps(integrer(file, decision=decision, instantane=p)))
+    d = file["dossiers"][ref(1)]
+    assert d["etat"] == "attente_precisions"
+    assert d["perimetres"]["2"]["questions_ouvertes"] == ["Quel profil peut modifier la valeur ?"]
+    assert agent.reponses_en_attente(d) == []
+    with pytest.raises(ValueError, match="Grille"):
+        agent.demarrer_developpement(file, ref(1), "execution-1")
+
+
+
+def test_instantane_incomplet_refuse_aussi_par_cli(file, tmp_path, monkeypatch, capsys):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = integrer(recevoir(file))
+    del file["dossiers"][ref(1)]["perimetres"]["2"]["exigences"]
+    chemin = tmp_path / "file.json"
+    chemin.write_text(json.dumps(file), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
+    assert agent.main() == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+def test_instantane_initial_persiste_avant_premier_developpement(file):
+    neuf = agent.nouvelle_file()
+    neuf["actif"] = True
+    neuf, _ = agent.enregistrer_proposition(neuf, ref(1), "a" * 64, True)
+    neuf = agent.prendre_dossier(neuf, ref(1), "execution-1")
+    p = deepcopy(file["dossiers"][ref(1)]["perimetres"]["1"])
+    neuf = agent.enregistrer_perimetre_initial(neuf, ref(1), "execution-1", p)
+    p["exigences"][0]["description"] = "Altération du paramètre après appel"
+    neuf = json.loads(json.dumps(neuf))
+    assert neuf["dossiers"][ref(1)]["perimetres"]["1"]["exigences"][0]["description"] != p["exigences"][0]["description"]
+    assert agent.demarrer_developpement(neuf, ref(1), "execution-1")
+    with pytest.raises(ValueError, match="déjà établi"):
+        agent.enregistrer_perimetre_initial(neuf, ref(1), "execution-1", p)
+
+
+def test_initialisation_ancien_journal_exige_reconstruction_explicite(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    p = file["dossiers"][ref(1)].pop("perimetres")["1"]
+    with pytest.raises(ValueError, match="Instantané"):
+        agent.demarrer_developpement(file, ref(1), "execution-1")
+    file = agent.enregistrer_perimetre_initial(file, ref(1), "execution-1", p)
+    assert agent.demarrer_developpement(file, ref(1), "execution-1")
+
 
 
 def test_analyse_persistante_reprise_complete_et_historique(file):

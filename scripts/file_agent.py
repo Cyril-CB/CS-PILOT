@@ -8,6 +8,7 @@ ne lance aucun agent, ne fusionne aucune PR et ne garantit pas le CAS distant.
 
 import argparse
 from copy import deepcopy
+from datetime import datetime
 import json
 import re
 
@@ -55,6 +56,70 @@ def _hex(value, taille):
     return isinstance(value, str) and re.fullmatch(r"[a-f0-9]{%d}" % taille, value)
 
 
+def _liste_textes(valeur, non_vide=False):
+    return (isinstance(valeur, list) and (bool(valeur) or not non_vide)
+            and all(_texte_non_vide(v) for v in valeur))
+
+
+def _valider_instantane(p):
+    """Contrat structurel de evolutions-v2 ; la vérité métier reste vérifiée en amont."""
+    requis = {"version", "version_precedente", "source_evenement", "date", "resume",
+              "exigences", "questions_ouvertes", "decision", "impacts"}
+    if (not isinstance(p, dict) or not requis <= p.keys()
+            or type(p["version"]) is not int or p["version"] < 1
+            or not _liste_textes(p["source_evenement"], non_vide=True)
+            or len(set(p["source_evenement"])) != len(p["source_evenement"])
+            or not _texte_non_vide(p["resume"]) or not _texte_non_vide(p["date"])
+            or not isinstance(p["exigences"], list)
+            or not _liste_textes(p["questions_ouvertes"])
+            or not isinstance(p["impacts"], dict)
+            or not _liste_textes(p["impacts"].get("ressources"), non_vide=True)
+            or not _liste_textes(p["impacts"].get("dependances"))):
+        raise ValueError("Instantané du périmètre incomplet ou invalide")
+    precedente = p["version_precedente"]
+    if ((p["version"] == 1 and precedente is not None)
+            or (p["version"] > 1 and (type(precedente) is not int
+                                     or precedente != p["version"] - 1))):
+        raise ValueError("Instantané : version précédente incorrecte")
+    try:
+        date = datetime.fromisoformat(p["date"])
+    except ValueError:
+        raise ValueError("Instantané : date incorrecte") from None
+    if date.tzinfo is None:
+        raise ValueError("Instantané : date sans fuseau")
+    ids = set()
+    for e in p["exigences"]:
+        if (not isinstance(e, dict)
+                or not _texte_non_vide(e.get("id_stable"))
+                or e["id_stable"] in ids or not _texte_non_vide(e.get("description"))
+                or not isinstance(e.get("statut"), str)
+                or e["statut"] not in {"incluse", "proposee", "a_preciser", "differee", "retiree"}
+                or not _liste_textes(e.get("origine"), non_vide=True)
+                or not _liste_textes(e.get("criteres_recette"), non_vide=e["statut"] == "incluse")
+                or not isinstance(e.get("motif"), str)
+                or (e["statut"] in {"differee", "retiree"} and not _texte_non_vide(e["motif"]))):
+            raise ValueError("Instantané : exigence, origine ou critères invalides")
+        ids.add(e["id_stable"])
+    calculee = _evaluation_decision(p["decision"], p["version"])
+    if calculee["developpement_eligible"] and (
+            p["questions_ouvertes"] or not any(e["statut"] == "incluse" for e in p["exigences"])):
+        raise ValueError("Instantané : critères absents ou question ouverte avant développement")
+    return p
+
+
+def _instantane_correspond(d, p):
+    return (p["version"] == d["version_perimetre"] and p["decision"] == d["decision"]
+            and p["impacts"]["ressources"] == d["ressources"]
+            and p["impacts"]["dependances"] == d["dependances"])
+
+
+def _exiger_instantane_courant(d):
+    p = d.get("perimetres", {}).get(str(d["version_perimetre"]))
+    if p is None or not _instantane_correspond(d, p):
+        raise ValueError("Instantané du périmètre courant absent ou incohérent")
+    return p
+
+
 def nouvelle_file():
     return {"format": "cspilot.file-demandes", "version": 2,
             "actif": False, "maximum_developpements": 3,
@@ -95,12 +160,27 @@ def valider_file(file):
                 or not isinstance(d.get("effets"), dict)):
             raise ValueError("Dossier invalide : " + ref)
         _valider_effets(d["effets"])
+        perimetres = d.get("perimetres", {})
+        if not isinstance(perimetres, dict):
+            raise ValueError("Instantanés des périmètres invalides")
+        for version, p in perimetres.items():
+            _valider_instantane(p)
+            if (version != str(p["version"]) or p["version"] > d["version_perimetre"]
+                    or (p["version_precedente"] is not None
+                        and str(p["version_precedente"]) not in perimetres)):
+                raise ValueError("Instantané : historique des versions incomplet")
+        if perimetres:
+            _exiger_instantane_courant(d)
         analyses = d.get("analyses_reponses", {})
         if (len(set(d["evenements"])) != len(d["evenements"])
                 or not isinstance(analyses, dict)
                 or any(message not in d["evenements"] or not isinstance(a, dict)
                        or type(a.get("version_perimetre")) is not int
                        or not 1 <= a["version_perimetre"] <= d["version_perimetre"]
+                       or str(a["version_perimetre"]) not in perimetres
+                       or type(a.get("perimetre_modifie")) is not bool
+                       or (a["perimetre_modifie"] and message not in
+                           perimetres[str(a["version_perimetre"])]["source_evenement"])
                        or not _texte_non_vide(a.get("preuve"))
                        for message, a in analyses.items())):
             raise ValueError("Historique d'analyse des réponses invalide")
@@ -154,6 +234,7 @@ def enregistrer_proposition(file, reference, empreinte, source_verifiee=False):
         "dependances": [], "verrou": None, "branche": None, "pr": None,
         "fusion_dev": None, "evenements": [], "effets": {},
         "analyses_reponses": {}, "historique_perimetres": [],
+        "perimetres": {},
     }
     return valider_file(resultat), "nouveau"
 
@@ -218,13 +299,40 @@ def _evaluation_decision(decision, version):
     return calculee
 
 
+def enregistrer_perimetre_initial(file, reference, execution, instantane):
+    """Établir le premier instantané à partir des sources, sans supposer un historique."""
+    resultat, d = _detenir(file, reference, execution)
+    _valider_instantane(instantane)
+    if (d.get("perimetres") or d.get("analyses_reponses")
+            or d["version_perimetre"] != 1 or instantane["version"] != 1):
+        raise ValueError("Instantané initial déjà établi ou historique à reconstituer")
+    if d["decision"] is not None and not _instantane_correspond(d, instantane):
+        raise ValueError("Instantané initial incompatible avec la décision conservée")
+    if d["decision"] is None:
+        d.update(decision=deepcopy(instantane["decision"]),
+                 ressources=deepcopy(instantane["impacts"]["ressources"]),
+                 dependances=deepcopy(instantane["impacts"]["dependances"]))
+        calculee = _evaluation_decision(d["decision"], 1)
+        if d["source_verifiee"] and calculee["developpement_eligible"]:
+            d["etat"] = "a_developper"
+        elif not d["source_verifiee"] or calculee["decision"] == "quarantaine":
+            d["etat"] = "quarantaine"
+        else:
+            d["etat"] = {"clarifier": "attente_precisions",
+                         "clarifier_acces": "attente_precisions",
+                         "validation_humaine": "attente_validation",
+                         "reporter": "reporte", "refuser": "refuse"}.get(calculee["decision"], "analyse")
+    d["perimetres"] = {"1": deepcopy(instantane)}
+    return valider_file(resultat)
+
+
 def integrer_reponses(file, reference, execution, messages, *, perimetre_modifie,
-                     version_perimetre, decision, ressources, dependances, preuve):
+                     version_perimetre, decision, ressources, dependances, preuve,
+                     instantane=None):
     """Publier ensemble analyse, décision et impacts, puis autoriser la reprise.
 
-    Le coordinateur fournit une analyse métier vérifiée et conserve l'instantané
-    complet décrit dans evolutions-v2.json. Ici, une preuve n'est pas une analyse
-    automatique du texte ; les contrôles garantissent la cohérence de la reprise.
+    L'instantané complet est validé et conservé dans le même candidat que les
+    acquittements. Une preuve libre ne remplace pas exigences, critères et sources.
     """
     resultat, d = _detenir(file, reference, execution)
     attente = reponses_en_attente(d)
@@ -235,10 +343,20 @@ def integrer_reponses(file, reference, execution, messages, *, perimetre_modifie
     if type(version_perimetre) is not int or version_perimetre != version_attendue:
         raise ValueError("Version de périmètre incorrecte pour cette analyse")
     calculee = _evaluation_decision(decision, version_perimetre)
+    _valider_instantane(instantane)
+    precedent = _exiger_instantane_courant(d)
+    if (instantane["version"] != version_perimetre or instantane["decision"] != decision
+            or instantane["impacts"]["ressources"] != ressources
+            or instantane["impacts"]["dependances"] != dependances):
+        raise ValueError("Instantané incohérent avec la décision ou les impacts")
+    if perimetre_modifie and instantane["source_evenement"] != messages:
+        raise ValueError("Instantané : réponses sources incomplètes ou périmées")
     if not perimetre_modifie and (decision != d["decision"]
                                  or ressources != d["ressources"]
                                  or dependances != d["dependances"]):
         raise ValueError("Une décision ou des impacts modifiés imposent un nouveau périmètre")
+    if not perimetre_modifie and instantane != precedent:
+        raise ValueError("Un instantané modifié impose un nouveau périmètre")
     if perimetre_modifie:
         if d["fusion_dev"] is not None or d["etat"] in {"clos", "abandonne"}:
             raise ValueError("Évolution après clôture ou intégration : arbitrer un dossier lié")
@@ -247,6 +365,7 @@ def integrer_reponses(file, reference, execution, messages, *, perimetre_modifie
         d.setdefault("historique_perimetres", []).append(ancien)
         d.update(version_perimetre=version_perimetre, decision=deepcopy(decision),
                  ressources=deepcopy(ressources), dependances=deepcopy(dependances))
+        d["perimetres"][str(version_perimetre)] = deepcopy(instantane)
         if not d["source_verifiee"] or calculee["decision"] == "quarantaine":
             d["etat"] = "quarantaine"
         elif calculee["developpement_eligible"]:
@@ -257,7 +376,8 @@ def integrer_reponses(file, reference, execution, messages, *, perimetre_modifie
                          "refuser": "refuse"}.get(calculee["decision"], "analyse")
     for message in messages:
         d.setdefault("analyses_reponses", {})[message] = {
-            "version_perimetre": version_perimetre, "preuve": preuve}
+            "version_perimetre": version_perimetre,
+            "perimetre_modifie": perimetre_modifie, "preuve": preuve}
     return valider_file(resultat)
 
 
@@ -273,6 +393,7 @@ def _conflit_ressources(a, b):
 
 def _verifier_developpement(file, reference, d):
     _exiger_reponses_analysees(d)
+    _exiger_instantane_courant(d)
     if not d["source_verifiee"]:
         raise ValueError("Dossier non éligible")
     if not _evaluation_decision(d.get("decision"), d["version_perimetre"])["developpement_eligible"]:

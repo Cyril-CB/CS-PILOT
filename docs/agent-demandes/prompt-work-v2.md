@@ -32,8 +32,10 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    Les historiques anciens sans preuve d'analyse restent à examiner.
    Lire toutes les réponses en attente du dossier, puis appeler
    `integrer_reponses` avec leur liste exacte, la décision réévaluée, les
-   ressources, dépendances et preuve. Conserver dans le même candidat JSON
-   l'instantané complet des exigences et critères défini par evolutions-v2.
+   ressources, dépendances, preuve et `instantane` complet décrit par
+   evolutions-v2. La transition vérifie elle-même sa structure et sa concordance
+   avec version, décision, impacts et messages sources, puis le conserve dans
+   `perimetres` avec les acquittements. Une preuve libre ne le remplace pas.
    Publier sous CAS l'ensemble avant toute reprise. Une réponse supplémentaire
    ou un conflit CAS rend l'analyse candidate périmée : repartir des données
    courantes, sans supprimer ni acquitter la nouvelle réponse.
@@ -46,6 +48,11 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    au périmètre courant. Deux cycles de précisions maximum par dossier, trois
    questions par cycle. Après ce plafond, question Work si elle est nécessaire.
    Envoi seulement vers le correspondant vérifié, sans reply-all ni relance.
+   Après la première analyse du formulaire, utiliser
+   `enregistrer_perimetre_initial` avec l'instantané v1 complet, avant toute
+   réservation. Un ancien journal sans instantané exige une reconstitution
+   depuis les sources vérifiées ; ne pas inventer les versions manquantes.
+   Les références d'analyses déjà acquittées sans instantané sont invalides.
 
 ## Réservation et développement
 

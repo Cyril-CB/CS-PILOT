@@ -111,13 +111,18 @@ périmètre. `reponses_en_attente` fait la différence ; les anciens identifiant
 sans preuve restent en attente, sans suppression ni interprétation optimiste.
 La réception et le retour « doublon » ne suffisent pas à autoriser la reprise.
 
-`integrer_reponses` exige la liste exacte de toutes les réponses actuellement
-en attente et publie dans un même candidat leur analyse, la décision et les
-impacts. Le coordinateur conserve avec ce candidat l'instantané métier complet
-de `evolutions-v2.json`, notamment exigences et critères. La transition ne
-comprend pas le texte et ne certifie pas la preuve métier fournie.
-Un changement utilise la version suivante et conserve l'ancienne décision et
-ses impacts dans `historique_perimetres`. Sans incidence, version, décision,
+`enregistrer_perimetre_initial` établit le premier instantané complet depuis
+la proposition vérifiée. `integrer_reponses` exige ensuite la liste exacte
+des réponses en attente et un `instantane` complet conforme à evolutions-v2.
+La transition valide elle-même exigences, critères, questions et sources,
+les conserve dans `perimetres` et lie chaque analyse à sa version dans le
+même candidat JSON. Elle vérifie l'égalité avec la décision et les impacts.
+Une analyse acquittée dont l'instantané manque est refusée par le vérificateur.
+La transition ne comprend pas le texte et ne certifie pas sa vérité métier.
+Un changement utilise la version suivante et conserve tous les instantanés
+antérieurs dans `perimetres` ; le résumé historique de décision/impacts reste
+dans `historique_perimetres`. Sans incidence, l'instantané entier reste identique :
+version, exigences, critères, sources, décision,
 ressources et jalon restent identiques avec une justification explicite.
 La publication CAS doit réussir avant de poursuivre. Une analyse construite
 avant une réponse supplémentaire ne peut pas acquitter cette dernière.

@@ -91,6 +91,10 @@
     {
       "id": "historique_reponses_ancien",
       "attendu": "Un journal sans analyses_reponses est conservé ; ses IDs non analysés bloquent le démarrage jusqu'à preuve explicite. Aucune analyse supposée ou historique supprimé."
+    },
+    {
+      "id": "instantane_complet",
+      "attendu": "Enregistrement initial et évolution : instantané complet exigé et stocké avec les analyses ; après sérialisation, exigences, critères, questions, sources et versions restent disponibles. Champs manquants, critères vides, sources incohérentes, décision divergente ou lien d'analyse invalide sont refusés. Aucune modification d'instantané sous la même version."
     }
   ]
 }
