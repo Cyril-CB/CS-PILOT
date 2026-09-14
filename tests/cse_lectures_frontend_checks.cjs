@@ -49,7 +49,7 @@ function ouvrirPage(ok) {
     };
     const context = {document, fetch: () => Promise.resolve({ok})};
     vm.runInNewContext(match[1], context);
-    return {api: context, boutonLu, contenu, fermeture, handlers, modal, trigger};
+    return {api: context, boutonLu, contenu, fermeture, handlers, modal, trigger, document};
 }
 
 (async function () {
@@ -105,6 +105,25 @@ function ouvrirPage(ok) {
     echec.api.cseCloseMessage();
     assert.equal(echec.trigger.focusCount, 1);
     assert.equal(echec.contenu.focusCount, 0);
+
+    // Un clic sur le chatbot ou un focus programmatique ne doit pas sortir
+    // du dialogue, même sans appui sur Tab. Après fermeture, il reste libre.
+    const chatbot = ouvrirPage(false);
+    const champChat = {};
+    const donnerFocusChat = () => {
+        chatbot.document.activeElement = champChat;
+        if (chatbot.handlers.focusin) chatbot.handlers.focusin({target: champChat});
+    };
+    chatbot.api.cseOpenMessage(chatbot.trigger);
+    donnerFocusChat();
+    assert.equal(chatbot.document.activeElement, chatbot.fermeture,
+        'le focus externe doit revenir immédiatement dans la modale');
+    chatbot.boutonLu.focus();
+    chatbot.handlers.focusin({target: chatbot.boutonLu});
+    assert.equal(chatbot.document.activeElement, chatbot.boutonLu);
+    chatbot.api.cseCloseMessage();
+    donnerFocusChat();
+    assert.equal(chatbot.document.activeElement, champChat);
 
     process.stdout.write('Parcours JavaScript des lectures CSE : OK\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

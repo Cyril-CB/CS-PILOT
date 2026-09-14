@@ -897,6 +897,7 @@
         "Publier archive tous les précédents messages actifs avant insertion du nouveau.",
         "get_message_actif exclut une date expirée même si l’archivage matériel n’a pas encore eu lieu.",
         "Une lecture ne masque que le message concerné pour l’utilisateur connecté ; un nouveau message est non lu indépendamment.",
+        "Pendant l’ouverture de la modale, le focus reste dans le dialogue, y compris lorsqu’un autre composant tente de le déplacer sans touche Tab.",
         "La publication est conservée même en cas d’échec email."
       ],
       "extension_points": [

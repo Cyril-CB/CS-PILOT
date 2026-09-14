@@ -543,6 +543,13 @@
                 premier.focus();
             }
         }
+        document.addEventListener('focusin',function(e){
+            var m=document.getElementById('cseMessageModal');
+            if(!m||m.style.display!=='flex'||m.contains(e.target))return;
+            // Le chatbot peut déplacer le focus à la souris, sans événement Tab.
+            var cible=m.querySelector('.modal-close')||m.querySelector('.modal-content');
+            if(cible)cible.focus();
+        });
         document.addEventListener('keydown',function(e){
             var m=document.getElementById('cseMessageModal');
             if(!m||m.style.display!=='flex')return;
