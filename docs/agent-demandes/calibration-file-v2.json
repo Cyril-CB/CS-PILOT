@@ -50,7 +50,7 @@
     },
     {
       "id": "effet_incertain",
-      "attendu": "Une clé enregistrée ne peut pas être recréée. Un résultat incertain interdit aussi toute nouvelle clé et tout type d'effet dans ce dossier ; réponses entrantes et dossiers indépendants restent traitables."
+      "attendu": "Une clé enregistrée ne peut pas être recréée. Un résultat incertain interdit aussi toute nouvelle clé et tout type d'effet dans ce dossier ; réponses entrantes et dossiers indépendants restent traitables. Après vérification distante, une transition avec preuve conclut en confirmé ou échec certain et conserve l'ambiguïté précédente ; aucune autre transition ne la lève."
     },
     {
       "id": "effet_inexploitable",

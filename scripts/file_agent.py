@@ -37,6 +37,14 @@ def _valider_effets(effets):
         if ((effet["etat"] != "intention" or "preuve" in effet)
                 and not _texte_non_vide(effet.get("preuve"))):
             raise ValueError("Effet invalide : preuve absente ou vide")
+        historique = effet.get("historique", [])
+        if (not isinstance(historique, list)
+                or any(not isinstance(entree, dict)
+                       or entree.get("etat") != "incertain"
+                       or not _texte_non_vide(entree.get("preuve"))
+                       for entree in historique)
+                or historique and effet["etat"] not in {"confirme", "echec_certain"}):
+            raise ValueError("Effet invalide : historique de réconciliation incorrect")
 
 
 def _hex(value, taille):
@@ -260,6 +268,20 @@ def resultat_effet(file, reference, execution, cle, etat, preuve):
         raise ValueError("Résultat ou transition d'effet invalide")
     effet.update(etat=etat, preuve=preuve)
     return resultat
+
+
+def reconcilier_effet(file, reference, execution, cle, etat, preuve):
+    """Conclut une issue incertaine sans supprimer la preuve de l'ambiguïté."""
+    resultat, d = _detenir(file, reference, execution)
+    effet = d["effets"].get(cle)
+    if (not isinstance(effet, dict) or effet.get("etat") != "incertain"
+            or not isinstance(etat, str) or etat not in {"confirme", "echec_certain"}
+            or not _texte_non_vide(preuve)):
+        raise ValueError("Transition de réconciliation invalide")
+    historique = list(effet.get("historique", []))
+    historique.append({"etat": "incertain", "preuve": effet["preuve"]})
+    effet.update(etat=etat, preuve=preuve, historique=historique)
+    return valider_file(resultat)
 
 
 def main():

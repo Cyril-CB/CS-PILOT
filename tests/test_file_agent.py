@@ -319,6 +319,65 @@ def test_tout_type_de_resultat_incertain_bloque_un_nouvel_effet(file, type_initi
     assert file == avant
 
 
+@pytest.mark.parametrize("etat_final", ["confirme", "echec_certain"])
+def test_reconcilier_effet_incertain_preserve_ambiguite_et_reprend(file, etat_final):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
+    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "incertain",
+                               "Coupure avant réception de la réponse")
+    with pytest.raises(ValueError, match="transition"):
+        agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", etat_final,
+                             "Vérification distante")
+    file = agent.reconcilier_effet(file, ref(1), "execution-1", "mail-v1", etat_final,
+                                   "Vérification distante concluante")
+    effet = file["dossiers"][ref(1)]["effets"]["mail-v1"]
+    assert effet == {
+        "type": "mail_suivi",
+        "etat": etat_final,
+        "preuve": "Vérification distante concluante",
+        "historique": [{"etat": "incertain", "preuve": "Coupure avant réception de la réponse"}],
+    }
+    reprise = agent.preparer_effet(file, ref(1), "execution-1", "mail-v2", "mail_suivi")
+    assert reprise["dossiers"][ref(1)]["effets"]["mail-v2"]["etat"] == "intention"
+
+
+@pytest.mark.parametrize("etat_depart,etat_final,preuve", [
+    ("intention", "confirme", "Trouvé"),
+    ("confirme", "echec_certain", "Absent"),
+    ("incertain", "incertain", "Encore ambigu"),
+    ("incertain", "intention", "Rejouer"),
+    ("incertain", "confirme", ""),
+    ("incertain", "echec_certain", "  "),
+    ("incertain", [], "Conclusion"),
+    ("incertain", "confirme", 42),
+])
+def test_reconciliation_refuse_transition_ou_preuve_invalide(file, etat_depart, etat_final, preuve):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
+    if etat_depart != "intention":
+        file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", etat_depart,
+                                   "Preuve initiale")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="réconciliation"):
+        agent.reconcilier_effet(file, ref(1), "execution-1", "mail-v1", etat_final, preuve)
+    assert file == avant
+
+
+@pytest.mark.parametrize("historique", [
+    {}, [None], [{}], [{"etat": "confirme", "preuve": "Ancien"}],
+    [{"etat": "incertain"}], [{"etat": "incertain", "preuve": ""}],
+])
+def test_verificateur_refuse_historique_reconciliation_invalide(file, historique):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_suivi")
+    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "confirme", "Trouvé")
+    file["dossiers"][ref(1)]["effets"]["mail-v1"]["historique"] = historique
+    avec_erreur = deepcopy(file)
+    with pytest.raises(ValueError, match="historique"):
+        agent.valider_file(file)
+    assert file == avec_erreur
+
+
 def test_nouvelle_intention_pr_apres_echec_certain_uniquement(file):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")

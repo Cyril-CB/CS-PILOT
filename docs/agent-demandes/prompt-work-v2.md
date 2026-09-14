@@ -86,7 +86,10 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
     revue). Les lectures, réponses entrantes et preuves de résultats déjà dus
     restent traitables ; les dossiers indépendants continuent. Ne pas effacer
     l'incertitude pour reprendre : établir l'issue à partir des preuves distantes,
-    conserver l'historique sous CAS, sinon signaler le blocage dans Work.
+    puis utiliser `reconcilier_effet` vers `confirme` ou `echec_certain` avec une
+    preuve texte non vide. Cette transition conserve dans l'effet l'état et la
+    preuve de l'ambiguïté précédente ; la publier sous CAS avant toute nouvelle
+    intention. Si l'issue reste inconnue, signaler le blocage dans Work.
     Les mutations du journal sont faites par le coordinateur depuis une version
     fraîche, jamais en recopiant le journal ancien renvoyé par un sous-agent.
 12. Après recette et fusion par Cyril dans dev, enregistrer `integre_dev` et
