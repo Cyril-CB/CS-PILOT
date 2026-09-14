@@ -1,0 +1,120 @@
+{
+  "format": "cspilot.calibration-file",
+  "version": 2,
+  "commande": "python -m pytest -q tests/test_file_agent.py",
+  "portee": "Scénarios déterministes de file ; CAS simulé distinct du CAS Library, aucune prétention de concurrence Work ou de réception Outlook réelle.",
+  "cas": [
+    {
+      "id": "trois_et_quatrieme",
+      "attendu": "Trois développements démarrent ; le quatrième attend, mais ses réponses sont traitées."
+    },
+    {
+      "id": "pr_non_integree",
+      "attendu": "Une PR en revue, recette ou bloquée continue à occuper son créneau."
+    },
+    {
+      "id": "integration_dev",
+      "attendu": "L'intégration dev libère un créneau sans clore la livraison."
+    },
+    {
+      "id": "ressources",
+      "attendu": "Les ressources communes ou le schéma sont séquencés ; les demandes indépendantes progressent."
+    },
+    {
+      "id": "dependance",
+      "attendu": "Une dépendance non intégrée interdit le démarrage."
+    },
+    {
+      "id": "migration",
+      "attendu": "Réservation après inventaire des branches et PR ; aucune double réservation."
+    },
+    {
+      "id": "verrou",
+      "attendu": "Aucun vol de verrou ; les autres dossiers restent disponibles."
+    },
+    {
+      "id": "pause",
+      "attendu": "La pause interdit les transitions mutatives."
+    },
+    {
+      "id": "perimetre",
+      "attendu": "Une décision ancienne ne permet pas de démarrer un périmètre nouveau."
+    },
+    {
+      "id": "grille",
+      "attendu": "Une grille non favorable interdit la réservation, même si un ancien score était bon."
+    },
+    {
+      "id": "doublons",
+      "attendu": "Hash initial conflictuel refusé sans écrasement ; réponses nouvelles conservées."
+    },
+    {
+      "id": "effet_incertain",
+      "attendu": "Une clé enregistrée ne peut pas être recréée. Un résultat incertain interdit aussi toute nouvelle clé et tout type d'effet dans ce dossier ; réponses entrantes et dossiers indépendants restent traitables. Après vérification distante, une transition avec preuve conclut en confirmé ou échec certain et conserve l'ambiguïté précédente ; aucune autre transition ne la lève."
+    },
+    {
+      "id": "effet_inexploitable",
+      "attendu": "Le vérificateur CLI et les transitions refusent tout effet tronqué, type/état inconnu ou résultat sans preuve texte non vide, sans mutation ; les historiques conformes restent valides."
+    },
+    {
+      "id": "pr_unique",
+      "attendu": "PR enregistrée ou intention de PR non échouée : nouvelle création refusée même sous une autre clé. Reprise seulement après échec certain documenté, sans effacer l'historique ni bloquer un autre dossier."
+    },
+    {
+      "id": "plafonds",
+      "attendu": "Deux précisions, trois corrections par dossier ; compteurs indépendants."
+    },
+    {
+      "id": "interdictions",
+      "attendu": "Fusion, déploiement et reply-all refusés."
+    },
+    {
+      "id": "cas",
+      "attendu": "Deux candidats au même numéro de version : seul le premier gagne."
+    },
+    {
+      "id": "reponse_recue_non_analysee",
+      "attendu": "Après sérialisation/relecture, une réponse reçue même redédupliquée bloque toutes les nouvelles actions de son dossier ; les autres dossiers restent traitables."
+    },
+    {
+      "id": "analyse_atomique",
+      "attendu": "La conclusion de toutes les réponses publie version, décision et impacts ensemble avec preuve. Ancienne décision conservée. Analyse périmée, incomplète ou CAS perdant sans acquittement ni perte d'événement."
+    },
+    {
+      "id": "reprise_branche_existante",
+      "attendu": "PR/créneau conservés ; évolution revient en correction et recontrôle grille, ressources et dépendances. Courtoisie sans incidence conserve le jalon. Une PR intégrée n'est pas réouverte."
+    },
+    {
+      "id": "intention_avant_reponse",
+      "attendu": "Relecture avant appel externe : attente d'analyse ou version dépassée bloque l'intention déjà préparée. Constats des résultats dus et réconciliations restent possibles."
+    },
+    {
+      "id": "historique_reponses_ancien",
+      "attendu": "Un journal sans analyses_reponses est conservé ; ses IDs non analysés bloquent le démarrage jusqu'à preuve explicite. Aucune analyse supposée ou historique supprimé."
+    },
+    {
+      "id": "instantane_complet",
+      "attendu": "Enregistrement initial et évolution : instantané complet exigé et stocké avec les analyses ; après sérialisation, exigences, critères, questions, sources et versions restent disponibles. Champs manquants, critères vides, sources incohérentes, décision divergente ou lien d'analyse invalide sont refusés. Aucune modification d'instantané sous la même version."
+    },
+    {
+      "id": "coherence_entre_versions",
+      "attendu": "Refus d’un ID d’exigence antérieur disparu, d’une source d’évolution sans réception/analyse sur la même version et d’un effet futur ou sans instantané. Préservation des retraits/report motivés et des intentions historiques non exécutables."
+    },
+    {
+      "id": "tentative_avant_appel",
+      "attendu": "CAS de la tentative avant appel. Après coupure avant/après réseau, refuser rejeu et nouvelles actions tant que la tentative n’est pas réconciliée. Deux candidats concurrents : seul gagnant CAS poursuit. Une tentative ne prouve pas un envoi."
+    },
+    {
+      "id": "identite_exigence_complete",
+      "attendu": "Description, critères acquis et origines antérieures préservés sous le même ID ; remplacement par retrait motivé + nouvel ID."
+    },
+    {
+      "id": "source_quarantaine_verifiee",
+      "attendu": "Un doublon ne vérifie pas la source. Une confirmation Work avec preuve et empreinte exacte, sous verrou/CAS, permet la reprise ; toute décision antérieure est conservée et réévaluée via un nouvel événement. Pause, mauvaise empreinte, absence de preuve, collision et remplacement de preuve refusés. L’origine initiale est explicite ; sa perte ou la disparition de la preuve après confirmation sont refusées au rechargement."
+    },
+    {
+      "id": "invariants_journal_recharge",
+      "attendu": "Le vérificateur refuse plusieurs créations de PR non échouées, les cycles au-delà des plafonds, une provenance impossible et plusieurs réservations de migration pour un dossier."
+    }
+  ]
+}

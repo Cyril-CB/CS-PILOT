@@ -277,6 +277,35 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
 
 ### Propositions destinées à l’agent de développement
 
+- Pour le traitement de plusieurs demandes, lire
+  `docs/agent-demandes/multi-demandes-v2.json` et `prompt-work-v2.md` dans ce
+  même dossier. Une branche isolée par demande depuis `dev`, PR vers `dev`,
+  au plus trois développements non intégrés. L'analyse et les précisions des
+  autres demandes continuent ; les dépendances et les migrations sont séquencées.
+- Le coordinateur peut déléguer les demandes indépendantes à des sous-agents
+  autorisés, chacun dans un checkout distinct. Il conserve seul les écritures
+  du journal partagé, sous contrôle de version, avec des verrous courts et des
+  réservations par dossier. Aucun verrou abandonné repris automatiquement.
+- Les correctifs urgents restent proposés depuis `main` ; leur report vers
+  `dev` fait l'objet d'une PR. Aucune écriture directe ou forcée sur main/dev,
+  aucune fusion par l'agent. Tester les migrations et le résultat intégré avant
+  une PR de livraison dev vers main ; toutes les fusions restent humaines.
+- V2 distingue `integre_dev`, `livre_main` et disponibilité dans le centre.
+  Appliquer `definition-termine-v2.json` et `evolutions-v2.json` avec les
+  consignes v2 ; les fichiers v1 sont conservés pour les anciens épinglages.
+  Exécuter aussi `python -m pytest -q tests/test_file_agent.py` et vérifier la
+  file privée avec `python -m scripts.file_agent --verifier <fichier_prive>`.
+- Une réponse reçue n'est pas une réponse analysée. Consulter les réponses en
+  attente persistantes avant toute reprise ou publication, même si la collecte
+  ne renvoie que des doublons. Publier l'analyse et le périmètre ensemble avant
+  de reprendre ; recontrôler aussi une intention préparée avant la réponse.
+- En v2, `verifier_effet_a_executer` retourne une file candidate à l'état
+  `tentative`. La publier sous CAS avant l'appel : seul le gagnant poursuit
+  immédiatement, une fois. Une reprise qui lit cet état vérifie l'issue et
+  réconcilie avec preuve, sans rappeler le service. Conserver aussi description,
+  critères acquis et origines des exigences ; un remplacement retire l'ancien
+  élément avec motif et reçoit un nouvel ID.
+
 - Lire `docs/propositions-amelioration.md` pour tout changement du formulaire,
   des pièces, du suivi SMTP ou du format du mail. Actualiser dans la même PR
   le schéma JSON versionné et les fiches du catalogue concernées.
@@ -291,6 +320,14 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
   des pièces dans le journal privé du pilote. Les pièces réelles restent dans
   leur stockage privé d'origine ; ne copier ni leur contenu, ni des secrets dans
   le journal. Ne publier que des spécifications et exemples anonymisés.
+- Pour valider une source inconnue après vérification Work, `confirmer_source`
+  exige verrou, empreinte initiale et preuve Work, puis publication CAS.
+  Une décision antérieure reste à réévaluer sans écraser son instantané.
+  Le vérificateur de la file refuse aussi plusieurs créations de PR non échouées,
+  les cycles au-delà des plafonds et plusieurs migrations réservées au même dossier.
+  Une retransmission ne vérifie jamais à elle seule la provenance. Conserver
+  l’origine initiale de la vérification et refuser une confirmation dont la
+  preuve a disparu au rechargement.
 - Toute évolution de la grille, du contrat de décision ou du pilote actualise
   les consignes et la calibration dans la même PR. Exécuter
   `python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json`.
