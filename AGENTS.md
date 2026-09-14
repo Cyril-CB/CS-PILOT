@@ -323,7 +323,9 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
 - Pour valider une source inconnue après vérification Work, `confirmer_source`
   exige verrou, empreinte initiale et preuve Work, puis publication CAS.
   Une décision antérieure reste à réévaluer sans écraser son instantané.
-  Une retransmission ne vérifie jamais à elle seule la provenance.
+  Une retransmission ne vérifie jamais à elle seule la provenance. Conserver
+  l’origine initiale de la vérification et refuser une confirmation dont la
+  preuve a disparu au rechargement.
 - Toute évolution de la grille, du contrat de décision ou du pilote actualise
   les consignes et la calibration dans la même PR. Exécuter
   `python scripts/triage_agent.py --calibration docs/agent-demandes/calibration-v1.json`.

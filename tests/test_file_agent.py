@@ -286,6 +286,20 @@ def test_preuve_source_malformee_refusee_au_rechargement(champ):
         agent.valider_file(json.loads(json.dumps(f)))
 
 
+@pytest.mark.parametrize("defaut", ["preuve_supprimee", "preuve_null", "origine_supprimee", "origine_null"])
+def test_confirmation_source_exige_preuve_retenue_au_rechargement(defaut):
+    f = agent.confirmer_source(source_inconnue(), ref(1), "execution-1", "a" * 64, "work-verification", "Centre vérifié dans Work")
+    d = f["dossiers"][ref(1)]
+    assert d["source_verifiee_initialement"] is False
+    champ = "verification_source" if defaut.startswith("preuve") else "source_verifiee_initialement"
+    if defaut.endswith("null"):
+        d[champ] = None
+    else:
+        del d[champ]
+    with pytest.raises(ValueError, match="[Pp]rovenance"):
+        agent.valider_file(json.loads(json.dumps(f)))
+
+
 def test_effet_incertain_jamais_repete(file):
     file = agent.prendre_dossier(file, ref(1), "x")
     file = agent.preparer_effet(file, ref(1), "x", "question-v1", "mail_precisions")

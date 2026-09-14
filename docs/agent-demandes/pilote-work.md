@@ -115,6 +115,11 @@ la grille et publier la décision dans la version suivante avec `integrer_repons
 La confirmation seule n'autorise aucun développement ni aucun envoi et ne
 supprime pas les autres motifs de quarantaine ou de précision. Une confirmation
 identique est idempotente ; sa preuve ne peut pas être remplacée.
+`source_verifiee_initialement` distingue une admission déjà vérifiée d'une
+confirmation ultérieure. Ce fait initial reste conservé ; une confirmation
+ultérieure sans `verification_source` est refusée au rechargement. Un ancien
+JSON privé sans provenance initiale explicite exige sa reconstruction depuis
+les sources : ne jamais déduire cette origine de `source_verifiee` courant.
 
 Dans la file v2, `evenements` conserve les identifiants reçus et
 `analyses_reponses` les preuves de leur analyse, liées à une version du

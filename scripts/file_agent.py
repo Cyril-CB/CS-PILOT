@@ -185,7 +185,11 @@ def valider_file(file):
                 or not isinstance(d.get("effets"), dict)):
             raise ValueError("Dossier invalide : " + ref)
         _valider_effets(d["effets"])
+        if type(d.get("source_verifiee_initialement")) is not bool:
+            raise ValueError("Provenance initiale absente : retrouver la source, ne pas la supposer")
         verification = d.get("verification_source")
+        if d["source_verifiee"] and not d["source_verifiee_initialement"] and verification is None:
+            raise ValueError("Preuve de vérification de provenance absente")
         if verification is not None and (
                 not isinstance(verification, dict) or not d["source_verifiee"]
                 or verification.get("manifest_sha256") != d["manifest_sha256"]
@@ -279,6 +283,7 @@ def enregistrer_proposition(file, reference, empreinte, source_verifiee=False):
         return resultat, "doublon"
     resultat["dossiers"][reference] = {
         "manifest_sha256": empreinte, "source_verifiee": source_verifiee,
+        "source_verifiee_initialement": source_verifiee,
         "etat": "recu" if source_verifiee else "quarantaine",
         "version_perimetre": 1, "decision": None, "ressources": ["a_analyser"],
         "dependances": [], "verrou": None, "branche": None, "pr": None,
