@@ -323,6 +323,8 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
 - Pour valider une source inconnue après vérification Work, `confirmer_source`
   exige verrou, empreinte initiale et preuve Work, puis publication CAS.
   Une décision antérieure reste à réévaluer sans écraser son instantané.
+  Le vérificateur de la file refuse aussi plusieurs créations de PR non échouées,
+  les cycles au-delà des plafonds et plusieurs migrations réservées au même dossier.
   Une retransmission ne vérifie jamais à elle seule la provenance. Conserver
   l’origine initiale de la vérification et refuser une confirmation dont la
   preuve a disparu au rechargement.

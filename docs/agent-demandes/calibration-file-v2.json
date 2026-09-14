@@ -111,6 +111,10 @@
     {
       "id": "source_quarantaine_verifiee",
       "attendu": "Un doublon ne vérifie pas la source. Une confirmation Work avec preuve et empreinte exacte, sous verrou/CAS, permet la reprise ; toute décision antérieure est conservée et réévaluée via un nouvel événement. Pause, mauvaise empreinte, absence de preuve, collision et remplacement de preuve refusés. L’origine initiale est explicite ; sa perte ou la disparition de la preuve après confirmation sont refusées au rechargement."
+    },
+    {
+      "id": "invariants_journal_recharge",
+      "attendu": "Le vérificateur refuse plusieurs créations de PR non échouées, les cycles au-delà des plafonds, une provenance impossible et plusieurs réservations de migration pour un dossier."
     }
   ]
 }

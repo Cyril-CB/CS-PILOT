@@ -140,7 +140,7 @@ antérieurs dans `perimetres` ; le résumé historique de décision/impacts rest
 dans `historique_perimetres`. Sans incidence, l'instantané entier reste identique :
 version, exigences, critères, sources, décision,
 ressources et jalon restent identiques avec une justification explicite.
-La publication CAS doit réussir avant de poursuivre. Une analyse construite
+La publication CAS doit réussir avant de poursuivre. Au rechargement, refuser plusieurs créations de PR non échouées, un historique au-delà des plafonds, une provenance rétrogradée ou contradictoire et plusieurs réservations de migration pour le même dossier. Une analyse construite
 ne peut supprimer un ID d'exigence antérieur. Un retrait ou report reste
 explicite et motivé. Chaque source d'évolution a une réception et une analyse
 sur la même version ; ces liens sont vérifiés dans les deux sens, pour tout

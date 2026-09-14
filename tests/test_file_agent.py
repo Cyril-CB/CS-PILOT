@@ -203,6 +203,56 @@ def test_reference_alteree_ne_remplace_pas_le_dossier(file):
     assert agent.ajouter_reponse(file, ref(1), "x", "reponse-2")[1] == "a_analyser"
 
 
+@pytest.mark.parametrize("etat", ["intention", "tentative", "confirme", "incertain"])
+def test_journal_refuse_plusieurs_creations_pr_non_echouees(file, etat):
+    d = file["dossiers"][ref(1)]
+    effet = {"type": "pr", "etat": etat, "version_perimetre": 1}
+    if etat == "tentative":
+        effet["execution_tentative"] = "execution-1"
+    elif etat in {"confirme", "incertain"}:
+        effet["preuve"] = "Résultat synthétique observé"
+    d["effets"] = {"pr-1": effet, "pr-2": {"type": "pr", "etat": "intention", "version_perimetre": 1}}
+    with pytest.raises(ValueError, match="Plusieurs créations de PR"):
+        agent.valider_file(json.loads(json.dumps(file)))
+    # Des tentatives antérieures certainement échouées restent dans l'historique.
+    d["effets"]["pr-2"].update(etat="echec_certain", preuve="Annulation avant tentative confirmée")
+    assert agent.valider_file(json.loads(json.dumps(file)))
+
+
+@pytest.mark.parametrize("type_effet,quantite", [("mail_precisions", 3), ("correction", 4)])
+def test_journal_refuse_cycles_au_dela_du_plafond(file, type_effet, quantite):
+    d = file["dossiers"][ref(1)]
+    d["effets"] = {f"effet-{i}": {"type": type_effet, "etat": "echec_certain",
+                                   "preuve": "Échec certain conservé"}
+                    for i in range(quantite)}
+    with pytest.raises(ValueError, match="Plafond de cycles"):
+        agent.valider_file(json.loads(json.dumps(file)))
+
+
+@pytest.mark.parametrize("situation", ["retrogradation", "preuve_sur_source_initiale", "hors_quarantaine"])
+def test_journal_refuse_provenance_impossible(file, situation):
+    d = file["dossiers"][ref(1)]
+    if situation == "retrogradation":
+        d["source_verifiee"] = False
+        d["etat"] = "quarantaine"
+    elif situation == "preuve_sur_source_initiale":
+        d["verification_source"] = {"manifest_sha256": "a" * 64,
+                                    "evenement_id": "work", "preuve": "Preuve",
+                                    "execution": "execution-1", "analyse_requise": False}
+    else:
+        d["source_verifiee_initialement"] = False
+        d["source_verifiee"] = False
+        d["etat"] = "recu"
+    with pytest.raises(ValueError, match="[Pp]rovenance|quarantaine"):
+        agent.valider_file(json.loads(json.dumps(file)))
+
+
+def test_journal_refuse_deux_reservations_migration_pour_un_dossier(file):
+    file["migrations_reservees"] = {"0075": ref(1), "0076": ref(1)}
+    with pytest.raises(ValueError, match="Plusieurs migrations"):
+        agent.valider_file(json.loads(json.dumps(file)))
+
+
 def source_inconnue():
     f = agent.nouvelle_file()
     f["actif"] = True
@@ -1185,7 +1235,7 @@ def test_intention_prete_ne_peut_pas_creer_seconde_pr(file, autre):
         if autre == "creation_confirmee":
             d["effets"]["autre"].update(etat="confirme", preuve="PR retrouvée")
     avant = deepcopy(file)
-    with pytest.raises(ValueError, match="PR déjà"):
+    with pytest.raises(ValueError, match="PR déjà|Plusieurs créations de PR"):
         agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr")
     assert file == avant
 

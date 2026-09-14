@@ -60,6 +60,11 @@ def _valider_effets(effets):
                        for entree in historique)
                 or historique and effet["etat"] not in {"confirme", "echec_certain"}):
             raise ValueError("Effet invalide : historique de réconciliation incorrect")
+    if sum(e["type"] == "pr" and e["etat"] != "echec_certain" for e in effets.values()) > 1:
+        raise ValueError("Plusieurs créations de PR non échouées dans le même dossier")
+    for type_effet, plafond in {"mail_precisions": 2, "correction": 3}.items():
+        if sum(e["type"] == type_effet for e in effets.values()) > plafond:
+            raise ValueError("Plafond de cycles dépassé dans l'historique des effets")
 
 
 def _hex(value, taille):
@@ -188,6 +193,11 @@ def valider_file(file):
         if type(d.get("source_verifiee_initialement")) is not bool:
             raise ValueError("Provenance initiale absente : retrouver la source, ne pas la supposer")
         verification = d.get("verification_source")
+        if (d["source_verifiee_initialement"] and
+                (not d["source_verifiee"] or verification is not None)):
+            raise ValueError("Provenance initiale incohérente avec l'état courant")
+        if not d["source_verifiee"] and d["etat"] != "quarantaine":
+            raise ValueError("Source non vérifiée hors quarantaine")
         if d["source_verifiee"] and not d["source_verifiee_initialement"] and verification is None:
             raise ValueError("Preuve de vérification de provenance absente")
         if verification is not None and (
@@ -258,9 +268,13 @@ def valider_file(file):
             raise ValueError("Intégration non démontrée")
     if sum(occupe_creneau(d) for d in file["dossiers"].values()) > file["maximum_developpements"]:
         raise ValueError("Plafond de développements dépassé")
+    dossiers_migres = set()
     for numero, ref in file["migrations_reservees"].items():
         if not _hex(numero, 4) or not numero.isdigit() or ref not in file["dossiers"]:
             raise ValueError("Réservation de migration invalide")
+        if ref in dossiers_migres:
+            raise ValueError("Plusieurs migrations réservées pour le même dossier")
+        dossiers_migres.add(ref)
     return file
 
 
