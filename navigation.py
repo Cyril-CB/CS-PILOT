@@ -380,6 +380,22 @@ ZONES = [
 # il se déplie comme une zone.
 ACCES_DIRECTS = [
     {
+        'id': 'identite_centre',
+        'nom': 'Identité du centre',
+        'icone': '⌂',
+        'description': 'Informations légales et documents communs de l’association.',
+        'mots': 'identite centre association asso legal administratif document statut siren siret ape naf convention collective',
+        'pages': [
+            _page('identite_centre_bp.fiche', 'Fiche d’identité du centre',
+                  profils=('directeur', 'comptable', 'responsable'),
+                  resume='SIREN, SIRET, APE, convention collective et documents partagés.',
+                  mots='identite centre association asso siren siret ape naf legal statuts document commun convention collective idcc',
+                  expressions=('siret asso', 'siret association', 'siret du centre',
+                               'fiche identité', 'fiche du centre', 'statuts association',
+                               'statuts de l’association', 'code de convention collective')),
+        ],
+    },
+    {
         'id': 'salles',
         'nom': 'Salles',
         'icone': '⌂',

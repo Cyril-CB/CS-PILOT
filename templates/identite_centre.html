@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block title %}Fiche d’identité du centre — CS PILOT{% endblock %}
+{% macro securite() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<input type="hidden" name="revision" value="{{ revision_formulaire }}">
+{%- endmacro %}
+{% block content %}
+<div class="identite-page">
+    <h1>Fiche d’identité du centre</h1>
+    <p>Les informations et documents communs de votre association, au même endroit.</p>
+    {% if not gestionnaire %}<p class="identite-aide">Consultation et téléchargement. La direction et la comptabilité mettent cette fiche à jour.</p>{% endif %}
+    {% if erreur %}<div class="alert alert-error" role="alert">{{ erreur }} <a class="btn btn-secondary btn-sm" href="{{ url_for('identite_centre_bp.fiche') }}">Recharger la fiche</a></div>{% endif %}
+    <section class="proposition-carte">
+        <h2>Informations légales</h2>
+        {% if gestionnaire %}
+        <form method="post" action="{{ url_for('identite_centre_bp.fiche') }}">
+            {{ securite() }}<input type="hidden" name="action" value="enregistrer">
+            <div class="form-group"><label for="nom">Nom du centre / de l’association</label><input id="nom" name="nom" type="text" maxlength="160" value="{{ valeurs.nom }}"></div>
+            <div class="identite-grille">
+                {% for cle, libelle, maximum in [('siren', 'SIREN', 20), ('siret', 'SIRET', 25), ('ape', 'Code APE / NAF', 10), ('convention_collective_code', 'Code de convention collective (IDCC)', 50)] %}
+                <div class="form-group"><label for="{{ cle }}">{{ libelle }}</label><input id="{{ cle }}" name="{{ cle }}" type="text" maxlength="{{ maximum }}" value="{{ valeurs[cle] }}"{% if cle in ('siren', 'siret') %} inputmode="numeric"{% endif %}></div>
+                {% endfor %}
+            </div>
+            <p class="identite-aide">Vous pouvez laisser une information vide et la compléter plus tard. Le code de convention collective est conservé à titre informatif.</p>
+            <button class="btn btn-primary" type="submit">Enregistrer les informations</button>
+        </form>
+        {% else %}
+        <dl class="identite-grille">
+            {% for cle, libelle in [('nom', 'Nom du centre / de l’association'), ('siren', 'SIREN'), ('siret', 'SIRET'), ('ape', 'Code APE / NAF'), ('convention_collective_code', 'Code de convention collective (IDCC)')] %}
+            <div><dt>{{ libelle }}</dt><dd>{{ fiche[cle] or 'Non renseigné' }}</dd></div>
+            {% endfor %}
+        </dl>
+        {% endif %}
+    </section>
+    <section class="proposition-carte">
+        <h2>Informations complémentaires</h2>
+        {% if not champs %}<p>Aucune information complémentaire pour le moment.</p>{% endif %}
+        {% for champ in champs %}
+        <div class="identite-element">
+            <strong>{{ champ.libelle }}</strong><p class="identite-texte">{{ champ.valeur or 'Non renseigné' }}</p>
+            {% if gestionnaire %}
+            <details><summary>Modifier cette information</summary>
+                <form method="post" action="{{ url_for('identite_centre_bp.fiche') }}">
+                    {{ securite() }}<input type="hidden" name="champ_id" value="{{ champ.id }}">
+                    <div class="form-group"><label for="libelle-{{ champ.id }}">Libellé</label><input id="libelle-{{ champ.id }}" name="libelle" type="text" required maxlength="80" value="{{ request.form.get('libelle', champ.libelle) if erreur and request.form.get('champ_id') == champ.id|string else champ.libelle }}"></div>
+                    <div class="form-group"><label for="valeur-{{ champ.id }}">Valeur</label><textarea id="valeur-{{ champ.id }}" name="valeur" rows="3" maxlength="2000">{{ request.form.get('valeur', champ.valeur) if erreur and request.form.get('champ_id') == champ.id|string else champ.valeur }}</textarea></div>
+                    <div class="identite-actions"><button class="btn btn-primary btn-sm" name="action" value="modifier_champ" type="submit">Enregistrer</button><button class="btn btn-danger btn-sm" name="action" value="supprimer_champ" type="submit" formnovalidate onclick="return confirm('Supprimer cette information ?')">Supprimer</button></div>
+                </form>
+            </details>
+            {% endif %}
+        </div>
+        {% endfor %}
+        {% if gestionnaire and champs|length < max_champs %}
+        <details{% if erreur and request.form.get('action') == 'ajouter_champ' %} open{% endif %}><summary>Ajouter une information</summary>
+            <form method="post" action="{{ url_for('identite_centre_bp.fiche') }}">
+                {{ securite() }}<input type="hidden" name="action" value="ajouter_champ">
+                <div class="form-group"><label for="libelle-nouveau">Libellé</label><input id="libelle-nouveau" name="libelle" type="text" maxlength="80" required placeholder="Ex. Numéro RNA" value="{{ request.form.get('libelle', '') if erreur and request.form.get('action') == 'ajouter_champ' else '' }}"></div>
+                <div class="form-group"><label for="valeur-nouvelle">Valeur</label><textarea id="valeur-nouvelle" name="valeur" rows="3" maxlength="2000">{{ request.form.get('valeur', '') if erreur and request.form.get('action') == 'ajouter_champ' else '' }}</textarea></div>
+                <button class="btn btn-primary btn-sm" type="submit">Ajouter l’information</button>
+            </form>
+        </details>
+        {% endif %}
+        {% if gestionnaire %}<p class="identite-aide">{{ champs|length }} / {{ max_champs }} informations. Texte libre, sans calcul.</p>{% endif %}
+    </section>
+    <section class="proposition-carte">
+        <h2>Documents communs</h2>
+        <p>Statuts, attestations et autres pièces régulièrement demandées.</p>
+        {% if not documents %}<p>Aucun document pour le moment.</p>{% endif %}
+        {% for document in documents %}
+        <article class="identite-element">
+            <strong>{{ document.libelle }}</strong>
+            <p class="identite-aide">{{ document.nom }} · {{ (document.taille / 1024)|round(1) }} Kio</p>
+            <div class="identite-actions">
+                <a class="btn btn-secondary btn-sm" href="{{ url_for('identite_centre_bp.telecharger', document_id=document.id) }}" aria-label="Télécharger : {{ document.libelle }}">Télécharger</a>
+                {% if gestionnaire %}<form method="post" action="{{ url_for('identite_centre_bp.fiche') }}" onsubmit="return confirm('Supprimer ce document de la fiche ?')">
+                    {{ securite() }}<input type="hidden" name="action" value="supprimer_document"><input type="hidden" name="document_id" value="{{ document.id }}"><button class="btn btn-danger btn-sm" type="submit">Supprimer</button>
+                </form>{% endif %}
+            </div>
+        </article>
+        {% endfor %}
+        {% if gestionnaire and documents|length < max_documents %}
+        <details{% if erreur and request.form.get('action') == 'ajouter_document' %} open{% endif %}><summary>Ajouter un document</summary>
+            <form method="post" action="{{ url_for('identite_centre_bp.fiche') }}" enctype="multipart/form-data">
+                {{ securite() }}<input type="hidden" name="action" value="ajouter_document">
+                <div class="form-group"><label for="libelle-document">Titre du document</label><input id="libelle-document" name="libelle_document" type="text" maxlength="120" required placeholder="Ex. Statuts de l’association" value="{{ request.form.get('libelle_document', '') if erreur and request.form.get('action') == 'ajouter_document' else '' }}"></div>
+                <div class="form-group"><label for="document">Fichier</label><input id="document" name="document" type="file" accept="{{ formats }}" required aria-describedby="limites-document"></div>
+                <p class="identite-aide" id="limites-document">Un fichier par ajout, {{ (maximum_fichier / 1024 / 1024)|round(2) }} Mio maximum. Formats : {{ formats }}. Les fichiers sont proposés en téléchargement.</p>
+                <button class="btn btn-primary btn-sm" type="submit">Ajouter le document</button>
+            </form>
+        </details>
+        {% endif %}
+        {% if gestionnaire %}<p class="identite-aide">{{ documents|length }} / {{ max_documents }} documents.</p>{% endif %}
+    </section>
+    {% if fiche.modifie_le %}<p class="identite-aide">Dernière modification : {{ fiche.modifie_le[:10] }}.</p>{% endif %}
+</div>
+{% endblock %}

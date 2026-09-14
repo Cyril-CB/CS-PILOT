@@ -5001,6 +5001,28 @@ body.flx .main-content {
     color: var(--gray-500); text-transform: uppercase;
 }
 
+/* Fiche du centre : composants et couleurs partagés avec les pages métier. */
+.identite-page { max-width: 850px; margin: 0 auto; overflow-wrap: anywhere; }
+.identite-page h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin-bottom: 12px; }
+.identite-page h2 { font-size: 1.2rem; }
+.identite-page p { line-height: 1.6; margin-bottom: 12px; }
+.identite-grille { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.identite-grille dt { font-weight: 600; }
+.identite-grille dd { margin: 8px 0 16px; white-space: pre-wrap; }
+.identite-texte { white-space: pre-wrap; }
+.identite-aide { color: var(--gray-500); font-size: .9rem; }
+.identite-element { padding: 16px 0; border-bottom: 1px solid var(--gray-200); margin-bottom: 16px; }
+.identite-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.identite-actions form { margin: 0; }
+.identite-page details summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
+.identite-page a:focus-visible, .identite-page button:focus-visible, .identite-page summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.identite-page input[type="file"] { max-width: 100%; }
+@media (max-width: 600px) {
+    .identite-grille { grid-template-columns: 1fr; gap: 0; }
+    .identite-page .proposition-carte { padding: 18px; }
+    body:not(.flx) .identite-page > h1 { padding-left: 44px; }
+}
+
 /* Propositions : même parcours en interface flux, classique et sur téléphone. */
 .proposition-page { max-width: 850px; margin: 0 auto; overflow-wrap: anywhere; }
 .proposition-page h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0 0 12px; }
