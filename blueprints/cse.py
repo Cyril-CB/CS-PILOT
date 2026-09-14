@@ -13,7 +13,8 @@ import re
 from datetime import date, datetime
 
 from flask import (
-    Blueprint, flash, redirect, render_template, request, session, url_for
+    Blueprint, flash, jsonify, redirect, render_template, request, session,
+    url_for
 )
 
 from access_log import (
@@ -167,11 +168,12 @@ def _archiver_messages_expires(conn):
     conn.commit()
 
 
-def get_message_actif(conn):
+def get_message_actif(conn, user_id=None):
     """Retourne le message du CSE actuellement affichable, ou None.
 
     Un seul message peut être actif : statut 'actif' et date de validité non
-    dépassée. Les messages expirés sont filtrés par la date.
+    dépassée. Les messages expirés sont filtrés par la date. Lorsqu'un
+    utilisateur est fourni, un message qu'il a déjà ouvert est exclu.
     """
     return conn.execute(
         '''
@@ -179,10 +181,16 @@ def get_message_actif(conn):
         FROM cse_messages m
         LEFT JOIN users u ON u.id = m.cree_par
         WHERE m.statut = 'actif' AND m.date_validite >= ?
+          AND (
+              ? IS NULL OR NOT EXISTS (
+                  SELECT 1 FROM cse_messages_lectures l
+                  WHERE l.message_id = m.id AND l.user_id = ?
+              )
+          )
         ORDER BY m.created_at DESC, m.id DESC
         LIMIT 1
         ''',
-        (_today(),)
+        (_today(), user_id, user_id)
     ).fetchone()
 
 
@@ -607,6 +615,43 @@ def archiver_message(message_id):
         conn.close()
 
     return redirect(url_for('cse_bp.cse_messages'))
+
+
+@cse_bp.route('/cse/messages/<int:message_id>/lire', methods=['POST'])
+@login_required
+def lire_message(message_id):
+    """Mémorise l'ouverture du message actif pour l'utilisateur connecté."""
+    if session.get('profil') == 'prestataire':
+        return jsonify({'ok': False, 'erreur': 'Accès refusé.'}), 403
+
+    conn = get_db()
+    try:
+        user_id = session.get('user_id')
+        utilisateur = conn.execute(
+            "SELECT id FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+            (user_id,),
+        ).fetchone()
+        message = conn.execute(
+            '''
+            SELECT id FROM cse_messages
+            WHERE id = ? AND statut = 'actif' AND date_validite >= ?
+            ''',
+            (message_id, _today()),
+        ).fetchone()
+        if not utilisateur or not message:
+            return jsonify({'ok': False, 'erreur': 'Message indisponible.'}), 404
+
+        conn.execute(
+            '''
+            INSERT OR IGNORE INTO cse_messages_lectures (message_id, user_id)
+            VALUES (?, ?)
+            ''',
+            (message_id, user_id),
+        )
+        conn.commit()
+        return jsonify({'ok': True})
+    finally:
+        conn.close()
 
 
 # ──────────────────────────────────────────────────────────────────────────

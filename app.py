@@ -588,7 +588,10 @@ def inject_cse_context():
         from blueprints.cse import est_membre_cse, get_message_actif, PROFILS_GESTION
         conn = get_db()
         is_membre = est_membre_cse(conn, session.get('user_id'))
-        message_actif = get_message_actif(conn) if profil != 'prestataire' else None
+        message_actif = (
+            get_message_actif(conn, session.get('user_id'))
+            if profil != 'prestataire' else None
+        )
         return {
             'is_cse_membre': is_membre,
             'is_cse_gestionnaire': profil in PROFILS_GESTION,

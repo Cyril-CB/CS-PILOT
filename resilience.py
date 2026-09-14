@@ -104,6 +104,7 @@ TABLES_REQUISES = {
     '0071': ('schema_migrations_tentatives', 'plan_comptable_general'),
     '0072': ('propositions_amelioration', 'propositions_pieces'),
     '0073': ('identite_centre', 'identite_centre_champs', 'identite_centre_documents'),
+    '0074': ('cse_messages_lectures',),
 }
 
 
