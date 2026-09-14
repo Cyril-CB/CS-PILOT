@@ -81,6 +81,12 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
     peut être préparée ; conserver l'ancienne et ne jamais réutiliser sa clé.
     Persister l'intention sous CAS. Aucun effet après conflit ou résultat
     ambigu ; réconcilier le résultat, sinon conserver incertain sans répéter.
+    Tant qu'un effet du dossier reste incertain, refuser tout nouvel effet de
+    ce dossier, quelle que soit sa clé ou son type (mail, branche, PR, correction,
+    revue). Les lectures, réponses entrantes et preuves de résultats déjà dus
+    restent traitables ; les dossiers indépendants continuent. Ne pas effacer
+    l'incertitude pour reprendre : établir l'issue à partir des preuves distantes,
+    conserver l'historique sous CAS, sinon signaler le blocage dans Work.
     Les mutations du journal sont faites par le coordinateur depuis une version
     fraîche, jamais en recopiant le journal ancien renvoyé par un sous-agent.
 12. Après recette et fusion par Cyril dans dev, enregistrer `integre_dev` et

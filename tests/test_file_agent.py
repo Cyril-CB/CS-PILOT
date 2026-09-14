@@ -246,13 +246,14 @@ def test_verificateur_refuse_effet_inexploitable(file, effets, tmp_path, monkeyp
 def test_verificateur_accepte_historique_effets_valide(file, etat, tmp_path, monkeypatch, capsys):
     file = demarrer(file, 1)
     file = agent.preparer_effet(file, ref(1), "execution-1", "pr", "pr")
-    if etat != "intention":
-        file = agent.resultat_effet(file, ref(1), "execution-1", "pr", etat, "Preuve synthétique")
     file["dossiers"][ref(1)]["pr"] = 101
     for type_effet in ("mail_precisions", "mail_suivi", "branche", "correction", "revue"):
         file = agent.preparer_effet(file, ref(1), "execution-1", type_effet, type_effet)
-        if etat != "intention":
-            file = agent.resultat_effet(file, ref(1), "execution-1", type_effet, etat, "Preuve synthétique")
+    # Les intentions précèdent les résultats : l'incertitude doit empêcher
+    # toute nouvelle intention, pas l'enregistrement des résultats déjà dus.
+    if etat != "intention":
+        for cle in file["dossiers"][ref(1)]["effets"]:
+            file = agent.resultat_effet(file, ref(1), "execution-1", cle, etat, "Preuve synthétique")
     chemin = tmp_path / "file.json"
     chemin.write_text(json.dumps(file), encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
@@ -282,6 +283,40 @@ def test_intention_pr_non_echouee_interdit_autre_cle(file, etat):
     # Le refus n'empêche pas la première PR d'un dossier indépendant.
     autre = demarrer(file, 2)
     assert agent.preparer_effet(autre, ref(2), "execution-2", "pr-v1", "pr")
+
+
+@pytest.mark.parametrize("type_effet", ["mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"])
+def test_mail_incertain_bloque_toute_nouvelle_action_du_dossier(file, type_effet):
+    file = demarrer(file, 1)
+    if type_effet in {"correction", "revue"}:
+        file["dossiers"][ref(1)]["pr"] = 101
+    file = agent.preparer_effet(file, ref(1), "execution-1", "mail-v1", "mail_precisions")
+    file = agent.resultat_effet(file, ref(1), "execution-1", "mail-v1", "incertain", "Coupure réseau")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="incertain"):
+        agent.preparer_effet(file, ref(1), "execution-1", "autre-cle-v2", type_effet)
+    assert file == avant
+    # On peut toujours lire une réponse pour éclaircir l'issue du dossier.
+    file, etat = agent.ajouter_reponse(file, ref(1), "execution-1", "reponse-nouvelle")
+    assert etat == "a_analyser"
+    assert file["dossiers"][ref(1)]["effets"]["mail-v1"]["etat"] == "incertain"
+    # Le blocage est propre au dossier ; les autres demandes restent actives.
+    autre = demarrer(file, 2)
+    autre = agent.preparer_effet(autre, ref(2), "execution-2", "premier-mail", "mail_precisions")
+    assert autre["dossiers"][ref(2)]["effets"]["premier-mail"]["etat"] == "intention"
+
+
+@pytest.mark.parametrize("type_initial", ["mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"])
+def test_tout_type_de_resultat_incertain_bloque_un_nouvel_effet(file, type_initial):
+    file = demarrer(file, 1)
+    if type_initial in {"correction", "revue"}:
+        file["dossiers"][ref(1)]["pr"] = 101
+    file = agent.preparer_effet(file, ref(1), "execution-1", "initial", type_initial)
+    file = agent.resultat_effet(file, ref(1), "execution-1", "initial", "incertain", "Résultat non déterminé")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="incertain"):
+        agent.preparer_effet(file, ref(1), "execution-1", "suivi", "mail_suivi")
+    assert file == avant
 
 
 def test_nouvelle_intention_pr_apres_echec_certain_uniquement(file):

@@ -241,6 +241,8 @@ def preparer_effet(file, reference, execution, cle, type_effet):
     if type_effet == "pr" and (d["pr"] is not None or any(
             e["type"] == "pr" and e["etat"] != "echec_certain" for e in d["effets"].values())):
         raise ValueError("PR déjà enregistrée ou création à réconcilier")
+    if any(e["etat"] == "incertain" for e in d["effets"].values()):
+        raise ValueError("Résultat incertain dans ce dossier : réconcilier avant tout nouvel effet")
     if type_effet in {"correction", "revue"} and d["pr"] is None:
         raise ValueError("PR absente")
     plafond = {"mail_precisions": 2, "correction": 3}.get(type_effet)

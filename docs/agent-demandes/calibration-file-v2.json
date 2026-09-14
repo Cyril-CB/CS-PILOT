@@ -50,7 +50,7 @@
     },
     {
       "id": "effet_incertain",
-      "attendu": "Une intention confirmée ou incertaine ne peut pas être recréée."
+      "attendu": "Une clé enregistrée ne peut pas être recréée. Un résultat incertain interdit aussi toute nouvelle clé et tout type d'effet dans ce dossier ; réponses entrantes et dossiers indépendants restent traitables."
     },
     {
       "id": "effet_inexploitable",
