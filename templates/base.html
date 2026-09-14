@@ -523,12 +523,36 @@
             cseMessageTrigger=null;
             if(trigger&&!trigger.hidden)trigger.focus();else cseFocusContenu();
         }
+        function cseRetenirFocus(e,m){
+            var focusables=Array.prototype.slice.call(m.querySelectorAll(
+                'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+            ));
+            var premier=focusables[0];
+            var dernier=focusables[focusables.length-1];
+            if(!premier){
+                e.preventDefault();
+                var contenu=m.querySelector('.modal-content');if(contenu)contenu.focus();
+                return;
+            }
+            var horsModale=!m.contains(document.activeElement);
+            if(e.shiftKey&&(document.activeElement===premier||horsModale)){
+                e.preventDefault();
+                dernier.focus();
+            }else if(!e.shiftKey&&(document.activeElement===dernier||horsModale)){
+                e.preventDefault();
+                premier.focus();
+            }
+        }
         document.addEventListener('keydown',function(e){
             var m=document.getElementById('cseMessageModal');
-            if(e.key!=='Escape'||!m||m.style.display!=='flex')return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            cseCloseMessage();
+            if(!m||m.style.display!=='flex')return;
+            if(e.key==='Tab'){
+                cseRetenirFocus(e,m);
+            }else if(e.key==='Escape'){
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                cseCloseMessage();
+            }
         });
     </script>
     {% endif %}

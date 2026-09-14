@@ -120,6 +120,8 @@ def test_banniere_et_modale_sont_accessibles_en_classique_et_en_flux(
         assert "if(!response.ok)return" in page
         assert "trigger.hidden=true" in page
         assert "if(close)close.focus()" in page
+        assert "if(e.key==='Tab')" in page
+        assert 'cseRetenirFocus(e,m)' in page
 
 
 def test_schema_neuf_et_migration_0074_idempotente(app, db):

@@ -10,11 +10,21 @@ assert.ok(match, 'script de lecture CSE introuvable');
 
 function ouvrirPage(ok) {
     const handlers = {};
+    const focalisable = () => ({focusCount: 0, focus() {
+        this.focusCount += 1;
+        document.activeElement = this;
+    }});
+    const fermeture = focalisable();
+    const boutonLu = focalisable();
+    const contenuModal = focalisable();
     const modal = {
         style: {display: 'none'},
-        querySelector() { return fermeture; }
+        querySelector(selector) {
+            return selector === '.modal-close' ? fermeture : contenuModal;
+        },
+        querySelectorAll() { return [fermeture, boutonLu]; },
+        contains(element) { return [fermeture, boutonLu, contenuModal].includes(element); }
     };
-    const fermeture = {focusCount: 0, focus() { this.focusCount += 1; }};
     const contenu = {
         focusCount: 0,
         attributes: {},
@@ -39,7 +49,7 @@ function ouvrirPage(ok) {
     };
     const context = {document, fetch: () => Promise.resolve({ok})};
     vm.runInNewContext(match[1], context);
-    return {api: context, contenu, fermeture, handlers, modal, trigger};
+    return {api: context, boutonLu, contenu, fermeture, handlers, modal, trigger};
 }
 
 (async function () {
@@ -47,13 +57,31 @@ function ouvrirPage(ok) {
     succes.api.cseOpenMessage(succes.trigger);
     assert.equal(succes.modal.style.display, 'flex');
     assert.equal(succes.fermeture.focusCount, 1);
+
+    // Tab et Maj+Tab restent dans la fenêtre tant qu'elle est ouverte.
+    let tabEmpeche = 0;
+    succes.boutonLu.focus();
+    succes.handlers.keydown({key: 'Tab', shiftKey: false,
+        preventDefault() { tabEmpeche += 1; }});
+    assert.equal(tabEmpeche, 1);
+    assert.equal(succes.fermeture.focusCount, 2);
+    succes.handlers.keydown({key: 'Tab', shiftKey: true,
+        preventDefault() { tabEmpeche += 1; }});
+    assert.equal(tabEmpeche, 2);
+    assert.equal(succes.boutonLu.focusCount, 2);
+    succes.contenu.focus();
+    succes.handlers.keydown({key: 'Tab', shiftKey: false,
+        preventDefault() { tabEmpeche += 1; }});
+    assert.equal(tabEmpeche, 3);
+    assert.equal(succes.fermeture.focusCount, 3);
+
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(succes.trigger.hidden, true);
     assert.equal(succes.trigger.attributes['aria-hidden'], 'true');
     succes.api.cseCloseMessage();
     assert.equal(succes.modal.style.display, 'none');
     assert.equal(succes.trigger.focusCount, 0);
-    assert.equal(succes.contenu.focusCount, 1);
+    assert.equal(succes.contenu.focusCount, 2);
 
     // Échap ne concerne cette modale que lorsqu'elle est réellement ouverte.
     let empeche = 0;
