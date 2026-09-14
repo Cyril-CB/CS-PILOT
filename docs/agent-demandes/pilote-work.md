@@ -103,6 +103,44 @@ leurs sources et leur état dans les connexions persistantes.
 
 ## État privé et reprise
 
+### Réponses persistantes de la file v2
+
+Dans la file v2, `evenements` conserve les identifiants reçus et
+`analyses_reponses` les preuves de leur analyse, liées à une version du
+périmètre. `reponses_en_attente` fait la différence ; les anciens identifiants
+sans preuve restent en attente, sans suppression ni interprétation optimiste.
+La réception et le retour « doublon » ne suffisent pas à autoriser la reprise.
+
+`integrer_reponses` exige la liste exacte de toutes les réponses actuellement
+en attente et publie dans un même candidat leur analyse, la décision et les
+impacts. Le coordinateur conserve avec ce candidat l'instantané métier complet
+de `evolutions-v2.json`, notamment exigences et critères. La transition ne
+comprend pas le texte et ne certifie pas la preuve métier fournie.
+Un changement utilise la version suivante et conserve l'ancienne décision et
+ses impacts dans `historique_perimetres`. Sans incidence, version, décision,
+ressources et jalon restent identiques avec une justification explicite.
+La publication CAS doit réussir avant de poursuivre. Une analyse construite
+avant une réponse supplémentaire ne peut pas acquitter cette dernière.
+
+Les gardes couvrent démarrage, reprise sur branche existante, migration et
+préparation d'effets. Revalider aussi toute intention déjà préparée avec
+`verifier_effet_a_executer` sur une lecture fraîche avant l'appel externe :
+une intention de l'ancien périmètre n'est pas réutilisable. Les constats d'effets
+déjà tentés restent enregistrables pendant l'attente d'analyse. Aucun nouveau
+verrou ne peut reprendre automatiquement celui d'une exécution interrompue.
+
+Après une évolution, une PR existante reste réservée et revient en correction
+si la grille reste favorable ; les ressources/dépendances sont recontrôlées
+avant reprise et publication. Un résultat devenu incomplet ou risqué attend
+les précisions ou la validation nécessaires. Les autres demandes indépendantes
+continuent. Après intégration/clôture, conserver l'ajout et arbitrer un dossier
+lié ; ne pas réouvrir automatiquement une PR déjà fusionnée.
+
+Les invariants sont exercés dans `tests/test_file_agent.py` : sérialisation et
+reprise, plusieurs réponses, analyse périmée, décision défavorable, changement
+de ressources, intention ancienne, CAS perdant et historique ancien. Il s'agit
+de tests du moteur pur, pas de coupures provoquées dans Outlook ou Work.
+
 Le journal persistant est un fichier JSON privé identifié explicitement dans la
 tâche. Il contient configuration, décision, empreintes, correspondants vérifiés,
 questions/réponses, versions du périmètre, état des actions, branche/PR,

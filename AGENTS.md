@@ -295,6 +295,10 @@ passe, et `git diff` ne contient ni artefact ni modification étrangère à la t
   consignes v2 ; les fichiers v1 sont conservés pour les anciens épinglages.
   Exécuter aussi `python -m pytest -q tests/test_file_agent.py` et vérifier la
   file privée avec `python -m scripts.file_agent --verifier <fichier_prive>`.
+- Une réponse reçue n'est pas une réponse analysée. Consulter les réponses en
+  attente persistantes avant toute reprise ou publication, même si la collecte
+  ne renvoie que des doublons. Publier l'analyse et le périmètre ensemble avant
+  de reprendre ; recontrôler aussi une intention préparée avant la réponse.
 
 - Lire `docs/propositions-amelioration.md` pour tout changement du formulaire,
   des pièces, du suivi SMTP ou du format du mail. Actualiser dans la même PR

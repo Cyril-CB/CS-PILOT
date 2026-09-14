@@ -33,6 +33,34 @@ def demarrer(file, n):
     return agent.demarrer_developpement(file, ref(n), f"execution-{n}")
 
 
+@pytest.mark.parametrize("action", ["demarrer", "migration", "branche", "pr",
+                                    "correction", "revue", "mail_suivi", "mail_precisions"])
+def test_reponse_persistee_bloque_action_sur_ancien_perimetre(file, action):
+    file["dossiers"][ref(1)]["ressources"] = ["schema"]
+    if action == "demarrer":
+        file = agent.prendre_dossier(file, ref(1), "execution-1")
+    else:
+        file = demarrer(file, 1)
+        if action in {"correction", "revue"}:
+            file["dossiers"][ref(1)]["pr"] = 101
+            file["dossiers"][ref(1)]["etat"] = "pret_recette"
+    file, _ = agent.ajouter_reponse(file, ref(1), "execution-1", "nouvelle-reponse")
+    # Simule la publication puis la perte de toute mémoire hors du JSON.
+    file = json.loads(json.dumps(file))
+    file, etat = agent.ajouter_reponse(file, ref(1), "execution-1", "nouvelle-reponse")
+    assert etat == "doublon"
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        if action == "demarrer":
+            agent.demarrer_developpement(file, ref(1), "execution-1")
+        elif action == "migration":
+            agent.reserver_migration(file, ref(1), "execution-1", ["0073"])
+        else:
+            agent.preparer_effet(file, ref(1), "execution-1", "action-v1", action)
+    assert file == avant
+    assert demarrer(file, 2)["dossiers"][ref(2)]["branche"]
+
+
 def test_trois_developpements_et_analyse_non_bloquee(file):
     avant = deepcopy(file)
     for n in range(1, 4):
@@ -333,6 +361,7 @@ def test_reconcilier_effet_incertain_preserve_ambiguite_et_reprend(file, etat_fi
     effet = file["dossiers"][ref(1)]["effets"]["mail-v1"]
     assert effet == {
         "type": "mail_suivi",
+        "version_perimetre": 1,
         "etat": etat_final,
         "preuve": "Vérification distante concluante",
         "historique": [{"etat": "incertain", "preuve": "Coupure avant réception de la réponse"}],
@@ -392,3 +421,285 @@ def test_nouvelle_intention_pr_apres_echec_certain_uniquement(file):
     file["dossiers"][ref(1)]["pr"] = 101
     with pytest.raises(ValueError, match="PR déjà"):
         agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr")
+
+def integrer(file, *, modifie=True, messages=None, **changements):
+    d = file["dossiers"][ref(1)]
+    version = d["version_perimetre"] + int(modifie)
+    decision = deepcopy(d["decision"])
+    decision["version_perimetre"] = version
+    analyse = dict(perimetre_modifie=modifie, version_perimetre=version,
+                   decision=decision, ressources=deepcopy(d["ressources"]),
+                   dependances=deepcopy(d["dependances"]),
+                   preuve="Analyse synthétique et critères conservés dans l'instantané privé")
+    analyse.update(changements)
+    return agent.integrer_reponses(
+        file, ref(1), "execution-1",
+        messages if messages is not None else agent.reponses_en_attente(d), **analyse)
+
+
+def recevoir(file, message="reponse-1"):
+    return agent.ajouter_reponse(file, ref(1), "execution-1", message)[0]
+
+
+def test_analyse_persistante_reprise_complete_et_historique(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    ancienne = deepcopy(file["dossiers"][ref(1)]["decision"])
+    file = recevoir(file)
+    avant = deepcopy(file)
+    candidat = integrer(file, ressources=["table:nouveau_domaine"])
+    # Coupure avant publication : l'ancien JSON reste bloqué.
+    assert file == avant
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.demarrer_developpement(json.loads(json.dumps(file)), ref(1), "execution-1")
+    # Coupure après publication : analyse, décision et ressources sont ensemble.
+    file = json.loads(json.dumps(candidat))
+    d = file["dossiers"][ref(1)]
+    assert agent.reponses_en_attente(d) == []
+    assert d["analyses_reponses"]["reponse-1"]["version_perimetre"] == 2
+    assert d["decision"]["version_perimetre"] == d["version_perimetre"] == 2
+    assert d["ressources"] == ["table:nouveau_domaine"]
+    assert d["historique_perimetres"][0]["decision"] == ancienne
+    assert d["historique_perimetres"][0]["version_perimetre"] == 1
+    assert agent.demarrer_developpement(file, ref(1), "execution-1")["dossiers"][ref(1)]["branche"]
+    assert agent.ajouter_reponse(file, ref(1), "execution-1", "reponse-1") == (file, "doublon")
+
+
+def test_seconde_reponse_invalide_analyse_en_cours_sans_perte(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    file = recevoir(file, "reponse-2")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="périmée"):
+        integrer(file, messages=["reponse-1"])
+    assert file == avant
+    assert agent.reponses_en_attente(file["dossiers"][ref(1)]) == ["reponse-1", "reponse-2"]
+    file = json.loads(json.dumps(integrer(file)))
+    assert set(file["dossiers"][ref(1)]["analyses_reponses"]) == {"reponse-1", "reponse-2"}
+    file = recevoir(file, "reponse-3")
+    assert agent.reponses_en_attente(file["dossiers"][ref(1)]) == ["reponse-3"]
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.demarrer_developpement(file, ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("etat", ["en_developpement", "en_revue", "pret_recette"])
+def test_reponse_apres_debut_conserve_creneau_et_invalide_jalon(file, etat):
+    for n in (1, 2, 3):
+        file = demarrer(file, n)
+    file["dossiers"][ref(1)].update(pr=101, etat=etat)
+    file = recevoir(file)
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.reprendre_developpement(file, ref(1), "execution-1")
+    with pytest.raises(ValueError, match="développements"):
+        demarrer(file, 4)
+    file = integrer(file)
+    d = file["dossiers"][ref(1)]
+    assert d["etat"] == "a_corriger"
+    assert d["pr"] == 101 and d["branche"] == "feat/demande-" + ref(1)
+    assert agent.reprendre_developpement(file, ref(1), "execution-1") == file
+
+
+def test_courtoisie_sans_modification_preserve_perimetre_et_recette(file):
+    file = demarrer(file, 1)
+    file["dossiers"][ref(1)].update(pr=101, etat="pret_recette")
+    ancienne = deepcopy(file["dossiers"][ref(1)])
+    file = recevoir(file)
+    file = integrer(file, modifie=False)
+    d = file["dossiers"][ref(1)]
+    assert d["etat"] == "pret_recette" and d["version_perimetre"] == 1
+    assert d["decision"] == ancienne["decision"]
+    assert d["historique_perimetres"] == []
+    assert d["analyses_reponses"]["reponse-1"]["preuve"]
+    # Une deuxième conclusion n'est pas un deuxième traitement.
+    with pytest.raises(ValueError, match="Analyse incomplète"):
+        integrer(file, modifie=False)
+
+
+@pytest.mark.parametrize("modification", ["ressources", "dependances", "decision"])
+def test_impacts_modifies_ne_peuvent_pas_garder_ancienne_version(file, modification):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    changements = {"ressources": ["table:autre"], "dependances": [ref(2)],
+                   "decision": {**file["dossiers"][ref(1)]["decision"], "motif": "ajout"}}
+    with pytest.raises(ValueError, match="nouveau périmètre"):
+        integrer(file, modifie=False, **{modification: changements[modification]})
+
+
+@pytest.mark.parametrize("version", [1, 3, True, "2"])
+def test_version_d_analyse_invalide_refusee_sans_mutation(file, version):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Version"):
+        integrer(file, version_perimetre=version)
+    assert file == avant
+
+
+@pytest.mark.parametrize("preuve", ["", " ", None, 42])
+def test_analyse_sans_preuve_refusee(file, preuve):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="Analyse"):
+        integrer(file, preuve=preuve)
+    assert file == avant
+
+
+def test_decision_obsolete_ne_solde_pas_analyse(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="ancien périmètre"):
+        integrer(file, decision=deepcopy(file["dossiers"][ref(1)]["decision"]))
+    assert file == avant
+
+
+@pytest.mark.parametrize("changement,etat", [
+    ({"besoin_complet": False}, "attente_precisions"),
+    ({"risque": "eleve"}, "attente_validation"),
+    ({"action_interdite": True}, "refuse"),
+])
+def test_analyse_peut_retirer_eligibilite_sans_bloquer_ses_precisions(file, changement, etat):
+    file = demarrer(file, 1)
+    file = recevoir(file)
+    evaluation = deepcopy(file["dossiers"][ref(1)]["decision"]["evaluation"])
+    evaluation.update(changement)
+    decision = {"version_perimetre": 2, "evaluation": evaluation, **evaluer(evaluation)}
+    file = integrer(file, decision=decision)
+    assert file["dossiers"][ref(1)]["etat"] == etat
+    assert agent.occupe_creneau(file["dossiers"][ref(1)])
+    with pytest.raises(ValueError, match="Grille"):
+        agent.reprendre_developpement(file, ref(1), "execution-1")
+    assert agent.preparer_effet(file, ref(1), "execution-1", "precision-v2", "mail_precisions")
+
+
+@pytest.mark.parametrize("conflit", ["ressources", "dependances"])
+def test_reanalyse_recontrole_conflits_et_dependances_sur_branche_existante(file, conflit):
+    file = demarrer(demarrer(file, 1), 2)
+    file = recevoir(file)
+    changement = {"ressources": ["table:domaine2"]} if conflit == "ressources" else {"dependances": [ref(2)]}
+    file = integrer(file, **changement)
+    for action in (
+        lambda: agent.reprendre_developpement(file, ref(1), "execution-1"),
+        lambda: agent.preparer_effet(file, ref(1), "execution-1", "pr-v2", "pr"),
+    ):
+        with pytest.raises(ValueError, match="Dépendance"):
+            action()
+    assert demarrer(file, 3)["dossiers"][ref(3)]["branche"]
+
+
+def test_ancienne_intention_revalidee_avant_execution_et_resultat_du_preserve(file):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v1", "pr")
+    assert agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")["version_perimetre"] == 1
+    file = recevoir(file)
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")
+    file = integrer(file)
+    with pytest.raises(ValueError, match="ancien périmètre"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v1")
+    # Le résultat d'une action déjà tentée doit pouvoir être consigné.
+    file = agent.resultat_effet(file, ref(1), "execution-1", "pr-v1", "incertain", "Réseau interrompu")
+    file = recevoir(file, "reponse-2")
+    file = agent.reconcilier_effet(file, ref(1), "execution-1", "pr-v1", "echec_certain", "Absence vérifiée")
+    file = integrer(file)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr-v3", "pr")
+    assert agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr-v3")["version_perimetre"] == 3
+
+
+def test_journal_ancien_ne_presume_pas_que_reponses_sont_analysees(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    d = file["dossiers"][ref(1)]
+    d.pop("analyses_reponses")
+    d.pop("historique_perimetres")
+    d["evenements"] = ["reponse-ancienne"]
+    assert agent.valider_file(file) == file
+    assert agent.reponses_en_attente(d) == ["reponse-ancienne"]
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.demarrer_developpement(file, ref(1), "execution-1")
+    file = integrer(file, modifie=False)
+    assert agent.demarrer_developpement(file, ref(1), "execution-1")
+
+
+@pytest.mark.parametrize("analyse", [None, [], {"inconnue": {"version_perimetre": 1, "preuve": "x"}},
+                                    {"reponse-1": {}},
+                                    {"reponse-1": {"version_perimetre": 2, "preuve": "x"}},
+                                    {"reponse-1": {"version_perimetre": True, "preuve": "x"}},
+                                    {"reponse-1": {"version_perimetre": 1, "preuve": ""}}])
+def test_historique_analyse_malforme_refuse_en_cli(file, analyse, tmp_path, monkeypatch, capsys):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    file["dossiers"][ref(1)]["analyses_reponses"] = analyse
+    chemin = tmp_path / "file.json"
+    chemin.write_text(json.dumps(file), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["file_agent", "--verifier", str(chemin)])
+    assert agent.main() == 2
+    assert json.loads(capsys.readouterr().out)["ok"] is False
+
+
+@pytest.mark.parametrize("situation", ["pause", "autre_verrou", "integration"])
+def test_analyse_respecte_pause_verrou_et_integration(file, situation):
+    file = demarrer(file, 1)
+    file = recevoir(file)
+    if situation == "pause":
+        file["actif"] = False
+    elif situation == "autre_verrou":
+        file["dossiers"][ref(1)]["verrou"] = "autre-execution"
+    else:
+        file["dossiers"][ref(1)].update(pr=101, fusion_dev="b" * 40, etat="integre_dev")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError):
+        integrer(file)
+    assert file == avant
+
+
+@pytest.mark.parametrize("autre", ["pr_enregistree", "autre_intention", "creation_confirmee"])
+def test_intention_prete_ne_peut_pas_creer_seconde_pr(file, autre):
+    file = demarrer(file, 1)
+    file = agent.preparer_effet(file, ref(1), "execution-1", "pr", "pr")
+    d = file["dossiers"][ref(1)]
+    if autre == "pr_enregistree":
+        d["pr"] = 101
+    else:
+        d["effets"]["autre"] = {"type": "pr", "etat": "intention"}
+        if autre == "creation_confirmee":
+            d["effets"]["autre"].update(etat="confirme", preuve="PR retrouvée")
+    avant = deepcopy(file)
+    with pytest.raises(ValueError, match="PR déjà"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "pr")
+    assert file == avant
+
+
+@pytest.mark.parametrize("type_effet", ["correction", "revue"])
+def test_intention_prete_recontrole_presence_pr(file, type_effet):
+    file = demarrer(file, 1)
+    file["dossiers"][ref(1)]["pr"] = 101
+    file = agent.preparer_effet(file, ref(1), "execution-1", "action", type_effet)
+    file["dossiers"][ref(1)]["pr"] = None
+    with pytest.raises(ValueError, match="PR absente"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "action")
+
+
+
+def test_ancien_effet_sans_version_conserve_mais_jamais_execute(file):
+    file = demarrer(file, 1)
+    file["dossiers"][ref(1)]["effets"]["ancien"] = {"type": "mail_suivi", "etat": "intention"}
+    assert agent.valider_file(file) == file
+    with pytest.raises(ValueError, match="ancien périmètre"):
+        agent.verifier_effet_a_executer(file, ref(1), "execution-1", "ancien")
+    assert agent.resultat_effet(file, ref(1), "execution-1", "ancien", "echec_certain", "Aucun envoi vérifié")
+
+
+def test_resultat_cas_perdant_ne_solde_pas_seconde_reponse(file):
+    file = agent.prendre_dossier(file, ref(1), "execution-1")
+    file = recevoir(file)
+    candidat = integrer(file)
+    # Entre lecture et CAS, un événement est arrivé : le candidat est périmé.
+    serveur = recevoir(file, "reponse-2")
+    version_lue, version_serveur = 20, 21
+    with pytest.raises(ValueError, match="Conflit"):
+        if version_lue != version_serveur:
+            raise ValueError("Conflit CAS : candidat non publié")
+        serveur = candidat
+    assert agent.reponses_en_attente(serveur["dossiers"][ref(1)]) == ["reponse-1", "reponse-2"]
+    with pytest.raises(ValueError, match="réponse.*analyser"):
+        agent.demarrer_developpement(serveur, ref(1), "execution-1")

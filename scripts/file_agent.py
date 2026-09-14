@@ -20,6 +20,7 @@ ETATS = {"recu", "quarantaine", "analyse", "attente_precisions",
          "reporte", "refuse", "bloque_technique", "abandonne"}
 TYPES_EFFETS = {"mail_precisions", "mail_suivi", "branche", "pr", "correction", "revue"}
 ETATS_RESULTATS = {"confirme", "incertain", "echec_certain"}
+EFFETS_DEVELOPPEMENT = {"branche", "pr", "correction", "revue"}
 
 
 def _texte_non_vide(value):
@@ -37,6 +38,9 @@ def _valider_effets(effets):
         if ((effet["etat"] != "intention" or "preuve" in effet)
                 and not _texte_non_vide(effet.get("preuve"))):
             raise ValueError("Effet invalide : preuve absente ou vide")
+        if "version_perimetre" in effet and (type(effet["version_perimetre"]) is not int
+                                             or effet["version_perimetre"] < 1):
+            raise ValueError("Effet invalide : version de périmètre incorrecte")
         historique = effet.get("historique", [])
         if (not isinstance(historique, list)
                 or any(not isinstance(entree, dict)
@@ -91,6 +95,17 @@ def valider_file(file):
                 or not isinstance(d.get("effets"), dict)):
             raise ValueError("Dossier invalide : " + ref)
         _valider_effets(d["effets"])
+        analyses = d.get("analyses_reponses", {})
+        if (len(set(d["evenements"])) != len(d["evenements"])
+                or not isinstance(analyses, dict)
+                or any(message not in d["evenements"] or not isinstance(a, dict)
+                       or type(a.get("version_perimetre")) is not int
+                       or not 1 <= a["version_perimetre"] <= d["version_perimetre"]
+                       or not _texte_non_vide(a.get("preuve"))
+                       for message, a in analyses.items())):
+            raise ValueError("Historique d'analyse des réponses invalide")
+        if not isinstance(d.get("historique_perimetres", []), list):
+            raise ValueError("Historique des périmètres invalide")
         if d["verrou"] is not None and (not isinstance(d["verrou"], str) or not d["verrou"]):
             raise ValueError("Propriétaire de verrou invalide")
         if d["branche"] is not None:
@@ -138,6 +153,7 @@ def enregistrer_proposition(file, reference, empreinte, source_verifiee=False):
         "version_perimetre": 1, "decision": None, "ressources": ["a_analyser"],
         "dependances": [], "verrou": None, "branche": None, "pr": None,
         "fusion_dev": None, "evenements": [], "effets": {},
+        "analyses_reponses": {}, "historique_perimetres": [],
     }
     return valider_file(resultat), "nouveau"
 
@@ -174,9 +190,75 @@ def ajouter_reponse(file, reference, execution, message_id):
     if message_id in d["evenements"]:
         return resultat, "doublon"
     d["evenements"].append(message_id)
-    # La même référence n'est pas un doublon de réponse. Le coordinateur doit
-    # encore analyser le texte nouveau et versionner les exigences si nécessaire.
+    # L'absence d'analyse associée est durable, même si le retour a_analyser est
+    # perdu. Un doublon reçu ne retire jamais cette obligation du journal.
     return resultat, "a_analyser"
+
+
+def reponses_en_attente(dossier):
+    """Les anciennes réponses sans preuve d'analyse restent à examiner."""
+    return [message for message in dossier["evenements"]
+            if message not in dossier.get("analyses_reponses", {})]
+
+
+def _exiger_reponses_analysees(dossier):
+    if reponses_en_attente(dossier):
+        raise ValueError("Une réponse reste à analyser avant de poursuivre ce dossier")
+
+
+def _evaluation_decision(decision, version):
+    if (not isinstance(decision, dict)
+            or type(decision.get("version_perimetre")) is not int
+            or decision["version_perimetre"] != version):
+        raise ValueError("Décision absente ou liée à un ancien périmètre")
+    calculee = evaluer(decision.get("evaluation", {}))
+    if (decision.get("decision") != calculee["decision"]
+            or decision.get("score") != calculee["score"]):
+        raise ValueError("Grille non favorable ou décision incohérente")
+    return calculee
+
+
+def integrer_reponses(file, reference, execution, messages, *, perimetre_modifie,
+                     version_perimetre, decision, ressources, dependances, preuve):
+    """Publier ensemble analyse, décision et impacts, puis autoriser la reprise.
+
+    Le coordinateur fournit une analyse métier vérifiée et conserve l'instantané
+    complet décrit dans evolutions-v2.json. Ici, une preuve n'est pas une analyse
+    automatique du texte ; les contrôles garantissent la cohérence de la reprise.
+    """
+    resultat, d = _detenir(file, reference, execution)
+    attente = reponses_en_attente(d)
+    if (not attente or not isinstance(messages, list) or messages != attente
+            or type(perimetre_modifie) is not bool or not _texte_non_vide(preuve)):
+        raise ValueError("Analyse incomplète ou périmée : reprendre les réponses en attente")
+    version_attendue = d["version_perimetre"] + int(perimetre_modifie)
+    if type(version_perimetre) is not int or version_perimetre != version_attendue:
+        raise ValueError("Version de périmètre incorrecte pour cette analyse")
+    calculee = _evaluation_decision(decision, version_perimetre)
+    if not perimetre_modifie and (decision != d["decision"]
+                                 or ressources != d["ressources"]
+                                 or dependances != d["dependances"]):
+        raise ValueError("Une décision ou des impacts modifiés imposent un nouveau périmètre")
+    if perimetre_modifie:
+        if d["fusion_dev"] is not None or d["etat"] in {"clos", "abandonne"}:
+            raise ValueError("Évolution après clôture ou intégration : arbitrer un dossier lié")
+        ancien = {k: deepcopy(d[k]) for k in
+                  ("version_perimetre", "decision", "ressources", "dependances")}
+        d.setdefault("historique_perimetres", []).append(ancien)
+        d.update(version_perimetre=version_perimetre, decision=deepcopy(decision),
+                 ressources=deepcopy(ressources), dependances=deepcopy(dependances))
+        if not d["source_verifiee"] or calculee["decision"] == "quarantaine":
+            d["etat"] = "quarantaine"
+        elif calculee["developpement_eligible"]:
+            d["etat"] = ("a_corriger" if d["pr"] else "en_developpement") if d["branche"] else "a_developper"
+        else:
+            d["etat"] = {"clarifier": "attente_precisions", "clarifier_acces": "attente_precisions",
+                         "validation_humaine": "attente_validation", "reporter": "reporte",
+                         "refuser": "refuse"}.get(calculee["decision"], "analyse")
+    for message in messages:
+        d.setdefault("analyses_reponses", {})[message] = {
+            "version_perimetre": version_perimetre, "preuve": preuve}
+    return valider_file(resultat)
 
 
 def _conflit_ressources(a, b):
@@ -189,37 +271,46 @@ def _conflit_ressources(a, b):
     return False
 
 
-def demarrer_developpement(file, reference, execution):
-    resultat, d = _detenir(file, reference, execution)
-    if d["etat"] != "a_developper" or not d["source_verifiee"]:
+def _verifier_developpement(file, reference, d):
+    _exiger_reponses_analysees(d)
+    if not d["source_verifiee"]:
         raise ValueError("Dossier non éligible")
-    decision = d.get("decision")
-    if (not isinstance(decision, dict)
-            or type(decision.get("version_perimetre")) is not int
-            or decision["version_perimetre"] != d["version_perimetre"]):
-        raise ValueError("Décision absente ou liée à un ancien périmètre")
-    evaluation = decision.get("evaluation", {})
-    calculee = evaluer(evaluation)
-    if (not calculee["developpement_eligible"]
-            or decision.get("decision") != calculee["decision"]
-            or decision.get("score") != calculee["score"]):
+    if not _evaluation_decision(d.get("decision"), d["version_perimetre"])["developpement_eligible"]:
         raise ValueError("Grille non favorable ou décision incohérente")
-    if d["branche"] is not None or "a_analyser" in d["ressources"]:
-        raise ValueError("Développement déjà réservé ou impacts non analysés")
-    if any(resultat["dossiers"][r]["fusion_dev"] is None for r in d["dependances"]):
+    if "a_analyser" in d["ressources"]:
+        raise ValueError("Impacts non analysés")
+    if any(file["dossiers"][r]["fusion_dev"] is None for r in d["dependances"]):
         raise ValueError("Dépendance non intégrée à dev")
-    actifs = [v for k, v in resultat["dossiers"].items() if k != reference and occupe_creneau(v)]
-    if len(actifs) >= resultat["maximum_developpements"]:
-        raise ValueError("Trois développements sont déjà en cours")
+    actifs = [v for k, v in file["dossiers"].items() if k != reference and occupe_creneau(v)]
     if any(_conflit_ressources(d["ressources"], autre["ressources"]) for autre in actifs):
         raise ValueError("Dépendance ou ressource commune : séquencer les développements")
+    return actifs
+
+
+def demarrer_developpement(file, reference, execution):
+    resultat, d = _detenir(file, reference, execution)
+    actifs = _verifier_developpement(resultat, reference, d)
+    if d["etat"] != "a_developper" or d["branche"] is not None:
+        raise ValueError("Dossier non éligible ou développement déjà réservé")
+    if len(actifs) >= resultat["maximum_developpements"]:
+        raise ValueError("Trois développements sont déjà en cours")
     d["branche"] = "feat/demande-" + reference
     d["etat"] = "en_developpement"
     return valider_file(resultat)
 
 
+def reprendre_developpement(file, reference, execution):
+    """Revalider aussi un travail déjà réservé, sans consommer un autre créneau."""
+    resultat, d = _detenir(file, reference, execution)
+    _verifier_developpement(resultat, reference, d)
+    if not occupe_creneau(d) or d["etat"] not in {"en_developpement", "a_corriger"}:
+        raise ValueError("Développement non disponible pour reprise")
+    return resultat
+
+
 def reserver_migration(file, reference, execution, versions_observees):
     resultat, d = _detenir(file, reference, execution)
+    _verifier_developpement(resultat, reference, d)
     if not occupe_creneau(d) or "schema" not in d["ressources"]:
         raise ValueError("Le créneau exclusif de schéma est requis")
     # Le caller doit fournir main + dev + toutes les PR ouvertes fraîchement lus.
@@ -238,6 +329,7 @@ def reserver_migration(file, reference, execution, versions_observees):
 
 def preparer_effet(file, reference, execution, cle, type_effet):
     resultat, d = _detenir(file, reference, execution)
+    _exiger_reponses_analysees(d)
     if not d["source_verifiee"] or d["etat"] == "quarantaine":
         raise ValueError("Provenance non vérifiée")
     if not isinstance(type_effet, str) or type_effet not in TYPES_EFFETS:
@@ -256,8 +348,40 @@ def preparer_effet(file, reference, execution, cle, type_effet):
     plafond = {"mail_precisions": 2, "correction": 3}.get(type_effet)
     if plafond is not None and sum(e["type"] == type_effet for e in d["effets"].values()) >= plafond:
         raise ValueError("Plafond de cycles atteint")
-    d["effets"][cle] = {"type": type_effet, "etat": "intention"}
+    if type_effet in EFFETS_DEVELOPPEMENT:
+        _verifier_developpement(resultat, reference, d)
+    d["effets"][cle] = {"type": type_effet, "etat": "intention",
+                        "version_perimetre": d["version_perimetre"]}
     return resultat
+
+
+def verifier_effet_a_executer(file, reference, execution, cle):
+    """À appeler sur une relecture CAS fraîche juste avant l'appel externe.
+
+    N'exécute rien et n'autorise jamais à rejouer une intention déjà tentée.
+    Les résultats dus restent enregistrables même après une nouvelle réponse.
+    """
+    resultat, d = _detenir(file, reference, execution)
+    _exiger_reponses_analysees(d)
+    effet = d["effets"].get(cle)
+    if (not isinstance(effet, dict) or effet["etat"] != "intention"
+            or effet.get("version_perimetre") != d["version_perimetre"]):
+        raise ValueError("Intention absente, déjà traitée ou liée à un ancien périmètre")
+    if not d["source_verifiee"] or d["etat"] == "quarantaine":
+        raise ValueError("Provenance non vérifiée")
+    if any(e["etat"] == "incertain" for e in d["effets"].values()):
+        raise ValueError("Résultat incertain à réconcilier")
+    if effet["type"] == "pr" and (d["pr"] is not None or any(
+            k != cle and e["type"] == "pr" and e["etat"] != "echec_certain"
+            for k, e in d["effets"].items())):
+        raise ValueError("PR déjà enregistrée ou autre création à réconcilier")
+    if effet["type"] in {"correction", "revue"} and d["pr"] is None:
+        raise ValueError("PR absente")
+    if effet["type"] in EFFETS_DEVELOPPEMENT:
+        _verifier_developpement(resultat, reference, d)
+        if not occupe_creneau(d):
+            raise ValueError("Créneau de développement non réservé")
+    return deepcopy(effet)
 
 
 def resultat_effet(file, reference, execution, cle, etat, preuve):

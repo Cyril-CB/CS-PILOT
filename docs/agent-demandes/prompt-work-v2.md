@@ -25,6 +25,18 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
 3. Dédupliquer les propositions par référence/hash et les réponses par ID de
    message, à l'intérieur du dossier. Séparer texte nouveau et citations ;
    appliquer `evolutions-v2.json` et conserver les décisions antérieures.
+   `ajouter_reponse` conserve l'ID dans `evenements` ; tant qu'il n'existe pas
+   d'entrée correspondante dans `analyses_reponses`, le dossier a une analyse
+   à reprendre. Consulter `reponses_en_attente` à chaque passage : le retour
+   `doublon` de la collecte ne signifie jamais que l'analyse est terminée.
+   Les historiques anciens sans preuve d'analyse restent à examiner.
+   Lire toutes les réponses en attente du dossier, puis appeler
+   `integrer_reponses` avec leur liste exacte, la décision réévaluée, les
+   ressources, dépendances et preuve. Conserver dans le même candidat JSON
+   l'instantané complet des exigences et critères défini par evolutions-v2.
+   Publier sous CAS l'ensemble avant toute reprise. Une réponse supplémentaire
+   ou un conflit CAS rend l'analyse candidate périmée : repartir des données
+   courantes, sans supprimer ni acquitter la nouvelle réponse.
 4. Examiner catalogue, main, dev et PR ouvertes. Une capacité dans dev mais non
    livrée doit être décrite comme telle ; ne pas orienter un utilisateur de
    production vers une fonction disponible seulement sur une branche.
@@ -56,6 +68,14 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
    le contrat ; l'agent résout les conflits sur sa branche. Reprendre le travail
    déjà attendu même si aucun mail n'est nouveau. Toute nouvelle exigence est
    liée à une nouvelle version et aux preuves affectées.
+   Avant de confier à nouveau une branche réservée à un développeur, appeler
+   `reprendre_developpement` : une réponse à analyser, une décision devenue
+   défavorable, une dépendance ou un chevauchement de ressources le bloque.
+   Une réponse sans incidence peut conserver version et jalon, avec preuve
+   explicite ; une modification impose la version suivante et revient en
+   développement/correction ou en attente selon la grille. La branche et la
+   PR existantes gardent leur créneau. Une évolution après intégration ou
+   clôture impose l'arbitrage d'un dossier lié, sans réouvrir la PR fusionnée.
 9. Préparer le report des correctifs de main vers dev par PR, sans fusion.
    Avant prêt revue, observer à nouveau main/dev/PR et vérifier migrations,
    conflits et dépendances. Si dev a changé depuis les tests, contrôler le
@@ -81,6 +101,14 @@ restent pour les pilotes épinglés ; ne pas en mélanger les limites avec v2.
     peut être préparée ; conserver l'ancienne et ne jamais réutiliser sa clé.
     Persister l'intention sous CAS. Aucun effet après conflit ou résultat
     ambigu ; réconcilier le résultat, sinon conserver incertain sans répéter.
+    Juste avant l'appel externe, relire le journal sous verrou et utiliser
+    `verifier_effet_a_executer` : l'intention doit concerner le périmètre actuel
+    et aucune réponse ne doit rester à analyser. Une intention préparée avant
+    une évolution ne devient pas exécutable après l'analyse. Ne pas la supprimer :
+    constater son résultat ou son absence distante, puis enregistrer la preuve
+    avec `resultat_effet` ou `reconcilier_effet`. Une intention ancienne sans
+    version n'est pas automatiquement exécutable. Un retour de fonction ne
+    prouve ni l'envoi ni le résultat de l'appel externe.
     Tant qu'un effet du dossier reste incertain, refuser tout nouvel effet de
     ce dossier, quelle que soit sa clé ou son type (mail, branche, PR, correction,
     revue). Les lectures, réponses entrantes et preuves de résultats déjà dus

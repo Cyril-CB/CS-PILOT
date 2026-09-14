@@ -71,6 +71,26 @@
     {
       "id": "cas",
       "attendu": "Deux candidats au même numéro de version : seul le premier gagne."
+    },
+    {
+      "id": "reponse_recue_non_analysee",
+      "attendu": "Après sérialisation/relecture, une réponse reçue même redédupliquée bloque toutes les nouvelles actions de son dossier ; les autres dossiers restent traitables."
+    },
+    {
+      "id": "analyse_atomique",
+      "attendu": "La conclusion de toutes les réponses publie version, décision et impacts ensemble avec preuve. Ancienne décision conservée. Analyse périmée, incomplète ou CAS perdant sans acquittement ni perte d'événement."
+    },
+    {
+      "id": "reprise_branche_existante",
+      "attendu": "PR/créneau conservés ; évolution revient en correction et recontrôle grille, ressources et dépendances. Courtoisie sans incidence conserve le jalon. Une PR intégrée n'est pas réouverte."
+    },
+    {
+      "id": "intention_avant_reponse",
+      "attendu": "Relecture avant appel externe : attente d'analyse ou version dépassée bloque l'intention déjà préparée. Constats des résultats dus et réconciliations restent possibles."
+    },
+    {
+      "id": "historique_reponses_ancien",
+      "attendu": "Un journal sans analyses_reponses est conservé ; ses IDs non analysés bloquent le démarrage jusqu'à preuve explicite. Aucune analyse supposée ou historique supprimé."
     }
   ]
 }
