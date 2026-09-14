@@ -7,7 +7,7 @@ Couvre :
 - les routes du blueprint : controle d'acces (comptable uniquement),
   creation / replanification / suivi des taches, confidentialite.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -887,16 +887,63 @@ def test_bloc_verrouille_passe_non_compte(app, db, sample_users):
                       (tid,)).fetchone()['statut'] == 'a_faire'
 
 
-def test_deplacer_bloc_dans_le_passe_refuse(comptable_client, db):
-    """Le glisser-deposer refuse de deposer un creneau dans le passe."""
-    comptable_client.post('/planificateur/api/tache', json={
-        'type': 'tache', 'titre': 'T', 'duree_min': 60, 'secable': 0, 'duree_min_bloc': 60,
-    })
-    bloc = db.execute("SELECT id FROM planif_blocs LIMIT 1").fetchone()
-    hier = (date.today() - timedelta(days=1)).isoformat()
-    resp = comptable_client.post(f'/planificateur/api/bloc/{bloc["id"]}/deplacer',
-                                 json={'date': hier, 'heure_debut': '10:00'})
-    assert resp.status_code == 400
+@pytest.mark.parametrize('fuseau', ['UTC', 'Europe/Paris'])
+@pytest.mark.parametrize('decalage', [-1, 0, 1])
+@pytest.mark.parametrize('type_tache', ['tache', 'evenement'])
+def test_deplacer_bloc_respecte_la_date_applicative(
+        comptable_client, db, sample_users, monkeypatch, fuseau, decalage, type_tache):
+    """Même instant : dimanche en UTC, lundi à Paris ; seul hier est refusé."""
+    import utils
+
+    class HorlogeFixe(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            instant = datetime(2026, 9, 13, 22, 30, tzinfo=timezone.utc)
+            return instant.astimezone(tz) if tz else instant.replace(tzinfo=None)
+
+    monkeypatch.setenv('APP_TIMEZONE', fuseau)
+    monkeypatch.setattr(utils, 'datetime', HorlogeFixe)
+    jour = date(2026, 9, 13) if fuseau == 'UTC' else date(2026, 9, 14)
+    assert utils.aujourd_hui() == jour
+    uid = sample_users['comptable_id']
+    # Ne pas dépendre du jour ouvré ni d'un placement automatique pour créer
+    # le bloc : ce test porte sur le déplacement et sa conservation en cas de refus.
+    origine = '2026-09-15'
+    tid = db.execute(
+        'INSERT INTO planif_taches (user_id, type, titre, duree_min, secable, '
+        'duree_min_bloc, statut, date_fixe, heure_debut, heure_fin) '
+        "VALUES (?, ?, 'Test déplacement', 60, 0, 60, 'a_faire', ?, '10:00', '11:00')",
+        (uid, type_tache, origine if type_tache == 'evenement' else None)
+    ).lastrowid
+    bid = db.execute(
+        'INSERT INTO planif_blocs (tache_id, user_id, date, heure_debut, '
+        'heure_fin, duree_min, statut, verrouille) '
+        "VALUES (?, ?, ?, '10:00', '11:00', 60, 'planifie', 1)",
+        (tid, uid, origine)
+    ).lastrowid
+    db.commit()
+    avant = dict(db.execute('SELECT * FROM planif_blocs WHERE id = ?', (bid,)).fetchone())
+    tache_avant = dict(db.execute('SELECT * FROM planif_taches WHERE id = ?', (tid,)).fetchone())
+    cible = (jour + timedelta(days=decalage)).isoformat()
+    resp = comptable_client.post(f'/planificateur/api/bloc/{bid}/deplacer',
+                                 json={'date': cible, 'heure_debut': '10:00'})
+    apres = dict(db.execute('SELECT * FROM planif_blocs WHERE id = ?', (bid,)).fetchone())
+    tache_apres = dict(db.execute('SELECT * FROM planif_taches WHERE id = ?', (tid,)).fetchone())
+    if decalage < 0:
+        assert resp.status_code == 400
+        assert resp.json['ok'] is False
+        assert 'passé' in resp.json['erreur']
+        assert apres == avant
+        assert tache_apres == tache_avant
+    else:
+        assert resp.status_code == 200
+        assert resp.json['ok'] is True
+        assert apres['date'] == cible
+        assert apres['heure_debut'] == '10:00'
+        assert apres['heure_fin'] == '11:00'
+        assert apres['verrouille'] == 1
+        if type_tache == 'evenement':
+            assert tache_apres['date_fixe'] == cible
 
 
 def test_menu_lien_visible_comptable(comptable_client):

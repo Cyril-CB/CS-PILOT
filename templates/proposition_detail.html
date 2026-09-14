@@ -3,7 +3,7 @@
 {% block title %}{{ contenu.demande.titre }} — Proposition CS PILOT{% endblock %}
 {% block content %}
 <div class="proposition-page">
-    <p><a href="{{ url_for('propositions_bp.liste') }}">← Mes propositions</a></p>
+    <p><a class="btn btn-secondary" href="{{ url_for('propositions_bp.liste') }}">← Mes propositions</a></p>
     <div class="proposition-entete"><h1>{{ contenu.demande.titre }}</h1>{{ statut('incertain' if incertain else suivi.statut) }}</div>
     <p class="help-text">Référence : <span class="proposition-reference">{{ suivi.id }}</span> · {{ suivi.cree_le[:10] }}</p>
     <section class="proposition-carte">
@@ -16,12 +16,12 @@
         <p>L’envoi a été interrompu ou son résultat n’a pas été enregistré. Le mail a peut-être été transmis.</p>
         <p>Vérifiez auprès de CS PILOT avec la référence avant de le renvoyer.</p>
         {% elif suivi.statut == 'en_cours' %}
-        <p>La transmission est en cours. <a href="{{ url_for('propositions_bp.detail', reference=suivi.id) }}">Actualiser l’état</a>.</p>
+        <p>La transmission est en cours. <a class="btn btn-secondary btn-sm" href="{{ url_for('propositions_bp.detail', reference=suivi.id) }}">Actualiser l’état</a></p>
         {% else %}
         <p>{{ erreurs_envoi.get(suivi.erreur_code, 'La proposition est enregistrée, mais n’a pas encore été envoyée.') }}</p>
         {% endif %}
         {% if not email_pret and suivi.statut != 'envoyee' %}
-        <p>{% if gestionnaire %}<a href="{{ url_for('notifications_bp.configuration_email') }}">Configurer la messagerie du centre</a>
+        <p>{% if gestionnaire %}<a class="btn btn-secondary btn-sm" href="{{ url_for('notifications_bp.configuration_email') }}">Configurer la messagerie du centre</a>
         {% else %}Demandez à la direction ou à la comptabilité de configurer les emails du centre.{% endif %}</p>
         {% endif %}
         {% if suivi.statut == 'a_envoyer' or incertain %}
@@ -42,7 +42,7 @@
         {% if contenu.demande.frequence %}<p>Fréquence : {{ frequences[contenu.demande.frequence] }}</p>{% endif %}
     </section>
     <section class="proposition-carte"><h2>Pièces jointes</h2>
-        <ul>{% for piece in pieces %}<li><a href="{{ url_for('propositions_bp.telecharger_piece', reference=suivi.id, piece_id=piece.id) }}">{{ piece.nom }}</a> · {{ (piece.taille / 1024)|round(1) }} Ko</li>
+        <ul>{% for piece in pieces %}<li><a class="btn btn-secondary btn-sm" href="{{ url_for('propositions_bp.telecharger_piece', reference=suivi.id, piece_id=piece.id) }}">{{ piece.nom }}</a> · {{ (piece.taille / 1024)|round(1) }} Ko</li>
         {% else %}<li>Aucune pièce jointe.</li>{% endfor %}</ul>
     </section>
     <details class="proposition-carte"><summary>Coordonnées et contexte transmis</summary>
@@ -51,7 +51,7 @@
         <p>{{ origines[contenu.contexte.origine_declaree] }}</p>
         <p>Recherche : {{ contenu.contexte.recherche or 'Aucune recherche reprise' }}</p>
         <p>CS PILOT {{ contenu.contexte.application.version }}</p>
-        <p><a href="{{ url_for('propositions_bp.telecharger_fiche', reference=suivi.id) }}">Télécharger la fiche transmise avec le mail</a></p>
+        <p><a class="btn btn-secondary btn-sm" href="{{ url_for('propositions_bp.telecharger_fiche', reference=suivi.id) }}">Télécharger la fiche transmise avec le mail</a></p>
     </details>
 </div>
 {% endblock %}

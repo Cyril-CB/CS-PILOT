@@ -188,16 +188,15 @@ def test_echec_apres_ecriture_nettoie_et_annule(app, db, environnement, monkeypa
 
 @pytest.mark.parametrize('role', ['directeur', 'comptable', 'responsable', 'salarie'])
 def test_recherche_dans_les_droits(app, environnement, role):
-    from interface_flux import carte_pour_utilisateur
-    from search_palette import construire_suggestions
-    with app.test_request_context():
-        carte = carte_pour_utilisateur(role, environnement[f'{role}_id'])
-        for demande in ('SIRET asso', 'SIREN association', 'statuts association', 'code de convention collective'):
-            suggestions = construire_suggestions(carte, demande)
-            if role == 'salarie':
-                assert not any(s.get('url') == URL for s in suggestions)
-            else:
-                assert suggestions[0].get('url') == URL, (demande, suggestions)
+    client = client_role(app, environnement, role)
+    for demande in ('SIRET asso', 'SIREN association', 'statuts association', 'code de convention collective'):
+        reponse = client.post('/api/search/suggestions', json={'query': demande})
+        assert reponse.status_code == 200
+        suggestions = reponse.json['suggestions']
+        if role == 'salarie':
+            assert not any(s.get('url') == URL for s in suggestions)
+        else:
+            assert suggestions[0].get('url') == URL, (demande, suggestions)
 
 
 @pytest.mark.parametrize('flux', [False, True])
