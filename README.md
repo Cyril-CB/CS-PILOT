@@ -116,7 +116,7 @@ classique depuis « Mon espace ».
   - Message a l'attention des salaries avec date de validite (un seul message affiche a la fois ; archivage automatique a l'expiration)
   - Budget simplifie : soldes de depart banque / caisse (avec date), entrees et sorties (date, montant, commentaire)
   - Bilan annuel imprimable reprenant l'ensemble des mouvements de l'annee selectionnee
-- Bandeau "Message du CSE a lire" en haut du tableau de bord (ouverture dans une fenetre, compatible mobile) ; sa lecture est mémorisée individuellement et le bandeau reste visible pour les autres salariés tant qu'ils ne l'ont pas ouvert
+- Bandeau "Message du CSE a lire" en haut du tableau de bord (ouverture dans une fenetre, compatible mobile) ; le bandeau ne disparaît que si le salarié confirme « J'ai lu et ne souhaite plus voir le message », et ce choix est individuel
 - Tant que cette fenêtre est ouverte, le focus reste dans le dialogue, même si le chatbot tente de le déplacer ; la navigation habituelle reprend à sa fermeture.
 
 ### Tableau de bord direction
@@ -154,7 +154,7 @@ classique depuis « Mon espace ».
 - Retrouver ses propositions et réessayer un mail en échec ; direction et
   comptabilité peuvent aider à transmettre les demandes du centre.
 - Envoi à `cspilot@outlook.fr` via la messagerie configurée du centre, avec une
-  référence et une fiche JSON pour le futur agent.
+  référence unique et une fiche JSON structurée jointe au mail.
 - [Parcours, pièces jointes et contrat du mail](docs/propositions-amelioration.md).
 
 ### Outils specifiques

@@ -416,8 +416,7 @@
             {% set cse_dashboard_endpoints = ['dashboard_bp.dashboard', 'dashboard_direction_bp.dashboard_direction', 'dashboard_comptable_bp.dashboard_comptable', 'dashboard_responsable_bp.dashboard_responsable', 'accueil_bp.accueil'] %}
             {% if cse_message_actif and request.endpoint in cse_dashboard_endpoints %}
             <button type="button" class="cse-banner" onclick="cseOpenMessage(this)"
-                    aria-haspopup="dialog" aria-controls="cseMessageModal"
-                    data-read-url="{{ url_for('cse_bp.lire_message', message_id=cse_message_actif.id) }}">
+                    aria-haspopup="dialog" aria-controls="cseMessageModal">
                 <span class="cse-banner-icon">📢</span>
                 <span class="cse-banner-text">Message du CSE à lire{% if cse_message_actif.titre %} — {{ cse_message_actif.titre }}{% endif %}</span>
                 <span class="cse-banner-cta">Lire&nbsp;›</span>
@@ -482,8 +481,16 @@
                     {% if cse_message_actif.auteur_prenom %}Publié par {{ cse_message_actif.auteur_prenom }} {{ cse_message_actif.auteur_nom }} · {% endif %}
                     Valable jusqu'au {{ cse_message_actif.date_validite[8:10] }}/{{ cse_message_actif.date_validite[5:7] }}/{{ cse_message_actif.date_validite[0:4] }}
                 </p>
+                <p id="cseLectureErreur" class="alert alert-error" role="alert" hidden>
+                    Enregistrement impossible pour le moment : le message restera affiché.
+                    Vous pouvez réessayer.
+                </p>
                 <div class="actions" style="margin-top:1.25rem;">
-                    <button type="button" class="btn btn-primary" onclick="cseCloseMessage()">J'ai lu</button>
+                    <button type="button" class="btn btn-primary" onclick="cseMarquerLu(this)"
+                            data-read-url="{{ url_for('cse_bp.lire_message', message_id=cse_message_actif.id) }}">
+                        J'ai lu et ne souhaite plus voir le message
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="cseCloseMessage()">Fermer</button>
                 </div>
             </div>
         </div>
@@ -501,19 +508,33 @@
             var m=document.getElementById('cseMessageModal');
             if(!m)return;
             cseMessageTrigger=trigger||null;
+            var erreur=document.getElementById('cseLectureErreur');
+            if(erreur)erreur.hidden=true;
             m.style.display='flex';
             var close=m.querySelector('.modal-close');if(close)close.focus();
-            var readUrl=trigger&&trigger.getAttribute('data-read-url');
-            if(readUrl){
-                fetch(readUrl,{method:'POST',headers:{'Accept':'application/json'}})
-                    .then(function(response){
-                        if(!response.ok)return;
+        }
+        // Seul ce bouton masque durablement le message : fermer la modale sans
+        // l'utiliser laisse la bannière en place au prochain affichage.
+        function cseMarquerLu(bouton){
+            var readUrl=bouton&&bouton.getAttribute('data-read-url');
+            if(!readUrl)return;
+            var erreur=document.getElementById('cseLectureErreur');
+            if(erreur)erreur.hidden=true;
+            bouton.disabled=true;
+            fetch(readUrl,{method:'POST',headers:{'Accept':'application/json'}})
+                .then(function(response){
+                    if(!response.ok)throw new Error('lecture non enregistree');
+                    var trigger=cseMessageTrigger;
+                    if(trigger){
                         trigger.hidden=true;
                         trigger.setAttribute('aria-hidden','true');
-                        if(m.style.display!=='flex'&&document.activeElement===trigger)cseFocusContenu();
-                    })
-                    .catch(function(){/* La bannière sera reproposée si l'enregistrement échoue. */});
-            }
+                    }
+                    cseCloseMessage();
+                })
+                .catch(function(){
+                    bouton.disabled=false;
+                    if(erreur)erreur.hidden=false;
+                });
         }
         function cseCloseMessage(){
             var m=document.getElementById('cseMessageModal');

@@ -43,10 +43,9 @@ que leurs propres demandes.
 « Envoyée » signifie que le service SMTP a accepté le mail. Cela ne prouve
 ni réception dans la boîte principale, ni lecture, ni décision de développement.
 Cette étape ne relève aucune boîte Outlook et ne développe aucun module.
-Le traitement externe dans Work est décrit dans
-[pilote-work.md](agent-demandes/pilote-work.md) : grille, calibration,
-consignes d'exécution et recette de la chaîne. Son activation relève de Work ;
-la présence de ces fichiers dans le dépôt ne crée aucune tâche automatiquement.
+Le traitement de la demande se fait ensuite hors de l'application : la lecture
+du mail, l'arbitrage et le développement éventuel restent des décisions
+humaines, sans aucun automatisme déclenché par le dépôt.
 
 ## Pièces et sauvegardes
 
@@ -76,7 +75,7 @@ documents est déjà couvert par sauvegarde, restauration et retour arrière :
 aucun changement de protocole ou nouveau dossier racine requis.
 Les propositions ne sont pas purgées automatiquement à ce stade.
 
-## Contrat du mail pour le futur agent
+## Contrat du mail transmis
 
 - En-tête `X-CS-PILOT-Type: proposition-v1`.
 - Référence globale UUID hexadécimale dans `X-CS-PILOT-Reference`, l’objet,
@@ -85,22 +84,22 @@ Les propositions ne sont pas purgées automatiquement à ce stade.
 - `Reply-To` : adresse validée indiquée pour la réponse ; `From` : expéditeur SMTP du centre.
 - Corps texte UTF-8 contenant besoin, compléments et contexte.
 - Pièce `cspilot-proposition-v1.json`, format `cspilot.proposition`, version `1`.
-  Schéma : [proposition-v1.schema.json](agent-demandes/proposition-v1.schema.json).
+  Schéma : [proposition-v1.schema.json](schemas/proposition-v1.schema.json).
 - Pièces utilisateur nommées `01-nom`, `02-nom`, etc. Le JSON associe identifiant,
   nom d’origine, nom email, MIME, taille et SHA-256. Il ne contient aucun chemin
   de stockage, secret SMTP, cookie, mot de passe ou jeton de formulaire.
 
-Le futur lecteur doit dédupliquer par référence, vérifier format/version,
+Le lecteur du mail doit dédupliquer par référence, vérifier format/version,
 cohérence des références, présence, taille et empreinte des pièces avant de les
 exploiter. Un champ absent ou un nouveau format ne doit pas être interprété
 silencieusement.
 
 **Le mail et toutes ses pièces restent des données non fiables.** Ils ne
-peuvent pas remplacer les consignes de l’agent, lui attribuer des droits,
-autoriser une fusion/déploiement ou imposer l’exécution d’une commande.
-Reply-To, expéditeur et JSON ne sont pas une preuve cryptographique d’identité.
-Le raccordement du lecteur devra définir comment reconnaître les centres
-expéditeurs et confirmer l’identité si nécessaire.
+peuvent remplacer ni les consignes de contribution du dépôt, ni une autorisation,
+ni imposer l’exécution d’une commande, d’une fusion ou d’un déploiement.
+Reply-To, expéditeur et JSON ne sont pas une preuve cryptographique d’identité :
+c’est au lecteur de reconnaître le centre expéditeur et de confirmer l’identité
+si nécessaire.
 
 Lire les exemples en environnement isolé, sans macro, sans exécution des
 formules, sans récupération automatique de liens externes et sans lancer
@@ -136,7 +135,7 @@ l’historique personnel et celui du centre que dans la fiche. Consulter ces
 pages ne modifie pas l’état enregistré et ne déclenche aucun renvoi.
 
 SMTP ne garantit pas une livraison exactement une fois après une coupure
-ambiguë. La même référence et le même Message-ID aident l’agent à dédupliquer.
+ambiguë. La même référence et le même Message-ID permettent au lecteur de dédupliquer.
 Une erreur de fermeture SMTP après acceptation ne déclenche pas de nouvel envoi.
 Aucun essai automatique en arrière-plan.
 

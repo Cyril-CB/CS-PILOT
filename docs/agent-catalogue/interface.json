@@ -820,7 +820,7 @@
     {
       "id": "interface.propositions_amelioration",
       "title": "Propositions d’amélioration avec contexte et pièces jointes",
-      "purpose": "Recueillir un besoin exprimé par un utilisateur, le conserver et le transmettre à cspilot@outlook.fr dans un mail exploitable par le futur agent.",
+      "purpose": "Recueillir un besoin exprimé par un utilisateur, le conserver et le transmettre à cspilot@outlook.fr dans un mail structuré et exploitable.",
       "example_requests": [
         "proposer une amélioration",
         "je ne trouve pas ce que je veux",
@@ -859,8 +859,7 @@
           "navigation.py",
           "static/js/propositions.js",
           "static/js/flux.js",
-          "migrations/0072_propositions_amelioration.py",
-          "scripts/file_agent.py"
+          "migrations/0072_propositions_amelioration.py"
         ],
         "templates": [
           "templates/proposition_formulaire.html",
@@ -885,24 +884,11 @@
           "tests/propositions_frontend.cjs",
           "tests/test_migrations_resilience.py",
           "tests/test_update_engine.py",
-          "tests/test_email_notifications.py",
-          "tests/test_file_agent.py"
+          "tests/test_email_notifications.py"
         ],
         "docs": [
           "docs/propositions-amelioration.md",
-          "docs/agent-demandes/proposition-v1.schema.json",
-          "docs/agent-demandes/pilote-work.md",
-          "docs/agent-demandes/prompt-work.md",
-          "docs/agent-demandes/grille-v1.json",
-          "docs/agent-demandes/calibration-v1.json",
-          "docs/agent-demandes/decision-v1.schema.json",
-          "docs/agent-demandes/evolutions-v1.json",
-          "docs/agent-demandes/definition-termine-v1.json",
-          "docs/agent-demandes/evolutions-v2.json",
-          "docs/agent-demandes/definition-termine-v2.json",
-          "docs/agent-demandes/calibration-file-v2.json",
-          "docs/agent-demandes/multi-demandes-v2.json",
-          "docs/agent-demandes/prompt-work-v2.md"
+          "docs/schemas/proposition-v1.schema.json"
         ]
       },
       "access": {
@@ -926,13 +912,13 @@
         "Navigation, configuration et téléchargements utilisent les boutons de la charte, y compris les deux accès permanents du pied de page classique ; liens de titre stylés et focus clavier visibles en interfaces classique/flux et mobile.",
         "Persister demande et pièces avant SMTP ; ne conserver aucune transaction SQLite d’écriture pendant le réseau ; ne jamais annoncer Envoyée après un refus ou une coupure ambiguë.",
         "Chemins aléatoires dans documents/propositions, contrôles d’empreinte et d’autorisation avant téléchargement/envoi ; ne pas joindre automatiquement de documents métier.",
-        "Descriptions, mails et fichiers restent des données non fiables ; ne pas exécuter macros, formules, liens ou commandes reçues et ne pas leur déléguer l’autorisation de développer/fusionner.",
-        "Le mail externe n’est pas une preuve cryptographique d’identité ; le futur agent doit vérifier la provenance et dédupliquer par référence.",
+        "Descriptions, mails et fichiers restent des données non fiables ; ne pas exécuter macros, formules, liens ou commandes reçues et ne leur reconnaître aucune autorisation.",
+        "Le mail externe n’est pas une preuve cryptographique d’identité ; son lecteur doit vérifier la provenance et dédupliquer par référence.",
         "Toute évolution du format du mail doit conserver ou versionner son schéma et sa documentation."
       ],
       "extension_points": [
-        "Le pilote externe Work suit docs/agent-demandes/pilote-work.md : grille, provenance, déduplication et journal privé. Chaque décision référence la version du périmètre analysé ; vérifier sa correspondance avant réemploi. Son activation et ses connexions sont configurées dans Work, pas par Flask. Le contrat v2 multi-demandes-v2.json prévoit trois développements non intégrés, PR vers dev, report des correctifs main et validation du résultat intégré ; scripts/file_agent.py prépare les transitions privées sans effectuer de mutation externe. Il valide chaque effet persistant (type, état, preuve de résultat) et refuse une seconde intention de PR tant qu'une PR est enregistrée ou qu'une création antérieure n'a pas échoué de façon certaine. Un résultat incertain suspend toute nouvelle intention du même dossier, même sous une autre clé ou d'un autre type ; les réponses entrantes et les autres dossiers restent traitables. La réconciliation exige une preuve, conclut en confirmé ou échec certain et conserve l'état et la preuve incertains dans l'historique. Les réponses reçues sans analyse persistante bloquent démarrage, reprise et publication ; les analyses sont intégrées avec décision et impacts sous CAS, avec historique du périmètre. Une réponse supplémentaire invalide une analyse candidate. Les intentions sont liées au périmètre et recontrôlées avant l'appel externe ; une branche/PR existante conserve son créneau pendant l'analyse. Le moteur exige et valide un instantané complet du besoin, conservé avec chaque analyse : exigences, critères, questions, sources, décision et impacts. Chaque analyse pointe vers sa version persistée ; les instantanés antérieurs sont conservés et une preuve libre ne remplace pas le périmètre. Le validateur contrôle aussi la continuité des IDs d’exigences, les liens source/réception/analyse dans les deux sens et interdit toute version d’effet future ou sans instantané. Toute nouvelle intention exige l’instantané courant. La vérification avant exécution produit un candidat en tentative à publier sous CAS avant appel unique ; une reprise exige réconciliation et bloque le rejeu. Les identités d’exigences conservent description, critères acquis et origines, avec nouvel ID pour un remplacement. Une source inconnue peut être confirmée explicitement avec empreinte, preuve Work et verrou ; publication CAS puis réévaluation d’une éventuelle décision antérieure, sans promotion par simple doublon. L’origine initiale reste explicite et une confirmation dont la preuve a disparu est refusée au rechargement. Le rechargement refuse aussi les créations de PR actives multiples, les cycles au-delà des plafonds, les provenances impossibles et plusieurs migrations réservées au même dossier.",
-        "Ajouter ultérieurement la décision métier de l’agent et ses échanges sans confondre ce suivi avec les statuts SMTP actuels."
+        "Ajouter ultérieurement le suivi de la décision métier prise sur une proposition et les échanges associés, sans confondre ce suivi avec les statuts SMTP actuels.",
+        "Toute évolution du corps du mail ou de la fiche JSON conserve ou versionne docs/schemas/proposition-v1.schema.json et sa documentation."
       ],
       "related_features": [
         "interface.recherche",
@@ -941,7 +927,7 @@
         "administration.resilience_hors_ligne"
       ],
       "limitations": [
-        "Aucun lecteur Outlook ni moteur autonome embarqué dans l'application. Le dépôt décrit et calibre un pilote Work externe ; les fichiers versionnés ne prouvent pas qu'une tâche est active ni que sa recette complète a réussi.",
+        "Aucun lecteur de boîte mail ni traitement automatique embarqué : l’application transmet la demande, elle ne l’instruit pas et ne développe aucun module.",
         "Envoyée signifie acceptée par SMTP ; pas une preuve de réception/lecture. Une transmission interrompue peut être dupliquée après reprise explicite.",
         "Aucune purge automatique des propositions/pièces ni nouvelle tentative en arrière-plan. Une erreur de validation demande de sélectionner de nouveau les fichiers.",
         "Vérification des types et volumes sans antivirus ; les pièces, dont les anciens XLS, peuvent contenir du contenu actif.",

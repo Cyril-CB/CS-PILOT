@@ -841,7 +841,7 @@
       "capabilities": [
         "Publier titre facultatif, contenu obligatoire et date de validité.",
         "Afficher le message actif via le contexte global de l’application aux utilisateurs internes ; consulter les archives dans l’espace membres.",
-        "Mémoriser l’ouverture du message actif pour l’utilisateur connecté et masquer ensuite sa bannière, sans modifier sa visibilité pour les autres utilisateurs.",
+        "Masquer durablement la bannière pour l’utilisateur connecté uniquement s’il confirme « J’ai lu et ne souhaite plus voir le message » dans la modale ; sans cette confirmation le message continue de s’afficher, et la visibilité des autres utilisateurs est inchangée.",
         "Archiver manuellement un message ou automatiquement les messages expirés à l’ouverture des pages de gestion.",
         "Notifier la publication par email si demandé, avec audience personnel actif hors prestataires et consentement individuel."
       ],
@@ -862,7 +862,8 @@
         ],
         "templates": [
           "templates/cse_messages.html",
-          "templates/cse.html"
+          "templates/cse.html",
+          "templates/base.html"
         ],
         "tables": [
           "cse_messages",
@@ -872,14 +873,16 @@
         ],
         "tests": [
           "tests/test_cse.py",
-          "tests/test_cse_lectures.py"
+          "tests/test_cse_lectures.py",
+          "tests/test_cse_lectures_frontend.py",
+          "tests/cse_lectures_frontend_checks.cjs"
         ],
         "docs": [
           "README.md"
         ]
       },
       "access": {
-        "summary": "Gestion et archives : membre CSE obligatoire, sans dérogation de profil directeur/comptable. Lecture du message actif : contexte app.inject_cse_context pour utilisateurs connectés hors prestataires ; l’ouverture ne peut enregistrer que l’utilisateur de la session.",
+        "summary": "Gestion et archives : membre CSE obligatoire, sans dérogation de profil directeur/comptable. Lecture du message actif : contexte app.inject_cse_context pour utilisateurs connectés hors prestataires ; l’enregistrement de lecture ne peut viser que l’utilisateur de la session.",
         "scope": "Archives réservées CSE ; publication active diffusée au personnel interne, sans restriction d’équipe. L’état lu/non lu est individuel par couple message-utilisateur.",
         "conditions": [
           "Date de validité au moins égale à aujourd’hui à la publication.",
@@ -896,9 +899,10 @@
       "invariants": [
         "Publier archive tous les précédents messages actifs avant insertion du nouveau.",
         "get_message_actif exclut une date expirée même si l’archivage matériel n’a pas encore eu lieu.",
-        "Une lecture ne masque que le message concerné pour l’utilisateur connecté ; un nouveau message est non lu indépendamment.",
+        "Seule la confirmation explicite enregistre une lecture ; ouvrir puis fermer la modale, par la croix, Échap ou le bouton Fermer, laisse le message affiché. Une lecture ne masque que le message concerné pour l’utilisateur connecté ; un nouveau message est non lu indépendamment.",
         "Pendant l’ouverture de la modale, le focus reste dans le dialogue, y compris lorsqu’un autre composant tente de le déplacer sans touche Tab.",
-        "La publication est conservée même en cas d’échec email."
+        "La publication est conservée même en cas d’échec email.",
+        "Un enregistrement refusé par le serveur conserve la bannière, réactive le bouton et affiche l’erreur dans la modale : aucune lecture n’est supposée acquise côté navigateur."
       ],
       "extension_points": [
         "Réutiliser get_message_actif et le contexte CSE existant pour toute nouvelle présentation des communications."
