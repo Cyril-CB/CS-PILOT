@@ -1686,8 +1686,12 @@ def api_budget_previsionnel_export_pdf():
             par compte à deux chiffres, puis le total de la section."""
             bloc = [Paragraph(titre_section, style_section)]
             if not lignes:
-                bloc.append(Paragraph('Aucun compte sur cette section.', styles['Normal']))
-                return bloc
+                # Une section sans compte totalise zéro côté serveur, et le
+                # résultat final s'appuie sur ce zéro : la section garde donc
+                # sa ligne de total, sans quoi le PDF ne se recompose plus.
+                bloc.append(Paragraph(
+                    'Aucun compte sur cette section : son total est nul.',
+                    styles['Normal']))
             table_data = [headers]
             styles_lignes = []
             categorie = None

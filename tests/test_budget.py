@@ -2128,6 +2128,30 @@ def test_export_pdf_sous_totaux_par_compte_a_deux_chiffres(app, db, admin_client
     assert _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)[-1] == '3000.00'
 
 
+def test_export_pdf_section_vide_garde_son_total_a_zero(app, db, admin_client):
+    """Un secteur sans aucun compte de produits conserve TOTAL PRODUITS à zéro.
+
+    Le serveur totalise une nature sans ligne à 0 et le résultat final s'appuie
+    sur ce 0 : sans ligne de total, le PDF ne se recompose plus et contredit la
+    règle « chaque section se termine par son total ».
+    """
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)   # seul le compte de charges 606000
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+
+    cellules = _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)
+    assert cellules == ['0.00', '0.00', '0.00', '0.00', '0.00'], cellules
+    # La section reste explicite sur son absence de compte.
+    texte = _texte_pdf_budget(r.data)
+    assert 'Aucun compte sur cette section'.encode() in texte
+    # Et le résultat reste cohérent : 0 produit − 1 500 de charges.
+    assert b'-1500.00' in texte
+
+
 def test_export_pdf_separe_les_sections_charges_et_produits(app, db, admin_client):
     """Charges et produits forment deux tableaux distincts et ordonnés, avec
     leurs en-têtes répétés : aucun compte 7 dans la section des charges."""
