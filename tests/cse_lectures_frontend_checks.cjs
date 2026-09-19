@@ -10,13 +10,18 @@ assert.ok(match, 'script de lecture CSE introuvable');
 
 function ouvrirPage(ok) {
     const handlers = {};
+    const appels = [];
     const focalisable = () => ({focusCount: 0, focus() {
         this.focusCount += 1;
         document.activeElement = this;
     }});
     const fermeture = focalisable();
-    const boutonLu = focalisable();
     const contenuModal = focalisable();
+    const boutonLu = Object.assign(focalisable(), {
+        disabled: false,
+        getAttribute(name) { return name === 'data-read-url' ? '/cse/messages/1/lire' : null; }
+    });
+    const erreur = {hidden: true};
     const modal = {
         style: {display: 'none'},
         querySelector(selector) {
@@ -33,30 +38,46 @@ function ouvrirPage(ok) {
         focus() { this.focusCount += 1; document.activeElement = this; },
         addEventListener() {}
     };
+    // La bannière ne porte plus d'URL d'enregistrement : elle ouvre seulement la modale.
     const trigger = {
         hidden: false,
         focusCount: 0,
         attributes: {},
-        getAttribute(name) { return name === 'data-read-url' ? '/cse/messages/1/lire' : null; },
+        getAttribute() { return null; },
         setAttribute(name, value) { this.attributes[name] = value; },
         focus() { this.focusCount += 1; document.activeElement = this; }
     };
     const document = {
         activeElement: null,
-        getElementById(id) { return id === 'cseMessageModal' ? modal : null; },
+        getElementById(id) {
+            if (id === 'cseMessageModal') return modal;
+            if (id === 'cseLectureErreur') return erreur;
+            return null;
+        },
         querySelector(selector) { return selector === '.main-content' ? contenu : null; },
         addEventListener(name, callback) { handlers[name] = callback; }
     };
-    const context = {document, fetch: () => Promise.resolve({ok})};
+    const fetch = (url, options) => {
+        appels.push({url, options});
+        return Promise.resolve({ok});
+    };
+    const context = {document, fetch};
     vm.runInNewContext(match[1], context);
-    return {api: context, boutonLu, contenu, fermeture, handlers, modal, trigger, document};
+    return {api: context, appels, boutonLu, contenu, erreur, fermeture, handlers, modal, trigger, document};
 }
+
+const attendre = () => new Promise(resolve => setImmediate(resolve));
 
 (async function () {
     const succes = ouvrirPage(true);
     succes.api.cseOpenMessage(succes.trigger);
     assert.equal(succes.modal.style.display, 'flex');
     assert.equal(succes.fermeture.focusCount, 1);
+
+    // Ouvrir le message ne l'enregistre plus comme lu.
+    await attendre();
+    assert.equal(succes.appels.length, 0, 'aucun appel serveur à la simple ouverture');
+    assert.equal(succes.trigger.hidden, false, 'la bannière reste visible tant que rien n’est confirmé');
 
     // Tab et Maj+Tab restent dans la fenêtre tant qu'elle est ouverte.
     let tabEmpeche = 0;
@@ -75,13 +96,11 @@ function ouvrirPage(ok) {
     assert.equal(tabEmpeche, 3);
     assert.equal(succes.fermeture.focusCount, 3);
 
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(succes.trigger.hidden, true);
-    assert.equal(succes.trigger.attributes['aria-hidden'], 'true');
+    // Fermer sans confirmer laisse la bannière et rend le focus à celle-ci.
     succes.api.cseCloseMessage();
     assert.equal(succes.modal.style.display, 'none');
-    assert.equal(succes.trigger.focusCount, 0);
-    assert.equal(succes.contenu.focusCount, 2);
+    assert.equal(succes.trigger.hidden, false);
+    assert.equal(succes.trigger.focusCount, 1);
 
     // Échap ne concerne cette modale que lorsqu'elle est réellement ouverte.
     let empeche = 0;
@@ -96,12 +115,32 @@ function ouvrirPage(ok) {
     assert.equal(empeche, 1);
     assert.equal(arrete, 1);
     assert.equal(succes.modal.style.display, 'none');
+    assert.equal(succes.trigger.hidden, false, 'Échap n’enregistre aucune lecture');
+
+    // Le bouton explicite enregistre la lecture, masque la bannière et ferme la modale.
+    succes.api.cseOpenMessage(succes.trigger);
+    succes.api.cseMarquerLu(succes.boutonLu);
+    assert.equal(succes.boutonLu.disabled, true, 'le bouton est neutralisé pendant l’appel');
+    assert.equal(succes.appels.length, 1);
+    assert.equal(succes.appels[0].url, '/cse/messages/1/lire');
+    assert.equal(succes.appels[0].options.method, 'POST');
+    await attendre();
+    assert.equal(succes.trigger.hidden, true);
+    assert.equal(succes.trigger.attributes['aria-hidden'], 'true');
+    assert.equal(succes.modal.style.display, 'none');
+    assert.equal(succes.contenu.focusCount, 2, 'le focus revient dans la page, pas sur la bannière masquée');
 
     // Une réponse HTTP en erreur conserve la bannière et permet une nouvelle tentative.
     const echec = ouvrirPage(false);
     echec.api.cseOpenMessage(echec.trigger);
-    await new Promise(resolve => setImmediate(resolve));
+    echec.api.cseMarquerLu(echec.boutonLu);
+    await attendre();
     assert.equal(echec.trigger.hidden, false);
+    assert.equal(echec.modal.style.display, 'flex', 'la modale reste ouverte pour réessayer');
+    assert.equal(echec.boutonLu.disabled, false);
+    assert.equal(echec.erreur.hidden, false);
+    echec.api.cseOpenMessage(echec.trigger);
+    assert.equal(echec.erreur.hidden, true, 'le message d’erreur ne survit pas à une réouverture');
     echec.api.cseCloseMessage();
     assert.equal(echec.trigger.focusCount, 1);
     assert.equal(echec.contenu.focusCount, 0);

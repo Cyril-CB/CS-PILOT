@@ -21,7 +21,7 @@ def _connexion(client, login, password):
     )
 
 
-def test_ouverture_enregistre_la_lecture_et_la_masque_apres_reconnexion(
+def test_confirmation_explicite_enregistre_la_lecture_et_la_masque_apres_reconnexion(
         auth_client, db, sample_users):
     message_id = _inserer_message(db)
     page = auth_client.get('/dashboard').get_data(as_text=True)
@@ -117,7 +117,7 @@ def test_banniere_et_modale_sont_accessibles_en_classique_et_en_flux(
         assert 'role="dialog"' in page
         assert 'aria-modal="true"' in page
         assert "fetch(readUrl,{method:'POST'" in page
-        assert "if(!response.ok)return" in page
+        assert "if(!response.ok)throw new Error" in page
         assert "trigger.hidden=true" in page
         assert "if(close)close.focus()" in page
         assert "if(e.key==='Tab')" in page
@@ -152,3 +152,32 @@ def test_schema_neuf_et_migration_0074_idempotente(app, db):
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='cse_messages_lectures'"
     ).fetchone()[0]
     assert ddl_migre == ddl_neuf
+
+
+def test_ouvrir_le_message_ne_suffit_pas_a_le_masquer(auth_client, db):
+    """Consulter la bannière laisse le message affiché : rien n'est enregistré."""
+    message_id = _inserer_message(db)
+
+    for _ in range(3):
+        page = auth_client.get('/dashboard').get_data(as_text=True)
+        assert 'Message du CSE à lire' in page
+
+    assert db.execute('SELECT COUNT(*) FROM cse_messages_lectures').fetchone()[0] == 0
+    assert auth_client.post(f'/cse/messages/{message_id}/lire').status_code == 200
+    assert 'Message du CSE à lire' not in auth_client.get('/dashboard').get_data(as_text=True)
+
+
+def test_seul_le_bouton_de_confirmation_porte_l_url_d_enregistrement(auth_client, db):
+    """La bannière ouvre la modale ; l'engagement est pris dans la modale."""
+    message_id = _inserer_message(db)
+    page = auth_client.get('/dashboard').get_data(as_text=True)
+    url_lecture = f"/cse/messages/{message_id}/lire"
+
+    banniere = page.split('class="cse-banner"', 1)[1].split('</button>', 1)[0]
+    assert 'data-read-url' not in banniere
+    assert 'cseOpenMessage(this)' in page
+
+    confirmation = page.split('onclick="cseMarquerLu(this)"', 1)[1].split('</button>', 1)[0]
+    assert f'data-read-url="{url_lecture}"' in confirmation
+    assert "J'ai lu et ne souhaite plus voir le message" in confirmation
+    assert page.count(url_lecture) == 1
