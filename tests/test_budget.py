@@ -2055,6 +2055,171 @@ def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
     assert b'Initial N' not in texte
 
 
+def _cellules_pdf_apres(data, libelle, nb):
+    """Les nb valeurs imprimées juste après un libellé donné du PDF.
+
+    ReportLab dessine chaque cellule par un opérateur Tj et échappe les
+    accents en octal ; on rétablit le texte lisible pour les assertions.
+    """
+    import re as _re
+
+    def _lisible(valeur):
+        valeur = _re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), valeur)
+        return valeur.replace('\\(', '(').replace('\\)', ')').replace('\\\\', '\\')
+
+    cellules = [_lisible(v) for v in
+                _re.findall(r'\((.*?)\)\s*Tj', _texte_pdf_budget(data).decode('latin-1'))]
+    assert libelle in cellules, f'{libelle!r} absent du PDF'
+    depart = cellules.index(libelle) + 1
+    return cellules[depart:depart + nb]
+
+
+def _setup_budget_categories(db, annee, secteur_nom='Secteur categories'):
+    """Secteur budgété sur plusieurs comptes à deux chiffres.
+
+    Charges 60/61/64 et produits 70/74, chacun avec un définitif saisi au
+    budget initial et à l'actualisé, pour contrôler les sous-totaux.
+    """
+    db.execute('INSERT INTO secteurs (nom, type_secteur) VALUES (?, ?)',
+               (secteur_nom, 'creche'))
+    sid = db.execute('SELECT id FROM secteurs WHERE nom = ?', (secteur_nom,)).fetchone()['id']
+    db.execute("INSERT INTO budget_prev_config_codes (code_analytique, secteur_id) VALUES ('ANA-CAT', ?)",
+               (sid,))
+    db.execute("INSERT INTO bilan_fec_imports (fichier_nom, annee, nb_ecritures) VALUES ('cat.txt', ?, 1)",
+               (annee,))
+    imp = db.execute('SELECT id FROM bilan_fec_imports ORDER BY id DESC LIMIT 1').fetchone()['id']
+    montants = {
+        '606000': 100, '606300': 200,      # catégorie 60 → 300
+        '611000': 400,                      # catégorie 61 → 400
+        '641100': 1000,                     # catégorie 64 → 1000
+        '706100': 900, '706200': 100,      # catégorie 70 → 1000
+        '740000': 2000,                     # catégorie 74 → 2000
+    }
+    for compte, montant in montants.items():
+        db.execute('INSERT INTO bilan_fec_donnees (compte_num, code_analytique, annee, mois, montant, import_id) '
+                   "VALUES (?, 'ANA-CAT', ?, 1, ?, ?)", (compte, annee - 1, montant, imp))
+        for typ in ('initial', 'actualise'):
+            db.execute('INSERT INTO budget_prev_saisies (type_budget, annee, secteur_id, compte_num, valeur_def) '
+                       'VALUES (?, ?, ?, ?, ?)', (typ, annee, sid, compte, montant))
+    db.commit()
+    _arrete_test(db, sid, annee, 12)
+    return sid
+
+
+def test_export_pdf_sous_totaux_par_compte_a_deux_chiffres(app, db, admin_client):
+    """Chaque famille 60xxxx, 61xxxx… porte son sous-total, et chaque section
+    son total. Les sous-totaux doivent recomposer le total de la section."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_budget_categories(db, annee)
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+
+    for categorie, total in (('60', '300.00'), ('61', '400.00'), ('64', '1000.00'),
+                             ('70', '1000.00'), ('74', '2000.00')):
+        # Cellules chiffrées du sous-total : N-2, N-1, N, Temp., Déf.
+        cellules = _cellules_pdf_apres(r.data, f'Sous-total {categorie}xxxx', 5)
+        assert cellules[-1] == total, f'sous-total {categorie} : {cellules}'
+
+    # 300 + 400 + 1000 = 1700 de charges ; 1000 + 2000 = 3000 de produits.
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[-1] == '1700.00'
+    assert _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)[-1] == '3000.00'
+
+
+def test_export_pdf_section_vide_garde_son_total_a_zero(app, db, admin_client):
+    """Un secteur sans aucun compte de produits conserve TOTAL PRODUITS à zéro.
+
+    Le serveur totalise une nature sans ligne à 0 et le résultat final s'appuie
+    sur ce 0 : sans ligne de total, le PDF ne se recompose plus et contredit la
+    règle « chaque section se termine par son total ».
+    """
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_fiche_secteur(db, annee)   # seul le compte de charges 606000
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    assert r.status_code == 200
+
+    cellules = _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)
+    assert cellules == ['0.00', '0.00', '0.00', '0.00', '0.00'], cellules
+    # La section reste explicite sur son absence de compte.
+    texte = _texte_pdf_budget(r.data)
+    assert 'Aucun compte sur cette section'.encode() in texte
+    # Et le résultat reste cohérent : 0 produit − 1 500 de charges.
+    assert b'-1500.00' in texte
+
+
+def test_export_pdf_separe_les_sections_charges_et_produits(app, db, admin_client):
+    """Charges et produits forment deux tableaux distincts et ordonnés, avec
+    leurs en-têtes répétés : aucun compte 7 dans la section des charges."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_budget_categories(db, annee, 'Secteur sections')
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+    texte = _texte_pdf_budget(r.data)
+
+    debut_charges = texte.index(b'Charges')
+    total_charges = texte.index(b'TOTAL CHARGES')
+    debut_produits = texte.index(b'Produits')
+    assert debut_charges < total_charges < debut_produits < texte.index(b'TOTAL PRODUITS')
+
+    section_charges = texte[debut_charges:total_charges]
+    assert b'706100' not in section_charges and b'740000' not in section_charges
+    assert b'606000' in section_charges and b'641100' in section_charges
+
+
+def test_export_pdf_sous_total_incomplet_n_affiche_pas_un_montant_exact(app, db, admin_client):
+    """Un compte non saisi rend le sous-total de sa famille inconnu.
+
+    Additionner les seules lignes renseignées donnerait un sous-total exact
+    mais faux : la règle est la même qu'à l'écran et que pour le résultat.
+    """
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_budget_categories(db, annee, 'Secteur incomplet')
+        db.execute('DELETE FROM budget_prev_saisies WHERE secteur_id = ? AND compte_num = ?',
+                   (sid, '606300'))
+        db.commit()
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
+
+    cellules_60 = _cellules_pdf_apres(r.data, 'Sous-total 60xxxx', 5)
+    assert cellules_60[-1] == 'À compléter', f'le sous-total 60 doit rester inconnu : {cellules_60}'
+    assert '100.00' not in cellules_60, 'ne pas additionner les seules lignes saisies'
+    # Les familles complètes gardent leur sous-total chiffré.
+    assert _cellules_pdf_apres(r.data, 'Sous-total 61xxxx', 5)[-1] == '400.00'
+    # Et le total de section reste inconnu lui aussi.
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[-1] == 'À compléter'
+
+
+def test_export_pdf_actualise_sous_totaux_avec_ecart(app, db, admin_client):
+    """En actualisé, les sous-totaux portent aussi l'écart de la famille."""
+    annee = datetime.now().year
+    with app.app_context():
+        sid = _setup_budget_categories(db, annee, 'Secteur ecart')
+        # Actualisé du 606000 porté de 100 à 150 : écart +50 sur la famille 60.
+        db.execute("UPDATE budget_prev_saisies SET valeur_def = 150 "
+                   "WHERE secteur_id = ? AND compte_num = '606000' AND type_budget = 'actualise'",
+                   (sid,))
+        db.commit()
+
+    r = admin_client.get(
+        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&secteur_id={sid}')
+
+    # Cellules chiffrées du sous-total : N-2, N-1, Initial N, Actualisé N, Écart.
+    cellules_60 = _cellules_pdf_apres(r.data, 'Sous-total 60xxxx', 5)
+    assert cellules_60[2] == '300.00', f'initial de la famille 60 : {cellules_60}'
+    assert cellules_60[3] == '350.00', 'actualisé de la famille 60 : 150 + 200'
+    assert cellules_60[4] == '+50.00', 'écart de la famille 60'
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[4] == '+50.00'
+
+
 @pytest.mark.parametrize('typ', ['initial', 'actualise'])
 @pytest.mark.parametrize('global_mode', [False, True])
 def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, global_mode):

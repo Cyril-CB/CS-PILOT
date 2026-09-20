@@ -1569,8 +1569,11 @@ def api_budget_previsionnel_export_pdf():
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
         from reportlab.lib.units import cm
-        from reportlab.platypus import SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import (
+            SimpleDocTemplate, Table as RLTable, TableStyle, Paragraph, Spacer,
+            CondPageBreak,
+        )
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
         actualise = (type_budget == 'actualise')
         libelle_type = 'Actualisé' if actualise else 'Initial'
@@ -1606,39 +1609,146 @@ def api_budget_previsionnel_export_pdf():
             elements.append(Paragraph('Certains secteurs utilisent les taux par salarié : leurs budgets 645 à 648 sont regroupés sur leur premier compte 645.', styles['Normal']))
         if type_budget == 'actualise':
             elements.append(Paragraph('Réalisé arrêté selon les paramètres des secteurs.' if global_mode else 'Réalisé : ' + (('fin ' + data['last_month_label']) if data['last_month'] else 'aucun mois retenu'), styles['Normal']))
-        table_data = [headers]
-        initial_charges = initial_produits = 0.0
-        for r in data['rows']:
+        # Couleurs reprises de la charte de l'application (static/css/style.css).
+        gris_entete = colors.HexColor('#e7ddd1')       # --gray-200
+        gris_sous_total = colors.HexColor('#f3eee7')   # --gray-100
+        gris_total = colors.HexColor('#d3c2b1')        # --gray-300
+        vert_section = colors.HexColor('#2f5d50')      # --primary
+        style_section = ParagraphStyle(
+            'BudgetSection', parent=styles['Heading2'],
+            textColor=vert_section, spaceBefore=2, spaceAfter=4
+        )
+
+        def somme_budget(valeurs):
+            """Un montant inconnu rend la somme inconnue, jamais nulle.
+
+            Même règle que _totaux_budget et que les totaux de catégorie
+            affichés à l'écran : un sous-total exact serait trompeur tant
+            qu'une ligne de la catégorie n'est pas saisie.
+            """
+            valeurs = list(valeurs)
+            if any(v is None for v in valeurs):
+                return None
+            return round(sum(valeurs), 2)
+
+        def montant_pdf(valeur, defaut='À compléter', signe=False):
+            if valeur is None:
+                return defaut
+            return f'{valeur:+.2f}' if signe else f'{valeur:.2f}'
+
+        def ecart_ligne(r):
+            """Écart d'atterrissage : définitif moins initial, comme à l'écran."""
+            if r['def'] is None:
+                return None
+            return r['def'] - float(r.get('initial') or 0)
+
+        def cellules_ligne(r):
             if actualise:
                 # L'écart se lit directement entre les deux colonnes imprimées :
                 # il porte sur la valeur définitive ; une absence de saisie
                 # reste inconnue, comme à l'écran.
-                initial = float(r.get('initial') or 0)
-                if r['nature'] == 'charges':
-                    initial_charges += initial
-                else:
-                    initial_produits += initial
-                table_data.append([
+                return [
                     r['compte_num'], r['libelle'],
-                    f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{initial:.2f}",
-                    f"{r['def']:.2f}" if r['def'] is not None else 'Non saisi',
-                    f"{r['def'] - initial:+.2f}" if r['def'] is not None else '—'
+                    f"{r['N-2']:.2f}", f"{r['N-1']:.2f}",
+                    f"{float(r.get('initial') or 0):.2f}",
+                    montant_pdf(r['def'], defaut='Non saisi'),
+                    montant_pdf(ecart_ligne(r), defaut='—', signe=True),
+                ]
+            return [
+                r['compte_num'], r['libelle'],
+                f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{r['N']:.2f}",
+                montant_pdf(r['temp']),
+                montant_pdf(r['def'], defaut='Non saisi'),
+            ]
+
+        def cellules_cumul(libelle, groupe):
+            """Ligne de sous-total ou de total, alignée sur les mêmes colonnes."""
+            base = [
+                libelle, '',
+                f"{sum(r['N-2'] for r in groupe):.2f}",
+                f"{sum(r['N-1'] for r in groupe):.2f}",
+            ]
+            if actualise:
+                return base + [
+                    f"{sum(float(r.get('initial') or 0) for r in groupe):.2f}",
+                    montant_pdf(somme_budget(r['def'] for r in groupe)),
+                    montant_pdf(somme_budget(ecart_ligne(r) for r in groupe),
+                                defaut='—', signe=True),
+                ]
+            return base + [
+                f"{sum(r['N'] for r in groupe):.2f}",
+                montant_pdf(somme_budget(r['temp'] for r in groupe)),
+                montant_pdf(somme_budget(r['def'] for r in groupe)),
+            ]
+
+        def bloc_section(titre_section, lignes):
+            """Une section (charges ou produits) : ses comptes, un sous-total
+            par compte à deux chiffres, puis le total de la section."""
+            bloc = [Paragraph(titre_section, style_section)]
+            if not lignes:
+                # Une section sans compte totalise zéro côté serveur, et le
+                # résultat final s'appuie sur ce zéro : la section garde donc
+                # sa ligne de total, sans quoi le PDF ne se recompose plus.
+                bloc.append(Paragraph(
+                    'Aucun compte sur cette section : son total est nul.',
+                    styles['Normal']))
+            table_data = [headers]
+            styles_lignes = []
+            categorie = None
+            groupe = []
+
+            def fermer_categorie():
+                if not groupe:
+                    return
+                table_data.append(cellules_cumul(f'Sous-total {categorie}xxxx', groupe))
+                styles_lignes.append(('sous_total', len(table_data) - 1))
+
+            # Les comptes sont triés par numéro : un simple parcours suffit pour
+            # regrouper les 60xxxx, puis les 61xxxx, etc.
+            for r in lignes:
+                if r['categorie'] != categorie:
+                    fermer_categorie()
+                    categorie = r['categorie']
+                    groupe = []
+                groupe.append(r)
+                table_data.append(cellules_ligne(r))
+            fermer_categorie()
+            table_data.append(cellules_cumul(f'TOTAL {titre_section.upper()}', lignes))
+            styles_lignes.append(('total', len(table_data) - 1))
+
+            commandes = [
+                ('BACKGROUND', (0, 0), (-1, 0), gris_entete),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
+                ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ]
+            for genre, index in styles_lignes:
+                fond = gris_total if genre == 'total' else gris_sous_total
+                commandes.extend([
+                    ('SPAN', (0, index), (1, index)),
+                    ('BACKGROUND', (0, index), (-1, index), fond),
+                    ('FONTNAME', (0, index), (-1, index), 'Helvetica-Bold'),
+                    ('ALIGN', (0, index), (1, index), 'LEFT'),
                 ])
-            else:
-                table_data.append([
-                    r['compte_num'], r['libelle'],
-                    f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{r['N']:.2f}",
-                    f"{r['temp']:.2f}" if r['temp'] is not None else 'À compléter',
-                    f"{r['def']:.2f}" if r['def'] is not None else 'Non saisi'
-                ])
-        t = RLTable(table_data, repeatRows=1, colWidths=largeurs)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-            ('GRID', (0, 0), (-1, -1), 0.3, colors.grey),
-            ('ALIGN', (2, 1), (-1, -1), 'RIGHT'),
-            ('FONTSIZE', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(t)
+                if genre == 'total':
+                    commandes.append(
+                        ('LINEABOVE', (0, index), (-1, index), 1, vert_section))
+            table = RLTable(table_data, repeatRows=1, colWidths=largeurs)
+            table.setStyle(TableStyle(commandes))
+            bloc.append(table)
+            return bloc
+
+        charges = [r for r in data['rows'] if r['nature'] == 'charges']
+        produits = [r for r in data['rows'] if r['nature'] == 'produits']
+        initial_charges = sum(float(r.get('initial') or 0) for r in charges)
+        initial_produits = sum(float(r.get('initial') or 0) for r in produits)
+
+        elements.extend(bloc_section('Charges', charges))
+        elements.append(Spacer(1, 0.6 * cm))
+        # Évite qu'un titre de section reste seul en bas de page.
+        elements.append(CondPageBreak(4 * cm))
+        elements.extend(bloc_section('Produits', produits))
         elements.append(Spacer(1, 0.4 * cm))
         tot = data['totaux']
 

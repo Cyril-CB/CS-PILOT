@@ -86,6 +86,15 @@ Le budget général additionne les budgets sectoriels et signale les arrêtés
 différents. Le PDF utilise les valeurs enregistrées ; il indique les montants
 non saisis et avertit lorsqu'un budget reste à compléter ou recalculer.
 
+Les deux exports PDF — **secteur** et **budget global** — présentent les charges
+puis les produits dans deux tableaux distincts. Chaque famille de comptes à deux
+chiffres porte son sous-total (« Sous-total 60xxxx », « Sous-total 61xxxx »…) et
+chaque section se termine par son total. La composition des colonnes est
+inchangée : N-2, N-1, N, proposition et définitif au budget initial ; N-2, N-1,
+budget initial, actualisé et écart au budget actualisé. Les sous-totaux ne sont
+pas libellés par un intitulé comptable : le plan comptable du centre ne contient
+pas nécessairement les comptes à deux chiffres, et aucun libellé n'est inventé.
+
 Un montant manquant rend le total de sa catégorie, le total des charges ou des
 produits concerné et le résultat **À compléter**. Les totaux entièrement
 renseignés restent visibles ; un zéro saisi compte comme une valeur connue.
