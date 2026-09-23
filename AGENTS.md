@@ -4,6 +4,88 @@ Ce fichier s'applique à l'ensemble du dépôt. Il s'adresse à toute personne o
 tout assistant qui modifie le code de CS PILOT. Lisez-le avant d'intervenir,
 puis `README.md`, `SECURITY.md` et les fichiers proches du code concerné.
 
+`AGENTS.md` est la **source canonique des consignes applicables aux agents**
+dans ce dépôt. Les fichiers propres à un outil ou à un assistant doivent y
+renvoyer sans en affaiblir ni en contredire les règles. En cas d'ambiguïté ou de
+contradiction, appliquer la règle la plus protectrice et demander une
+clarification avant de poursuivre.
+
+## 0. Gouvernance des agents
+
+### Organisation Git
+
+- `main` est la branche stable de production. `dev` est la branche
+  d'intégration.
+- Toute branche de travail part d'un `dev` propre, à jour avec `origin/dev`.
+- Une branche correspond à une seule demande. Le dépôt ne doit pas compter plus
+  de trois développements non intégrés en parallèle.
+- Utilisez un préfixe adapté (`feat/`, `fix/`, `chore/`, `docs/`, `test/` ou
+  `refactor/`) et ouvrez les pull requests vers `dev`.
+- Seul Cyril fusionne les pull requests et réalise les déploiements.
+- Un agent ne pousse jamais directement vers `main` ou `dev` : il pousse
+  uniquement sa branche de travail.
+- Le force-push, `git reset --hard`, un `git clean` destructif et toute
+  réécriture d'un historique déjà partagé sont interdits.
+
+### Actions autorisées
+
+Un agent peut, dans le périmètre explicite de la demande :
+
+- lire et analyser le code et la documentation ;
+- modifier les fichiers sur une branche de travail ;
+- exécuter les contrôles et tests locaux ;
+- créer des données synthétiques et des bases temporaires isolées ;
+- committer et pousser uniquement une branche de travail ;
+- ouvrir ou mettre à jour une pull request vers `dev` ;
+- répondre aux retours de revue par de nouveaux changements vérifiés.
+
+### Actions interdites
+
+Un agent ne doit jamais :
+
+- fusionner une pull request ;
+- déployer ou publier une version ;
+- modifier directement `main` ou `dev` ;
+- consulter ou utiliser une base existante susceptible de contenir des données
+  réelles ;
+- lire ou afficher des fichiers `.env`, secrets, jetons, archives, sauvegardes
+  ou journaux métier ;
+- exécuter une migration sur une base réelle ;
+- envoyer des mails ou appeler un service réel ou payant pendant les tests ;
+- ajouter ou mettre à jour une dépendance sans approbation humaine explicite.
+
+### Changements sensibles
+
+Les changements concernant les domaines suivants sont sensibles :
+
+- authentification et autorisations ;
+- RH, paie et temps de travail ;
+- comptabilité et exports ;
+- migrations et transformations de données ;
+- chiffrement, sauvegarde, restauration et mise à jour.
+
+Un agent peut intervenir sur ces domaines si la demande le prévoit
+explicitement. Il doit alors :
+
+- signaler le niveau de risque dans la pull request ;
+- ajouter des tests positifs et négatifs adaptés ;
+- ne jamais appliquer le changement à des données réelles ;
+- demander une clarification avant de coder si une règle métier est ambiguë.
+
+### Critères avant l'ouverture d'une pull request
+
+Avant d'ouvrir ou de mettre à jour une pull request, l'agent vérifie que :
+
+- les modifications sont ciblées et le diff a été relu intégralement ;
+- les tests et contrôles pertinents ont été exécutés ;
+- `git diff --check` réussit ;
+- le catalogue fonctionnel et la documentation sont actualisés lorsque
+  nécessaire ;
+- toute modification visuelle a été contrôlée sur ordinateur et mobile ;
+- la pull request liste exactement les commandes exécutées et leurs résultats ;
+- les échecs, tests ignorés et prérequis absents sont clairement signalés ;
+- aucune donnée réelle, aucun secret ni aucun artefact local n'a été ajouté.
+
 ## 1. Comprendre le produit
 
 CS PILOT est une application web Flask monolithique de gestion RH, du temps de
