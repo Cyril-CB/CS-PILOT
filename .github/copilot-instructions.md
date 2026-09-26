@@ -1,27 +1,18 @@
-# Copilot instructions for CS-PILOT
+# GitHub Copilot instructions for CS-PILOT
 
-## Repository overview
-- CS-PILOT is a Flask application for HR, accounting, and operational management for associations/collectivities.
-- The main entrypoint is `app.py`, which initializes the Flask app and registers feature blueprints from `blueprints/`.
-- Project structure and setup are documented in `README.md` and `docs/quick-start.md`; prefer linking to those files instead of duplicating end-user setup steps.
+`AGENTS.md` est la source canonique des consignes applicables aux agents dans ce
+dépôt. Copilot doit le lire avant toute intervention et le respecter dans son
+intégralité. En cas de contradiction avec ce fichier, `AGENTS.md` prévaut.
 
-## Code organization
-- Implement server features as Flask blueprints under `blueprints/`, following the existing module-per-feature structure.
-- When adding a new blueprint or route module, keep imports and blueprint registration in `app.py` consistent with the existing registration pattern.
-- Database access uses SQLite via `database.py`; schema changes should go through the migration system in `migration_manager.py` and the SQL files in `migrations/`.
-- Templates live in `templates/` and static assets live in `static/`.
+## Indications spécifiques à Copilot
 
-## Testing and validation
-- Run tests with `python3 -m pytest` from the repository root.
-- Reuse fixtures from `tests/conftest.py` before creating new test setup helpers.
-- Prefer focused pytest runs for changed areas during iteration, then run the relevant broader validation before finishing.
-
-## Security and configuration
-- Do not commit secrets, generated databases, or `.env` contents.
-- `SECRET_KEY` and related runtime configuration come from environment variables or the local `.env`; preserve that pattern.
-- Follow the existing security-sensitive patterns for authentication, encrypted secrets, CSRF protection, and file handling instead of introducing parallel implementations.
-
-## Change guidelines
-- Keep changes small and localized.
-- Match the existing French-language user-facing copy and the surrounding code style in the files you edit.
-- Before adding new abstractions, check whether an existing helper, fixture, or module already covers the use case.
+- Utiliser le contexte du dépôt et les fichiers proches avant de suggérer une
+  nouvelle abstraction ; privilégier un diff petit et localisé.
+- Pour une évolution de schéma, proposer une migration **Python** numérotée dans
+  `migrations/` et la mise à jour du schéma final conformément à `AGENTS.md` ; les
+  migrations de ce dépôt ne sont pas des fichiers SQL autonomes.
+- Réutiliser les fixtures de `tests/conftest.py` dans les suggestions de tests.
+- Conserver les textes destinés aux utilisateurs en français et suivre le style
+  du fichier modifié.
+- Ne jamais suggérer d'intégrer un secret, une donnée réelle ou le contenu d'un
+  fichier `.env` dans le code, un test, une commande ou une pull request.
