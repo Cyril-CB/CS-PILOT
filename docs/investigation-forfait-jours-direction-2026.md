@@ -50,8 +50,8 @@ constituent pas un résultat de test exécuté pour cette investigation.
 Le défaut de formule est confirmé : `calculer_jours_ouvres` retire déjà les
 9 jours fériés, puis `calculer_stats_forfait_jour` les retire une seconde fois.
 La formule actuelle donne `252 − 9 − 25 − 8 − 210 = 0`, contre
-`252 − 25 − 8 − 210 = 9` selon la carte. Une correction ultérieure devrait
-Avec 10 jours fériés ouvrés enregistrés, la formule actuelle donnerait
+`252 − 25 − 8 − 210 = 9` selon la carte. Cela explique aussi le quota négatif signalé :
+avec 10 jours fériés ouvrés enregistrés, la formule actuelle donnerait
 `251 − 10 − 25 − 8 − 210 = −2` jours, contre `251 − 25 − 8 − 210 = 8`
 jours attendus. Une correction ultérieure devrait
 supprimer cette seconde déduction et vérifier par test que le quota reste à
