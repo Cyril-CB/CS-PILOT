@@ -618,7 +618,9 @@ def calculer_stats_forfait_jour(user_id, annee):
     date_fin = datetime(annee, 12, 31)
     nb_jours_ouvrables = calculer_jours_ouvres(date_debut.strftime('%Y-%m-%d'), date_fin.strftime('%Y-%m-%d'))
 
-    jours_repos_forfait = nb_jours_ouvrables - nb_jours_feries - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
+    # calculer_jours_ouvres() exclut déjà les jours fériés ; ne pas les
+    # retrancher une seconde fois du quota annuel de repos forfait.
+    jours_repos_forfait = nb_jours_ouvrables - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
 
     presences = conn.execute('''
         SELECT type_journee, COUNT(*) as nb
