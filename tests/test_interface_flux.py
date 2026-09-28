@@ -133,8 +133,11 @@ def test_le_salarie_garde_son_menu(auth_client):
     assert 'flx-entete' not in corps
 
 
-def test_mon_espace_affiche_les_compteurs(admin_client, db, sample_users):
-    annee = date.today().year
+def test_mon_espace_affiche_les_compteurs(admin_client, db, sample_users, monkeypatch):
+    import blueprints.accueil as accueil_module
+
+    annee = 2026
+    monkeypatch.setattr(accueil_module, 'aujourd_hui', lambda: date(annee, 1, 15))
     jour_cp = date(annee, 1, 1)
     while jour_cp.weekday() >= 5:
         jour_cp += timedelta(days=1)
