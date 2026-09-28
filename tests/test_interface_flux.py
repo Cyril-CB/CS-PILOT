@@ -137,6 +137,8 @@ def test_mon_espace_affiche_les_compteurs(admin_client):
     corps = reponse.get_data(as_text=True)
     assert reponse.status_code == 200
     assert 'Congés payés' in corps
+    assert re.search(r'Congés payés.*?flx-compteur-valeur[^>]*>25 j<', corps, re.S)
+    assert re.search(r'Congés conventionnels.*?flx-compteur-valeur[^>]*>8 j<', corps, re.S)
     assert 'Récupérations' in corps
     assert 'Poser une demande' in corps
     # Retirés du modèle à la demande : pas de bulletins ni de documents.
