@@ -65,7 +65,7 @@
             <input type="text" name="motif_demande" maxlength="200" placeholder="Précisez si besoin">
         </label>
         <button type="submit" class="flx-btn flx-btn-plein">Transmettre</button>
-        <span class="flx-calcul" id="flxCalcul"></span>
+        <span class="flx-calcul" id="flxCalcul" aria-live="polite"></span>
     </div>
 
     <p style="margin:16px 0 0;font-size:0.78rem;color:var(--gray-500);">
@@ -123,14 +123,17 @@
         conge: {{ url_for('recup_bp.demande_conge')|tojson }},
         recup: {{ url_for('recup_bp.demande_recup')|tojson }}
     };
-    var SOLDES = {
-        'Congé payé': {{ solde_cp|tojson }},
-        'Congé conventionnel': {{ solde_cc|tojson }}
-    };
     var mode = 'conge';
+
+    // Aperçu du solde : même calcul que recup._projection_conge, qui fait foi
+    // à l'envoi. Direction : un solde par année civile (PROJ.soldes[annee]) et
+    // les jours déjà comptés au calendrier forfait (PROJ.deja) ne sont pas
+    // imputés une seconde fois. Autres profils : un seul solde par type.
+    var PROJ = {{ projection|tojson }};
 
     // Les jours fériés sont exclus, comme le fait utils.calculer_jours_ouvres
     // côté serveur : sans cela le solde projeté annoncerait un jour de trop.
+    // Ils ne sont connus que pour les années PROJ.annees.
     var FERIES = {{ feries|tojson }};
 
     function iso(d) {
@@ -139,22 +142,50 @@
                String(d.getDate()).padStart(2, '0');
     }
 
-    function joursOuvres(a, b) {
-        if (!a || !b) return 0;
+    function decompte(a, b, type) {
+        var r = {n: 0, deja: 0, annees: [], parAnnee: {}, horsApercu: false};
+        if (!a || !b) return r;
         var d1 = new Date(a + 'T12:00'), d2 = new Date(b + 'T12:00');
-        if (isNaN(d1) || isNaN(d2) || d2 < d1) return 0;
-        var n = 0;
-        for (var d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
-            var j = d.getDay();
-            if (j !== 0 && j !== 6 && FERIES.indexOf(iso(d)) === -1) n++;
+        if (isNaN(d1) || isNaN(d2) || d2 < d1) return r;
+        if (PROJ.annees.indexOf(String(d1.getFullYear())) === -1 ||
+            PROJ.annees.indexOf(String(d2.getFullYear())) === -1) {
+            r.horsApercu = true;
+            return r;
         }
-        return n;
+        var deja = PROJ.deja[type] || [];
+        for (var d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
+            var j = d.getDay(), jour = iso(d), an = String(d.getFullYear());
+            if (j === 0 || j === 6 || FERIES.indexOf(jour) !== -1) continue;
+            r.n++;
+            if (r.annees.indexOf(an) === -1) r.annees.push(an);
+            if (deja.indexOf(jour) !== -1) { r.deja++; continue; }
+            r.parAnnee[an] = (r.parAnnee[an] || 0) + 1;
+        }
+        return r;
     }
 
     function fr(x) { return String(Math.round(x * 10) / 10).replace('.', ','); }
 
+    function soldeProjete(r, type) {
+        if (!PROJ.par_annee) {
+            return PROJ.soldes[type] !== undefined ? fr(PROJ.soldes[type] - r.n) + ' j' : '';
+        }
+        return r.annees.filter(function (an) {
+            return PROJ.soldes[an] && PROJ.soldes[an][type] !== undefined;
+        }).map(function (an) {
+            return an + ' : ' + fr(PROJ.soldes[an][type] - (r.parAnnee[an] || 0)) + ' j';
+        }).join(', ');
+    }
+
     function majCalcul() {
-        var n = joursOuvres(du.value, au.value);
+        var type = champType.value;
+        var r = decompte(du.value, au.value, type);
+        if (r.horsApercu) {
+            calcul.textContent = 'Période hors ' + PROJ.annees[0] + '–' +
+                PROJ.annees[PROJ.annees.length - 1] + ' : jours et solde calculés à l’envoi.';
+            return;
+        }
+        var n = r.n;
         if (!n) {
             // Distinguer « dates manquantes ou inversées » de « période qui ne
             // contient aucun jour ouvré » : ce n'est pas la même correction.
@@ -165,11 +196,12 @@
             return;
         }
         var texte = n + ' jour' + (n > 1 ? 's' : '') + ' ouvré' + (n > 1 ? 's' : '');
-        var type = champType.value;
         if (mode === 'recup') {
             texte += ' · imputés sur vos récupérations ({{ solde_recup|round(1) }} h)';
-        } else if (SOLDES[type] !== undefined) {
-            texte += ' · solde projeté ' + fr(SOLDES[type] - n) + ' j';
+        } else {
+            if (r.deja) texte += ', dont ' + r.deja + ' déjà au calendrier';
+            var solde = soldeProjete(r, type);
+            if (solde) texte += ' · solde projeté ' + solde;
         }
         calcul.textContent = texte;
     }

@@ -174,6 +174,53 @@ def test_mon_espace_affiche_les_compteurs(admin_client, db, sample_users, monkey
     assert 'Mes documents' not in corps
 
 
+def _projection_de(corps):
+    """Données de l'aperçu « solde projeté » transmises au script de Mon espace."""
+    trouve = re.search(r'var PROJ = (\{.*?\});\n', corps)
+    assert trouve, "données de projection absentes"
+    return json.loads(trouve.group(1))
+
+
+def test_mon_espace_apercu_direction_par_annee(admin_client, db, sample_users, monkeypatch):
+    """Direction : un solde par année (N-1 à N+1) et les jours déjà au calendrier."""
+    import blueprints.accueil as accueil_module
+
+    monkeypatch.setattr(accueil_module, 'aujourd_hui', lambda: date(2026, 6, 15))
+    uid = sample_users['directeur_id']
+    for jour, type_journee in (('2026-03-02', 'conge_paye'), ('2026-03-03', 'conge_paye'),
+                               ('2027-01-04', 'conge_paye'), ('2026-04-01', 'repos_forfait')):
+        db.execute("INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+                   (uid, jour, type_journee))
+    db.commit()
+
+    projection = _projection_de(admin_client.get('/mon-espace').get_data(as_text=True))
+
+    assert projection['par_annee'] is True
+    assert projection['annees'] == ['2025', '2026', '2027']
+    assert projection['soldes']['2025']['Congé payé'] == 25
+    assert projection['soldes']['2026']['Congé payé'] == 23
+    assert projection['soldes']['2027']['Congé payé'] == 24
+    assert projection['soldes']['2026']['Congé conventionnel'] == 8
+    assert 'Forfait jour' in projection['soldes']['2026']
+    assert projection['deja']['Congé payé'] == ['2026-03-02', '2026-03-03', '2027-01-04']
+    assert projection['deja']['Forfait jour'] == ['2026-04-01']
+    assert projection['deja']['Congé conventionnel'] == []
+
+
+def test_mon_espace_apercu_hors_forfait_solde_unique(resp_client, db, sample_users):
+    """Hors forfait jours : un seul solde par type, issu de users, sans jours déjà comptés."""
+    db.execute("UPDATE users SET cp_a_prendre = 10, cp_pris = 4, cc_solde = 2 WHERE id = ?",
+               (sample_users['responsable_id'],))
+    db.commit()
+
+    projection = _projection_de(resp_client.get('/mon-espace').get_data(as_text=True))
+
+    assert projection['par_annee'] is False
+    assert projection['soldes'] == {'Congé payé': 6, 'Congé conventionnel': 2}
+    assert projection['deja'] == {}
+    assert len(projection['annees']) == 3
+
+
 def test_le_salarie_non_eligible_ne_peut_pas_ouvrir_le_flux(auth_client):
     """L'accueil sans menu renvoie au tableau de bord habituel."""
     reponse = auth_client.get('/accueil')

@@ -189,6 +189,14 @@ sur les routes existantes `/demande_conge` et `/demande_recup`, donc le circuit
 de validation et les notifications sont inchangés) ; liste des demandes en
 cours. C'est aussi de là qu'on revient au menu classique.
 
+Avant l'envoi, le formulaire annonce le nombre de jours ouvrés (fériés exclus)
+et le solde projeté, pour des dates allant de l'année précédente à l'année
+suivante ; au-delà, le calcul est laissé à l'envoi. Pour la direction au
+forfait jours, le solde est projeté année civile par année civile et les jours
+déjà saisis dans le calendrier forfait ne sont pas comptés deux fois : c'est
+le calcul de l'alerte faite à l'envoi (`recup._projection_conge`), reproduit
+dans le navigateur.
+
 ### La vue d'ensemble (touche Échap)
 
 L'application représentée par zones :

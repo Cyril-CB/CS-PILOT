@@ -600,9 +600,26 @@ def calculer_jours_ouvres(date_debut_str, date_fin_str):
     return nb_jours
 
 
-def calculer_stats_forfait_jour(user_id, annee):
-    """Calcule les statistiques forfait jour pour une année"""
-    conn = get_db()
+def compteur_forfait(type_journee):
+    """Compteur du décompte forfait jours alimenté par un type de journée.
+
+    « Forfait jour » (congé de repos posé par la direction) consomme le même
+    quota que « repos_forfait » (RTT) : les deux alimentent le compteur
+    repos_forfait. Les autres types alimentent le compteur de même nom.
+    """
+    return 'repos_forfait' if type_journee == 'forfait_jour' else type_journee
+
+
+def calculer_stats_forfait_jour(user_id, annee, conn=None):
+    """Calcule les statistiques forfait jour pour une année.
+
+    conn : connexion de l'appelant, pour lire dans sa transaction (par exemple
+    sous le verrou d'écriture d'une demande) ; à défaut, une connexion dédiée
+    est ouverte puis fermée.
+    """
+    fermer = conn is None
+    if fermer:
+        conn = get_db()
 
     JOURS_CONTRAT = 210
     JOURS_CONGES_PAYES = 25
@@ -625,9 +642,7 @@ def calculer_stats_forfait_jour(user_id, annee):
         if (premier_jour + timedelta(days=i)).weekday() < 5
     )
 
-    # calculer_jours_ouvres() exclut déjà les jours fériés ; ne pas les
-    # retrancher une seconde fois du quota annuel de repos forfait.
-    jours_repos_forfait = nb_jours_ouvrables - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
+    jours_repos_forfait = nb_jours_ouvrables - nb_jours_feries - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
 
     presences = conn.execute('''
         SELECT type_journee, COUNT(*) as nb
@@ -648,10 +663,7 @@ def calculer_stats_forfait_jour(user_id, annee):
     }
 
     for p in presences:
-        # « Forfait jour » (congé de repos posé par la direction) consomme le même
-        # quota de repos forfait que « repos_forfait » (RTT) : on l'y agrège pour
-        # que le solde restant en tienne compte.
-        type_j = 'repos_forfait' if p['type_journee'] == 'forfait_jour' else p['type_journee']
+        type_j = compteur_forfait(p['type_journee'])
         if type_j in stats:
             stats[type_j] += p['nb']
 
@@ -673,7 +685,8 @@ def calculer_stats_forfait_jour(user_id, annee):
 
     stats['pourcentage_travail'] = (stats['travaille'] / JOURS_CONTRAT * 100) if JOURS_CONTRAT > 0 else 0
 
-    conn.close()
+    if fermer:
+        conn.close()
     return stats
 
 

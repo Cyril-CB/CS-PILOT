@@ -6,6 +6,10 @@
 <div class="form-container">
     <h1>Demande de congé</h1>
     <p class="subtitle">
+        {% if annee_soldes %}
+        Année {{ annee_soldes }}
+        <span class="solde-separator">&nbsp;|&nbsp;</span>
+        {% endif %}
         Solde congés payés : <strong style="color: {% if solde_cp >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cp) }} jour(s)</strong>
         <span class="solde-separator">&nbsp;|&nbsp;</span>
         Solde congés conventionnels : <strong style="color: {% if solde_cc >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cc) }} jour(s)</strong>
@@ -51,6 +55,9 @@
                 {% if session.profil == 'directeur' %}
                 <li>En tant que direction (forfait jours), votre demande est <strong>validée automatiquement</strong> et reportée sur votre <strong>calendrier forfait jour</strong> (et la prépa paie)</li>
                 <li>Le type <strong>« Forfait jour »</strong> correspond à un jour de repos posé au titre du forfait</li>
+                {% if annee_soldes %}
+                <li>Les soldes affichés sont ceux de <strong>{{ annee_soldes }}</strong> : une demande sur une autre année, ou à cheval sur deux années, est comparée au quota de chaque année concernée</li>
+                {% endif %}
                 <li>Vous pouvez éditer chaque congé validé en <strong>PDF</strong> (avec signatures) depuis "Mes demandes"</li>
                 {% else %}
                 <li>Votre demande doit être <strong>validée par votre responsable puis par la direction</strong></li>
