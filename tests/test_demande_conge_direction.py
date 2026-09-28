@@ -169,6 +169,31 @@ class TestDemandeCongeDirection:
             d = db.execute("SELECT * FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
             assert d['type_conge'] == 'Forfait jour' and d['statut'] == 'validee'
 
+    def test_directeur_forfait_jour_pas_d_alerte_a_tort_avec_feries(
+        self, app, db, admin_client, sample_users
+    ):
+        """Avec des fériés configurés, le dernier jour de repos restant ne déclenche pas d'alerte."""
+        from utils import calculer_stats_forfait_jour
+
+        uid = sample_users['directeur_id']
+        feries = ['2026-01-01', '2026-04-06', '2026-05-01', '2026-05-08', '2026-05-14',
+                  '2026-05-25', '2026-07-14', '2026-11-11', '2026-12-25']
+        for jour in feries:
+            db.execute("INSERT INTO jours_feries (annee, date, libelle) VALUES (2026, ?, 'Férié')", (jour,))
+        db.commit()
+        jour_demande = _jour_ouvre(mois=12, jour=14)
+        with app.app_context():
+            quota = calculer_stats_forfait_jour(uid, 2026)['config']['jours_repos_forfait']
+        assert quota == 9
+        # 8 repos déjà posés : il en reste 1, la demande d'un jour ne dépasse pas le quota.
+        self._poser_jours_forfait(db, uid, 'repos_forfait', 8, exclus=set(feries) | {jour_demande})
+
+        r = admin_client.post('/demande_conge', data={
+            'type_conge': 'Forfait jour', 'date_debut': jour_demande, 'date_fin': jour_demande,
+        }, follow_redirects=True)
+
+        assert 'passera à' not in r.get_data(as_text=True)
+
     def test_formulaire_directeur_affiche_les_soldes_forfait(
         self, app, db, admin_client, sample_users, monkeypatch
     ):

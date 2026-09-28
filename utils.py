@@ -614,9 +614,16 @@ def calculer_stats_forfait_jour(user_id, annee):
     ''', (annee,)).fetchone()
     nb_jours_feries = jours_feries['nb'] if jours_feries else 0
 
-    date_debut = datetime(annee, 1, 1)
-    date_fin = datetime(annee, 12, 31)
-    nb_jours_ouvrables = calculer_jours_ouvres(date_debut.strftime('%Y-%m-%d'), date_fin.strftime('%Y-%m-%d'))
+    # Lundis à vendredis de l'année, fériés compris : les fériés ouvrés sont
+    # retirés une seule fois, ci-dessous. calculer_jours_ouvres() les exclut
+    # déjà et ne doit donc pas servir de base (double déduction).
+    # 2026 : 261 − 9 fériés − 25 CP − 8 CC − 210 = 9 jours de repos forfait.
+    premier_jour = datetime(annee, 1, 1)
+    nb_jours_annee = (datetime(annee + 1, 1, 1) - premier_jour).days
+    nb_jours_ouvrables = sum(
+        1 for i in range(nb_jours_annee)
+        if (premier_jour + timedelta(days=i)).weekday() < 5
+    )
 
     jours_repos_forfait = nb_jours_ouvrables - nb_jours_feries - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
 

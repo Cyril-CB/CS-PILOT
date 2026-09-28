@@ -360,3 +360,60 @@ def test_ajout_ferie_preserve_saisie_reelle(app, admin_client, sample_users):
     # la saisie réelle (avec horaires) est conservée
     presences = _presences(app, sample_users['directeur_id'], annee)
     assert presences.get(date) == 'travaille'
+
+
+FERIES_2026 = [
+    ('2026-01-01', 'Jour de l’an'), ('2026-04-06', 'Lundi de Pâques'),
+    ('2026-05-01', 'Fête du travail'), ('2026-05-08', 'Victoire 1945'),
+    ('2026-05-14', 'Ascension'), ('2026-05-25', 'Lundi de Pentecôte'),
+    ('2026-07-14', 'Fête nationale'), ('2026-08-15', 'Assomption'),  # samedi
+    ('2026-11-01', 'Toussaint'),  # dimanche
+    ('2026-11-11', 'Armistice'), ('2026-12-25', 'Noël'),
+]
+
+
+def test_quota_repos_forfait_2026_ne_deduit_les_feries_qu_une_fois(app, admin_client, sample_users):
+    """2026 : 261 lun-ven − 9 fériés ouvrés − 25 CP − 8 CC − 210 = 9 jours de repos.
+
+    Scénario de docs/investigation-forfait-jours-direction-2026.md : le quota reste
+    à 9 après une maladie et un repos, le solde passe de 9 à 8 après le repos.
+    """
+    import utils
+
+    annee = 2026
+    uid = sample_users['directeur_id']
+    for jour, libelle in FERIES_2026:
+        _ajouter_ferie(app, annee, jour, libelle)
+
+    html = admin_client.get(f'/dashboard_forfait_jour?annee={annee}').get_data(as_text=True)
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(uid, annee)
+    assert stats['config']['jours_ouvrables'] == 261
+    assert stats['config']['jours_feries'] == 9
+    assert stats['config']['jours_repos_forfait'] == 9
+    assert stats['soldes']['repos_forfait_restants'] == 9
+    assert stats['travaille'] == 252
+    assert '9 jours de repos forfait' in html
+
+    for motif, jour in (('Arrêt maladie', '2026-03-02'), ('Forfait jour', '2026-03-03')):
+        admin_client.post('/absences', data={
+            'user_id': uid, 'motif': motif, 'date_debut': jour, 'date_fin': jour,
+        }, follow_redirects=True)
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(uid, annee)
+    assert stats['maladie'] == 1 and stats['repos_forfait'] == 1
+    assert stats['travaille'] == 250
+    assert stats['config']['jours_repos_forfait'] == 9
+    assert stats['soldes']['repos_forfait_restants'] == 8
+
+
+def test_quota_repos_forfait_sans_ferie_configure(app, sample_users):
+    """Sans férié en base : 261 − 25 − 8 − 210 = 18 (aucun changement de ce cas)."""
+    import utils
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(sample_users['directeur_id'], 2026)
+    assert stats['config']['jours_ouvrables'] == 261
+    assert stats['config']['jours_feries'] == 0
+    assert stats['config']['jours_repos_forfait'] == 18

@@ -58,3 +58,15 @@ supprimer cette seconde déduction et vérifier par test que le quota reste à
 9 après maladie et repos, tandis que le solde passe de 9 à 8 après le repos.
 Le quota dépend aussi des jours fériés enregistrés : préciser comment figer
 ou réviser le quota si ce calendrier change après l'initialisation de l'année.
+
+## Correction appliquée
+
+`calculer_stats_forfait_jour` part désormais des lundis à vendredis de l'année,
+fériés compris (261 en 2026), et ne retire les jours fériés ouvrés qu'une
+seule fois : `261 − 9 − 25 − 8 − 210 = 9`. La décomposition affichée par le
+tableau de bord forfait reste lisible comme une soustraction. Le scénario
+ci-dessus est couvert par
+`tests/test_forfait_jour.py::test_quota_repos_forfait_2026_ne_deduit_les_feries_qu_une_fois`
+(quota 9, solde 8 après un repos, maladie neutre). La question du gel ou de la
+révision du quota lorsque le calendrier des fériés change en cours d'année
+reste ouverte.
