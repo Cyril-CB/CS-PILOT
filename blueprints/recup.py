@@ -2,13 +2,14 @@
 Blueprint recup_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, make_response
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from fiches_versions import FicheVerrouillee
 from database import get_db
 from absences_coherence import ConflitAbsence, verifier_disponibilite, memoriser_projection
+from blueprints.absences import MOTIF_VERS_TYPE_FORFAIT
 from sessions_securite import verifier_action
 from utils import (aujourd_hui, login_required, get_user_info, calculer_heures, est_dans_equipe_responsable,
-                   calculer_stats_forfait_jour, get_heures_theoriques_jour, get_type_periode,
+                   calculer_stats_forfait_jour, compteur_forfait, get_heures_theoriques_jour, get_type_periode,
                    get_planning_valide_a_date, calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
                    slot_horaire, NOMS_MOIS)
 from email_service import (
@@ -33,34 +34,6 @@ def _get_type_demande(demande):
         return demande['type_demande'] or 'journee'
     except (IndexError, KeyError):
         return 'journee'
-
-
-def _soldes_conges(conn, user_id, profil, annee):
-    """Soldes de congés (en jours) selon la source métier du profil.
-
-    La direction au forfait jours est suivie dans presence_forfait_jour (via
-    calculer_stats_forfait_jour, sur l'année civile) : ses colonnes users
-    cp_a_prendre/cp_pris/cc_solde ne reflètent pas ce suivi. Les autres
-    profils lisent ces colonnes users.
-    """
-    if profil == 'directeur':
-        soldes = calculer_stats_forfait_jour(user_id, annee).get('soldes', {})
-        return {
-            'Congé payé': soldes.get('conges_payes_restants', 0),
-            'Congé conventionnel': soldes.get('conges_conv_restants', 0),
-            TYPE_CONGE_FORFAIT: soldes.get('repos_forfait_restants', 0),
-        }
-
-    user_data = conn.execute(
-        'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
-        (user_id,),
-    ).fetchone()
-    if not user_data:
-        return {'Congé payé': 0, 'Congé conventionnel': 0}
-    return {
-        'Congé payé': (user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0),
-        'Congé conventionnel': user_data['cc_solde'] or 0,
-    }
 
 
 def _reporter_recup_partielle(conn, demande, demande_id):
@@ -833,6 +806,116 @@ def _types_conge_pour(profil):
     return TYPES_CONGE
 
 
+# Quota annuel concerné par une demande de la direction, pour l'alerte.
+LIBELLES_QUOTA_FORFAIT = {
+    'Congé payé': 'de congés payés',
+    'Congé conventionnel': 'de congés conventionnels',
+    TYPE_CONGE_FORFAIT: 'de repos forfait',
+}
+
+
+def _soldes_conges(conn, user_id, profil, annee):
+    """Soldes de congés (en jours) selon la source métier du profil.
+
+    La direction au forfait jours est suivie dans presence_forfait_jour (via
+    calculer_stats_forfait_jour, sur l'année civile) : ses colonnes users
+    cp_a_prendre/cp_pris/cc_solde ne reflètent pas ce suivi. Les autres
+    profils lisent ces colonnes users (annee est alors sans effet).
+    """
+    if profil == 'directeur':
+        soldes = calculer_stats_forfait_jour(user_id, annee).get('soldes', {})
+        return {
+            'Congé payé': soldes.get('conges_payes_restants', 0),
+            'Congé conventionnel': soldes.get('conges_conv_restants', 0),
+            TYPE_CONGE_FORFAIT: soldes.get('repos_forfait_restants', 0),
+        }
+
+    user_data = conn.execute(
+        'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
+        (user_id,),
+    ).fetchone()
+    if not user_data:
+        return {'Congé payé': 0, 'Congé conventionnel': 0}
+    return {
+        'Congé payé': (user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0),
+        'Congé conventionnel': user_data['cc_solde'] or 0,
+    }
+
+
+def _jours_deja_comptes(conn, user_id, debut, fin):
+    """Dates déjà comptées au calendrier forfait, par type de demande de la direction.
+
+    Le report d'une demande remplace le type de chaque jour
+    (_reporter_absence_sur_forfait_jour) : un jour déjà saisi dans le même
+    compteur, par exemple à la main dans le calendrier, ne consomme pas le
+    quota une seconde fois.
+    """
+    comptes = {t: set() for t in _types_conge_pour('directeur')}
+    type_par_compteur = {compteur_forfait(MOTIF_VERS_TYPE_FORFAIT[t]): t for t in comptes}
+    lignes = conn.execute(
+        'SELECT date, type_journee FROM presence_forfait_jour '
+        'WHERE user_id = ? AND date BETWEEN ? AND ?',
+        (user_id, debut, fin),
+    ).fetchall()
+    for ligne in lignes:
+        type_conge = type_par_compteur.get(compteur_forfait(ligne['type_journee']))
+        if type_conge:
+            comptes[type_conge].add(ligne['date'])
+    return comptes
+
+
+def _projection_conge(conn, user_id, profil, type_conge, date_debut, date_fin, nb_jours):
+    """Soldes après la demande, tels que l'alerte de dépassement les annonce.
+
+    Direction (forfait jours) : un quota par année civile. Chaque année reçoit
+    les jours que le report marquera (lundi à vendredi hors fériés), moins ceux
+    déjà comptés dans le même compteur ; une année sans jour imputé n'est pas
+    retournée. Autres profils : un seul solde (colonnes users) diminué de
+    nb_jours. Le navigateur reproduit ce calcul dans l'aperçu de Mon espace.
+
+    Retourne une liste de dicts {'annee', 'jours', 'solde_apres'}, 'annee'
+    valant None hors forfait jours.
+    """
+    if profil != 'directeur':
+        solde = _soldes_conges(conn, user_id, profil, None).get(type_conge, 0)
+        return [{'annee': None, 'jours': nb_jours, 'solde_apres': solde - nb_jours}]
+
+    feries = {ligne['date'] for ligne in conn.execute(
+        'SELECT date FROM jours_feries WHERE date BETWEEN ? AND ?',
+        (date_debut, date_fin),
+    ).fetchall()}
+    deja = _jours_deja_comptes(conn, user_id, date_debut, date_fin)[type_conge]
+    jours_par_annee = {}
+    jour, fin = date.fromisoformat(date_debut), date.fromisoformat(date_fin)
+    while jour <= fin:
+        jour_iso = jour.isoformat()
+        if jour.weekday() < 5 and jour_iso not in feries and jour_iso not in deja:
+            jours_par_annee[jour.year] = jours_par_annee.get(jour.year, 0) + 1
+        jour += timedelta(days=1)
+
+    projections = []
+    for annee in sorted(jours_par_annee):
+        solde = _soldes_conges(conn, user_id, profil, annee)[type_conge]
+        projections.append({'annee': annee, 'jours': jours_par_annee[annee],
+                            'solde_apres': solde - jours_par_annee[annee]})
+    return projections
+
+
+def donnees_projection_forfait(conn, user_id, annees):
+    """Soldes par année et jours déjà comptés, pour l'aperçu de Mon espace.
+
+    Mêmes sources que _projection_conge, qui fait foi à l'envoi : le navigateur
+    en reproduit le calcul pour les années fournies.
+    """
+    debut, fin = f'{min(annees)}-01-01', f'{max(annees)}-12-31'
+    return {
+        'soldes': {str(annee): _soldes_conges(conn, user_id, 'directeur', annee)
+                   for annee in annees},
+        'deja': {type_conge: sorted(dates) for type_conge, dates
+                 in _jours_deja_comptes(conn, user_id, debut, fin).items()},
+    }
+
+
 @recup_bp.route('/demande_conge', methods=['GET', 'POST'])
 @login_required
 def demande_conge():
@@ -870,20 +953,25 @@ def demande_conge():
 
         conn = get_db()
 
+        # Alerter si un solde devient négatif. Calcul avant l'écriture (le report
+        # modifie les soldes), affichage seulement si la demande est enregistrée.
         profil = session.get('profil')
-        annee_demande = int(date_debut[:4])
-        solde = _soldes_conges(conn, session['user_id'], profil, annee_demande).get(type_conge, 0)
-
-        # Alerter si solde négatif après la demande
-        solde_apres = solde - nb_jours
-        if solde_apres < 0 and profil == 'directeur':
-            # Demande auto-validée : pas de refus possible, seulement un dépassement
-            # du quota annuel suivi dans le calendrier forfait jour.
-            flash(f'⚠️ Attention : votre solde « {type_conge} » {annee_demande} passera à '
-                  f'{solde_apres:.1f} jour(s) (quota annuel du forfait jours dépassé).', 'warning')
-        elif solde_apres < 0:
-            flash(f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
-                  f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.', 'warning')
+        alertes = []
+        for projection in _projection_conge(conn, session['user_id'], profil, type_conge,
+                                            date_debut, date_fin, nb_jours):
+            solde_apres = projection['solde_apres']
+            if solde_apres >= 0:
+                continue
+            if projection['annee'] is None:
+                alertes.append(
+                    f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
+                    f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.')
+            else:
+                # Direction : demande auto-validée, pas de refus possible ; seulement
+                # un dépassement du quota annuel suivi dans le calendrier forfait jour.
+                alertes.append(
+                    f'⚠️ Attention : votre solde « {type_conge} » {projection["annee"]} passera à '
+                    f'{solde_apres:.1f} jour(s) (quota annuel {LIBELLES_QUOTA_FORFAIT[type_conge]} dépassé).')
 
         try:
             conn.execute('BEGIN IMMEDIATE')
@@ -926,6 +1014,8 @@ def demande_conge():
                 flash(f'Congé enregistré et validé : {nb_jours} jour(s) reporté(s) sur votre calendrier.', 'success')
             else:
                 flash(f'Demande de {type_conge.lower()} créée : {nb_jours} jour(s)', 'success')
+            for alerte in alertes:
+                flash(alerte, 'warning')
 
             # Notification email au responsable (si configuré)
             if is_email_configured() and statut_initial == 'en_attente_responsable':
@@ -966,15 +1056,18 @@ def demande_conge():
         return redirect(url_for('recup_bp.mes_demandes_conges'))
 
     # GET : afficher le formulaire
+    profil = session.get('profil')
+    annee = aujourd_hui().year
     conn = get_db()
-    soldes = _soldes_conges(conn, session['user_id'], session.get('profil'), aujourd_hui().year)
+    soldes = _soldes_conges(conn, session['user_id'], profil, annee)
     conn.close()
 
     return render_template('demande_conge.html',
-                           types_conge=_types_conge_pour(session.get('profil')),
+                           types_conge=_types_conge_pour(profil),
                            solde_cp=soldes['Congé payé'],
                            solde_cc=soldes['Congé conventionnel'],
-                           solde_forfait=soldes.get(TYPE_CONGE_FORFAIT))
+                           solde_forfait=soldes.get(TYPE_CONGE_FORFAIT),
+                           annee_soldes=annee if profil == 'directeur' else None)
 
 
 @recup_bp.route('/mes_demandes_conges')

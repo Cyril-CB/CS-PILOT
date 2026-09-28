@@ -124,6 +124,19 @@ class TestDemandeCongeDirection:
             d += timedelta(days=1)
         db.commit()
 
+    def _epuiser_quota(self, app, db, uid, type_conge, exclus=()):
+        """Pose en 2026 autant de jours que le solde restant du type demandé."""
+        from utils import calculer_stats_forfait_jour
+
+        cle, type_journee = {
+            'Congé payé': ('conges_payes_restants', 'conge_paye'),
+            'Congé conventionnel': ('conges_conv_restants', 'conge_conv'),
+            'Forfait jour': ('repos_forfait_restants', 'repos_forfait'),
+        }[type_conge]
+        with app.app_context():
+            restants = calculer_stats_forfait_jour(uid, 2026)['soldes'][cle]
+        self._poser_jours_forfait(db, uid, type_journee, restants, exclus=exclus)
+
     def test_directeur_forfait_jour_alerte_sur_repos_forfait_pas_sur_cc(
         self, app, db, admin_client, sample_users
     ):
@@ -163,7 +176,7 @@ class TestDemandeCongeDirection:
         html = r.get_data(as_text=True)
 
         assert 'passera à -1.0 jour(s)' in html
-        assert 'quota annuel du forfait jours dépassé' in html
+        assert 'quota annuel de repos forfait dépassé' in html
         assert 'peut être refusé' not in html
         with app.app_context():
             d = db.execute("SELECT * FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
@@ -194,6 +207,165 @@ class TestDemandeCongeDirection:
 
         assert 'passera à' not in r.get_data(as_text=True)
 
+    @pytest.mark.parametrize('type_conge,libelle', [
+        ('Congé payé', 'de congés payés'),
+        ('Congé conventionnel', 'de congés conventionnels'),
+        ('Forfait jour', 'de repos forfait'),
+    ])
+    def test_directeur_alerte_nomme_le_quota_du_type_demande(
+        self, app, db, admin_client, sample_users, type_conge, libelle
+    ):
+        """Le dépassement nomme le quota réellement comparé, pas « le forfait jours »."""
+        uid = sample_users['directeur_id']
+        jour = _jour_ouvre(mois=11, jour=16)
+        self._epuiser_quota(app, db, uid, type_conge, exclus=(jour,))
+
+        html = admin_client.post('/demande_conge', data={
+            'type_conge': type_conge, 'date_debut': jour, 'date_fin': jour,
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert f'« {type_conge} » 2026 passera à -1.0 jour(s) (quota annuel {libelle} dépassé)' in html
+        assert 'forfait jours dépassé' not in html
+
+    def test_directeur_demande_a_cheval_sur_deux_annees_ventilee_par_annee(
+        self, app, db, admin_client, sample_users
+    ):
+        """Chaque année civile reçoit ses propres jours : pas de fausse alerte au Nouvel An."""
+        uid = sample_users['directeur_id']
+        db.execute("INSERT INTO jours_feries (annee, date, libelle) VALUES (2027, '2027-01-01', 'Jour de l’an')")
+        db.commit()
+        # 24 CP posés en 2026 : il en reste 1, consommé par le jeudi 31/12/2026.
+        self._poser_jours_forfait(db, uid, 'conge_paye', 24)
+
+        r = admin_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': '2026-12-31', 'date_fin': '2027-01-05',
+        }, follow_redirects=True)
+        html = r.get_data(as_text=True)
+
+        # 2026 : 1 − 1 = 0 ; 2027 : 25 − 2 = 23 (le 1er janvier férié n'est pas imputé).
+        assert r.status_code == 200
+        assert 'passera à' not in html
+        with app.app_context():
+            d = db.execute("SELECT nb_jours, statut FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d['nb_jours'] == 3 and d['statut'] == 'validee'
+            poses = db.execute(
+                "SELECT date FROM presence_forfait_jour WHERE user_id = ? AND type_journee = 'conge_paye' "
+                "AND date >= '2026-12-31' ORDER BY date", (uid,)
+            ).fetchall()
+            assert [p['date'] for p in poses] == ['2026-12-31', '2027-01-04', '2027-01-05']
+
+    def test_directeur_a_cheval_n_alerte_que_l_annee_depassee(
+        self, app, db, admin_client, sample_users
+    ):
+        """Cas négatif : quota 2026 épuisé → alerte pour 2026 seulement, 2027 reste positif."""
+        uid = sample_users['directeur_id']
+        self._poser_jours_forfait(db, uid, 'conge_paye', 25)
+
+        html = admin_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': '2026-12-31', 'date_fin': '2027-01-05',
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert '« Congé payé » 2026 passera à -1.0 jour(s)' in html
+        assert '2027 passera' not in html
+
+    @pytest.mark.parametrize('type_conge,type_journee,type_reporte', [
+        ('Congé payé', 'conge_paye', 'conge_paye'),
+        ('Congé conventionnel', 'conge_conv', 'conge_conv'),
+        # « Forfait jour » et « repos_forfait » alimentent le même compteur.
+        ('Forfait jour', 'repos_forfait', 'forfait_jour'),
+    ])
+    def test_directeur_jour_deja_saisi_n_est_pas_decompte_deux_fois(
+        self, app, db, admin_client, sample_users, type_conge, type_journee, type_reporte
+    ):
+        """Un jour déjà saisi à la main dans le même compteur ne consomme pas le quota une seconde fois."""
+        uid = sample_users['directeur_id']
+        jour = _jour_ouvre(mois=10, jour=5)
+        db.execute(
+            "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+            (uid, jour, type_journee)
+        )
+        db.commit()
+        # Quota épuisé, ce jour compris : le demander laisse le solde à 0.
+        self._epuiser_quota(app, db, uid, type_conge, exclus=(jour,))
+
+        html = admin_client.post('/demande_conge', data={
+            'type_conge': type_conge, 'date_debut': jour, 'date_fin': jour,
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert 'passera à' not in html
+        with app.app_context():
+            d = db.execute("SELECT type_conge, statut FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d['type_conge'] == type_conge and d['statut'] == 'validee'
+            pf = db.execute(
+                "SELECT type_journee FROM presence_forfait_jour WHERE user_id = ? AND date = ?", (uid, jour)
+            ).fetchone()
+            assert pf['type_journee'] == type_reporte
+
+    def test_directeur_jour_deja_saisi_et_jour_nouveau_alerte_d_un_seul_jour(
+        self, app, db, admin_client, sample_users
+    ):
+        """Cas négatif : seul le jour nouveau dépasse le quota (−1 et non −2)."""
+        uid = sample_users['directeur_id']
+        lundi = _jour_ouvre(mois=10, jour=5)
+        mardi = (date.fromisoformat(lundi) + timedelta(days=1)).isoformat()
+        db.execute(
+            "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, 'conge_paye')",
+            (uid, lundi)
+        )
+        db.commit()
+        self._epuiser_quota(app, db, uid, 'Congé payé', exclus=(lundi, mardi))
+
+        html = admin_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': lundi, 'date_fin': mardi,
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert '« Congé payé » 2026 passera à -1.0 jour(s)' in html
+        assert '-2.0' not in html
+
+    def test_directeur_pas_d_alerte_si_la_demande_est_refusee(
+        self, app, db, admin_client, sample_users
+    ):
+        """L'alerte n'apparaît que si la demande est enregistrée : un conflit n'en produit aucune."""
+        uid = sample_users['directeur_id']
+        jour = _jour_ouvre(mois=10, jour=12)
+        self._epuiser_quota(app, db, uid, 'Congé payé', exclus=(jour,))
+        db.execute(
+            "INSERT INTO absences (user_id, motif, date_debut, date_fin, jours_ouvres, saisi_par) "
+            "VALUES (?, 'Arrêt maladie', ?, ?, 1, ?)", (uid, jour, jour, uid)
+        )
+        db.commit()
+
+        html = admin_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': jour, 'date_fin': jour,
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert 'Conflit avec' in html
+        assert 'passera à' not in html
+        with app.app_context():
+            assert db.execute("SELECT COUNT(*) FROM demandes_conges").fetchone()[0] == 0
+
+    def test_salarie_alerte_anticipation_apres_enregistrement(
+        self, app, db, auth_client, sample_users
+    ):
+        """Hors forfait : alerte d'anticipation inchangée, sur le solde users, demande créée."""
+        db.execute(
+            "UPDATE users SET cp_a_prendre = 1, cp_pris = 0 WHERE id = ?", (sample_users['salarie_id'],)
+        )
+        db.commit()
+        lundi = _jour_ouvre(mois=10, jour=19)
+        mardi = (date.fromisoformat(lundi) + timedelta(days=1)).isoformat()
+
+        html = auth_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': lundi, 'date_fin': mardi,
+        }, follow_redirects=True).get_data(as_text=True)
+
+        assert 'votre solde passera à -1.0 jour(s) (congé pris par anticipation)' in html
+        assert 'peut être refusé' in html
+        assert 'quota annuel' not in html
+        with app.app_context():
+            d = db.execute("SELECT statut FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d is not None and d['statut'] == 'en_attente_responsable'
+
     def test_formulaire_directeur_affiche_les_soldes_forfait(
         self, app, db, admin_client, sample_users, monkeypatch
     ):
@@ -211,6 +383,9 @@ class TestDemandeCongeDirection:
         assert '23.0 jour(s)' in html   # 25 - 2 CP posés
         assert '8.0 jour(s)' in html    # 8 CC, aucun posé
         assert 'Solde repos forfait' in html
+        # L'année des soldes est explicite : une autre année a son propre quota.
+        assert 'Année 2026' in html
+        assert 'Les soldes affichés sont ceux de <strong>2026</strong>' in html
 
     def test_formulaire_salarie_garde_les_soldes_users(self, app, db, auth_client, sample_users):
         """Un salarié conserve les soldes issus de users, sans solde repos forfait."""
@@ -225,6 +400,7 @@ class TestDemandeCongeDirection:
         assert '9.5 jour(s)' in html
         assert '3.0 jour(s)' in html
         assert 'Solde repos forfait' not in html
+        assert 'Les soldes affichés sont ceux de' not in html
 
     def test_pdf_demande_conge(self, app, db, admin_client):
         jour = _jour_ouvre(mois=6, jour=23)

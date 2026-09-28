@@ -166,11 +166,14 @@ def test_stats_forfait_ne_retranche_pas_deux_fois_les_feries(app, sample_users):
     with app.app_context():
         stats = utils.calculer_stats_forfait_jour(sample_users['directeur_id'], annee)
 
-    jours_ouvrables = _jours_ouvres_attendus(annee, feries=[ferie])
-    jours_repos_attendus = jours_ouvrables - 25 - 8 - 210
+    # Base = lundis à vendredis fériés compris (affichée telle quelle sur le
+    # tableau de bord), dont le férié ouvré est retiré une seule fois.
+    jours_ouvrables = _jours_ouvres_attendus(annee)
+    jours_repos_attendus = _jours_ouvres_attendus(annee, feries=[ferie]) - 25 - 8 - 210
 
     assert stats['config']['jours_feries'] == 1
     assert stats['config']['jours_ouvrables'] == jours_ouvrables
+    assert jours_repos_attendus == jours_ouvrables - 1 - 25 - 8 - 210
     assert stats['config']['jours_repos_forfait'] == jours_repos_attendus
     assert stats['soldes']['repos_forfait_restants'] == jours_repos_attendus
 
@@ -415,6 +418,9 @@ def test_quota_repos_forfait_2026_ne_deduit_les_feries_qu_une_fois(app, admin_cl
     assert stats['soldes']['repos_forfait_restants'] == 9
     assert stats['travaille'] == 252
     assert '9 jours de repos forfait' in html
+    # La décomposition affichée se lit comme une soustraction : 261 − 9 − 25 − 8 − 210.
+    assert "Jours du lundi au vendredi dans l'année" in html
+    assert '261 jours' in html
 
     for motif, jour in (('Arrêt maladie', '2026-03-02'), ('Forfait jour', '2026-03-03')):
         admin_client.post('/absences', data={

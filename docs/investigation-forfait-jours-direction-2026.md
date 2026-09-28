@@ -72,3 +72,16 @@ ci-dessus est couvert par
 Décision : le quota n'est pas figé à l'initialisation de l'année. Il est
 recalculé à chaque lecture depuis `jours_feries`, afin qu'un férié oublié puis
 ajouté en cours d'année actualise automatiquement le quota et le solde.
+
+## Incident de fusion (PR #284)
+
+Une autre correction du même défaut (PR #277) avait été fusionnée directement
+sur `main` : elle gardait `calculer_jours_ouvres` comme base et supprimait la
+déduction des fériés. Chacune des deux corrections était juste seule, mais Git
+les a combinées sans conflit lors de la fusion de `dev` dans `main` : base
+fériés compris **et** plus aucune déduction, soit 18 jours au lieu de 9 en
+2026. La convention retenue est celle décrite ci-dessus (base lundis à
+vendredis fériés compris, `jours_ouvrables` = 261 en 2026, fériés retirés une
+fois). Les tests de `tests/test_forfait_jour.py` vérifient à la fois la base,
+le nombre de fériés et le quota : toute combinaison des deux variantes les fait
+échouer. Un correctif ne doit viser `main` que par `dev`.
