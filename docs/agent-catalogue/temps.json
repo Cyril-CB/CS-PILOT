@@ -621,7 +621,7 @@
       ],
       "capabilities": [
         "Création de congés sur un intervalle de dates, décompte en jours ouvrés et motif libre.",
-        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique.",
+        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique ; pour la direction au forfait jours, soldes CP, CC et repos forfait issus de presence_forfait_jour via calculer_stats_forfait_jour (année civile de la date de début pour l’alerte, année en cours pour le formulaire), le type Forfait jour étant comparé au solde de repos forfait.",
         "Statut initial en attente responsable, ou directement direction pour le profil responsable.",
         "Les demandes du directeur sont auto-validées, créent une absence et se reportent immédiatement au calendrier forfait.",
         "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures."
@@ -920,7 +920,8 @@
           "tests/test_coherence_rh.py"
         ],
         "docs": [
-          "docs/coherence-rh.md"
+          "docs/coherence-rh.md",
+          "docs/investigation-forfait-jours-direction-2026.md"
         ]
       },
       "access": {
@@ -937,6 +938,8 @@
       "invariants": [
         "Ne pas écraser les saisies existantes lors d’une initialisation annuelle.",
         "forfait_jour et repos_forfait consomment le même compteur de repos.",
+        "Quota de repos forfait = lundis à vendredis de l’année (fériés compris) − fériés ouvrés de jours_feries − 25 CP − 8 CC − 210 ; les fériés ne sont déduits qu’une fois (9 jours en 2026 avec 9 fériés ouvrés).",
+        "Le quota de repos forfait n’est volontairement pas figé : il est recalculé à chaque lecture depuis jours_feries, de sorte qu’un férié ajouté en cours d’année actualise quota et solde.",
         "Une journée issue d’une absence active ne peut pas être remplacée par une édition manuelle du calendrier."
       ],
       "extension_points": [

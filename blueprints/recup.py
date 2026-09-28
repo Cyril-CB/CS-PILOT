@@ -7,9 +7,9 @@ from fiches_versions import FicheVerrouillee
 from database import get_db
 from absences_coherence import ConflitAbsence, verifier_disponibilite, memoriser_projection
 from sessions_securite import verifier_action
-from utils import (login_required, get_user_info, calculer_heures, est_dans_equipe_responsable,
-                   get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
-                   calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
+from utils import (aujourd_hui, login_required, get_user_info, calculer_heures, est_dans_equipe_responsable,
+                   calculer_stats_forfait_jour, get_heures_theoriques_jour, get_type_periode,
+                   get_planning_valide_a_date, calculer_jours_ouvres, calculer_solde_recup, calculer_recup_partielle,
                    slot_horaire, NOMS_MOIS)
 from email_service import (
     is_email_configured, peut_envoyer_email, notifier_nouvelle_demande_recup,
@@ -35,24 +35,32 @@ def _get_type_demande(demande):
         return 'journee'
 
 
-def _solde_conge_avertissement(conn, user_id, profil, type_conge, annee):
-    """Retourne le solde à afficher avant dépôt selon la source métier du profil."""
-    if profil == 'directeur':
-        from utils import calculer_stats_forfait_jour
+def _soldes_conges(conn, user_id, profil, annee):
+    """Soldes de congés (en jours) selon la source métier du profil.
 
+    La direction au forfait jours est suivie dans presence_forfait_jour (via
+    calculer_stats_forfait_jour, sur l'année civile) : ses colonnes users
+    cp_a_prendre/cp_pris/cc_solde ne reflètent pas ce suivi. Les autres
+    profils lisent ces colonnes users.
+    """
+    if profil == 'directeur':
         soldes = calculer_stats_forfait_jour(user_id, annee).get('soldes', {})
-        if type_conge == 'Congé payé':
-            return soldes.get('conges_payes_restants', 0)
-        return soldes.get('conges_conv_restants', 0)
+        return {
+            'Congé payé': soldes.get('conges_payes_restants', 0),
+            'Congé conventionnel': soldes.get('conges_conv_restants', 0),
+            TYPE_CONGE_FORFAIT: soldes.get('repos_forfait_restants', 0),
+        }
 
     user_data = conn.execute(
         'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
         (user_id,),
     ).fetchone()
-    if type_conge == 'Congé payé':
-        return ((user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0)
-                if user_data else 0)
-    return user_data['cc_solde'] or 0 if user_data else 0
+    if not user_data:
+        return {'Congé payé': 0, 'Congé conventionnel': 0}
+    return {
+        'Congé payé': (user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0),
+        'Congé conventionnel': user_data['cc_solde'] or 0,
+    }
 
 
 def _reporter_recup_partielle(conn, demande, demande_id):
@@ -863,13 +871,17 @@ def demande_conge():
         conn = get_db()
 
         profil = session.get('profil')
-        solde = _solde_conge_avertissement(
-            conn, session['user_id'], profil, type_conge, int(date_debut[:4])
-        )
+        annee_demande = int(date_debut[:4])
+        solde = _soldes_conges(conn, session['user_id'], profil, annee_demande).get(type_conge, 0)
 
         # Alerter si solde négatif après la demande
         solde_apres = solde - nb_jours
-        if solde_apres < 0:
+        if solde_apres < 0 and profil == 'directeur':
+            # Demande auto-validée : pas de refus possible, seulement un dépassement
+            # du quota annuel suivi dans le calendrier forfait jour.
+            flash(f'⚠️ Attention : votre solde « {type_conge} » {annee_demande} passera à '
+                  f'{solde_apres:.1f} jour(s) (quota annuel du forfait jours dépassé).', 'warning')
+        elif solde_apres < 0:
             flash(f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
                   f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.', 'warning')
 
@@ -881,6 +893,7 @@ def demande_conge():
             if type_conge not in _types_conge_pour(session.get('profil')):
                 raise ConflitAbsence('Type de congé non autorisé avec vos droits actuels.')
             # Relire le rôle sous le verrou, notamment avant l'auto-validation.
+            profil = session.get('profil')
             statut_initial = ('validee' if profil == 'directeur' else
                               'en_attente_direction' if profil == 'responsable' else
                               'en_attente_responsable')
@@ -954,16 +967,14 @@ def demande_conge():
 
     # GET : afficher le formulaire
     conn = get_db()
-    user_data = conn.execute('SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
-                             (session['user_id'],)).fetchone()
-    solde_cp = (user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0) if user_data else 0
-    solde_cc = user_data['cc_solde'] or 0 if user_data else 0
+    soldes = _soldes_conges(conn, session['user_id'], session.get('profil'), aujourd_hui().year)
     conn.close()
 
     return render_template('demande_conge.html',
                            types_conge=_types_conge_pour(session.get('profil')),
-                           solde_cp=solde_cp,
-                           solde_cc=solde_cc)
+                           solde_cp=soldes['Congé payé'],
+                           solde_cc=soldes['Congé conventionnel'],
+                           solde_forfait=soldes.get(TYPE_CONGE_FORFAIT))
 
 
 @recup_bp.route('/mes_demandes_conges')
