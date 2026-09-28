@@ -344,6 +344,29 @@ class TestDemandeCongeDirection:
         with app.app_context():
             assert db.execute("SELECT COUNT(*) FROM demandes_conges").fetchone()[0] == 0
 
+    def test_alerte_calculee_sous_le_verrou_d_ecriture(
+        self, app, db, admin_client, sample_users, monkeypatch
+    ):
+        """L'alerte est calculée dans la transaction de la demande : une demande
+        concurrente déjà enregistrée est comptée."""
+        import blueprints.recup as recup_module
+
+        original = recup_module._projection_conge
+        observe = {}
+
+        def espion(conn, *args, **kwargs):
+            observe['transaction'] = conn.in_transaction
+            return original(conn, *args, **kwargs)
+
+        monkeypatch.setattr(recup_module, '_projection_conge', espion)
+        jour = _jour_ouvre(mois=10, jour=26)
+
+        admin_client.post('/demande_conge', data={
+            'type_conge': 'Congé payé', 'date_debut': jour, 'date_fin': jour,
+        })
+
+        assert observe == {'transaction': True}
+
     def test_salarie_alerte_anticipation_apres_enregistrement(
         self, app, db, auth_client, sample_users
     ):

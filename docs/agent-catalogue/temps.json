@@ -621,7 +621,7 @@
       ],
       "capabilities": [
         "Création de congés sur un intervalle de dates, décompte en jours ouvrés et motif libre.",
-        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique, affiché seulement une fois la demande enregistrée ; pour la direction au forfait jours, soldes CP, CC et repos forfait issus de presence_forfait_jour via calculer_stats_forfait_jour (année en cours, indiquée sur le formulaire) et alerte calculée par _projection_conge : un quota par année civile pour une demande à cheval sur deux années, jours déjà comptés dans le même compteur non imputés une seconde fois, type Forfait jour comparé au solde de repos forfait et libellé du quota dépassé propre au type.",
+        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique, affiché seulement une fois la demande enregistrée ; pour la direction au forfait jours, soldes CP, CC et repos forfait issus de presence_forfait_jour via calculer_stats_forfait_jour (année en cours, indiquée sur le formulaire) et alerte calculée par _projection_conge sous le verrou d’écriture de la demande : un quota par année civile pour une demande à cheval sur deux années, jours déjà comptés dans le même compteur non imputés une seconde fois, type Forfait jour comparé au solde de repos forfait et libellé du quota dépassé propre au type.",
         "Statut initial en attente responsable, ou directement direction pour le profil responsable.",
         "Les demandes du directeur sont auto-validées, créent une absence et se reportent immédiatement au calendrier forfait.",
         "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures."
@@ -945,6 +945,7 @@
       ],
       "extension_points": [
         "Réutiliser initialiser_annee_forfait_jour avec commit=False lorsque l’initialisation fait partie d’une transaction plus large.",
+        "Passer conn à calculer_stats_forfait_jour pour lire dans une transaction en cours (alerte des demandes de congé sous verrou) ; sans conn, une connexion dédiée est ouverte puis fermée.",
         "Centraliser une éventuelle configuration des quotas dans calculer_stats_forfait_jour et le générateur PDF."
       ],
       "related_features": [

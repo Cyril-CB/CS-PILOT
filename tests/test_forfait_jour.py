@@ -464,3 +464,38 @@ def test_quota_repos_forfait_s_actualise_apres_ajout_d_un_ferie_oublie(app, admi
     assert apres['config']['jours_feries'] == 1
     assert apres['config']['jours_repos_forfait'] == 17
     assert apres['soldes']['repos_forfait_restants'] == 17
+
+
+def test_compteur_forfait_regroupe_forfait_jour_et_repos():
+    """Règle unique : « Forfait jour » et « repos_forfait » alimentent le même compteur."""
+    import utils
+
+    assert utils.compteur_forfait('forfait_jour') == 'repos_forfait'
+    assert utils.compteur_forfait('repos_forfait') == 'repos_forfait'
+    assert utils.compteur_forfait('conge_paye') == 'conge_paye'
+    assert utils.compteur_forfait('conge_conv') == 'conge_conv'
+
+
+def test_stats_forfait_lit_dans_la_transaction_de_l_appelant(app, sample_users):
+    """Avec conn, le calcul voit les écritures en cours de l'appelant et ne ferme pas sa connexion."""
+    import database
+    import utils
+
+    uid = sample_users['directeur_id']
+    with app.app_context():
+        conn = database.get_db()
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute(
+                "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, '2026-03-02', 'forfait_jour')",
+                (uid,)
+            )
+            dans_transaction = utils.calculer_stats_forfait_jour(uid, 2026, conn=conn)
+            hors_transaction = utils.calculer_stats_forfait_jour(uid, 2026)
+
+            assert dans_transaction['repos_forfait'] == 1
+            assert hors_transaction['repos_forfait'] == 0   # écriture non validée, invisible ailleurs
+            assert conn.in_transaction                        # connexion de l'appelant intacte
+        finally:
+            conn.rollback()
+            conn.close()

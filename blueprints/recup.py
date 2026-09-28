@@ -823,7 +823,7 @@ def _soldes_conges(conn, user_id, profil, annee):
     profils lisent ces colonnes users (annee est alors sans effet).
     """
     if profil == 'directeur':
-        soldes = calculer_stats_forfait_jour(user_id, annee).get('soldes', {})
+        soldes = calculer_stats_forfait_jour(user_id, annee, conn=conn).get('soldes', {})
         return {
             'Congé payé': soldes.get('conges_payes_restants', 0),
             'Congé conventionnel': soldes.get('conges_conv_restants', 0),
@@ -901,6 +901,27 @@ def _projection_conge(conn, user_id, profil, type_conge, date_debut, date_fin, n
     return projections
 
 
+def _alertes_depassement(conn, user_id, profil, type_conge, date_debut, date_fin, nb_jours):
+    """Messages d'alerte pour chaque solde que la demande rendrait négatif."""
+    alertes = []
+    for projection in _projection_conge(conn, user_id, profil, type_conge,
+                                        date_debut, date_fin, nb_jours):
+        solde_apres = projection['solde_apres']
+        if solde_apres >= 0:
+            continue
+        if projection['annee'] is None:
+            alertes.append(
+                f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
+                f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.')
+        else:
+            # Direction : demande auto-validée, pas de refus possible ; seulement
+            # un dépassement du quota annuel suivi dans le calendrier forfait jour.
+            alertes.append(
+                f'⚠️ Attention : votre solde « {type_conge} » {projection["annee"]} passera à '
+                f'{solde_apres:.1f} jour(s) (quota annuel {LIBELLES_QUOTA_FORFAIT[type_conge]} dépassé).')
+    return alertes
+
+
 def donnees_projection_forfait(conn, user_id, annees):
     """Soldes par année et jours déjà comptés, pour l'aperçu de Mon espace.
 
@@ -953,26 +974,6 @@ def demande_conge():
 
         conn = get_db()
 
-        # Alerter si un solde devient négatif. Calcul avant l'écriture (le report
-        # modifie les soldes), affichage seulement si la demande est enregistrée.
-        profil = session.get('profil')
-        alertes = []
-        for projection in _projection_conge(conn, session['user_id'], profil, type_conge,
-                                            date_debut, date_fin, nb_jours):
-            solde_apres = projection['solde_apres']
-            if solde_apres >= 0:
-                continue
-            if projection['annee'] is None:
-                alertes.append(
-                    f'⚠️ Attention : votre solde passera à {solde_apres:.1f} jour(s) (congé pris par anticipation). '
-                    f'Ce congé peut être refusé si les jours en cours d\'acquisition sont insuffisants.')
-            else:
-                # Direction : demande auto-validée, pas de refus possible ; seulement
-                # un dépassement du quota annuel suivi dans le calendrier forfait jour.
-                alertes.append(
-                    f'⚠️ Attention : votre solde « {type_conge} » {projection["annee"]} passera à '
-                    f'{solde_apres:.1f} jour(s) (quota annuel {LIBELLES_QUOTA_FORFAIT[type_conge]} dépassé).')
-
         try:
             conn.execute('BEGIN IMMEDIATE')
             refus = verifier_action(conn)
@@ -982,6 +983,11 @@ def demande_conge():
                 raise ConflitAbsence('Type de congé non autorisé avec vos droits actuels.')
             # Relire le rôle sous le verrou, notamment avant l'auto-validation.
             profil = session.get('profil')
+            # Alertes calculées sous le verrou (une demande concurrente déjà
+            # enregistrée est comptée) et avant l'écriture (le report modifie les
+            # soldes) ; affichées seulement si la demande est enregistrée.
+            alertes = _alertes_depassement(conn, session['user_id'], profil, type_conge,
+                                           date_debut, date_fin, nb_jours)
             statut_initial = ('validee' if profil == 'directeur' else
                               'en_attente_direction' if profil == 'responsable' else
                               'en_attente_responsable')

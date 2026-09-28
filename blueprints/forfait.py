@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 from io import BytesIO
 from database import get_db
-from utils import login_required, get_user_info, calculer_stats_forfait_jour, calculer_heures
+from utils import login_required, get_user_info, calculer_stats_forfait_jour, calculer_heures, compteur_forfait
 
 forfait_bp = Blueprint('forfait_bp', __name__)
 
@@ -251,7 +251,7 @@ def rapport_forfait_jour_pdf(mois, annee):
     for p in presences:
         # « Forfait jour » consomme le quota de repos forfait : on l'y agrège
         # (le libellé distinct reste visible dans le détail jour par jour).
-        type_j = 'repos_forfait' if p['type_journee'] == 'forfait_jour' else p['type_journee']
+        type_j = compteur_forfait(p['type_journee'])
         if type_j in stats_mois:
             stats_mois[type_j] += 1
         heures_jour = calculer_heures(p['matin_debut'], p['matin_fin']) + \

@@ -610,9 +610,16 @@ def compteur_forfait(type_journee):
     return 'repos_forfait' if type_journee == 'forfait_jour' else type_journee
 
 
-def calculer_stats_forfait_jour(user_id, annee):
-    """Calcule les statistiques forfait jour pour une année"""
-    conn = get_db()
+def calculer_stats_forfait_jour(user_id, annee, conn=None):
+    """Calcule les statistiques forfait jour pour une année.
+
+    conn : connexion de l'appelant, pour lire dans sa transaction (par exemple
+    sous le verrou d'écriture d'une demande) ; à défaut, une connexion dédiée
+    est ouverte puis fermée.
+    """
+    fermer = conn is None
+    if fermer:
+        conn = get_db()
 
     JOURS_CONTRAT = 210
     JOURS_CONGES_PAYES = 25
@@ -678,7 +685,8 @@ def calculer_stats_forfait_jour(user_id, annee):
 
     stats['pourcentage_travail'] = (stats['travaille'] / JOURS_CONTRAT * 100) if JOURS_CONTRAT > 0 else 0
 
-    conn.close()
+    if fermer:
+        conn.close()
     return stats
 
 
