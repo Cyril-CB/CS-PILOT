@@ -304,7 +304,7 @@
         "mon espace"
       ],
       "capabilities": [
-        "Trois compteurs personnels CP, congés conventionnels et récupération, issus des champs users et du helper de solde de récupération.",
+        "Trois compteurs personnels CP, congés conventionnels et récupération ; pour la direction au forfait jours, les soldes CP/CC et le détail « Quota · posés » viennent de presence_forfait_jour via calculer_stats_forfait_jour, les autres profils lisant users et le helper de solde de récupération.",
         "Lecture des vingt dernières demandes de chaque type, puis affichage des douze plus récentes après fusion : statut, période et motif de refus.",
         "Dépôt utilisant les types de congés autorisés au profil ; récupération non proposée à la direction au forfait jours.",
         "Accès au choix personnel de navigation depuis le shell."
@@ -328,7 +328,8 @@
           "users",
           "demandes_conges",
           "demandes_recup",
-          "jours_feries"
+          "jours_feries",
+          "presence_forfait_jour"
         ],
         "tests": [
           "tests/test_interface_flux.py",
@@ -366,7 +367,7 @@
         "temps.forfait_jours"
       ],
       "limitations": [
-        "Les trois compteurs sont construits aussi pour la direction ; ne pas les assimiler aux soldes spécifiques calculés depuis presence_forfait_jour dans le module forfait jours."
+        "Le dépôt depuis Mon espace réutilise les routes recup existantes ; il ne remplace ni le workflow de validation, ni les contrôles métier détaillés de ces écrans."
       ]
     },
     {

@@ -22,8 +22,9 @@ import navigation
 from dashboard_actions import construire_actions
 from database import get_db
 from flux_accueil import construire_horizon, separer_actions
-from utils import (aujourd_hui, calculer_solde_recup, get_user_info,
-                   login_required, save_setting, NOMS_MOIS)
+from utils import (aujourd_hui, calculer_solde_recup,
+                   calculer_stats_forfait_jour, get_user_info, login_required,
+                   save_setting, NOMS_MOIS)
 
 logger = logging.getLogger(__name__)
 
@@ -184,19 +185,47 @@ def mon_espace():
 
     solde_cp = (user['cp_a_prendre'] - user['cp_pris']) if user else 0
     solde_cc = user['cc_solde'] if user else 0
+    cp_quota = user['cp_a_prendre'] if user else 0
+    cp_pris = user['cp_pris'] if user else 0
+    cc_quota = user['cc_solde'] if user else 0
+    cc_pris = 0
+
+    if profil == 'directeur':
+        # En forfait jours, les congés sont suivis via presence_forfait_jour :
+        # les colonnes cp_a_prendre/cp_pris/cc_solde ne reflètent pas ce suivi.
+        try:
+            stats_forfait = calculer_stats_forfait_jour(user_id, aujourd_hui().year)
+            soldes = stats_forfait.get('soldes', {})
+            config = stats_forfait.get('config', {})
+            solde_cp = soldes.get('conges_payes_restants', solde_cp)
+            solde_cc = soldes.get('conges_conv_restants', solde_cc)
+            cp_quota = config.get('jours_conges_payes', cp_quota)
+            cp_pris = stats_forfait.get('conge_paye', cp_pris)
+            cc_quota = config.get('jours_conges_conv', cc_quota)
+            cc_pris = stats_forfait.get('conge_conv', cc_pris)
+        except Exception:
+            logger.warning("Compteurs forfait indisponibles pour %s", user_id, exc_info=True)
+
     try:
         solde_recup = calculer_solde_recup(user_id)
     except Exception:
         logger.warning("Solde de récupération illisible pour %s", user_id, exc_info=True)
         solde_recup = 0
 
+    if profil == 'directeur':
+        detail_cp = f"Quota {_fr_num(cp_quota)} · posés {_fr_num(cp_pris)}"
+        detail_cc = f"Quota {_fr_num(cc_quota)} · posés {_fr_num(cc_pris)}"
+    else:
+        detail_cp = (f"Acquis {_fr_num(cp_quota)} · pris {_fr_num(cp_pris)}"
+                     if user else '')
+        detail_cc = 'Solde à planifier avec votre responsable'
+
     compteurs = [
         {'nom': 'Congés payés', 'valeur': f"{_fr_num(solde_cp)} j",
-         'detail': f"Acquis {_fr_num(user['cp_a_prendre'])} · pris {_fr_num(user['cp_pris'])}"
-                   if user else '',
+         'detail': detail_cp,
          'ton': 'vert' if solde_cp >= 0 else 'orange'},
         {'nom': 'Congés conventionnels', 'valeur': f"{_fr_num(solde_cc)} j",
-         'detail': 'Solde à planifier avec votre responsable',
+         'detail': detail_cc,
          'ton': 'orange' if solde_cc >= 5 else 'neutre'},
         {'nom': 'Récupérations', 'valeur': f"{_fr_num(round(solde_recup, 1))} h",
          'detail': 'Heures acquises, nettes des heures déjà payées',
