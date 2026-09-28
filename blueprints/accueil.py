@@ -20,6 +20,7 @@ from flask import (Blueprint, jsonify, redirect, render_template, request,
 import interface_flux
 import navigation
 from dashboard_actions import construire_actions
+from blueprints.recup import _types_conge_pour, donnees_projection_forfait
 from database import get_db
 from flux_accueil import construire_horizon, separer_actions
 from utils import (aujourd_hui, calculer_solde_recup,
@@ -173,13 +174,25 @@ def mon_espace():
             (user_id,)
         ).fetchall()
 
-        # Jours fériés de l'année en cours et de la suivante : le décompte
+        # Jours fériés de l'année précédente à la suivante : le décompte
         # affiché avant l'envoi doit donner le même résultat que
-        # `utils.calculer_jours_ouvres`, qui les exclut côté serveur.
+        # `utils.calculer_jours_ouvres`, qui les exclut côté serveur. Hors de
+        # ces années, l'aperçu renvoie au calcul fait à l'envoi.
         annee = aujourd_hui().year
+        annees_apercu = (annee - 1, annee, annee + 1)
         feries = [r['date'] for r in conn.execute(
-            'SELECT date FROM jours_feries WHERE annee IN (?, ?)',
-            (annee, annee + 1)).fetchall()]
+            'SELECT date FROM jours_feries WHERE annee IN (?, ?, ?)',
+            annees_apercu).fetchall()]
+
+        # Direction : un quota par année civile et des jours déjà comptés au
+        # calendrier forfait, que l'aperçu doit connaître pour annoncer le
+        # même solde que l'alerte faite à l'envoi (recup._projection_conge).
+        projection_forfait = None
+        if profil == 'directeur':
+            try:
+                projection_forfait = donnees_projection_forfait(conn, user_id, annees_apercu)
+            except Exception:
+                logger.warning("Aperçu des soldes forfait indisponible pour %s", user_id, exc_info=True)
     finally:
         conn.close()
 
@@ -263,10 +276,19 @@ def mon_espace():
 
     # Types proposés au dépôt : ceux de la page « Demander un congé », plus la
     # récupération quand le profil y a droit (la direction est au forfait jour).
-    from blueprints.recup import _types_conge_pour
     types = [{'nom': t, 'mode': 'conge'} for t in _types_conge_pour(profil)]
     if profil != 'directeur':
         types.append({'nom': 'Récupération', 'mode': 'recup'})
+
+    # Données de l'aperçu « solde projeté » (voir mon_espace.html). Si les
+    # soldes forfait sont illisibles, l'aperçu n'affiche que le nombre de jours.
+    if profil == 'directeur':
+        projection = {'par_annee': True, 'soldes': {}, 'deja': {}}
+        projection.update(projection_forfait or {})
+    else:
+        projection = {'par_annee': False, 'deja': {},
+                      'soldes': {'Congé payé': solde_cp, 'Congé conventionnel': solde_cc}}
+    projection['annees'] = [str(a) for a in annees_apercu]
 
     return render_template(
         'mon_espace.html',
@@ -274,10 +296,9 @@ def mon_espace():
         demandes=demandes[:12],
         nb_attente=sum(1 for d in demandes if d['ton'] == 'attente'),
         types_demande=types,
-        solde_cp=solde_cp,
-        solde_cc=solde_cc,
         solde_recup=round(solde_recup, 1),
         feries=feries,
+        projection=projection,
         aujourdhui=aujourd_hui().isoformat(),
     )
 

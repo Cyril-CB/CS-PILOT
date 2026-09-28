@@ -154,6 +154,30 @@ def test_dashboard_initialise_aussi(app, admin_client, sample_users):
     assert len(travailles) == _jours_ouvres_attendus(annee)
 
 
+def test_stats_forfait_ne_retranche_pas_deux_fois_les_feries(app, sample_users):
+    """Le quota annuel de repos forfait retranche les fériés une seule fois."""
+    import utils
+
+    annee = 2026
+    ferie = '2026-07-14'
+
+    _ajouter_ferie(app, annee, ferie, 'Fête nationale')
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(sample_users['directeur_id'], annee)
+
+    # Base = lundis à vendredis fériés compris (affichée telle quelle sur le
+    # tableau de bord), dont le férié ouvré est retiré une seule fois.
+    jours_ouvrables = _jours_ouvres_attendus(annee)
+    jours_repos_attendus = _jours_ouvres_attendus(annee, feries=[ferie]) - 25 - 8 - 210
+
+    assert stats['config']['jours_feries'] == 1
+    assert stats['config']['jours_ouvrables'] == jours_ouvrables
+    assert jours_repos_attendus == jours_ouvrables - 1 - 25 - 8 - 210
+    assert stats['config']['jours_repos_forfait'] == jours_repos_attendus
+    assert stats['soldes']['repos_forfait_restants'] == jours_repos_attendus
+
+
 def test_acces_refuse_non_directeur(auth_client):
     """Un salarié ne peut pas accéder au calendrier forfait jour."""
     resp = auth_client.get('/calendrier_forfait_jour', follow_redirects=True)
@@ -394,6 +418,9 @@ def test_quota_repos_forfait_2026_ne_deduit_les_feries_qu_une_fois(app, admin_cl
     assert stats['soldes']['repos_forfait_restants'] == 9
     assert stats['travaille'] == 252
     assert '9 jours de repos forfait' in html
+    # La décomposition affichée se lit comme une soustraction : 261 − 9 − 25 − 8 − 210.
+    assert "Jours du lundi au vendredi dans l'année" in html
+    assert '261 jours' in html
 
     for motif, jour in (('Arrêt maladie', '2026-03-02'), ('Forfait jour', '2026-03-03')):
         admin_client.post('/absences', data={
@@ -437,3 +464,38 @@ def test_quota_repos_forfait_s_actualise_apres_ajout_d_un_ferie_oublie(app, admi
     assert apres['config']['jours_feries'] == 1
     assert apres['config']['jours_repos_forfait'] == 17
     assert apres['soldes']['repos_forfait_restants'] == 17
+
+
+def test_compteur_forfait_regroupe_forfait_jour_et_repos():
+    """Règle unique : « Forfait jour » et « repos_forfait » alimentent le même compteur."""
+    import utils
+
+    assert utils.compteur_forfait('forfait_jour') == 'repos_forfait'
+    assert utils.compteur_forfait('repos_forfait') == 'repos_forfait'
+    assert utils.compteur_forfait('conge_paye') == 'conge_paye'
+    assert utils.compteur_forfait('conge_conv') == 'conge_conv'
+
+
+def test_stats_forfait_lit_dans_la_transaction_de_l_appelant(app, sample_users):
+    """Avec conn, le calcul voit les écritures en cours de l'appelant et ne ferme pas sa connexion."""
+    import database
+    import utils
+
+    uid = sample_users['directeur_id']
+    with app.app_context():
+        conn = database.get_db()
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute(
+                "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, '2026-03-02', 'forfait_jour')",
+                (uid,)
+            )
+            dans_transaction = utils.calculer_stats_forfait_jour(uid, 2026, conn=conn)
+            hors_transaction = utils.calculer_stats_forfait_jour(uid, 2026)
+
+            assert dans_transaction['repos_forfait'] == 1
+            assert hors_transaction['repos_forfait'] == 0   # écriture non validée, invisible ailleurs
+            assert conn.in_transaction                        # connexion de l'appelant intacte
+        finally:
+            conn.rollback()
+            conn.close()
