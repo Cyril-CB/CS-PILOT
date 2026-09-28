@@ -67,6 +67,8 @@ seule fois : `261 − 9 − 25 − 8 − 210 = 9`. La décomposition affichée p
 tableau de bord forfait reste lisible comme une soustraction. Le scénario
 ci-dessus est couvert par
 `tests/test_forfait_jour.py::test_quota_repos_forfait_2026_ne_deduit_les_feries_qu_une_fois`
-(quota 9, solde 8 après un repos, maladie neutre). La question du gel ou de la
-révision du quota lorsque le calendrier des fériés change en cours d'année
-reste ouverte.
+(quota 9, solde 8 après un repos, maladie neutre).
+
+Décision : le quota n'est pas figé à l'initialisation de l'année. Il est
+recalculé à chaque lecture depuis `jours_feries`, afin qu'un férié oublié puis
+ajouté en cours d'année actualise automatiquement le quota et le solde.

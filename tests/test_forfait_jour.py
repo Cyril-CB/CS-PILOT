@@ -417,3 +417,23 @@ def test_quota_repos_forfait_sans_ferie_configure(app, sample_users):
     assert stats['config']['jours_ouvrables'] == 261
     assert stats['config']['jours_feries'] == 0
     assert stats['config']['jours_repos_forfait'] == 18
+
+
+def test_quota_repos_forfait_s_actualise_apres_ajout_d_un_ferie_oublie(app, admin_client, sample_users):
+    """Le quota n'est pas figé : un férié ouvré ajouté après coup l'actualise (18 → 17)."""
+    import utils
+
+    annee = 2026
+    uid = sample_users['directeur_id']
+    admin_client.get(f'/dashboard_forfait_jour?annee={annee}')  # initialise l'année
+    with app.app_context():
+        avant = utils.calculer_stats_forfait_jour(uid, annee)
+    assert avant['config']['jours_repos_forfait'] == 18
+
+    _ajouter_ferie(app, annee, '2026-07-14', 'Fête nationale')  # mardi
+
+    with app.app_context():
+        apres = utils.calculer_stats_forfait_jour(uid, annee)
+    assert apres['config']['jours_feries'] == 1
+    assert apres['config']['jours_repos_forfait'] == 17
+    assert apres['soldes']['repos_forfait_restants'] == 17

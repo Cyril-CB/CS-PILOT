@@ -939,6 +939,7 @@
         "Ne pas écraser les saisies existantes lors d’une initialisation annuelle.",
         "forfait_jour et repos_forfait consomment le même compteur de repos.",
         "Quota de repos forfait = lundis à vendredis de l’année (fériés compris) − fériés ouvrés de jours_feries − 25 CP − 8 CC − 210 ; les fériés ne sont déduits qu’une fois (9 jours en 2026 avec 9 fériés ouvrés).",
+        "Le quota de repos forfait n’est volontairement pas figé : il est recalculé à chaque lecture depuis jours_feries, de sorte qu’un férié ajouté en cours d’année actualise quota et solde.",
         "Une journée issue d’une absence active ne peut pas être remplacée par une édition manuelle du calendrier."
       ],
       "extension_points": [
@@ -956,7 +957,6 @@
       ],
       "limitations": [
         "Calcul et PDF utilisent actuellement des quotas fixes : 210 jours travaillés, 25 CP et 8 congés conventionnels.",
-        "Le quota de repos forfait est recalculé à chaque lecture depuis jours_feries : il n’est pas figé si le calendrier des fériés change en cours d’année.",
         "Les journées futures préremplies sont comptées dans les statistiques annuelles ; ce tableau comporte donc une dimension prévisionnelle.",
         "La table validation_forfait_jour existe au schéma mais ces routes ne mettent pas en œuvre un circuit de signatures/verrouillage équivalent aux fiches horaires."
       ]
