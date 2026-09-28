@@ -621,7 +621,7 @@
       ],
       "capabilities": [
         "Création de congés sur un intervalle de dates, décompte en jours ouvrés et motif libre.",
-        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique.",
+        "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique ; pour la direction au forfait jours, soldes CP, CC et repos forfait issus de presence_forfait_jour via calculer_stats_forfait_jour (année civile de la date de début pour l’alerte, année en cours pour le formulaire), le type Forfait jour étant comparé au solde de repos forfait.",
         "Statut initial en attente responsable, ou directement direction pour le profil responsable.",
         "Les demandes du directeur sont auto-validées, créent une absence et se reportent immédiatement au calendrier forfait.",
         "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures."

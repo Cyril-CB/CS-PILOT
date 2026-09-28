@@ -9,6 +9,10 @@
         Solde congés payés : <strong style="color: {% if solde_cp >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cp) }} jour(s)</strong>
         <span class="solde-separator">&nbsp;|&nbsp;</span>
         Solde congés conventionnels : <strong style="color: {% if solde_cc >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_cc) }} jour(s)</strong>
+        {% if solde_forfait is not none %}
+        <span class="solde-separator">&nbsp;|&nbsp;</span>
+        Solde repos forfait : <strong style="color: {% if solde_forfait >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ "%.1f"|format(solde_forfait) }} jour(s)</strong>
+        {% endif %}
     </p>
     
     <form method="POST" action="{{ url_for('recup_bp.demande_conge') }}">

@@ -110,6 +110,97 @@ class TestDemandeCongeDirection:
             ).fetchone()
             assert pf is not None and pf['type_journee'] == type_journee
 
+    def _poser_jours_forfait(self, db, uid, type_journee, nb, exclus=()):
+        """Pose nb jours ouvrés 2026 (hors dates exclues) dans le calendrier forfait."""
+        d = date(2026, 1, 5)
+        poses = 0
+        while poses < nb:
+            if d.weekday() < 5 and d.isoformat() not in exclus:
+                db.execute(
+                    "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+                    (uid, d.isoformat(), type_journee)
+                )
+                poses += 1
+            d += timedelta(days=1)
+        db.commit()
+
+    def test_directeur_forfait_jour_alerte_sur_repos_forfait_pas_sur_cc(
+        self, app, db, admin_client, sample_users
+    ):
+        """« Forfait jour » se compare au solde de repos forfait, pas aux congés conventionnels."""
+        uid = sample_users['directeur_id']
+        jour_demande = _jour_ouvre(mois=9, jour=15)
+        # Congés conventionnels épuisés (8/8) : ne doit pas déclencher d'alerte.
+        self._poser_jours_forfait(db, uid, 'conge_conv', 8, exclus=(jour_demande,))
+
+        r = admin_client.post('/demande_conge', data={
+            'type_conge': 'Forfait jour', 'date_debut': jour_demande, 'date_fin': jour_demande,
+        }, follow_redirects=True)
+        html = r.get_data(as_text=True)
+
+        assert r.status_code == 200
+        assert 'passera à' not in html
+        with app.app_context():
+            d = db.execute("SELECT * FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d['type_conge'] == 'Forfait jour' and d['statut'] == 'validee'
+
+    def test_directeur_forfait_jour_alerte_quand_repos_forfait_epuise(
+        self, app, db, admin_client, sample_users
+    ):
+        """Cas négatif : quota de repos forfait épuisé → alerte, demande tout de même validée."""
+        from utils import calculer_stats_forfait_jour
+
+        uid = sample_users['directeur_id']
+        jour_demande = _jour_ouvre(mois=12, jour=14)
+        with app.app_context():
+            restants = calculer_stats_forfait_jour(uid, 2026)['soldes']['repos_forfait_restants']
+        assert restants > 0
+        self._poser_jours_forfait(db, uid, 'repos_forfait', restants, exclus=(jour_demande,))
+
+        r = admin_client.post('/demande_conge', data={
+            'type_conge': 'Forfait jour', 'date_debut': jour_demande, 'date_fin': jour_demande,
+        }, follow_redirects=True)
+        html = r.get_data(as_text=True)
+
+        assert 'passera à -1.0 jour(s)' in html
+        assert 'quota annuel du forfait jours dépassé' in html
+        assert 'peut être refusé' not in html
+        with app.app_context():
+            d = db.execute("SELECT * FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d['type_conge'] == 'Forfait jour' and d['statut'] == 'validee'
+
+    def test_formulaire_directeur_affiche_les_soldes_forfait(
+        self, app, db, admin_client, sample_users, monkeypatch
+    ):
+        """Le formulaire de dépôt affiche les mêmes soldes que Mon espace pour la direction."""
+        import blueprints.recup as recup_module
+
+        monkeypatch.setattr(recup_module, 'aujourd_hui', lambda: date(2026, 6, 15))
+        uid = sample_users['directeur_id']
+        db.execute("UPDATE users SET cp_a_prendre = 0, cp_pris = 0, cc_solde = 0 WHERE id = ?", (uid,))
+        db.commit()
+        self._poser_jours_forfait(db, uid, 'conge_paye', 2)
+
+        html = admin_client.get('/demande_conge').get_data(as_text=True)
+
+        assert '23.0 jour(s)' in html   # 25 - 2 CP posés
+        assert '8.0 jour(s)' in html    # 8 CC, aucun posé
+        assert 'Solde repos forfait' in html
+
+    def test_formulaire_salarie_garde_les_soldes_users(self, app, db, auth_client, sample_users):
+        """Un salarié conserve les soldes issus de users, sans solde repos forfait."""
+        db.execute(
+            "UPDATE users SET cp_a_prendre = 12, cp_pris = 2.5, cc_solde = 3 WHERE id = ?",
+            (sample_users['salarie_id'],)
+        )
+        db.commit()
+
+        html = auth_client.get('/demande_conge').get_data(as_text=True)
+
+        assert '9.5 jour(s)' in html
+        assert '3.0 jour(s)' in html
+        assert 'Solde repos forfait' not in html
+
     def test_pdf_demande_conge(self, app, db, admin_client):
         jour = _jour_ouvre(mois=6, jour=23)
         admin_client.post('/demande_conge', data={
