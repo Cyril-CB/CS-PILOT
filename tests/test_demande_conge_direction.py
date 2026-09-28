@@ -78,6 +78,38 @@ class TestDemandeCongeDirection:
             d = db.execute("SELECT statut FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
             assert d is not None and d['statut'] == 'en_attente_responsable'
 
+    @pytest.mark.parametrize('type_conge,type_journee,jour_pose,jour_demande', [
+        ('Congé payé', 'conge_paye', _jour_ouvre(mois=6, jour=3), _jour_ouvre(mois=6, jour=4)),
+        ('Congé conventionnel', 'conge_conv', _jour_ouvre(mois=6, jour=5), _jour_ouvre(mois=6, jour=8)),
+    ])
+    def test_directeur_demande_conge_aligne_alerte_sur_forfait(
+        self, app, db, admin_client, sample_users, type_conge, type_journee, jour_pose, jour_demande
+    ):
+        """La pré-alerte lit le registre forfait, pas les colonnes users du directeur."""
+        uid = sample_users['directeur_id']
+        db.execute("UPDATE users SET cp_a_prendre = 0, cp_pris = 0, cc_solde = 0 WHERE id = ?", (uid,))
+        db.execute(
+            "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+            (uid, jour_pose, type_journee)
+        )
+        db.commit()
+
+        r = admin_client.post('/demande_conge', data={
+            'type_conge': type_conge, 'date_debut': jour_demande, 'date_fin': jour_demande,
+        }, follow_redirects=True)
+        html = r.get_data(as_text=True)
+
+        assert r.status_code == 200
+        assert 'congé pris par anticipation' not in html
+        with app.app_context():
+            d = db.execute("SELECT * FROM demandes_conges ORDER BY id DESC LIMIT 1").fetchone()
+            assert d is not None and d['type_conge'] == type_conge and d['statut'] == 'validee'
+            pf = db.execute(
+                "SELECT type_journee FROM presence_forfait_jour WHERE user_id = ? AND date = ?",
+                (uid, jour_demande)
+            ).fetchone()
+            assert pf is not None and pf['type_journee'] == type_journee
+
     def test_pdf_demande_conge(self, app, db, admin_client):
         jour = _jour_ouvre(mois=6, jour=23)
         admin_client.post('/demande_conge', data={

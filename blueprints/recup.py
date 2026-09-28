@@ -35,6 +35,26 @@ def _get_type_demande(demande):
         return 'journee'
 
 
+def _solde_conge_avertissement(conn, user_id, profil, type_conge, annee):
+    """Retourne le solde à afficher avant dépôt selon la source métier du profil."""
+    if profil == 'directeur':
+        from utils import calculer_stats_forfait_jour
+
+        soldes = calculer_stats_forfait_jour(user_id, annee).get('soldes', {})
+        if type_conge == 'Congé payé':
+            return soldes.get('conges_payes_restants', 0)
+        return soldes.get('conges_conv_restants', 0)
+
+    user_data = conn.execute(
+        'SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
+        (user_id,),
+    ).fetchone()
+    if type_conge == 'Congé payé':
+        return ((user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0)
+                if user_data else 0)
+    return user_data['cc_solde'] or 0 if user_data else 0
+
+
 def _reporter_recup_partielle(conn, demande, demande_id):
     """Reporte une récup partielle validée dans heures_reelles.
 
@@ -842,13 +862,10 @@ def demande_conge():
 
         conn = get_db()
 
-        # Récupérer le solde de congés
-        user_data = conn.execute('SELECT cp_a_prendre, cp_pris, cc_solde FROM users WHERE id = ?',
-                                 (session['user_id'],)).fetchone()
-        if type_conge == 'Congé payé':
-            solde = (user_data['cp_a_prendre'] or 0) - (user_data['cp_pris'] or 0) if user_data else 0
-        else:
-            solde = user_data['cc_solde'] or 0 if user_data else 0
+        profil = session.get('profil')
+        solde = _solde_conge_avertissement(
+            conn, session['user_id'], profil, type_conge, int(date_debut[:4])
+        )
 
         # Alerter si solde négatif après la demande
         solde_apres = solde - nb_jours
@@ -864,7 +881,6 @@ def demande_conge():
             if type_conge not in _types_conge_pour(session.get('profil')):
                 raise ConflitAbsence('Type de congé non autorisé avec vos droits actuels.')
             # Relire le rôle sous le verrou, notamment avant l'auto-validation.
-            profil = session.get('profil')
             statut_initial = ('validee' if profil == 'directeur' else
                               'en_attente_direction' if profil == 'responsable' else
                               'en_attente_responsable')
