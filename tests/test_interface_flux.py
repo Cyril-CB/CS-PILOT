@@ -7,6 +7,7 @@ Vérifient ce qui est facile à casser sans s'en apercevoir :
 - que la carte de navigation n'expose que des pages autorisées ;
 - que l'accueil, « Mon espace » et les pages ordinaires s'affichent.
 """
+from datetime import date, timedelta
 import html as html_module
 import json
 import re
@@ -132,13 +133,37 @@ def test_le_salarie_garde_son_menu(auth_client):
     assert 'flx-entete' not in corps
 
 
-def test_mon_espace_affiche_les_compteurs(admin_client):
+def test_mon_espace_affiche_les_compteurs(admin_client, db, sample_users):
+    annee = date.today().year
+    jour_cp = date(annee, 1, 1)
+    while jour_cp.weekday() >= 5:
+        jour_cp += timedelta(days=1)
+    jour_cc = jour_cp + timedelta(days=1)
+    while jour_cc.weekday() >= 5:
+        jour_cc += timedelta(days=1)
+
+    db.execute(
+        "UPDATE users SET cp_a_prendre = ?, cp_pris = ?, cc_solde = ? WHERE id = ?",
+        (12, 4, 3, sample_users['directeur_id'])
+    )
+    db.execute(
+        "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+        (sample_users['directeur_id'], jour_cp.isoformat(), 'conge_paye')
+    )
+    db.execute(
+        "INSERT INTO presence_forfait_jour (user_id, date, type_journee) VALUES (?, ?, ?)",
+        (sample_users['directeur_id'], jour_cc.isoformat(), 'conge_conv')
+    )
+    db.commit()
+
     reponse = admin_client.get('/mon-espace')
     corps = reponse.get_data(as_text=True)
     assert reponse.status_code == 200
     assert 'Congés payés' in corps
-    assert re.search(r'Congés payés.*?flx-compteur-valeur[^>]*>25 j<', corps, re.S)
-    assert re.search(r'Congés conventionnels.*?flx-compteur-valeur[^>]*>8 j<', corps, re.S)
+    assert re.search(r'Congés payés.*?flx-compteur-valeur[^>]*>24 j<', corps, re.S)
+    assert re.search(r'Congés payés.*?flx-compteur-detail[^>]*>Quota 25 · posés 1<', corps, re.S)
+    assert re.search(r'Congés conventionnels.*?flx-compteur-valeur[^>]*>7 j<', corps, re.S)
+    assert re.search(r'Congés conventionnels.*?flx-compteur-detail[^>]*>Quota 8 · posés 1<', corps, re.S)
     assert 'Récupérations' in corps
     assert 'Poser une demande' in corps
     # Retirés du modèle à la demande : pas de bulletins ni de documents.
