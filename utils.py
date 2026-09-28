@@ -625,7 +625,9 @@ def calculer_stats_forfait_jour(user_id, annee):
         if (premier_jour + timedelta(days=i)).weekday() < 5
     )
 
-    jours_repos_forfait = nb_jours_ouvrables - nb_jours_feries - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
+    # calculer_jours_ouvres() exclut déjà les jours fériés ; ne pas les
+    # retrancher une seconde fois du quota annuel de repos forfait.
+    jours_repos_forfait = nb_jours_ouvrables - JOURS_CONGES_PAYES - JOURS_CONGES_CONV - JOURS_CONTRAT
 
     presences = conn.execute('''
         SELECT type_journee, COUNT(*) as nb

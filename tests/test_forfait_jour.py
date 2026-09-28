@@ -154,6 +154,27 @@ def test_dashboard_initialise_aussi(app, admin_client, sample_users):
     assert len(travailles) == _jours_ouvres_attendus(annee)
 
 
+def test_stats_forfait_ne_retranche_pas_deux_fois_les_feries(app, sample_users):
+    """Le quota annuel de repos forfait retranche les fériés une seule fois."""
+    import utils
+
+    annee = 2026
+    ferie = '2026-07-14'
+
+    _ajouter_ferie(app, annee, ferie, 'Fête nationale')
+
+    with app.app_context():
+        stats = utils.calculer_stats_forfait_jour(sample_users['directeur_id'], annee)
+
+    jours_ouvrables = _jours_ouvres_attendus(annee, feries=[ferie])
+    jours_repos_attendus = jours_ouvrables - 25 - 8 - 210
+
+    assert stats['config']['jours_feries'] == 1
+    assert stats['config']['jours_ouvrables'] == jours_ouvrables
+    assert stats['config']['jours_repos_forfait'] == jours_repos_attendus
+    assert stats['soldes']['repos_forfait_restants'] == jours_repos_attendus
+
+
 def test_acces_refuse_non_directeur(auth_client):
     """Un salarié ne peut pas accéder au calendrier forfait jour."""
     resp = auth_client.get('/calendrier_forfait_jour', follow_redirects=True)
