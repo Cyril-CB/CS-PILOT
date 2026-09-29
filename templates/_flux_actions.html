@@ -17,7 +17,7 @@
     <div class="flx-glyphe">{{ a.icone }}</div>
     <div class="flx-carte-corps">
         <div class="flx-carte-meta">
-            <span class="flx-badge">{{ ton[1] }}</span>
+            <span class="flx-badge">{{ a.badge or ton[1] }}</span>
             <span class="flx-carte-zone">{{ zones_par_categorie.get(a.categorie, a.categorie) }}</span>
         </div>
         <div class="flx-carte-titre" data-flx-titre>{{ a.titre }}</div>

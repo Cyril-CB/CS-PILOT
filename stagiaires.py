@@ -192,15 +192,21 @@ def moment(demi_journees):
 
 
 def limite_anonymisation(today, mois=DELAI_ANONYMISATION_MOIS):
-    """Date avant laquelle un stage terminé est anonymisé : aujourd'hui − 6 mois.
+    """Dernier jour de fin de stage anonymisable aujourd'hui.
 
-    Le jour est ramené au dernier jour du mois si besoin (31 août → 28 février).
+    Un stage est anonymisé le jour où six mois calendaires sont écoulés depuis
+    son dernier jour : fin le 1er avril → anonymisé le 1er octobre. Une fin de
+    mois plus longue que le mois d'arrivée y est ramenée (31 août → 28 février) ;
+    le dernier jour d'un mois couvre donc toute la fin du mois de départ.
     """
     annee, mois_cible = today.year, today.month - mois
     while mois_cible < 1:
         mois_cible += 12
         annee -= 1
-    return date(annee, mois_cible, min(today.day, calendar.monthrange(annee, mois_cible)[1]))
+    fin_du_mois_cible = calendar.monthrange(annee, mois_cible)[1]
+    if today.day == calendar.monthrange(today.year, today.month)[1]:
+        return date(annee, mois_cible, fin_du_mois_cible)
+    return date(annee, mois_cible, min(today.day, fin_du_mois_cible))
 
 
 def anonymiser_stages_termines(conn, today, horodatage):
@@ -214,6 +220,6 @@ def anonymiser_stages_termines(conn, today, horodatage):
         """UPDATE stagiaires
            SET nom = 'Stagiaire-' || id, prenom = '', etablissement = '',
                anonymise_le = ?
-           WHERE anonymise_le IS NULL AND date_fin < ?""",
+           WHERE anonymise_le IS NULL AND date_fin <= ?""",
         (horodatage, limite_anonymisation(today).isoformat())
     ).rowcount

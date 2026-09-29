@@ -45,7 +45,9 @@ le stagiaire n'est pas au centre ce moment-là.
 L'enregistrement remplace tout l'emploi du temps en une fois. Un secteur
 supprimé entre-temps fait refuser l'enregistrement, la saisie restant affichée
 pour être corrigée. Raccourcir la période sur la fiche retire les demi-journées
-qui en sortent ; le message indique combien.
+qui en sortent ; le message indique combien. Supprimer un secteur (Administration →
+Secteurs) retire aussi les demi-journées qui lui étaient rattachées, le
+message l'indique.
 
 ## L'annonce dans le fil
 
@@ -63,7 +65,8 @@ d'actions (et dans « Actions à faire » du tableau de bord classique) :
 - Comme les autres familles du fil : deux cartes nommées au plus, puis « et N
   autres accueils de stagiaire » vers la liste.
 - La carte est placée en tête des éléments du jour et ne demande aucune
-  action : elle disparaît une fois la date passée.
+  action : elle disparaît une fois la date passée. Son étiquette dit le jour
+  concerné (« Aujourd'hui », « Demain » ou le jour de la semaine).
 - Seul le responsable du secteur d'accueil la reçoit (secteur de son compte).
   Le tuteur, qui est un responsable et a construit le planning, n'est pas
   prévenu à ce titre ; la direction non plus.
@@ -75,7 +78,9 @@ neuf et la migration utilisent `schema_stagiaires.creer_schema`. Les tables
 sont déclarées dans `resilience.py` ; aucun fichier n'est stocké.
 
 **Six mois après le dernier jour du stage, la fiche est anonymisée
-automatiquement** (décision du centre) :
+automatiquement** (décision du centre), le jour anniversaire : un stage fini
+le 1er avril est anonymisé le 1er octobre ; un stage fini le 31 août, le
+28 (ou 29) février :
 
 - le nom devient « Stagiaire-<numéro de fiche> », le prénom et le lieu
   d'études sont effacés ;

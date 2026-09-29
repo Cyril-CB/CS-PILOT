@@ -743,7 +743,10 @@ def _stagiaires_attendus(conn, profil, secteur_id, today):
             'lien': url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id,
                             _anchor='emploi-du-temps'),
             'lien_texte': 'Voir le stage',
+            # Même priorité le jour même que la veille : c'est aujourd'hui que
+            # l'accueil se prépare. L'étiquette, elle, dit le vrai jour.
             'urgence': 'urgent',
+            'badge': None if jour == today else quand_stagiaire(jour, today).split(' ')[0],
         })
 
     reste = len(visites) - len(actions)

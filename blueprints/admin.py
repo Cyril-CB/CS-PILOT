@@ -469,9 +469,21 @@ def gestion_secteurs():
                 if users_count > 0:
                     flash(f'Impossible de supprimer : {users_count} utilisateur(s) sont dans ce secteur', 'error')
                 else:
+                    # Les connexions n'activent pas PRAGMA foreign_keys : le
+                    # ON DELETE CASCADE de stagiaires_creneaux ne jouerait pas,
+                    # et une demi-journée orpheline ferait refuser les
+                    # sauvegardes par le diagnostic de résilience.
+                    retires = conn.execute(
+                        'DELETE FROM stagiaires_creneaux WHERE secteur_id = ?',
+                        (secteur_id,)).rowcount
                     conn.execute('DELETE FROM secteurs WHERE id = ?', (secteur_id,))
                     conn.commit()
-                    flash('Secteur supprimé avec succès', 'success')
+                    message = 'Secteur supprimé avec succès'
+                    if retires:
+                        message += (f" ; {retires} demi-journée{'s' if retires > 1 else ''} "
+                                    f"d'emploi du temps de stagiaire "
+                                    f"{'retirées' if retires > 1 else 'retirée'}")
+                    flash(message, 'success')
 
             elif action == 'ajouter_type':
                 code = request.form.get('code', '').strip().lower()

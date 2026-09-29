@@ -299,6 +299,7 @@ def test_fil_annonce_la_veille_au_responsable_du_secteur(app, db, sample_users, 
     assert carte['titre'] == 'Demain, accueil d’un(e) stagiaire sur votre secteur : Léa Martin'
     assert carte['detail'] == 'Toute la journée — 3e · Collège Jean Moulin — tuteur : Marie Dupont'
     assert carte['urgence'] == 'urgent'
+    assert carte['badge'] == 'Demain'
     assert carte['lien'].endswith(f'/stagiaires/{stagiaire_id}#emploi-du-temps')
     assert actions.index(carte) == min(i for i, a in enumerate(actions) if a['urgence'] == 'urgent')
 
@@ -312,6 +313,7 @@ def test_fil_du_jour_meme_et_du_vendredi_pour_le_lundi(app, db, sample_users, mo
     _, cartes = _cartes_stagiaires(app, db, monkeypatch, 'responsable',
                                    sample_users['responsable_id'], secteur, date(2026, 10, 9))
     assert [c['titre'].split(',')[0] for c in cartes] == ["Aujourd'hui", 'Lundi 12 octobre']
+    assert [c['badge'] for c in cartes] == [None, 'Lundi']
     assert cartes[0]['detail'].startswith('Matin — ')
     assert cartes[1]['detail'].startswith('Après-midi — ')
 
@@ -364,9 +366,12 @@ def test_carte_affichee_dans_l_accueil_du_responsable(resp_client, db, sample_us
 # ── Anonymisation à six mois ───────────────────────────────────────────────
 
 @pytest.mark.parametrize('today, limite', [
-    (date(2026, 10, 1), date(2026, 4, 1)),
+    (date(2026, 10, 1), date(2026, 4, 1)),    # anonymisé le jour anniversaire
+    (date(2026, 8, 28), date(2026, 2, 28)),
     (date(2026, 8, 31), date(2026, 2, 28)),
     (date(2026, 3, 15), date(2025, 9, 15)),
+    (date(2027, 2, 28), date(2026, 8, 31)),   # fin 31 août → 28 février
+    (date(2026, 9, 30), date(2026, 3, 31)),
 ])
 def test_limite_d_anonymisation_six_mois(today, limite):
     assert service.limite_anonymisation(today) == limite
@@ -375,8 +380,10 @@ def test_limite_d_anonymisation_six_mois(today, limite):
 def test_anonymisation_efface_l_identite_et_garde_le_suivi(db, sample_users):
     ancien = _stagiaire(db, debut='2026-03-23', fin='2026-03-31', tuteur_id=sample_users['responsable_id'])
     _creneau(db, ancien, '2026-03-23', 'matin', sample_users['secteur_id'])
-    recent = _stagiaire(db, debut='2026-03-30', fin='2026-04-01', prenom='Hugo')
-    assert ANONYMISER(db, date(2026, 10, 1), '2026-10-01 08:00:00') == 1
+    anniversaire = _stagiaire(db, debut='2026-03-30', fin='2026-04-01', prenom='Inès')
+    recent = _stagiaire(db, debut='2026-03-30', fin='2026-04-02', prenom='Hugo')
+    assert ANONYMISER(db, date(2026, 10, 1), '2026-10-01 08:00:00') == 2
+    assert db.execute('SELECT prenom FROM stagiaires WHERE id = ?', (anniversaire,)).fetchone()[0] == ''
     db.commit()
     ligne = db.execute('SELECT * FROM stagiaires WHERE id = ?', (ancien,)).fetchone()
     assert (ligne['nom'], ligne['prenom'], ligne['etablissement']) == (f'Stagiaire-{ancien}', '', '')
@@ -442,3 +449,27 @@ def test_schema_neuf_et_migration_0075_idempotente(db, sample_users):
     db.commit()
     assert ddl() == neuf
     assert db.execute('SELECT COUNT(*) FROM stagiaires_creneaux').fetchone()[0] == 1
+
+
+def test_supprimer_un_secteur_retire_ses_demi_journees(admin_client, db, sample_users):
+    """Sans foreign_keys activé, l'orphelin ferait refuser les sauvegardes."""
+    secteur, autre = sample_users['secteur_id'], _autre_secteur(db)
+    stagiaire_id = _stagiaire(db)
+    _creneau(db, stagiaire_id, '2026-10-05', 'matin', autre)
+    _creneau(db, stagiaire_id, '2026-10-05', 'apres_midi', secteur)
+    reponse = admin_client.post('/gestion_secteurs', data={'action': 'supprimer', 'secteur_id': str(autre)},
+                                follow_redirects=True)
+    assert '1 demi-journée d&#39;emploi du temps de stagiaire retirée' in reponse.get_data(as_text=True)
+    assert db.execute('SELECT 1 FROM secteurs WHERE id = ?', (autre,)).fetchone() is None
+    assert _creneaux(db, stagiaire_id) == {('2026-10-05', 'apres_midi', secteur)}
+    assert db.execute('PRAGMA foreign_key_check').fetchall() == []
+
+
+def test_badge_du_fil_dit_le_vrai_jour(resp_client, db, sample_users):
+    from utils import aujourd_hui
+    demain = service.fin_fenetre_annonce(aujourd_hui())
+    stagiaire_id = _stagiaire(db, debut=demain.isoformat(), fin=demain.isoformat())
+    _creneau(db, stagiaire_id, demain.isoformat(), 'matin', sample_users['secteur_id'])
+    texte = resp_client.get('/accueil').get_data(as_text=True)
+    badge = 'Demain' if (demain - aujourd_hui()).days == 1 else 'Lundi'
+    assert f'<span class="flx-badge">{badge}</span>' in texte

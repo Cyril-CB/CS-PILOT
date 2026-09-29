@@ -369,7 +369,7 @@
         "Emploi du temps par demi-journée (matin / après-midi) sur tous les jours de la période, week-ends compris, chaque demi-journée rattachée à un secteur ou laissée vide ; enregistrement complet en une transaction.",
         "Période de 92 jours au plus ; raccourcir la période retire les demi-journées sorties, avec message indiquant leur nombre.",
         "Liste en cours / à venir, stages terminés repliés, secteurs d'accueil et tuteur ; suppression définitive de la fiche et de son emploi du temps.",
-        "Anonymisation automatique six mois après le dernier jour : nom remplacé par « Stagiaire-<id> », prénom et lieu d'études effacés, niveau, période, tuteur et secteurs conservés ; fiche ensuite en lecture seule (suppression possible). Déclenchée une fois par jour à la première requête applicative.",
+        "Anonymisation automatique le jour où six mois calendaires sont écoulés depuis le dernier jour : nom remplacé par « Stagiaire-<id> », prénom et lieu d'études effacés, niveau, période, tuteur et secteurs conservés ; fiche ensuite en lecture seule (suppression possible). Déclenchée une fois par jour à la première requête applicative.",
         "Carte « Aujourd'hui/Demain/Lundi…, accueil d’un(e) stagiaire sur votre secteur : Prénom Nom » dans le fil du responsable du secteur d'accueil et dans « Actions à faire » de son tableau de bord classique ; fenêtre jusqu'au prochain jour du lundi au vendredi, deux cartes nommées puis « et N autres ».",
         "Accès par la zone Vie associative, la barre intelligente et le menu latéral des trois profils gestionnaires.",
         "Migration 0075 idempotente et schéma neuf commun ; tables couvertes par le diagnostic et la sauvegarde de résilience."
@@ -384,7 +384,8 @@
       ],
       "implementation": {
         "route_files": [
-          "blueprints/stagiaires.py"
+          "blueprints/stagiaires.py",
+          "blueprints/admin.py"
         ],
         "service_files": [
           "stagiaires.py",
@@ -439,7 +440,8 @@
         "Un secteur inconnu refuse tout l'enregistrement de l'emploi du temps sans rien modifier.",
         "Un tuteur dont le compte a été désactivé (ou le profil changé) reste accepté tant qu'il n'est pas changé ; un nouveau tuteur doit être un responsable actif.",
         "La carte du fil ne demande aucune action et ne juge pas : elle nomme le stagiaire, le moment, les études et le tuteur.",
-        "Une fiche anonymisée (anonymise_le renseigné) refuse côté serveur toute modification des informations et de l'emploi du temps ; l'anonymisation est idempotente."
+        "Une fiche anonymisée (anonymise_le renseigné) refuse côté serveur toute modification des informations et de l'emploi du temps ; l'anonymisation est idempotente.",
+        "La suppression d'un secteur retire ses demi-journées ; la carte du fil garde l'urgence du jour mais son étiquette dit le jour réel (templates/_flux_actions.html, clé badge)."
       ],
       "extension_points": [
         "Ajouter une annonce au tuteur ou à la direction dans dashboard_actions._stagiaires_attendus en conservant la règle du fil (nommer, deux cartes au plus).",
