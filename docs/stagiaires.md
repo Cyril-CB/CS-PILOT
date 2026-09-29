@@ -25,10 +25,10 @@ menu), dans le menu latéral (**🎓 Stagiaires**) et par la barre intelligente
 - **Prénom, nom** : obligatoires.
 - **Études** et **lieu d'études** : texte libre (suggestions : 3e, Seconde,
   Bac pro, CAP, BTS, BUT, Licence, Master).
-- **Tuteur dans la structure** : un compte actif du centre, hors prestataire
-  paie. Il peut rester « à désigner ». Si le compte du tuteur est désactivé
-  ensuite, il reste affiché « (compte désactivé) » et la fiche peut toujours
-  être corrigée sans en changer.
+- **Tuteur dans la structure** : un responsable (compte actif). Il peut rester
+  « à désigner ». Si le compte du tuteur est désactivé ensuite, il reste
+  affiché « (compte désactivé) » et la fiche peut toujours être corrigée sans
+  en changer.
 - **Premier et dernier jour** : obligatoires, période de 92 jours au plus
   (borne technique de la grille, pas une règle de stage).
 
@@ -65,7 +65,8 @@ d'actions (et dans « Actions à faire » du tableau de bord classique) :
 - La carte est placée en tête des éléments du jour et ne demande aucune
   action : elle disparaît une fois la date passée.
 - Seul le responsable du secteur d'accueil la reçoit (secteur de son compte).
-  La direction et le tuteur ne reçoivent pas de carte.
+  Le tuteur, qui est un responsable et a construit le planning, n'est pas
+  prévenu à ce titre ; la direction non plus.
 
 ## Données et conservation
 
@@ -73,9 +74,27 @@ La migration **0075** ajoute `stagiaires` et `stagiaires_creneaux`. Le schéma
 neuf et la migration utilisent `schema_stagiaires.creer_schema`. Les tables
 sont déclarées dans `resilience.py` ; aucun fichier n'est stocké.
 
-Les fiches **ne sont pas purgées automatiquement**. La suppression d'une fiche
-efface aussi son emploi du temps, définitivement. La durée de conservation des
-stages terminés reste à décider par le centre.
+**Six mois après le dernier jour du stage, la fiche est anonymisée
+automatiquement** (décision du centre) :
+
+- le nom devient « Stagiaire-<numéro de fiche> », le prénom et le lieu
+  d'études sont effacés ;
+- le niveau d'études, la période, le tuteur et les secteurs d'accueil sont
+  conservés pour le suivi d'activité ;
+- la fiche n'est plus modifiable (le serveur refuse les écritures), seulement
+  consultable et supprimable.
+
+Sans planificateur externe, l'anonymisation tourne une fois par jour à la
+première requête de l'application, quelle que soit la page ouverte
+(`blueprints/stagiaires._anonymisation_quotidienne`), comme la synthèse
+quotidienne de la direction. Une application arrêtée pendant des semaines
+anonymise donc au redémarrage. Les sauvegardes antérieures contiennent encore
+les noms : leur durée de conservation relève de la politique de sauvegarde.
+
+Sur un petit effectif, niveau d'études, dates et secteurs peuvent encore
+permettre de reconnaître un stagiaire : c'est une pseudonymisation de
+confort, pas une anonymisation au sens strict. La suppression d'une fiche
+efface définitivement son emploi du temps.
 
 ## Limites connues
 
@@ -85,3 +104,5 @@ stages terminés reste à décider par le centre.
   modification sont conservés ; en cas d'édition simultanée, la dernière
   enregistrée l'emporte.
 - Jours fériés et fermetures du centre ignorés.
+- Délai de six mois fixé dans le code (`DELAI_ANONYMISATION_MOIS`), sans
+  réglage dans les options.

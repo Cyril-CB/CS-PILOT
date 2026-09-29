@@ -5270,3 +5270,4 @@ body.flx #cspChatWindow { bottom: 154px; }
     body:not(.flx) .stagiaires-page > .stagiaires-retour,
     body:not(.flx) .stagiaires-page > .proposition-entete h1 { padding-left: 44px; }
 }
+.stagiaires-lecture { border: 0; margin: 0; padding: 0; min-width: 0; }

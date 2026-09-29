@@ -8,8 +8,14 @@ Les stagiaires de 3e sont mineurs : la fiche se limite à ce qui sert à les
 accueillir (nom, études, établissement, tuteur, période, secteurs). Aucune
 coordonnée ni date de naissance n'est demandée.
 """
+import calendar
 from datetime import date, timedelta
 import re
+
+# Six mois après le dernier jour de stage, la fiche est anonymisée : les
+# statistiques (niveau d'études, période, secteurs, tuteur) restent, l'identité
+# du stagiaire et son établissement disparaissent.
+DELAI_ANONYMISATION_MOIS = 6
 
 # Direction, comptabilité et responsables tiennent ensemble les fiches : un
 # stagiaire passe d'un secteur à l'autre, son emploi du temps se construit à
@@ -75,8 +81,8 @@ def lire_identifiant(valeur):
 def valider_fiche(form, conn, tuteur_actuel=None):
     """Valide la fiche d'un stagiaire et renvoie les valeurs à enregistrer.
 
-    Le tuteur doit être un compte actif du centre (pas le prestataire paie).
-    Un tuteur déjà enregistré dont le compte a été désactivé depuis reste
+    Le tuteur est un responsable du centre, compte actif. Un tuteur déjà
+    enregistré dont le compte a été désactivé (ou le profil changé) depuis reste
     accepté tant qu'il n'est pas changé : corriger une date ne doit pas obliger
     à désigner un autre tuteur.
     """
@@ -95,9 +101,9 @@ def valider_fiche(form, conn, tuteur_actuel=None):
         if tuteur_id is None:
             raise ValueError('Tuteur inconnu. Rechargez la page avant de réessayer.')
         if tuteur_id != tuteur_actuel and not conn.execute(
-                "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil != 'prestataire'",
+                "SELECT 1 FROM users WHERE id = ? AND actif = 1 AND profil = 'responsable'",
                 (tuteur_id,)).fetchone():
-            raise ValueError('Tuteur inconnu. Rechargez la page avant de réessayer.')
+            raise ValueError('Le tuteur doit être un responsable dont le compte est actif.')
     valeurs['tuteur_id'] = tuteur_id
 
     debut = lire_date(form.get('date_debut'), 'Date de début')
@@ -183,3 +189,31 @@ def moment(demi_journees):
     if 'matin' in demi_journees:
         return 'Matin'
     return 'Après-midi'
+
+
+def limite_anonymisation(today, mois=DELAI_ANONYMISATION_MOIS):
+    """Date avant laquelle un stage terminé est anonymisé : aujourd'hui − 6 mois.
+
+    Le jour est ramené au dernier jour du mois si besoin (31 août → 28 février).
+    """
+    annee, mois_cible = today.year, today.month - mois
+    while mois_cible < 1:
+        mois_cible += 12
+        annee -= 1
+    return date(annee, mois_cible, min(today.day, calendar.monthrange(annee, mois_cible)[1]))
+
+
+def anonymiser_stages_termines(conn, today, horodatage):
+    """Anonymise les fiches dont le dernier jour date de plus de six mois.
+
+    Nom remplacé par « Stagiaire-<numéro de fiche> », prénom et établissement
+    effacés. Idempotent ; ne valide pas la transaction (l'appelant commite).
+    Renvoie le nombre de fiches anonymisées.
+    """
+    return conn.execute(
+        """UPDATE stagiaires
+           SET nom = 'Stagiaire-' || id, prenom = '', etablissement = '',
+               anonymise_le = ?
+           WHERE anonymise_le IS NULL AND date_fin < ?""",
+        (horodatage, limite_anonymisation(today).isoformat())
+    ).rowcount

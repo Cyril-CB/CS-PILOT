@@ -10,6 +10,16 @@ import navigation
 import stagiaires as service
 from database import ALL_MIGRATION_VERSIONS
 
+# L'anonymisation quotidienne se déclenche à la première requête du jour, sur
+# la date réelle : les tests qui ne la visent pas l'écartent pour rester
+# déterministes quelle que soit la date d'exécution.
+ANONYMISER = service.anonymiser_stages_termines
+
+
+@pytest.fixture(autouse=True)
+def _sans_anonymisation_implicite(monkeypatch):
+    monkeypatch.setattr(service, 'anonymiser_stages_termines', lambda *args: 0)
+
 
 def _stagiaire(db, debut='2026-10-05', fin='2026-10-09', nom='Martin', prenom='Léa',
                tuteur_id=None, etudes='3e', etablissement='Collège Jean Moulin'):
@@ -108,13 +118,13 @@ def test_page_dans_la_carte_des_gestionnaires_seulement(app, sample_users):
 def test_creation_par_un_responsable(resp_client, db, sample_users):
     reponse = resp_client.post('/stagiaires/nouveau', data=_formulaire(
         nom='  Martin ', prenom='Léa', etablissement='Collège   Jean Moulin',
-        tuteur_id=str(sample_users['salarie_id'])))
+        tuteur_id=str(sample_users['responsable_id'])))
     assert reponse.status_code == 302
     ligne = db.execute('SELECT * FROM stagiaires').fetchone()
     assert reponse.headers['Location'].endswith(f"/stagiaires/{ligne['id']}#emploi-du-temps")
     assert (ligne['nom'], ligne['prenom'], ligne['etudes'], ligne['etablissement']) == (
         'Martin', 'Léa', '3e', 'Collège Jean Moulin')
-    assert ligne['tuteur_id'] == sample_users['salarie_id']
+    assert ligne['tuteur_id'] == sample_users['responsable_id']
     assert (ligne['date_debut'], ligne['date_fin']) == ('2026-10-05', '2026-10-09')
     assert ligne['cree_par'] == sample_users['responsable_id']
 
@@ -130,7 +140,7 @@ def test_creation_par_un_responsable(resp_client, db, sample_users):
     ({'date_debut': '2026-02-31'}, 'Date de début : date invalide.'),
     ({'date_fin': '05/10/2026'}, 'Date de fin : date invalide.'),
     ({'date_fin': '2027-01-05'}, 'limitée à 92 jours'),
-    ({'tuteur_id': '999999'}, 'Tuteur inconnu'),
+    ({'tuteur_id': '999999'}, 'Le tuteur doit être un responsable'),
     ({'tuteur_id': 'abc'}, 'Tuteur inconnu'),
     ({'etudes': 'x' * 81}, 'Études : 80 caractères au maximum.'),
 ])
@@ -141,30 +151,38 @@ def test_creation_refuse_une_saisie_invalide(resp_client, db, valeurs, message):
     assert db.execute('SELECT COUNT(*) FROM stagiaires').fetchone()[0] == 0
 
 
-def test_tuteur_prestataire_ou_desactive_refuse(resp_client, db, sample_users):
+def test_tuteur_doit_etre_un_responsable_actif(admin_client, db, sample_users):
     presta = db.execute(
         "INSERT INTO users (nom, prenom, login, password, profil) "
         "VALUES ('Cabinet', 'Paie', 'presta_tuteur', 'x', 'prestataire')").lastrowid
-    db.execute('UPDATE users SET actif = 0 WHERE id = ?', (sample_users['salarie_id'],))
+    ancien = db.execute(
+        "INSERT INTO users (nom, prenom, login, password, profil, actif) "
+        "VALUES ('Ancien', 'Resp', 'ancien_resp', 'x', 'responsable', 0)").lastrowid
     db.commit()
-    for tuteur in (presta, sample_users['salarie_id']):
-        reponse = resp_client.post('/stagiaires/nouveau', data=_formulaire(tuteur_id=str(tuteur)))
+    fiche = admin_client.get('/stagiaires/nouveau').get_data(as_text=True)
+    assert f'<option value="{sample_users["responsable_id"]}"' in fiche
+    for autre in (sample_users['salarie_id'], sample_users['comptable_id'],
+                  sample_users['directeur_id'], presta, ancien):
+        assert f'<option value="{autre}"' not in fiche
+        reponse = admin_client.post('/stagiaires/nouveau', data=_formulaire(tuteur_id=str(autre)))
         assert reponse.status_code == 400
+        assert 'Le tuteur doit être un responsable' in reponse.get_data(as_text=True)
     assert db.execute('SELECT COUNT(*) FROM stagiaires').fetchone()[0] == 0
 
 
-def test_tuteur_desactive_conserve_tant_qu_il_n_est_pas_change(resp_client, db, sample_users):
-    stagiaire_id = _stagiaire(db, tuteur_id=sample_users['salarie_id'])
-    db.execute('UPDATE users SET actif = 0 WHERE id = ?', (sample_users['salarie_id'],))
+def test_tuteur_desactive_conserve_tant_qu_il_n_est_pas_change(admin_client, db, sample_users):
+    tuteur = sample_users['responsable_id']
+    stagiaire_id = _stagiaire(db, tuteur_id=tuteur)
+    db.execute('UPDATE users SET actif = 0 WHERE id = ?', (tuteur,))
     db.commit()
-    fiche = resp_client.get(f'/stagiaires/{stagiaire_id}').get_data(as_text=True)
+    fiche = admin_client.get(f'/stagiaires/{stagiaire_id}').get_data(as_text=True)
     assert '(compte désactivé)' in fiche
 
-    reponse = resp_client.post(f'/stagiaires/{stagiaire_id}/informations', data=_formulaire(
-        tuteur_id=str(sample_users['salarie_id']), etudes='Seconde'))
+    reponse = admin_client.post(f'/stagiaires/{stagiaire_id}/informations', data=_formulaire(
+        tuteur_id=str(tuteur), etudes='Seconde'))
     assert reponse.status_code == 302
     ligne = db.execute('SELECT etudes, tuteur_id, modifie_par FROM stagiaires').fetchone()
-    assert tuple(ligne) == ('Seconde', sample_users['salarie_id'], sample_users['responsable_id'])
+    assert tuple(ligne) == ('Seconde', tuteur, sample_users['directeur_id'])
 
 
 def test_raccourcir_la_periode_retire_les_demi_journees_sorties(resp_client, db, sample_users):
@@ -270,7 +288,7 @@ def test_fenetre_d_annonce_jusqu_au_prochain_jour_ouvre(today, attendu):
 
 
 def test_fil_annonce_la_veille_au_responsable_du_secteur(app, db, sample_users, monkeypatch):
-    stagiaire_id = _stagiaire(db, tuteur_id=sample_users['salarie_id'])
+    stagiaire_id = _stagiaire(db, tuteur_id=sample_users['responsable_id'])
     _creneau(db, stagiaire_id, '2026-10-06', 'apres_midi', sample_users['secteur_id'])
     _creneau(db, stagiaire_id, '2026-10-06', 'matin', sample_users['secteur_id'])
     actions, cartes = _cartes_stagiaires(app, db, monkeypatch, 'responsable',
@@ -279,7 +297,7 @@ def test_fil_annonce_la_veille_au_responsable_du_secteur(app, db, sample_users, 
     assert len(cartes) == 1
     carte = cartes[0]
     assert carte['titre'] == 'Demain, accueil d’un(e) stagiaire sur votre secteur : Léa Martin'
-    assert carte['detail'] == 'Toute la journée — 3e · Collège Jean Moulin — tuteur : Jean Martin'
+    assert carte['detail'] == 'Toute la journée — 3e · Collège Jean Moulin — tuteur : Marie Dupont'
     assert carte['urgence'] == 'urgent'
     assert carte['lien'].endswith(f'/stagiaires/{stagiaire_id}#emploi-du-temps')
     assert actions.index(carte) == min(i for i, a in enumerate(actions) if a['urgence'] == 'urgent')
@@ -341,6 +359,68 @@ def test_carte_affichee_dans_l_accueil_du_responsable(resp_client, db, sample_us
         texte = resp_client.get(page, follow_redirects=True).get_data(as_text=True)
         assert 'accueil d’un(e) stagiaire sur votre secteur : Léa Martin' in texte, page
     assert 'Vie associative' in resp_client.get('/accueil').get_data(as_text=True)
+
+
+# ── Anonymisation à six mois ───────────────────────────────────────────────
+
+@pytest.mark.parametrize('today, limite', [
+    (date(2026, 10, 1), date(2026, 4, 1)),
+    (date(2026, 8, 31), date(2026, 2, 28)),
+    (date(2026, 3, 15), date(2025, 9, 15)),
+])
+def test_limite_d_anonymisation_six_mois(today, limite):
+    assert service.limite_anonymisation(today) == limite
+
+
+def test_anonymisation_efface_l_identite_et_garde_le_suivi(db, sample_users):
+    ancien = _stagiaire(db, debut='2026-03-23', fin='2026-03-31', tuteur_id=sample_users['responsable_id'])
+    _creneau(db, ancien, '2026-03-23', 'matin', sample_users['secteur_id'])
+    recent = _stagiaire(db, debut='2026-03-30', fin='2026-04-01', prenom='Hugo')
+    assert ANONYMISER(db, date(2026, 10, 1), '2026-10-01 08:00:00') == 1
+    db.commit()
+    ligne = db.execute('SELECT * FROM stagiaires WHERE id = ?', (ancien,)).fetchone()
+    assert (ligne['nom'], ligne['prenom'], ligne['etablissement']) == (f'Stagiaire-{ancien}', '', '')
+    assert (ligne['etudes'], ligne['tuteur_id'], ligne['date_fin']) == (
+        '3e', sample_users['responsable_id'], '2026-03-31')
+    assert ligne['anonymise_le'] == '2026-10-01 08:00:00'
+    assert len(_creneaux(db, ancien)) == 1
+    assert db.execute('SELECT prenom, anonymise_le FROM stagiaires WHERE id = ?',
+                      (recent,)).fetchone()[0] == 'Hugo'
+    # Idempotente : une fiche déjà anonymisée n'est pas réécrite.
+    assert ANONYMISER(db, date(2026, 10, 1), '2026-10-02 08:00:00') == 0
+
+
+def test_anonymisation_declenchee_par_la_premiere_requete_du_jour(resp_client, db, monkeypatch):
+    stagiaire_id = _stagiaire(db, debut='2026-03-23', fin='2026-03-27')
+    monkeypatch.setattr(service, 'anonymiser_stages_termines', ANONYMISER)
+    monkeypatch.setattr('blueprints.stagiaires.aujourd_hui', lambda: date(2026, 10, 1))
+    monkeypatch.setattr('blueprints.stagiaires._anonymisation_traitee', None)
+    texte = resp_client.get('/stagiaires').get_data(as_text=True)
+    assert f'Stagiaire-{stagiaire_id}' in texte and 'Léa' not in texte
+    assert db.execute('SELECT anonymise_le FROM stagiaires').fetchone()[0] is not None
+
+
+def test_fiche_anonymisee_en_lecture_seule(resp_client, db, sample_users):
+    stagiaire_id = _stagiaire(db, debut='2026-03-23', fin='2026-03-27')
+    _creneau(db, stagiaire_id, '2026-03-23', 'matin', sample_users['secteur_id'])
+    ANONYMISER(db, date(2026, 10, 1), '2026-10-01 08:00:00')
+    db.commit()
+    fiche = resp_client.get(f'/stagiaires/{stagiaire_id}').get_data(as_text=True)
+    assert 'Fiche anonymisée le 01/10/2026' in fiche
+    assert fiche.count('<fieldset class="stagiaires-lecture" disabled>') == 2
+    assert 'Enregistrer la fiche' not in fiche and 'Enregistrer l’emploi du temps' not in fiche
+
+    reponse = resp_client.post(f'/stagiaires/{stagiaire_id}/informations',
+                               data=_formulaire(),
+                               follow_redirects=True)
+    assert 'ne peut plus être modifiée' in reponse.get_data(as_text=True)
+    reponse = resp_client.post(f'/stagiaires/{stagiaire_id}/emploi-du-temps', data={})
+    assert reponse.status_code == 302
+    ligne = db.execute('SELECT nom, prenom FROM stagiaires').fetchone()
+    assert tuple(ligne) == (f'Stagiaire-{stagiaire_id}', '')
+    assert len(_creneaux(db, stagiaire_id)) == 1
+    assert resp_client.post(f'/stagiaires/{stagiaire_id}/supprimer').status_code == 302
+    assert db.execute('SELECT COUNT(*) FROM stagiaires').fetchone()[0] == 0
 
 
 # ── Schéma ─────────────────────────────────────────────────────────────────

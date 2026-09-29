@@ -18,7 +18,7 @@
         <tbody>
             {% for s in lignes %}
             <tr>
-                <td data-label="Stagiaire"><a class="proposition-lien-titre" href="{{ url_for('stagiaires_bp.fiche', stagiaire_id=s.id) }}">{{ s.prenom }} {{ s.nom }}</a></td>
+                <td data-label="Stagiaire"><a class="proposition-lien-titre" href="{{ url_for('stagiaires_bp.fiche', stagiaire_id=s.id) }}">{{ (s.prenom ~ ' ' ~ s.nom)|trim }}</a></td>
                 <td data-label="Études">{{ [s.etudes, s.etablissement]|select|join(' · ') or '—' }}</td>
                 <td data-label="Tuteur">{% if s.tuteur_nom %}{{ s.tuteur_prenom }} {{ s.tuteur_nom }}{% else %}<span class="stagiaires-aide">À désigner</span>{% endif %}</td>
                 <td class="stagiaires-periode" data-label="Période">{{ periode(s) }}</td>
@@ -59,6 +59,6 @@
     {% endif %}
     {% endif %}
 
-    <p class="stagiaires-aide">Les fiches ne sont pas supprimées automatiquement. Ne renseignez que ce qui sert à l’accueil et retirez les fiches des stages terminés dont le suivi n’est plus utile.</p>
+    <p class="stagiaires-aide">Six mois après le dernier jour du stage, nom, prénom et lieu d’études sont effacés automatiquement : la fiche devient « Stagiaire-numéro » et reste utilisable pour le suivi d’activité. Ne renseignez que ce qui sert à l’accueil.</p>
 </div>
 {% endblock %}

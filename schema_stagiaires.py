@@ -3,7 +3,8 @@
 Un stagiaire porte ses études, son établissement, son tuteur dans la structure
 et sa période de stage. Son emploi du temps est découpé en demi-journées, chacune
 rattachée au secteur qui l'accueille : c'est ce qui permet d'annoncer l'arrivée
-au responsable concerné.
+au responsable concerné. Six mois après la fin du stage, la fiche est
+anonymisée (`anonymise_le`).
 """
 
 
@@ -23,6 +24,7 @@ def creer_schema(conn):
             cree_le TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             modifie_par INTEGER,
             modifie_le TEXT,
+            anonymise_le TEXT,
             CHECK (date_fin >= date_debut),
             FOREIGN KEY (tuteur_id) REFERENCES users(id) ON DELETE SET NULL,
             FOREIGN KEY (cree_par) REFERENCES users(id) ON DELETE SET NULL,

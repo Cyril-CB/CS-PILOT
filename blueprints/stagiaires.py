@@ -8,6 +8,10 @@ n'y ont pas accès, même par URL directe.
 Chaque demi-journée est rattachée au secteur qui accueille le stagiaire ; le
 responsable de ce secteur en est averti dans son fil d'actions
 (`dashboard_actions._stagiaires_attendus`).
+
+Six mois après le dernier jour, la fiche est anonymisée une fois par jour, à
+la première requête applicative (`_anonymisation_quotidienne`) ; elle ne peut
+plus alors qu'être consultée ou supprimée.
 """
 from contextlib import closing
 import logging
@@ -25,6 +29,38 @@ stagiaires_bp = Blueprint('stagiaires_bp', __name__)
 logger = logging.getLogger(__name__)
 
 _ERREUR_TECHNIQUE = 'Enregistrement impossible. Réessayez dans un instant.'
+_FICHE_ANONYMISEE = ('Cette fiche a été anonymisée six mois après la fin du stage : '
+                     'elle ne peut plus être modifiée, seulement supprimée.')
+
+# Dernier jour où l'anonymisation a tourné dans ce processus : évite une
+# écriture à chaque requête. La requête SQL reste idempotente entre workers.
+_anonymisation_traitee = None
+
+
+@stagiaires_bp.before_app_request
+def _anonymisation_quotidienne():
+    """Anonymise les stages terminés depuis six mois, une fois par jour.
+
+    Sans planificateur externe, comme la synthèse quotidienne de la direction :
+    la première requête du jour s'en charge, quelle que soit la page ouverte,
+    pour que l'effacement ne dépende pas d'une visite de la page Stagiaires.
+    Ne doit jamais faire échouer la requête en cours.
+    """
+    global _anonymisation_traitee
+    if request.endpoint in (None, 'static'):
+        return
+    try:
+        jour = aujourd_hui()
+        if _anonymisation_traitee == jour:
+            return
+        with closing(get_db()) as conn:
+            nb = service.anonymiser_stages_termines(conn, jour, _horodatage())
+            conn.commit()
+        _anonymisation_traitee = jour
+        if nb:
+            logger.info('Stagiaires : %s fiche(s) anonymisée(s)', nb)
+    except Exception:
+        logger.exception('Anonymisation des stagiaires : erreur ignorée')
 
 
 def _autoriser():
@@ -45,15 +81,15 @@ def _stagiaire(conn, stagiaire_id):
 
 
 def _tuteurs(conn, tuteur_actuel=None):
-    """Comptes proposés comme tuteur : les comptes actifs du centre.
+    """Comptes proposés comme tuteur : les responsables actifs.
 
-    Le tuteur déjà désigné reste proposé si son compte a été désactivé depuis,
-    pour que la fiche puisse être corrigée sans changer de tuteur.
+    Le tuteur déjà désigné reste proposé si son compte a été désactivé (ou son
+    profil changé) depuis, pour corriger la fiche sans changer de tuteur.
     """
     return conn.execute(
         '''SELECT u.id, u.nom, u.prenom, u.actif, se.nom AS secteur
            FROM users u LEFT JOIN secteurs se ON se.id = u.secteur_id
-           WHERE (u.actif = 1 AND u.profil != 'prestataire') OR u.id = ?
+           WHERE (u.actif = 1 AND u.profil = 'responsable') OR u.id = ?
            ORDER BY u.nom COLLATE NOCASE, u.prenom COLLATE NOCASE''',
         (tuteur_actuel,)
     ).fetchall()
@@ -212,6 +248,10 @@ def modifier(stagiaire_id):
             if refus is not None:
                 return refus
             stagiaire = _stagiaire(conn, stagiaire_id)
+            if stagiaire['anonymise_le']:
+                conn.rollback()
+                flash(_FICHE_ANONYMISEE, 'error')
+                return redirect(url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id))
             v = service.valider_fiche(request.form, conn, tuteur_actuel=stagiaire['tuteur_id'])
             conn.execute(
                 '''UPDATE stagiaires SET nom = ?, prenom = ?, etudes = ?, etablissement = ?,
@@ -255,6 +295,10 @@ def emploi_du_temps(stagiaire_id):
             if refus is not None:
                 return refus
             stagiaire = _stagiaire(conn, stagiaire_id)
+            if stagiaire['anonymise_le']:
+                conn.rollback()
+                flash(_FICHE_ANONYMISEE, 'error')
+                return redirect(url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id))
             jours = service.jours_du_stage(stagiaire['date_debut'], stagiaire['date_fin'])
             secteurs_ids = {r['id'] for r in _secteurs(conn)}
             creneaux = service.lire_emploi_du_temps(request.form, jours, secteurs_ids)
