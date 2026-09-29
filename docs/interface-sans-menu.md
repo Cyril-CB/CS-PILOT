@@ -44,9 +44,11 @@ est appliqué à la source, dans `dashboard_actions.construire_actions()` et
 
 - **Le fil** : uniquement ce qui attend une décision — demandes de congé et de
   récupération à valider, factures à approuver, étapes de subventions échues,
-  relances de fiches, alertes de surcharge. Chaque carte porte ses boutons
-  d'action : valider, refuser, approuver, marquer comme fait, relancer. La
-  carte disparaît une fois traitée et l'anneau de progression avance.
+  relances de fiches, alertes de surcharge — et, pour le responsable du
+  secteur d'accueil, l'arrivée d'un stagiaire le jour même ou le lendemain
+  (voir [le suivi des stagiaires](stagiaires.md)). Chaque carte porte ses
+  boutons d'action : valider, refuser, approuver, marquer comme fait, relancer.
+  La carte disparaît une fois traitée et l'anneau de progression avance.
 - **« À l'horizon »** : ce qui arrive sans rien demander aujourd'hui, en deux
   lignes à défilement horizontal — *RH* (fins de contrat, retours d'absence
   longue) et *Échéances* (étapes de subventions, tâches du planificateur).
@@ -253,7 +255,7 @@ concurrencé : aucune page ne porte le nom d'une facture ou d'un salarié.
 Le vocabulaire est la première cause de déception d'une barre de recherche : une
 requête qui ne trouve rien se lit comme une panne. `tests/test_search_dictionnaire.py`
 en fait donc une propriété mesurée, pas une impression. Il fait passer un corpus
-de **142 formulations telles qu'un utilisateur les tape** — mot unique, pluriel,
+de **145 formulations telles qu'un utilisateur les tape** — mot unique, pluriel,
 phrase parlée, jargon du secteur, abréviation, faute de frappe — et vérifie où
 atterrit chacune. La comparaison porte sur le chemin d'arrivée : la page
 « Compte de résultat & bilan » de la carte et le résultat « Compte de résultat

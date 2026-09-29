@@ -33,6 +33,8 @@ from blueprints.delegations import (MISSION_SUIVI_COMMANDES_FOURNITURES,
                                     MISSION_SUIVI_VALIDATIONS_RELANCES,
                                     user_has_delegation)
 import flux_circuits
+from stagiaires import (fin_fenetre_annonce, moment as moment_stagiaire,
+                        quand as quand_stagiaire)
 from utils import (NOMS_MOIS, aujourd_hui, calculer_solde_recup, get_setting,
                    save_setting)
 
@@ -683,6 +685,79 @@ def _contrats_sans_pdf(conn, profil, today):
     return actions
 
 
+def _stagiaires_attendus(conn, profil, secteur_id, today):
+    """Stagiaires que le secteur du responsable accueille aujourd'hui ou au
+    prochain jour ouvré.
+
+    Une arrivée s'annonce la veille, pour laisser le temps d'organiser
+    l'accueil ; le vendredi annonce donc aussi le lundi
+    (`stagiaires.fin_fenetre_annonce`). La carte nomme le stagiaire et ne
+    demande rien d'autre : elle disparaît le jour passé. Seul le responsable du
+    secteur d'accueil la reçoit — c'est lui qui accueille ; la direction suit
+    les stages depuis leur page.
+    """
+    if profil != 'responsable' or not secteur_id:
+        return []
+    fin = fin_fenetre_annonce(today)
+    rows = conn.execute(
+        '''SELECT c.stagiaire_id, c.date, c.demi_journee,
+                  s.nom, s.prenom, s.etudes, s.etablissement,
+                  t.prenom AS tuteur_prenom, t.nom AS tuteur_nom
+           FROM stagiaires_creneaux c
+           JOIN stagiaires s ON s.id = c.stagiaire_id
+           LEFT JOIN users t ON t.id = s.tuteur_id
+           WHERE c.secteur_id = ? AND c.date >= ? AND c.date <= ?
+           ORDER BY c.date, s.nom, s.prenom, s.id''',
+        (secteur_id, today.isoformat(), fin.isoformat())
+    ).fetchall()
+
+    # Une carte par stagiaire et par jour : le matin et l'après-midi du même
+    # jour ne font qu'une arrivée.
+    visites = {}
+    for r in rows:
+        cle = (r['date'], r['stagiaire_id'])
+        if cle not in visites:
+            visites[cle] = {'ligne': r, 'demi_journees': set()}
+        visites[cle]['demi_journees'].add(r['demi_journee'])
+    if not visites:
+        return []
+
+    actions = []
+    for (jour_iso, stagiaire_id), visite in list(visites.items())[:MAX_CARTES_NOMMEES]:
+        r = visite['ligne']
+        jour = _to_date(jour_iso)
+        parts = [moment_stagiaire(visite['demi_journees'])]
+        etudes = ' · '.join(p for p in (r['etudes'], r['etablissement']) if p)
+        if etudes:
+            parts.append(etudes)
+        if r['tuteur_nom']:
+            parts.append(f"tuteur : {r['tuteur_prenom']} {r['tuteur_nom']}")
+        actions.append({
+            'id': f"stagiaire-{stagiaire_id}-{jour_iso}",
+            'categorie': 'stagiaire',
+            'type': 'lien',
+            'icone': '🎓',
+            'titre': (f"{quand_stagiaire(jour, today)}, accueil d’un(e) stagiaire "
+                      f"sur votre secteur : {r['prenom']} {r['nom']}"),
+            'detail': ' — '.join(parts),
+            'lien': url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id,
+                            _anchor='emploi-du-temps'),
+            'lien_texte': 'Voir le stage',
+            'urgence': 'urgent',
+        })
+
+    reste = len(visites) - len(actions)
+    if reste > 0:
+        carte = _reste(
+            reste, f"accueil{'s' if reste > 1 else ''} de stagiaire",
+            url_for('stagiaires_bp.liste'), 'Stagiaires',
+            'stagiaires', '🎓', 'stagiaire')
+        # Une arrivée ne se « traite » pas : le détail générique ne convient pas.
+        carte['detail'] = 'à retrouver dans la liste des stagiaires'
+        actions.append(carte)
+    return actions
+
+
 def construire_actions(conn, profil, user_id, secteur_id=None,
                        etendu=False, seuils=None, surcharges=None):
     """Retourne la liste des actions à faire du tableau de bord d'un profil.
@@ -708,6 +783,13 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     # servir la branche « toutes les demandes » exposerait les congés, les
     # dates et les soldes de tout le monde.
     valide_des_demandes = profil in ('directeur', 'comptable', 'responsable')
+
+    # 0. Stagiaires attendus sur le secteur. Placés en tête : à urgence égale,
+    # le tri conserve l'ordre d'insertion, et une arrivée ne se reporte pas.
+    try:
+        actions.extend(_stagiaires_attendus(conn, profil, secteur_id, today))
+    except Exception:
+        logger.warning("Fil d'actions : _stagiaires_attendus indisponible", exc_info=True)
 
     # 1. Demandes de récupération / congé à valider.
     if profil == 'responsable':

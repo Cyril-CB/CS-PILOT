@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% block title %}{{ (stagiaire.prenom ~ ' ' ~ stagiaire.nom) if stagiaire else 'Nouveau stagiaire' }} — Stagiaires — CS PILOT{% endblock %}
+{% block content %}
+<div class="stagiaires-page">
+    <p class="stagiaires-retour"><a class="btn btn-secondary btn-sm" href="{{ url_for('stagiaires_bp.liste') }}">← Tous les stagiaires</a></p>
+    <h1>{{ (stagiaire.prenom ~ ' ' ~ stagiaire.nom) if stagiaire else 'Nouveau stagiaire' }}</h1>
+    {% if stagiaire %}<p>Stage du {{ stagiaire.date_debut[8:10] }}/{{ stagiaire.date_debut[5:7] }}/{{ stagiaire.date_debut[:4] }} au {{ stagiaire.date_fin[8:10] }}/{{ stagiaire.date_fin[5:7] }}/{{ stagiaire.date_fin[:4] }}.</p>
+    {% else %}<p>Renseignez la fiche, puis vous indiquerez les secteurs qui accueillent le stagiaire, demi-journée par demi-journée.</p>{% endif %}
+
+    {% if erreur %}<div class="alert alert-error" role="alert">{{ erreur }}</div>{% endif %}
+
+    <section class="proposition-carte" aria-labelledby="stagiaire-infos">
+        <h2 id="stagiaire-infos">Informations</h2>
+        <form method="post" action="{{ url_for('stagiaires_bp.modifier', stagiaire_id=stagiaire.id) if stagiaire else url_for('stagiaires_bp.nouveau') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="proposition-grille">
+                <div class="form-group"><label for="prenom">Prénom</label><input id="prenom" name="prenom" type="text" required maxlength="{{ limites.nom }}" autocomplete="off" value="{{ valeurs.prenom or '' }}"></div>
+                <div class="form-group"><label for="nom">Nom</label><input id="nom" name="nom" type="text" required maxlength="{{ limites.nom }}" autocomplete="off" value="{{ valeurs.nom or '' }}"></div>
+                <div class="form-group">
+                    <label for="etudes">Études</label>
+                    <input id="etudes" name="etudes" type="text" maxlength="{{ limites.etudes }}" list="stagiaire-etudes" placeholder="Ex. 3e" autocomplete="off" value="{{ valeurs.etudes or '' }}">
+                    <datalist id="stagiaire-etudes">{% for e in suggestions_etudes %}<option value="{{ e }}">{% endfor %}</datalist>
+                </div>
+                <div class="form-group"><label for="etablissement">Lieu d’études</label><input id="etablissement" name="etablissement" type="text" maxlength="{{ limites.etablissement }}" placeholder="Ex. Collège Jean Moulin, Ville" autocomplete="off" value="{{ valeurs.etablissement or '' }}"></div>
+                <div class="form-group">
+                    <label for="tuteur_id">Tuteur dans la structure</label>
+                    <select id="tuteur_id" name="tuteur_id">
+                        <option value="">— À désigner —</option>
+                        {% for t in tuteurs %}
+                        <option value="{{ t.id }}"{% if valeurs.tuteur_id|string == t.id|string %} selected{% endif %}>{{ t.prenom }} {{ t.nom }}{% if t.secteur %} · {{ t.secteur }}{% endif %}{% if not t.actif %} (compte désactivé){% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div></div>
+                <div class="form-group"><label for="date_debut">Premier jour</label><input id="date_debut" name="date_debut" type="date" required value="{{ valeurs.date_debut or '' }}"></div>
+                <div class="form-group"><label for="date_fin">Dernier jour</label><input id="date_fin" name="date_fin" type="date" required value="{{ valeurs.date_fin or '' }}" aria-describedby="aide-periode"></div>
+            </div>
+            <p class="help-text" id="aide-periode">Période de {{ max_jours }} jours au plus.{% if stagiaire %} Raccourcir la période retire de l’emploi du temps les demi-journées qui en sortent.{% endif %}</p>
+            <div class="proposition-actions">
+                <button class="btn btn-primary" type="submit">{{ 'Enregistrer la fiche' if stagiaire else 'Créer la fiche' }}</button>
+                {% if not stagiaire %}<a class="btn btn-secondary" href="{{ url_for('stagiaires_bp.liste') }}">Annuler</a>{% endif %}
+            </div>
+        </form>
+    </section>
+
+    {% if stagiaire %}
+    <section class="proposition-carte" id="emploi-du-temps" aria-labelledby="stagiaire-edt">
+        <h2 id="stagiaire-edt">Emploi du temps</h2>
+        <p>Choisissez, pour chaque demi-journée, le secteur qui accueille {{ stagiaire.prenom }}. Laissez « — » s’il n’est pas au centre. Le responsable du secteur voit l’arrivée dans son fil d’actions la veille (le vendredi pour le lundi).</p>
+        {% if not secteurs %}
+        <p class="stagiaires-aide">Aucun secteur n’est encore créé : la direction les ajoute dans Administration → Secteurs.</p>
+        {% else %}
+        <form method="post" action="{{ url_for('stagiaires_bp.emploi_du_temps', stagiaire_id=stagiaire.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="stagiaires-grille">
+                {% for jour in jours %}
+                <fieldset class="stagiaires-jour{% if jour.week_end %} stagiaires-jour-weekend{% endif %}">
+                    <legend>{{ jour.libelle }}</legend>
+                    {% for cle, libelle in demi_journees %}
+                    {% set choisi = creneaux.get((jour.date.isoformat(), cle)) %}
+                    <div class="form-group">
+                        <label for="{{ jour.champs[cle] }}">{{ libelle }}</label>
+                        <select id="{{ jour.champs[cle] }}" name="{{ jour.champs[cle] }}">
+                            <option value="">—</option>
+                            {% for s in secteurs %}<option value="{{ s.id }}"{% if choisi == s.id %} selected{% endif %}>{{ s.nom }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                </fieldset>
+                {% endfor %}
+            </div>
+            <div class="proposition-actions">
+                <button class="btn btn-primary" type="submit">Enregistrer l’emploi du temps</button>
+                <span class="stagiaires-aide">{{ nb_renseignes }} demi-journée{{ 's' if nb_renseignes > 1 }} au centre sur {{ jours|length * 2 }}.</span>
+            </div>
+        </form>
+        {% endif %}
+    </section>
+
+    <section class="proposition-carte" aria-labelledby="stagiaire-suppression">
+        <h2 id="stagiaire-suppression">Supprimer la fiche</h2>
+        <p>La fiche et l’emploi du temps sont définitivement effacés.</p>
+        <form method="post" action="{{ url_for('stagiaires_bp.supprimer', stagiaire_id=stagiaire.id) }}" onsubmit="return confirm('Supprimer définitivement la fiche de ce stagiaire ?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-danger" type="submit">Supprimer la fiche</button>
+        </form>
+    </section>
+    {% if stagiaire.modifie_le or stagiaire.cree_le %}<p class="stagiaires-aide">{% if stagiaire.modifie_le %}Dernière modification : {{ stagiaire.modifie_le[8:10] }}/{{ stagiaire.modifie_le[5:7] }}/{{ stagiaire.modifie_le[:4] }}.{% else %}Créée le {{ stagiaire.cree_le[8:10] }}/{{ stagiaire.cree_le[5:7] }}/{{ stagiaire.cree_le[:4] }}.{% endif %}</p>{% endif %}
+    {% endif %}
+</div>
+{% endblock %}

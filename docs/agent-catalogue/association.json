@@ -354,6 +354,111 @@
       ]
     },
     {
+      "id": "association.stagiaires_suivi",
+      "title": "Suivi des stagiaires et de leur emploi du temps",
+      "purpose": "Tenir la liste des stagiaires accueillis au centre (stages d'observation de 3e notamment), leur tuteur et le secteur qui les reçoit à chaque demi-journée, et prévenir le responsable du secteur de leur arrivée.",
+      "example_requests": [
+        "suivi des stagiaires",
+        "stage de 3e",
+        "tuteur du stagiaire",
+        "quel secteur accueille le stagiaire demain"
+      ],
+      "capabilities": [
+        "Fiche stagiaire : nom, prénom, études et lieu d'études libres (suggestions 3e, Seconde, Bac pro…), tuteur choisi parmi les comptes actifs hors prestataire, premier et dernier jour ; aucune coordonnée ni date de naissance.",
+        "Emploi du temps par demi-journée (matin / après-midi) sur tous les jours de la période, week-ends compris, chaque demi-journée rattachée à un secteur ou laissée vide ; enregistrement complet en une transaction.",
+        "Période de 92 jours au plus ; raccourcir la période retire les demi-journées sorties, avec message indiquant leur nombre.",
+        "Liste en cours / à venir, stages terminés repliés, secteurs d'accueil et tuteur ; suppression définitive de la fiche et de son emploi du temps.",
+        "Carte « Aujourd'hui/Demain/Lundi…, accueil d’un(e) stagiaire sur votre secteur : Prénom Nom » dans le fil du responsable du secteur d'accueil et dans « Actions à faire » de son tableau de bord classique ; fenêtre jusqu'au prochain jour du lundi au vendredi, deux cartes nommées puis « et N autres ».",
+        "Accès par la zone Vie associative, la barre intelligente et le menu latéral des trois profils gestionnaires.",
+        "Migration 0075 idempotente et schéma neuf commun ; tables couvertes par le diagnostic et la sauvegarde de résilience."
+      ],
+      "entry_points": [
+        "stagiaires_bp.liste",
+        "stagiaires_bp.nouveau",
+        "stagiaires_bp.fiche",
+        "stagiaires_bp.modifier",
+        "stagiaires_bp.emploi_du_temps",
+        "stagiaires_bp.supprimer"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/stagiaires.py"
+        ],
+        "service_files": [
+          "stagiaires.py",
+          "schema_stagiaires.py",
+          "dashboard_actions.py",
+          "database.py",
+          "resilience.py",
+          "navigation.py",
+          "app.py",
+          "static/css/style.css",
+          "migrations/0075_suivi_stagiaires.py"
+        ],
+        "templates": [
+          "templates/stagiaires_liste.html",
+          "templates/stagiaire_fiche.html",
+          "templates/_flux_actions.html",
+          "templates/base.html"
+        ],
+        "tables": [
+          "stagiaires",
+          "stagiaires_creneaux",
+          "secteurs",
+          "users"
+        ],
+        "tests": [
+          "tests/test_stagiaires.py",
+          "tests/test_search_dictionnaire.py",
+          "tests/test_migrations_resilience.py"
+        ],
+        "docs": [
+          "docs/stagiaires.md",
+          "docs/interface-sans-menu.md"
+        ]
+      },
+      "access": {
+        "summary": "Direction, comptabilité et responsables : lecture et écriture de toutes les fiches. Salarié, prestataire et visiteur : refus (403 ou connexion), même par URL directe.",
+        "scope": "Toutes les fiches du centre, sans cloisonnement par secteur : un stagiaire passe d'un secteur à l'autre. La carte du fil est limitée au responsable dont le secteur (users.secteur_id) accueille une demi-journée.",
+        "conditions": [
+          "Compte actif et session courante ; session et profil revérifiés sous BEGIN IMMEDIATE pour chaque écriture.",
+          "CSRF requis sur les formulaires ; identifiants, dates et secteurs reçus du navigateur revalidés côté serveur.",
+          "Seuls les jours de la période enregistrée sont lus dans le formulaire d'emploi du temps."
+        ],
+        "sources": [
+          "blueprints/stagiaires.py",
+          "stagiaires.py",
+          "sessions_securite.py",
+          "dashboard_actions.py"
+        ]
+      },
+      "invariants": [
+        "date_fin ≥ date_debut (contrainte SQLite) et période ≤ 92 jours ; une demi-journée au plus par stagiaire, date et moment.",
+        "Un secteur inconnu refuse tout l'enregistrement de l'emploi du temps sans rien modifier.",
+        "Un tuteur dont le compte a été désactivé reste accepté tant qu'il n'est pas changé ; un nouveau tuteur doit être un compte actif hors prestataire.",
+        "La carte du fil ne demande aucune action et ne juge pas : elle nomme le stagiaire, le moment, les études et le tuteur."
+      ],
+      "extension_points": [
+        "Ajouter une annonce au tuteur ou à la direction dans dashboard_actions._stagiaires_attendus en conservant la règle du fil (nommer, deux cartes au plus).",
+        "Ajouter une échéance « arrivée de stagiaire » à flux_accueil.construire_horizon si l'anticipation au-delà de la veille est demandée.",
+        "Une purge automatique des stages terminés devrait être décidée (durée de conservation) avant d'être codée."
+      ],
+      "related_features": [
+        "administration.secteurs",
+        "interface.accueil_flux",
+        "interface.tableau_bord_responsable",
+        "interface.navigation",
+        "interface.recherche"
+      ],
+      "limitations": [
+        "Jours fériés et fermetures du centre non pris en compte, ni dans la grille ni dans la fenêtre d'annonce.",
+        "Aucune pièce jointe (convention de stage), aucune coordonnée de l'établissement ni du représentant légal.",
+        "Aucun historique des modifications au-delà de l'auteur et de la date de la dernière modification ; dernière écriture gagnante en cas d'édition simultanée.",
+        "Pas de purge automatique : la suppression des fiches de stages terminés reste manuelle.",
+        "Le tuteur n'est pas averti et ne voit pas la fiche s'il n'a pas un profil gestionnaire."
+      ]
+    },
+    {
       "id": "association.salles_reservations",
       "title": "Salles, disponibilités et réservations ponctuelles",
       "purpose": "Consulter l’occupation des salles et réserver un créneau disponible.",

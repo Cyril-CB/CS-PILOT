@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Stagiaires — CS PILOT{% endblock %}
+{% macro periode(s) -%}
+{{ s.date_debut[8:10] }}/{{ s.date_debut[5:7] }}/{{ s.date_debut[:4] }}{% if s.date_fin != s.date_debut %} → {{ s.date_fin[8:10] }}/{{ s.date_fin[5:7] }}/{{ s.date_fin[:4] }}{% endif %}
+{%- endmacro %}
+{% macro tableau(lignes, legende) %}
+<div class="table-responsive">
+    <table class="data-table data-table-cards stagiaires-table" aria-label="{{ legende }}">
+        <thead>
+            <tr>
+                <th scope="col">Stagiaire</th>
+                <th scope="col">Études · établissement</th>
+                <th scope="col">Tuteur</th>
+                <th scope="col">Période</th>
+                <th scope="col">Secteurs d’accueil</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in lignes %}
+            <tr>
+                <td data-label="Stagiaire"><a class="proposition-lien-titre" href="{{ url_for('stagiaires_bp.fiche', stagiaire_id=s.id) }}">{{ s.prenom }} {{ s.nom }}</a></td>
+                <td data-label="Études">{{ [s.etudes, s.etablissement]|select|join(' · ') or '—' }}</td>
+                <td data-label="Tuteur">{% if s.tuteur_nom %}{{ s.tuteur_prenom }} {{ s.tuteur_nom }}{% else %}<span class="stagiaires-aide">À désigner</span>{% endif %}</td>
+                <td class="stagiaires-periode" data-label="Période">{{ periode(s) }}</td>
+                <td data-label="Secteurs">{% if secteurs.get(s.id) %}{{ secteurs[s.id]|join(', ') }}{% else %}<span class="stagiaires-aide">Emploi du temps à remplir</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="stagiaires-page">
+    <div class="proposition-entete">
+        <div>
+            <h1>Stagiaires</h1>
+            <p>Les stagiaires accueillis au centre, leur tuteur et les secteurs qui les reçoivent, demi-journée par demi-journée.</p>
+        </div>
+        <a class="btn btn-primary" href="{{ url_for('stagiaires_bp.nouveau') }}">Ajouter un stagiaire</a>
+    </div>
+
+    {% if aucun %}
+    <section class="proposition-carte">
+        <h2>Aucun stagiaire enregistré</h2>
+        <p>Ajoutez un stagiaire, puis indiquez quel secteur l’accueille chaque matin et chaque après-midi : le responsable du secteur en sera averti la veille dans son fil d’actions.</p>
+    </section>
+    {% else %}
+    {% for titre, lignes in groupes %}
+    <section class="proposition-carte" aria-labelledby="stagiaires-{{ loop.index }}">
+        <h2 id="stagiaires-{{ loop.index }}">{{ titre }} <span class="stagiaires-compte">{{ lignes|length }}</span></h2>
+        {% if lignes %}{{ tableau(lignes, titre) }}{% else %}<p class="stagiaires-aide">Aucun stage {{ 'en cours' if loop.first else 'à venir' }}.</p>{% endif %}
+    </section>
+    {% endfor %}
+    {% if termines %}
+    <details class="proposition-carte">
+        <summary>Stages terminés ({{ termines|length }})</summary>
+        {{ tableau(termines, 'Stages terminés') }}
+    </details>
+    {% endif %}
+    {% endif %}
+
+    <p class="stagiaires-aide">Les fiches ne sont pas supprimées automatiquement. Ne renseignez que ce qui sert à l’accueil et retirez les fiches des stages terminés dont le suivi n’est plus utile.</p>
+</div>
+{% endblock %}

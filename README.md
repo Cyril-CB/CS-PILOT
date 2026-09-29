@@ -109,6 +109,12 @@ classique depuis « Mon espace ».
 - Gestion des benevoles avec suivi des heures assignees
 - Delegation possible de la page benevoles (repertoire complet et suivi des heures) a un ou plusieurs salaries, depuis la page Delegation
 
+### Stagiaires
+- Fiche des stagiaires accueillis (etudes, lieu d'etudes, tuteur dans la structure, periode)
+- Emploi du temps par demi-journee : le secteur qui accueille le stagiaire chaque matin et chaque apres-midi
+- Annonce la veille (le vendredi pour le lundi) dans le fil d'actions du responsable du secteur d'accueil
+- [Droits, regles et limites](docs/stagiaires.md)
+
 ### CSE (Comite Social et Economique)
 - Accessible depuis le menu **RH & Paie**
 - Designation des membres du CSE par la direction et la comptabilite (liste deroulante des salaries, ajout / suppression)

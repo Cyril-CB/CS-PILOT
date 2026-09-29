@@ -9,7 +9,8 @@
                               'facture': 'Factures & achats',
                               'subvention': 'Financier',
                               'surcharge': 'Temps & plannings',
-                              'conges': 'RH & Paie'} %}
+                              'conges': 'RH & Paie',
+                              'stagiaire': 'Vie associative'} %}
 {% for a in actions %}
 {% set ton = tons.get(a.urgence, tons['normal']) %}
 <div class="flx-carte {{ ton[0] }}" data-flx-item data-flx-id="{{ a.id }}">
