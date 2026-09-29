@@ -473,3 +473,15 @@ def test_badge_du_fil_dit_le_vrai_jour(resp_client, db, sample_users):
     texte = resp_client.get('/accueil').get_data(as_text=True)
     badge = 'Demain' if (demain - aujourd_hui()).days == 1 else 'Lundi'
     assert f'<span class="flx-badge">{badge}</span>' in texte
+
+
+def test_le_vendredi_annonce_tout_le_week_end(app, db, sample_users, monkeypatch):
+    """Choix voulu : une arrivée du dimanche ne serait vue par personne le samedi."""
+    secteur = sample_users['secteur_id']
+    stagiaire_id = _stagiaire(db, debut='2026-10-10', fin='2026-10-13')
+    for jour in ('2026-10-10', '2026-10-11', '2026-10-12', '2026-10-13'):
+        _creneau(db, stagiaire_id, jour, 'matin', secteur)
+    _, cartes = _cartes_stagiaires(app, db, monkeypatch, 'responsable',
+                                   sample_users['responsable_id'], secteur, date(2026, 10, 9))
+    assert [c['badge'] for c in cartes[:2]] == ['Demain', 'Dimanche']
+    assert cartes[2]['titre'] == 'et 1 autre accueil de stagiaire'

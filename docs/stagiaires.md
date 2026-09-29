@@ -58,7 +58,9 @@ d'actions (et dans « Actions à faire » du tableau de bord classique) :
 > Toute la journée — 3e · Collège Jean Moulin — tuteur : Jean Martin
 
 - La carte paraît **le jour même et la veille**. Du lundi au jeudi, la veille
-  est le jour précédent ; le vendredi (et le week-end) annonce aussi le lundi.
+  est le jour précédent. Le vendredi annonce tout ce qui arrive jusqu'au lundi
+  inclus — samedi et dimanche compris, puisque personne ne consulte le fil le
+  week-end ; le samedi et le dimanche annoncent de même jusqu'au lundi.
   Les jours fériés ne sont pas pris en compte.
 - Une carte par stagiaire et par jour : matin et après-midi sur le même secteur
   donnent « Toute la journée ».

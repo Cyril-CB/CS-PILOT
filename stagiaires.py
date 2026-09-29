@@ -162,8 +162,9 @@ def fin_fenetre_annonce(today):
     """Dernier jour annoncé dans le fil : le prochain jour du lundi au vendredi.
 
     Du lundi au jeudi, c'est le lendemain. Le vendredi et le week-end, la
-    fenêtre s'étend jusqu'au lundi : l'arrivée du lundi s'annonce avant le
-    week-end, pas le matin même. Les jours fériés ne sont pas pris en compte.
+    fenêtre s'étend jusqu'au lundi et couvre tout le week-end : une arrivée du
+    samedi, du dimanche ou du lundi s'annonce avant le week-end, faute de quoi
+    personne ne la verrait à temps. Les jours fériés ne sont pas pris en compte.
     """
     jour = today + timedelta(days=1)
     while jour.weekday() >= 5:
