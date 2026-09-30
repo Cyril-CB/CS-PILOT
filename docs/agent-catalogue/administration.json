@@ -222,10 +222,12 @@
         "tables": [
           "secteurs",
           "types_secteur",
-          "users"
+          "users",
+          "stagiaires_creneaux"
         ],
         "tests": [
-          "tests/test_administration_acces.py"
+          "tests/test_administration_acces.py",
+          "tests/test_stagiaires.py"
         ],
         "docs": [
           "docs/quick-start.md"
@@ -245,7 +247,8 @@
         "La suppression d’un secteur ayant des utilisateurs est refusée.",
         "La suppression d’un type encore utilisé par un secteur est refusée.",
         "Les codes de type contiennent uniquement lettres minuscules et underscores, dans une limite de 50 caractères.",
-        "Les synonymes doivent rester associés au secteur existant et ne pas créer un deuxième secteur pour une autre formulation."
+        "Les synonymes doivent rester associés au secteur existant et ne pas créer un deuxième secteur pour une autre formulation.",
+        "Supprimer un secteur sans utilisateur retire dans la même transaction les demi-journées de stagiaires (stagiaires_creneaux) qui lui sont rattachées : PRAGMA foreign_keys n'étant pas activé, un orphelin ferait échouer le diagnostic de résilience."
       ],
       "extension_points": [
         "Réutiliser secteurs.synonymes pour enrichir la recherche avant de développer un nouveau parcours.",
@@ -253,6 +256,7 @@
       ],
       "related_features": [
         "administration.gestion_comptes",
+        "association.stagiaires_suivi",
         "finances.budgets_secteurs",
         "finances.plan_analytique",
         "interface.recherche",

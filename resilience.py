@@ -105,6 +105,7 @@ TABLES_REQUISES = {
     '0072': ('propositions_amelioration', 'propositions_pieces'),
     '0073': ('identite_centre', 'identite_centre_champs', 'identite_centre_documents'),
     '0074': ('cse_messages_lectures',),
+    '0075': ('stagiaires', 'stagiaires_creneaux'),
 }
 
 

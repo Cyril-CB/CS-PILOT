@@ -5230,3 +5230,44 @@ body.flx #cspChatWindow { bottom: 154px; }
     .flx-page-titre h1 { font-size: 1.5rem; }
     .flx-pied { padding: 0 12px 14px; }
 }
+
+/* Stagiaires : cartes, tableaux et champs partagés avec les pages métier. */
+.stagiaires-page { max-width: 1000px; margin: 0 auto; overflow-wrap: anywhere; }
+.stagiaires-page h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0 0 12px; }
+.stagiaires-page h2 { font-size: 1.15rem; margin: 0 0 16px; }
+.stagiaires-page p { line-height: 1.6; margin-bottom: 12px; }
+.stagiaires-page details > summary { cursor: pointer; font-weight: 600; }
+.stagiaires-page details[open] > summary { margin-bottom: 16px; }
+.stagiaires-page a:focus-visible, .stagiaires-page button:focus-visible,
+.stagiaires-page summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.stagiaires-aide { color: var(--gray-500); font-size: .9rem; }
+.stagiaires-compte {
+    display: inline-block; min-width: 1.6em; padding: 1px 8px; margin-left: 6px;
+    border-radius: 20px; background: var(--gray-100); color: var(--gray-700);
+    font-size: .85rem; font-weight: 600; text-align: center;
+}
+.stagiaires-table { overflow-wrap: normal; }
+.stagiaires-periode { white-space: nowrap; }
+@media (min-width: 769px) {
+    .stagiaires-table td:first-child, .stagiaires-table td:nth-child(3) { white-space: nowrap; }
+}
+.stagiaires-grille { display: grid; gap: 12px; margin-bottom: 8px; }
+.stagiaires-jour {
+    display: grid; grid-template-columns: minmax(160px, 1fr) 2fr 2fr; align-items: end; gap: 16px;
+    margin: 0; padding: 12px 16px; border: 1px solid var(--gray-200); border-radius: var(--radius-md);
+    background: var(--white);
+}
+.stagiaires-jour legend {
+    float: left; padding: 0; align-self: center; font-weight: 600; color: var(--gray-700);
+}
+.stagiaires-jour .form-group { margin-bottom: 0; }
+.stagiaires-jour-weekend { background: var(--gray-50); }
+.stagiaires-jour-weekend legend { color: var(--gray-500); font-weight: 500; }
+@media (max-width: 600px) {
+    .stagiaires-page .proposition-carte { padding: 18px 14px; }
+    /* Une liste par ligne : un nom de secteur tronqué ne se relit pas. */
+    .stagiaires-jour { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+    body:not(.flx) .stagiaires-page > .stagiaires-retour,
+    body:not(.flx) .stagiaires-page > .proposition-entete h1 { padding-left: 44px; }
+}
+.stagiaires-lecture { border: 0; margin: 0; padding: 0; min-width: 0; }

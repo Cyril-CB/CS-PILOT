@@ -156,6 +156,10 @@ CORPUS = [
     ('directeur', "heures de bénévolat", '/benevoles'),
     ('directeur', "cse", '/cse'),
     ('directeur', "comité social et économique", '/cse'),
+    ('responsable', "stagiaires", '/stagiaires'),
+    ('responsable', "stage de 3e", '/stagiaires'),
+    ('responsable', "tuteur du stagiaire", '/stagiaires'),
+    ('directeur', "suivi des stagiaires", '/stagiaires'),
 
     # ── Mon espace ───────────────────────────────────────────────────────
     ('directeur', "mes compteurs", '/mon-espace'),
