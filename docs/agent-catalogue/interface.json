@@ -199,7 +199,7 @@
         "échéances à venir"
       ],
       "capabilities": [
-        "Fil partagé avec les tableaux de bord : congés/récupérations, fiches, approbations, fournitures, budgets dépassés, tâches du jour et préparation paie selon profil.",
+        "Fil partagé avec les tableaux de bord : congés/récupérations, fiches, approbations, fournitures, budgets dépassés, tâches du jour, préparation paie et, pour le responsable du secteur d'accueil, arrivées de stagiaires du jour et du prochain jour ouvré.",
         "Mode étendu direction/comptabilité intégrant seuils, surcharge, soldes de congés et relances.",
         "Horizon RH et échéances : fins de contrat, retours d'absence autorisés, étapes subventions et tâches personnelles jusqu'à 120 jours.",
         "Fragments HTML pour rafraîchir la file sans recharger la page.",
@@ -220,7 +220,8 @@
           "dashboard_actions.py",
           "flux_accueil.py",
           "flux_circuits.py",
-          "interface_flux.py"
+          "interface_flux.py",
+          "stagiaires.py"
         ],
         "templates": [
           "templates/accueil_flux.html",
@@ -240,13 +241,16 @@
           "subventions",
           "subventions_sous_elements",
           "commandes_salaries",
-          "planif_taches"
+          "planif_taches",
+          "stagiaires",
+          "stagiaires_creneaux"
         ],
         "tests": [
           "tests/test_interface_flux.py",
           "tests/test_dashboard_actions.py",
           "tests/test_flux_circuits.py",
-          "tests/test_circuit_fiches.py"
+          "tests/test_circuit_fiches.py",
+          "tests/test_stagiaires.py"
         ],
         "docs": [
           "docs/interface-sans-menu.md",
@@ -284,6 +288,7 @@
         "administration.relances_fiches",
         "association.commandes_fournitures",
         "association.planificateur_personnel",
+        "association.stagiaires_suivi",
         "association.subventions_suivi",
         "finances.approbation_factures",
         "interface.centre_controle",
@@ -452,7 +457,7 @@
       ],
       "capabilities": [
         "Effectifs et ETP issus des contrats, absences en cours et à venir, fiches et validations.",
-        "Demandes de congés/récupérations et actions à traiter.",
+        "Demandes de congés/récupérations et actions à traiter, dont les arrivées de stagiaires sur le secteur.",
         "Factures du secteur, budgets et subventions affectées au responsable.",
         "Compteurs personnels du responsable."
       ],
@@ -483,12 +488,15 @@
           "factures",
           "budgets",
           "budget_reel_lignes",
-          "subventions"
+          "subventions",
+          "stagiaires",
+          "stagiaires_creneaux"
         ],
         "tests": [
           "tests/test_dashboard_responsable.py",
           "tests/test_equipe_responsable.py",
-          "tests/test_dashboard_actions.py"
+          "tests/test_dashboard_actions.py",
+          "tests/test_stagiaires.py"
         ],
         "docs": [
           "docs/sessions-et-perimetres.md"
@@ -511,6 +519,7 @@
         "Réutiliser le scope RH existant pour un nouvel indicateur d'équipe et vérifier séparément le périmètre analytique."
       ],
       "related_features": [
+        "association.stagiaires_suivi",
         "rh.dossier_salarie",
         "temps.equipe_hebdomadaire"
       ],

@@ -348,6 +348,7 @@ from blueprints.contrats import contrats_bp
 from blueprints.recherche import recherche_bp
 from blueprints.propositions import propositions_bp
 from blueprints.identite_centre import identite_centre_bp
+from blueprints.stagiaires import stagiaires_bp
 from blueprints.accueil import accueil_bp
 
 app.register_blueprint(auth)
@@ -408,6 +409,7 @@ app.register_blueprint(contrats_bp)
 app.register_blueprint(recherche_bp)
 app.register_blueprint(propositions_bp)
 app.register_blueprint(identite_centre_bp)
+app.register_blueprint(stagiaires_bp)
 
 
 @app.context_processor

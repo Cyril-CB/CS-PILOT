@@ -380,6 +380,7 @@
                 {% endif %}
  	            {% endif %}
             {% if session.profil in ('directeur', 'comptable', 'responsable') %}
+            <a href="{{ url_for('stagiaires_bp.liste') }}" class="sidebar-link">🎓 Stagiaires</a>
             <a href="{{ url_for('identite_centre_bp.fiche') }}" class="sidebar-link">⌂ Identité du centre</a>
             {% endif %}
         </nav>
