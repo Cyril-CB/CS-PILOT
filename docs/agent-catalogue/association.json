@@ -369,10 +369,11 @@
         "Emploi du temps par demi-journée (matin / après-midi) sur tous les jours de la période, week-ends compris, chaque demi-journée rattachée à un secteur ou laissée vide ; enregistrement complet en une transaction.",
         "Période de 92 jours au plus ; raccourcir la période retire les demi-journées sorties, avec message indiquant leur nombre.",
         "Liste en cours / à venir, stages terminés repliés, secteurs d'accueil et tuteur ; suppression définitive de la fiche et de son emploi du temps.",
-        "Anonymisation automatique le jour où six mois calendaires sont écoulés depuis le dernier jour : nom remplacé par « Stagiaire-<id> », prénom et lieu d'études effacés, niveau, période, tuteur et secteurs conservés ; fiche ensuite en lecture seule (suppression possible). Déclenchée une fois par jour à la première requête applicative.",
+        "Anonymisation automatique le jour où six mois calendaires sont écoulés depuis le dernier jour : nom remplacé par « Stagiaire-<id> », prénom et lieu d'études effacés, niveau, période, tuteur et secteurs conservés ; fiche ensuite en lecture seule (suppression possible). Déclenchée une fois par jour à la première requête applicative. Toute création ou modification déjà échue est anonymisée dans la même transaction, même après le passage quotidien.",
         "Carte « Aujourd'hui/Demain/Lundi…, accueil d’un(e) stagiaire sur votre secteur : Prénom Nom » dans le fil du responsable du secteur d'accueil et dans « Actions à faire » de son tableau de bord classique ; fenêtre jusqu'au prochain jour du lundi au vendredi, deux cartes nommées puis « et N autres ».",
         "Accès par la zone Vie associative, la barre intelligente et le menu latéral des trois profils gestionnaires.",
-        "Migration 0075 idempotente et schéma neuf commun ; tables couvertes par le diagnostic et la sauvegarde de résilience."
+        "Migration 0075 idempotente et schéma neuf commun ; tables couvertes par le diagnostic et la sauvegarde de résilience.",
+        "Bouton « J’ai lu » individuel dans les deux interfaces ; la carte groupée liste les accueils acquittés. La lecture persiste par utilisateur, secteur, stagiaire et date, sans modifier la fiche ni les annonces des autres responsables. Migration 0076 et schéma neuf commun."
       ],
       "entry_points": [
         "stagiaires_bp.liste",
@@ -380,7 +381,8 @@
         "stagiaires_bp.fiche",
         "stagiaires_bp.modifier",
         "stagiaires_bp.emploi_du_temps",
-        "stagiaires_bp.supprimer"
+        "stagiaires_bp.supprimer",
+        "stagiaires_bp.lire_annonces"
       ],
       "implementation": {
         "route_files": [
@@ -396,24 +398,32 @@
           "navigation.py",
           "app.py",
           "static/css/style.css",
-          "migrations/0075_suivi_stagiaires.py"
+          "migrations/0075_suivi_stagiaires.py",
+          "schema_stagiaires_lectures.py",
+          "migrations/0076_lectures_annonces_stagiaires.py"
         ],
         "templates": [
           "templates/stagiaires_liste.html",
           "templates/stagiaire_fiche.html",
           "templates/_flux_actions.html",
-          "templates/base.html"
+          "templates/base.html",
+          "templates/_dashboard_actions.html",
+          "templates/accueil_flux.html"
         ],
         "tables": [
           "stagiaires",
           "stagiaires_creneaux",
           "secteurs",
-          "users"
+          "users",
+          "stagiaires_annonces_lectures"
         ],
         "tests": [
           "tests/test_stagiaires.py",
           "tests/test_search_dictionnaire.py",
-          "tests/test_migrations_resilience.py"
+          "tests/test_migrations_resilience.py",
+          "tests/test_stagiaires_lectures.py",
+          "tests/test_stagiaires_retention.py",
+          "tests/test_stagiaires_lectures_frontend.py"
         ],
         "docs": [
           "docs/stagiaires.md",
@@ -426,7 +436,8 @@
         "conditions": [
           "Compte actif et session courante ; session et profil revérifiés sous BEGIN IMMEDIATE pour chaque écriture.",
           "CSRF requis sur les formulaires ; identifiants, dates et secteurs reçus du navigateur revalidés côté serveur.",
-          "Seuls les jours de la période enregistrée sont lus dans le formulaire d'emploi du temps."
+          "Seuls les jours de la période enregistrée sont lus dans le formulaire d'emploi du temps.",
+          "La lecture est réservée au responsable actif du secteur d’accueil, dans la fenêtre d’annonce courante ; aucun user_id fourni par le navigateur n’est accepté comme destinataire."
         ],
         "sources": [
           "blueprints/stagiaires.py",
@@ -439,7 +450,7 @@
         "date_fin ≥ date_debut (contrainte SQLite) et période ≤ 92 jours ; une demi-journée au plus par stagiaire, date et moment.",
         "Un secteur inconnu refuse tout l'enregistrement de l'emploi du temps sans rien modifier.",
         "Un tuteur dont le compte a été désactivé (ou le profil changé) reste accepté tant qu'il n'est pas changé ; un nouveau tuteur doit être un responsable actif.",
-        "La carte du fil ne demande aucune action et ne juge pas : elle nomme le stagiaire, le moment, les études et le tuteur.",
+        "La carte du fil se termine par « J’ai lu » : seule la lecture personnelle est enregistrée ; date, secteur et session sont revérifiés sous verrou. Les compteurs se mettent à jour après succès.",
         "Une fiche anonymisée (anonymise_le renseigné) refuse côté serveur toute modification des informations et de l'emploi du temps ; l'anonymisation est idempotente.",
         "La suppression d'un secteur retire ses demi-journées ; la carte du fil garde l'urgence du jour mais son étiquette dit le jour réel (templates/_flux_actions.html, clé badge)."
       ],
