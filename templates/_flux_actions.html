@@ -39,6 +39,11 @@
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="subvention"
                 data-flx-ref="{{ a.id }}" data-se-id="{{ a.se_id }}">✓ C'est fait</button>
         <a href="{{ a.lien }}" class="flx-btn">Ouvrir</a>
+        {% elif a.type == 'stagiaire' %}
+        <button type="button" class="flx-btn flx-btn-plein" data-flx-act="stagiaire"
+                data-flx-ref="{{ a.id }}" data-annonces='{{ a.annonces|tojson }}'
+                data-secteur-id="{{ a.secteur_id }}">✓ J’ai lu</button>
+        <a href="{{ a.lien }}" class="flx-btn">{{ a.lien_texte }}</a>
         {% elif a.type == 'paie' %}
         <button type="button" class="flx-btn flx-btn-plein" data-flx-act="paie"
                 data-flx-ref="{{ a.id }}" data-mois="{{ a.paie_mois }}"

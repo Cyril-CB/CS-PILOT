@@ -416,3 +416,11 @@ réglage qui n'existait que là, sont désormais sur l'accueil.
 par profil et par délégation, le rendu des trois écrans, le flux d'information
 et la bascule. Les tests qui décrivent le menu latéral historique demandent la
 fixture `menu_classique`.
+
+### Lecture des annonces de stagiaires
+
+Le bouton **J’ai lu** retire personnellement une annonce du fil et fait
+progresser le compteur. Ce choix persiste après rechargement ; les autres
+responsables conservent leurs annonces et la fiche reste disponible. La carte
+groupée affiche les accueils concernés et les acquitte ensemble. Le tableau
+de bord classique propose le même bouton.

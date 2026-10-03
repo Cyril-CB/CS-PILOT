@@ -348,7 +348,9 @@ def test_fil_nomme_deux_stagiaires_puis_resume_le_reste(app, db, sample_users, m
                                    sample_users['responsable_id'], secteur, date(2026, 10, 5))
     assert [c['titre'].rsplit(': ', 1)[-1] for c in cartes[:2]] == ['Ana Martin', 'Basile Martin']
     assert cartes[2]['titre'] == 'et 1 autre accueil de stagiaire'
-    assert cartes[2]['detail'] == 'à retrouver dans la liste des stagiaires'
+    assert cartes[2]['detail'] == 'Demain : Chloé Martin'
+    assert cartes[2]['type'] == 'stagiaire'
+    assert len(cartes[2]['annonces']) == 1
     assert cartes[2]['lien'].endswith('/stagiaires')
 
 

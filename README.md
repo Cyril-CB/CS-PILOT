@@ -112,7 +112,7 @@ classique depuis « Mon espace ».
 ### Stagiaires
 - Fiche des stagiaires accueillis (etudes, lieu d'etudes, tuteur dans la structure, periode)
 - Emploi du temps par demi-journee : le secteur qui accueille le stagiaire chaque matin et chaque apres-midi
-- Annonce la veille (le vendredi pour le lundi) dans le fil d'actions du responsable du secteur d'accueil
+- Annonce la veille (le vendredi pour le lundi) dans le fil d'actions du responsable du secteur d'accueil, avec bouton personnel « J’ai lu »
 - Anonymisation automatique six mois apres la fin du stage (« Stagiaire-numero »)
 - [Droits, regles et limites](docs/stagiaires.md)
 

@@ -16,6 +16,14 @@
                 <div class="action-titre">{{ a.titre }}</div>
                 {% if a.detail %}<div class="action-detail">{{ a.detail }}</div>{% endif %}
             </div>
+            {% if a.type == 'stagiaire' %}
+            <form method="post" action="{{ url_for('stagiaires_bp.lire_annonces') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="annonces" value='{{ a.annonces|tojson }}'>
+                <input type="hidden" name="secteur_id" value="{{ a.secteur_id }}">
+                <button type="submit" class="btn btn-sm btn-secondary">✓ J’ai lu</button>
+            </form>
+            {% endif %}
             <a href="{{ a.lien }}" class="btn btn-sm btn-primary action-lien">{{ a.lien_texte }} →</a>
         </li>
         {% endfor %}

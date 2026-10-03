@@ -66,8 +66,13 @@ d'actions (et dans « Actions à faire » du tableau de bord classique) :
   donnent « Toute la journée ».
 - Comme les autres familles du fil : deux cartes nommées au plus, puis « et N
   autres accueils de stagiaire » vers la liste.
-- La carte est placée en tête des éléments du jour et ne demande aucune
-  action : elle disparaît une fois la date passée. Son étiquette dit le jour
+- La carte est placée en tête des éléments du jour. **J’ai lu** la masque
+  uniquement pour le responsable connecté et met à jour les compteurs du fil.
+  La lecture persiste après rechargement, par stagiaire, jour et secteur ;
+  elle ne supprime ni la fiche ni les annonces des autres responsables.
+  La carte groupée liste les accueils concernés et permet de les marquer lus
+  ensemble. Sans lecture, l’annonce disparaît une fois la date passée.
+  Son étiquette dit le jour
   concerné (« Aujourd'hui », « Demain » ou le jour de la semaine).
 - Seul le responsable du secteur d'accueil la reçoit (secteur de son compte).
   Le tuteur, qui est un responsable et a construit le planning, n'est pas
@@ -77,7 +82,9 @@ d'actions (et dans « Actions à faire » du tableau de bord classique) :
 
 La migration **0075** ajoute `stagiaires` et `stagiaires_creneaux`. Le schéma
 neuf et la migration utilisent `schema_stagiaires.creer_schema`. Les tables
-sont déclarées dans `resilience.py` ; aucun fichier n'est stocké.
+sont déclarées dans `resilience.py` ; aucun fichier n'est stocké. La migration
+**0076** ajoute les lectures personnelles (`stagiaires_annonces_lectures`),
+avec le même schéma pour une installation neuve.
 
 **Six mois après le dernier jour du stage, la fiche est anonymisée
 automatiquement** (décision du centre), le jour anniversaire : un stage fini
@@ -95,7 +102,12 @@ Sans planificateur externe, l'anonymisation tourne une fois par jour à la
 première requête de l'application, quelle que soit la page ouverte
 (`blueprints/stagiaires._anonymisation_quotidienne`), comme la synthèse
 quotidienne de la direction. Une application arrêtée pendant des semaines
-anonymise donc au redémarrage. Les sauvegardes antérieures contiennent encore
+anonymise donc au redémarrage. Une fiche créée ou modifiée avec une date de
+fin déjà échue est anonymisée immédiatement dans la même transaction, même
+si le traitement quotidien a déjà eu lieu. Le message de confirmation le
+précise et la fiche reste en lecture seule.
+
+Les sauvegardes antérieures contiennent encore
 les noms : leur durée de conservation relève de la politique de sauvegarde.
 
 Sur un petit effectif, niveau d'études, dates et secteurs peuvent encore

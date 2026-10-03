@@ -685,14 +685,15 @@ def _contrats_sans_pdf(conn, profil, today):
     return actions
 
 
-def _stagiaires_attendus(conn, profil, secteur_id, today):
+def _stagiaires_attendus(conn, profil, user_id, secteur_id, today):
     """Stagiaires que le secteur du responsable accueille aujourd'hui ou au
     prochain jour ouvré.
 
     Une arrivée s'annonce la veille, pour laisser le temps d'organiser
     l'accueil ; le vendredi annonce donc aussi le lundi
-    (`stagiaires.fin_fenetre_annonce`). La carte nomme le stagiaire et ne
-    demande rien d'autre : elle disparaît le jour passé. Seul le responsable du
+    (`stagiaires.fin_fenetre_annonce`). La carte nomme le stagiaire et
+    se masque personnellement avec « J’ai lu », ou une fois le jour passé.
+    Seul le responsable du
     secteur d'accueil la reçoit — c'est lui qui accueille ; la direction suit
     les stages depuis leur page.
     """
@@ -707,8 +708,12 @@ def _stagiaires_attendus(conn, profil, secteur_id, today):
            JOIN stagiaires s ON s.id = c.stagiaire_id
            LEFT JOIN users t ON t.id = s.tuteur_id
            WHERE c.secteur_id = ? AND c.date >= ? AND c.date <= ?
+             AND NOT EXISTS (
+                 SELECT 1 FROM stagiaires_annonces_lectures l
+                 WHERE l.user_id = ? AND l.secteur_id = c.secteur_id
+                   AND l.stagiaire_id = c.stagiaire_id AND l.date = c.date)
            ORDER BY c.date, s.nom, s.prenom, s.id''',
-        (secteur_id, today.isoformat(), fin.isoformat())
+        (secteur_id, today.isoformat(), fin.isoformat(), user_id)
     ).fetchall()
 
     # Une carte par stagiaire et par jour : le matin et l'après-midi du même
@@ -735,7 +740,9 @@ def _stagiaires_attendus(conn, profil, secteur_id, today):
         actions.append({
             'id': f"stagiaire-{stagiaire_id}-{jour_iso}",
             'categorie': 'stagiaire',
-            'type': 'lien',
+            'type': 'stagiaire',
+            'annonces': [{'stagiaire_id': stagiaire_id, 'date': jour_iso}],
+            'secteur_id': secteur_id,
             'icone': '🎓',
             'titre': (f"{quand_stagiaire(jour, today)}, accueil d’un(e) stagiaire "
                       f"sur votre secteur : {r['prenom']} {r['nom']}"),
@@ -755,8 +762,16 @@ def _stagiaires_attendus(conn, profil, secteur_id, today):
             reste, f"accueil{'s' if reste > 1 else ''} de stagiaire",
             url_for('stagiaires_bp.liste'), 'Stagiaires',
             'stagiaires', '🎓', 'stagiaire')
-        # Une arrivée ne se « traite » pas : le détail générique ne convient pas.
-        carte['detail'] = 'à retrouver dans la liste des stagiaires'
+        # La carte groupée montre précisément les annonces que l'on acquitte.
+        autres = list(visites.items())[MAX_CARTES_NOMMEES:]
+        carte['type'] = 'stagiaire'
+        carte['secteur_id'] = secteur_id
+        carte['annonces'] = [{'stagiaire_id': sid, 'date': jour}
+                             for (jour, sid), _ in autres]
+        carte['detail'] = ' ; '.join(
+            f"{quand_stagiaire(_to_date(jour), today)} : "
+            f"{visite['ligne']['prenom']} {visite['ligne']['nom']}"
+            for (jour, _), visite in autres)
         actions.append(carte)
     return actions
 
@@ -790,7 +805,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
     # 0. Stagiaires attendus sur le secteur. Placés en tête : à urgence égale,
     # le tri conserve l'ordre d'insertion, et une arrivée ne se reporte pas.
     try:
-        actions.extend(_stagiaires_attendus(conn, profil, secteur_id, today))
+        actions.extend(_stagiaires_attendus(conn, profil, user_id, secteur_id, today))
     except Exception:
         logger.warning("Fil d'actions : _stagiaires_attendus indisponible", exc_info=True)
 
