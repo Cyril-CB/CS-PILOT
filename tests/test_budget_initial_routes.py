@@ -511,3 +511,28 @@ def test_exposant_extreme_refuse_sans_ecriture(admin_client, sample_users, champ
     after = etat(admin_client)
     assert after['revision'] == before['revision']
     assert after['lignes'] == before['lignes']
+
+
+@pytest.mark.parametrize('method,path,status', [
+    ('get','/budget-initial-detaille',400),
+    ('get',API,400),
+    ('get',API + '/alisfa',400),
+    ('post',API + '/enregistrer',409),
+    ('post',API + '/reporter',409),
+])
+@pytest.mark.parametrize('code_connu', [False, True])
+def test_erreur_interne_jamais_publiee(admin_client, monkeypatch, method, path, status, code_connu):
+    import blueprints.budget_initial as routes
+    from budget_initial import InitialRefuse
+    secret = '<script>secret_synthetique</script> /srv/prive/base.sqlite Traceback SQL SELECT'
+    def refuser(*args, **kwargs):
+        exc = InitialRefuse('nombre_invalide' if code_connu else secret)
+        exc.args = (secret,)
+        raise exc from RuntimeError(secret)
+    monkeypatch.setattr(routes, '_annee', refuser)
+    response = getattr(admin_client, method)(path, **({'json':{'annee':2026}} if method == 'post' else {}))
+    assert response.status_code == status
+    text = response.get_json()['error'] if response.is_json else response.get_data(as_text=True)
+    for fragment in ('secret_synthetique', 'Traceback', '/srv/prive', 'SELECT'):
+        assert fragment not in text
+    assert ('Nombre invalide ou hors limites.' if code_connu else 'Vérifiez la saisie') in text
