@@ -461,6 +461,14 @@ def gestion_secteurs():
 
             elif action == 'supprimer':
                 secteur_id = request.form.get('secteur_id')
+                # Sérialiser le contrôle avec les reports du budget initial :
+                # aucun report ne doit apparaître entre ce contrôle et le DELETE.
+                conn.execute('BEGIN IMMEDIATE')
+                refus = verifier_action(conn)
+                if refus is not None:
+                    return refus
+                if session.get('profil') not in ('directeur', 'comptable'):
+                    return 'Accès non autorisé', 403
                 users_count = conn.execute(
                     'SELECT COUNT(*) as count FROM users WHERE secteur_id = ?',
                     (secteur_id,)
@@ -468,6 +476,10 @@ def gestion_secteurs():
 
                 if users_count > 0:
                     flash(f'Impossible de supprimer : {users_count} utilisateur(s) sont dans ce secteur', 'error')
+                elif conn.execute('SELECT 1 FROM budget_initial_reports WHERE secteur_id = ? LIMIT 1',
+                                  (secteur_id,)).fetchone():
+                    flash('Impossible de supprimer : ce secteur conserve un report de budget initial. '
+                          'Conservez le secteur pour préserver son historique budgétaire.', 'error')
                 else:
                     # Les connexions n'activent pas PRAGMA foreign_keys : le
                     # ON DELETE CASCADE de stagiaires_creneaux ne jouerait pas,

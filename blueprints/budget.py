@@ -794,7 +794,7 @@ def _totaux_budget(rows):
     return totaux
 
 
-def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, inflation=0, global_mode=False):
+def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, inflation=0, global_mode=False, *, comptes_seuls=False):
     if global_mode:
         return _budget_global(conn, type_budget, annee, inflation)
     years = [annee - 2, annee - 1, annee]
@@ -983,6 +983,10 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         accounts.append(account)
 
     accounts.sort(key=lambda r: r['compte_num'])
+    if comptes_seuls:
+        # La construction détaillée lit le périmètre sans recalculer les
+        # simulations de l'ancien parcours, dont les données peuvent manquer.
+        return accounts
     calculs = appliquer_calculs(conn, type_budget, annee, secteur_id, accounts)
 
     return {
