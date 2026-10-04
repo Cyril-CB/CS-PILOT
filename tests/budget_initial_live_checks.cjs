@@ -40,6 +40,15 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             await page.locator('#password').fill('Recette-locale-2026!');
             await page.locator('button[type=submit]').click();
             await page.waitForURL(url => !url.pathname.endsWith('/login'));
+            // Chaque largeur repart du flux, même après la préférence classique
+            // enregistrée pendant le parcours précédent du même compte de test.
+            assert.ok(await page.evaluate(async () => {
+                const response = await fetch('/api/interface/basculer', {
+                    method:'POST', headers:{'Content-Type':'application/json',
+                        'X-CSRFToken':document.querySelector('meta[name="csrf-token"]').content},
+                    body:JSON.stringify({actif:true})});
+                return response.ok && (await response.json()).actif;
+            }));
             await page.goto(base + '/budget-initial-detaille?annee=' + year);
             await page.getByText('Construction chargée.', {exact:true}).waitFor();
             assert.equal(await page.locator('#bi-report').isDisabled(), true);
