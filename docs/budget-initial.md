@@ -281,6 +281,18 @@ affiche déjà « Non renseigné ». Le commentaire et une éventuelle simulatio
 restent conservés. Cette action vaut pour les charges et les produits, pas
 seulement pour les comptes de paie.
 
+Pour reprendre tous les comptes du secteur en une fois, utiliser
+**Effacer tous les montants** dans le budget prévisionnel, puis confirmer le
+secteur, l’exercice et le type affichés. Les définitifs et temporaires sont
+vidés et enregistrés immédiatement, même derrière « Non renseigné » ; aucun
+enregistrement supplémentaire n’est nécessaire. Les commentaires, simulations,
+fiches et modes sont conservés. Les saisies non enregistrées doivent d’abord
+être enregistrées ou annulées explicitement. Voir le
+[parcours d’effacement groupé](budget-actualise.md#effacer-tous-les-montants).
+Cet effacement ne supprime pas la construction détaillée ni ses reports passés.
+Recharger le rapprochement avant un nouveau report ; abandonner séparément la
+simulation de paie si son compte doit être libéré.
+
 La proposition temporaire affichée et la valeur temporaire enregistrée sont
 distinctes : après effacement et rechargement, modifier un commentaire conserve
 le temporaire enregistré (y compris NULL ou zéro), sans recopier la proposition

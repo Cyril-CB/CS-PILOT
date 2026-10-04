@@ -73,7 +73,9 @@ il ne reste aucune période à projeter et aucun ratio n'est nécessaire.
 
 Modifier les montants ou commentaires, puis cliquer **Enregistrer les saisies
 et recalculer**. Les lignes modifiées sont enregistrées ensemble ; les comptes
-automatiques sont ensuite recalculés côté serveur. Les choix d'année/secteur
+automatiques sont ensuite recalculés côté serveur si les montants ont changé.
+Un commentaire seul conserve les montants enregistrés, sans report automatique.
+Les choix d'année/secteur
 sont bloqués pendant une saisie pour éviter un report dans un autre budget.
 Annuler permet de retrouver la dernière version enregistrée.
 
@@ -107,6 +109,50 @@ renseignés restent visibles ; un zéro saisi compte comme une valeur connue.
 Cette règle s'applique aux propositions et aux montants définitifs, dans le
 secteur, la consolidation et le PDF. Aucun écart de résultat n'est calculé
 tant que le résultat actualisé est incomplet.
+
+## Effacer tous les montants
+
+Dans **Budget secteur**, la direction et la comptabilité disposent du bouton
+**Effacer tous les montants**, pour l’initial comme pour l’actualisé. Enregistrer
+ou annuler d’abord les saisies du tableau et du panneau de paramètres : l’action
+est bloquée tant qu’elles ne sont pas traitées, sans les perdre. La confirmation rappelle le **secteur,
+l’exercice et le type de budget** sélectionnés. Annuler cette confirmation
+ne modifie rien.
+
+Confirmer vide les montants définitifs **et temporaires enregistrés** de tous
+les comptes de ce périmètre, y compris les zéros et les anciens temporaires
+masqués derrière « Non renseigné ». L’enregistrement est immédiat et atomique :
+il n’est pas nécessaire de cliquer ensuite sur Enregistrer. Le message de
+réussite apparaît seulement après confirmation de l’enregistrement par le
+serveur. Une erreur d’écriture annule l’ensemble ; en cas de réponse réseau
+perdue, recharger pour vérifier l’état avant de réessayer. Les doubles clics
+sont bloqués et une page périmée est refusée.
+
+Les comptes et commentaires sont conservés, ainsi que les simulations de paie,
+PS, fiches de travail et modes de calcul. **Abandonner une simulation reste
+une action distincte.** Aucun recalcul ni report n’est lancé par l’effacement.
+Des propositions calculées peuvent donc rester visibles ; elles ne sont pas
+des montants enregistrés. Après rechargement, modifier seulement un commentaire
+ne réenregistre pas ces propositions et ne repeuple pas les comptes automatiques.
+Un nouveau report explicite ou une nouvelle saisie de montant peut les alimenter.
+
+Les autres secteurs, exercices et types de budget, les écritures comptables,
+la construction initiale détaillée et toutes les données RH restent inchangés.
+Pour reporter depuis l’initial détaillé, recharger son rapprochement : une
+simulation ou un mode automatique conservé continue de protéger son compte.
+
+Recette sur base synthétique, avec Flask, SQLite et CSRF réels, si Playwright
+et Chromium sont déjà disponibles :
+
+```bash
+python -m pytest tests/test_budget_effacement.py
+PYTHON=/chemin/vers/python node tests/budget_effacement_live_checks.cjs
+```
+
+Le contrôle navigateur couvre ordinateur (1440 px) et mobile (390 px), les
+deux types, les saisies non enregistrées, l’annulation, l’erreur réseau, les
+doubles clics, l’attente de l’enregistrement, les commentaires et le rechargement.
+Les captures sont écrites uniquement dans un dossier temporaire.
 
 ## Simulateur de paie
 

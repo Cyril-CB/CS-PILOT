@@ -980,10 +980,9 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         }
         if type_budget == 'actualise':
             account['initial'] = round(initial_map.get(compte, 0.0), 2)
-        else:
-            # La proposition affichée peut être recalculée même après effacement.
-            # Les éditions du tableau doivent conserver le temporaire persisté.
-            account['temp_saisie'] = save_data.get('valeur_temp')
+        # La proposition affichée peut être recalculée même après effacement.
+        # Les éditions du tableau doivent conserver le temporaire persisté.
+        account['temp_saisie'] = save_data.get('valeur_temp')
         accounts.append(account)
 
     accounts.sort(key=lambda r: r['compte_num'])
@@ -1399,6 +1398,7 @@ def api_budget_previsionnel_save_line():
         if not isinstance(lignes, list) or not 1 <= len(lignes) <= 2000:
             raise BudgetRefuse('liste_saisies_invalide')
         vus = set()
+        montants_modifies = False
         for ligne in lignes:
             if not isinstance(ligne, dict) or not isinstance(ligne.get('compte_num'), str) or ligne.get('compte_num') in vus:
                 raise BudgetRefuse('ligne_invalide')
@@ -1421,13 +1421,17 @@ def api_budget_previsionnel_save_line():
             # Une ancienne aide temporaire ne doit pas redevenir le brut de référence.
             if row['mode'] == 'base' and valeur is not None:
                 temp = valeur
+            if valeur != row['def'] or temp != row['temp_saisie']:
+                montants_modifies = True
             conn.execute('''INSERT INTO budget_prev_saisies
                 (type_budget, annee, secteur_id, compte_num, valeur_temp, valeur_def, commentaire, updated_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(type_budget, annee, secteur_id, compte_num)
                 DO UPDATE SET valeur_temp=excluded.valeur_temp, valeur_def=excluded.valeur_def,
                     commentaire=excluded.commentaire, updated_by=excluded.updated_by, updated_at=CURRENT_TIMESTAMP''',
                 (typ, annee, sid, compte, temp, valeur, commentaire, session['user_id']))
-        reports = reporter_automatiques(conn, typ, annee, sid, session['user_id'])
+        # Un commentaire seul après effacement ne doit pas repeupler les
+        # comptes automatiques ni modifier les simulations conservées.
+        reports = reporter_automatiques(conn, typ, annee, sid, session['user_id']) if montants_modifies else {}
         token = reference_budget(conn, typ, annee, sid)
         conn.commit()
         return jsonify({'success': True, 'reports': reports, 'reference_budget': token})
@@ -1437,6 +1441,41 @@ def api_budget_previsionnel_save_line():
     except sqlite3.Error:
         conn.rollback()
         return jsonify({'error': 'Enregistrement indisponible. Rechargez le budget avant de réessayer.'}), 503
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/effacer-montants', methods=['POST'])
+@login_required
+def api_budget_previsionnel_effacer_montants():
+    """Vide les saisies du seul triplet confirmé, sans toucher aux simulations."""
+    data = request.get_json() or {}
+    if not isinstance(data, dict) or data.get('confirmer') is not True:
+        return jsonify({'error': 'Confirmez l’effacement des montants du budget sélectionné.'}), 400
+    conn = get_db()
+    try:
+        refus = _budget_ecriture(conn, data)
+        if refus is not None:
+            return refus
+        typ = data['type_budget']
+        annee, sid = contexte_valide(conn, typ, data.get('annee'), data.get('secteur_id'))
+        # Même résultat que l'effacement individuel : NULL définitif/temporaire.
+        # Viser toutes les saisies persistées, même masquées par « Non renseigné »
+        # ou absentes du tableau. Conserver lignes, commentaires et modes.
+        conn.execute('''UPDATE budget_prev_saisies
+            SET valeur_def=NULL, valeur_temp=NULL, updated_by=?, updated_at=CURRENT_TIMESTAMP
+            WHERE type_budget=? AND annee=? AND secteur_id=?
+                AND (valeur_def IS NOT NULL OR valeur_temp IS NOT NULL)''',
+            (session['user_id'], typ, annee, sid))
+        # Aucun reporter_automatiques : il recréerait les montants effacés.
+        conn.commit()
+        return jsonify({'success': True})
+    except BudgetRefuse as exc:
+        conn.rollback()
+        return jsonify({'error': message_budget(exc.code)}), 409
+    except sqlite3.Error:
+        conn.rollback()
+        return jsonify({'error': 'Effacement non enregistré. Aucun montant n’a été effacé. Rechargez le budget avant de réessayer.'}), 503
     finally:
         conn.close()
 
