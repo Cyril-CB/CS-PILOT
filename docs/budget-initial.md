@@ -250,3 +250,9 @@ RH permanente n’est créée. Cette lecture est réservée à direction et comp
 Les anciennes simulations de paie dont le contenu est nul, vide, malformé ou
 non structuré restent conservées. Leur lecture ne bloque pas la construction ;
 leur compte propriétaire reste protégé du report, même sans contenu exploitable.
+
+Les erreurs publiques proviennent d’un catalogue fermé de messages métier.
+Le texte, les arguments et les causes des exceptions ne sont jamais renvoyés
+par les cinq routes de la construction ; un code inconnu reçoit un message
+générique. Les validations, statuts HTTP, droits et protections CSRF restent
+identiques.

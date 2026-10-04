@@ -8,7 +8,7 @@ from database import get_db
 from utils import login_required
 from sessions_securite import verifier_action
 from budget_initial import (
-    InitialRefuse, calculer, charger, enregistrer, preparer_report, reporter, serialisable,
+    InitialRefuse, message_initial, calculer, charger, enregistrer, preparer_report, reporter, serialisable,
 )
 
 budget_initial_bp = Blueprint('budget_initial_bp', __name__)
@@ -23,7 +23,7 @@ def _annee(value):
             raise ValueError
         return n
     except (TypeError, ValueError):
-        raise InitialRefuse('Choisissez une année entre 1900 et 2200.') from None
+        raise InitialRefuse('annee_hors_plage') from None
 
 
 def _autorise():
@@ -40,7 +40,7 @@ def _comptes(conn):
 def _verifier_comptes(conn, annee, ligne):
     """Filtrer les nouveaux choix sans bloquer la reprise des anciens comptes."""
     if not isinstance(ligne, dict) or not isinstance(ligne.get('donnees'), dict):
-        raise InitialRefuse('Ligne invalide.')
+        raise InitialRefuse('ligne_invalide')
     d = ligne['donnees']
     ancienne = next((l['donnees'] for l in charger(conn, annee)['lignes']
                      if l['id'] == ligne.get('id')), {})
@@ -55,13 +55,13 @@ def _verifier_comptes(conn, annee, ligne):
 
     conserve = ancienne.get('nature') == nature and ancienne.get('compte') == code
     if not conserve and not autorise(code, nature):
-        raise InitialRefuse('Choisissez un compte du plan général : salaire 641, dépense 6 hors 63/64, financement 7.')
+        raise InitialRefuse('compte_plan_invalide')
     if nature == 'salaire' and isinstance(d.get('complements'), list):
         anciens = {c['compte'] for c in ancienne.get('complements', [])}
         for c in d['complements']:
             if not isinstance(c, dict) or not isinstance(c.get('compte'), str) or (not autorise(c.get('compte'), 'salaire')
                                          and c.get('compte') not in anciens):
-                raise InitialRefuse('Choisissez un compte 641 du plan général pour chaque complément.')
+                raise InitialRefuse('complement_plan_invalide')
 
 
 @budget_initial_bp.route('/api/budget-initial-detaille/alisfa')
@@ -75,11 +75,11 @@ def alisfa():
         annee = _annee(request.args.get('annee'))
         ident = request.args.get('salarie_id', '')
         if not ident.isdigit() or len(ident) > 18:
-            raise InitialRefuse('Choisissez un salarié existant.')
+            raise InitialRefuse('salarie_existant_requis')
         conn.execute('BEGIN')
         user = conn.execute('SELECT pesee, competence, maintien FROM users WHERE id=?', (ident,)).fetchone()
         if user is None:
-            raise InitialRefuse('Choisissez un salarié existant.')
+            raise InitialRefuse('salarie_existant_requis')
         contrat = conn.execute('''SELECT date_debut, temps_hebdo FROM contrats
             WHERE user_id=? AND type_contrat!='CEE' AND date_debut<=?
               AND (date_fin IS NULL OR date_fin>=?) ORDER BY date_debut DESC, id DESC LIMIT 1''',
@@ -97,7 +97,7 @@ def alisfa():
         return jsonify(serialisable({'valeurs': valeurs,
             'message': 'Copie budgétaire modifiable, sans écriture RH. Pesée, compétences et maintien : fiche salarié ; quotité et ancienneté au 1er janvier : dernier contrat hors CEE couvrant l’année. Socle et point : valeurs par défaut du simulateur, à vérifier. Les données absentes restent à compléter.'}))
     except InitialRefuse as exc:
-        return jsonify(error=str(exc)), 400
+        return jsonify(error=message_initial(exc.code)), 400
     finally:
         conn.close()
 
@@ -134,7 +134,7 @@ def construction():
     try:
         annee = _annee(request.args.get('annee', date.today().year))
     except InitialRefuse as exc:
-        return str(exc), 400
+        return message_initial(exc.code), 400
     return render_template('budget_initial.html', annee=annee)
 
 
@@ -154,7 +154,7 @@ def donnees():
                                      'salaries': salaries, 'comptes': _comptes(conn), 'calcul': calcul,
                                      'reports': reports, 'reference_report': reference}))
     except InitialRefuse as exc:
-        return jsonify(error=str(exc)), 400
+        return jsonify(error=message_initial(exc.code)), 400
     finally:
         conn.close()
 
@@ -179,10 +179,10 @@ def sauvegarder():
         secteurs, _, _ = _contexte(conn, annee)
         action = d.get('action')
         if action not in ('hypotheses', 'ligne', 'supprimer'):
-            raise InitialRefuse('Action inconnue.')
+            raise InitialRefuse('action_inconnue')
         kwargs = {action: d.get(action)}
         if kwargs[action] is None:
-            raise InitialRefuse('Saisie manquante.')
+            raise InitialRefuse('saisie_manquante')
         if action == 'ligne':
             _verifier_comptes(conn, annee, kwargs[action])
         enregistrer(conn, annee, d.get('revision'), session['user_id'], secteurs, **kwargs)
@@ -192,7 +192,7 @@ def sauvegarder():
         return jsonify(success=True)
     except InitialRefuse as exc:
         conn.rollback()
-        return jsonify(error=str(exc)), 409
+        return jsonify(error=message_initial(exc.code)), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify(error='Enregistrement indisponible. Rechargez avant de réessayer.'), 503
@@ -223,7 +223,7 @@ def report():
         return jsonify(success=True, reportes=n)
     except InitialRefuse as exc:
         conn.rollback()
-        return jsonify(error=str(exc)), 409
+        return jsonify(error=message_initial(exc.code)), 409
     except sqlite3.Error:
         conn.rollback()
         return jsonify(error='Report indisponible. Rechargez avant de réessayer.'), 503

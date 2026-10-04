@@ -19,8 +19,70 @@ NATURES = ('salaire', 'depense', 'financement')
 MODES = ('manuel', 'mensuel', 'proportionnel')
 
 
+MESSAGES_INITIAL = {
+    'nombre_invalide': 'Nombre invalide ou hors limites.',
+    'montant_hors_limites': 'Montant calculé hors limites : vérifiez les paramètres et l’assiette du taux.',
+    'poids_positif_requis': 'La ventilation doit comporter au moins un poids positif.',
+    'texte_invalide': 'Texte invalide ou trop long.',
+    'compte_invalide': 'Indiquez un compte de charges ou de produits (3 à 12 chiffres).',
+    'douze_mois_requis': 'Renseignez exactement douze mois.',
+    'ligne_invalide': 'Ligne invalide.',
+    'libelle_nature_requis': 'Un libellé et une nature de ligne sont requis.',
+    'financement_compte_7': 'Un financement utilise un compte 7.',
+    'depense_compte_6': 'Une dépense utilise un compte 6.',
+    'revision_invalide': 'Indicateur de révision invalide.',
+    'ventilation_requise': 'Ventilez la ligne entre les secteurs.',
+    'secteur_absent': 'Secteur absent ou supprimé : revoyez la ventilation.',
+    'part_positive_requise': 'Chaque secteur retenu doit avoir une part positive.',
+    'ventilation_incomplete': 'La ventilation sectorielle doit totaliser exactement 100 %.',
+    'base_remuneration_invalide': 'Choisissez une base de rémunération et un compte 641.',
+    'poste_activite_requis': 'Précisez le poste et son activité normale.',
+    'cee_forfait_requis': 'Un CEE utilise un forfait journalier et des jours d’activité normale.',
+    'salarie_reference_invalide': 'Référence salarié invalide.',
+    'poste_vacant_sans_salarie': 'Un poste vacant ne désigne pas de salarié.',
+    'activite_mensuelle_requise': 'Indiquez la fraction d’activité normale de chaque mois.',
+    'permanent_douze_mois': 'Un permanent est prévu sur douze mois, sans absences ou remplacements imprévisibles.',
+    'complements_invalides': 'Liste des compléments invalide (50 maximum).',
+    'complement_invalide': 'Complément invalide.',
+    'complement_compte_unique': 'Chaque complément doit être nommé une seule fois, sur un autre compte 641 que la base.',
+    'salaire_ligne_requise': 'Renseignez les 641 dans une ligne salarié ou poste pour éviter les doubles comptes.',
+    'mode_invalide': 'Choisissez un mode manuel, mensuel ou proportionnel.',
+    'poids_mensuels_invalides': 'Les poids mensuels doivent être connus, positifs ou nuls, avec un total positif.',
+    'reference_taux_invalide': 'Référence de taux invalide.',
+    'reference_annee_invalide': 'Année de référence invalide.',
+    'verification_date_invalide': 'Date de vérification invalide.',
+    'option_taux_invalide': 'Option des taux individuels invalide.',
+    'proportionnel_secteur_unique': 'Créez une ligne proportionnelle par secteur, à 100 %, pour une assiette non ambiguë.',
+    'construction_perimee': 'La construction a changé. Rechargez la page avant d’enregistrer.',
+    'annee_invalide': 'Année invalide.',
+    'hypotheses_invalides': 'Hypothèses invalides.',
+    'identifiant_ligne_invalide': 'Identifiant de ligne invalide.',
+    'ligne_absente': 'Ligne absente de cette année.',
+    'salarie_introuvable': 'Salarié introuvable.',
+    'salarie_doublon': 'Ce salarié possède déjà une ligne. Modifiez sa ventilation pour éviter un doublon.',
+    'limite_lignes': 'La construction est limitée à 2 000 lignes par année.',
+    'report_perime': 'Les montants du budget ont changé. Rechargez et vérifiez le report proposé.',
+    'construction_incomplete': 'Complétez la construction et les lignes à revoir avant le report.',
+    'annee_hors_plage': 'Choisissez une année entre 1900 et 2200.',
+    'compte_plan_invalide': 'Choisissez un compte du plan général : salaire 641, dépense 6 hors 63/64, financement 7.',
+    'complement_plan_invalide': 'Choisissez un compte 641 du plan général pour chaque complément.',
+    'salarie_existant_requis': 'Choisissez un salarié existant.',
+    'action_inconnue': 'Action inconnue.',
+    'saisie_manquante': 'Saisie manquante.',
+}
+
+
+def message_initial(code):
+    """La réponse publique vient exclusivement de constantes, jamais de l’exception."""
+    return MESSAGES_INITIAL.get(code, "Vérifiez la saisie ou rechargez la construction avant de réessayer.")
+
+
 class InitialRefuse(ValueError):
-    """Message français contrôlé, publiable sans détail technique."""
+    """Code métier interne ; le contenu de l’exception ne doit pas être publié."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
 
 
 def nombre(value, minimum=None, maximum=Decimal('999999999.99')):
@@ -37,14 +99,14 @@ def nombre(value, minimum=None, maximum=Decimal('999999999.99')):
             raise ValueError
         return n
     except (InvalidOperation, ValueError, TypeError):
-        raise InitialRefuse('Nombre invalide ou hors limites.') from None
+        raise InitialRefuse('nombre_invalide') from None
 
 
 def euros(value):
     if value is None:
         return None
     if not value.is_finite() or abs(value) > Decimal('999999999999.99'):
-        raise InitialRefuse('Montant calculé hors limites : vérifiez les paramètres et l’assiette du taux.')
+        raise InitialRefuse('montant_hors_limites')
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
@@ -59,7 +121,7 @@ def repartir(value, poids):
         return {k: None if p else ZERO for k, p in poids.items()}
     somme = sum(poids.values(), ZERO)
     if somme <= 0:
-        raise InitialRefuse('La ventilation doit comporter au moins un poids positif.')
+        raise InitialRefuse('poids_positif_requis')
     centimes = int(abs(euros(value)) * 100)
     exact = {k: Decimal(centimes) * p / somme for k, p in poids.items()}
     parts = {k: int(v.to_integral_value(rounding=ROUND_FLOOR)) for k, v in exact.items()}
@@ -72,13 +134,13 @@ def repartir(value, poids):
 
 def texte(value, limite=4000):
     if not isinstance(value, str) or len(value) > limite:
-        raise InitialRefuse('Texte invalide ou trop long.')
+        raise InitialRefuse('texte_invalide')
     return value.strip()
 
 
 def compte(value):
     if not isinstance(value, str) or not re.fullmatch(r'[67][0-9]{2,11}', value):
-        raise InitialRefuse('Indiquez un compte de charges ou de produits (3 à 12 chiffres).')
+        raise InitialRefuse('compte_invalide')
     return value
 
 
@@ -86,13 +148,13 @@ def douze(value, defaut=None, minimum=None, maximum=Decimal('999999999.99')):
     if value is None:
         value = [defaut] * 12
     if not isinstance(value, list) or len(value) != 12:
-        raise InitialRefuse('Renseignez exactement douze mois.')
+        raise InitialRefuse('douze_mois_requis')
     return [nombre(v, minimum, maximum) for v in value]
 
 
 def normaliser_ligne(data, secteurs):
     if not isinstance(data, dict):
-        raise InitialRefuse('Ligne invalide.')
+        raise InitialRefuse('ligne_invalide')
     # Liste fermée : les futurs liens ne sont jamais acceptés depuis le client.
     d = {k: data.get(k) for k in (
         'libelle', 'nature', 'compte', 'secteurs', 'source', 'note', 'a_revoir',
@@ -102,51 +164,51 @@ def normaliser_ligne(data, secteurs):
         'forfait_cee', 'jours_cee', 'complements', 'taux_charges', 'reference_charges')}
     d['libelle'] = texte(d['libelle'], 200)
     if not d['libelle'] or d['nature'] not in NATURES:
-        raise InitialRefuse('Un libellé et une nature de ligne sont requis.')
+        raise InitialRefuse('libelle_nature_requis')
     d['compte'] = compte(d['compte'])
     if d['nature'] == 'financement' and not d['compte'].startswith('7'):
-        raise InitialRefuse('Un financement utilise un compte 7.')
+        raise InitialRefuse('financement_compte_7')
     if d['nature'] != 'financement' and not d['compte'].startswith('6'):
-        raise InitialRefuse('Une dépense utilise un compte 6.')
+        raise InitialRefuse('depense_compte_6')
     for key in ('source', 'note'):
         d[key] = texte(d[key] or '')
     if d['a_revoir'] not in (None, True, False) or type(d['a_revoir']) not in (bool, type(None)):
-        raise InitialRefuse('Indicateur de révision invalide.')
+        raise InitialRefuse('revision_invalide')
     d['a_revoir'] = bool(d['a_revoir'])
     if not isinstance(d['secteurs'], dict) or not d['secteurs']:
-        raise InitialRefuse('Ventilez la ligne entre les secteurs.')
+        raise InitialRefuse('ventilation_requise')
     parts = {}
     for sid, value in d['secteurs'].items():
         if str(sid) not in secteurs:
-            raise InitialRefuse('Secteur absent ou supprimé : revoyez la ventilation.')
+            raise InitialRefuse('secteur_absent')
         p = nombre(value, ZERO, Decimal(100))
         if p is None or p <= 0:
-            raise InitialRefuse('Chaque secteur retenu doit avoir une part positive.')
+            raise InitialRefuse('part_positive_requise')
         parts[str(sid)] = str(p)
     if sum(map(Decimal, parts.values())) != 100:
-        raise InitialRefuse('La ventilation sectorielle doit totaliser exactement 100 %.')
+        raise InitialRefuse('ventilation_incomplete')
     d['secteurs'] = parts
     if d['nature'] == 'salaire':
         if not d['compte'].startswith('641') or d['base'] not in ('brut', 'alisfa', 'cee'):
-            raise InitialRefuse('Choisissez une base de rémunération et un compte 641.')
+            raise InitialRefuse('base_remuneration_invalide')
         if d['contrat'] not in ('permanent', 'saisonnier', 'cee') or d['poste'] not in ('occupe', 'vacant'):
-            raise InitialRefuse('Précisez le poste et son activité normale.')
+            raise InitialRefuse('poste_activite_requis')
         if (d['contrat'] == 'cee') != (d['base'] == 'cee'):
-            raise InitialRefuse('Un CEE utilise un forfait journalier et des jours d’activité normale.')
+            raise InitialRefuse('cee_forfait_requis')
         if d['salarie_id'] in (None, ''):
             d['salarie_id'] = None
         elif isinstance(d['salarie_id'], bool) or not re.fullmatch(r'[0-9]{1,18}', str(d['salarie_id'])) or int(d['salarie_id']) <= 0:
-            raise InitialRefuse('Référence salarié invalide.')
+            raise InitialRefuse('salarie_reference_invalide')
         else:
             d['salarie_id'] = str(int(d['salarie_id']))
         if d['poste'] == 'vacant' and d['salarie_id']:
-            raise InitialRefuse('Un poste vacant ne désigne pas de salarié.')
+            raise InitialRefuse('poste_vacant_sans_salarie')
         d['quotite'] = _chaine(nombre(d['quotite'], ZERO, Decimal(100)))
         activite = douze(d['activite'], '1', ZERO, Decimal(1))
         if any(v is None for v in activite):
-            raise InitialRefuse('Indiquez la fraction d’activité normale de chaque mois.')
+            raise InitialRefuse('activite_mensuelle_requise')
         if d['contrat'] == 'permanent' and activite != [Decimal(1)] * 12:
-            raise InitialRefuse('Un permanent est prévu sur douze mois, sans absences ou remplacements imprévisibles.')
+            raise InitialRefuse('permanent_douze_mois')
         d['activite'] = list(map(str, activite))
         d['brut_verifie'] = d['brut_verifie'] is True
         for key in ('brut_mensuel', 'socle', 'point', 'pesee', 'anciennete', 'competence', 'maintien', 'forfait_cee'):
@@ -156,28 +218,28 @@ def normaliser_ligne(data, secteurs):
         d['reference_charges'] = normaliser_reference(d['reference_charges'])
         complements = d['complements'] or []
         if not isinstance(complements, list) or len(complements) > 50:
-            raise InitialRefuse('Liste des compléments invalide (50 maximum).')
+            raise InitialRefuse('complements_invalides')
         d['complements'], vus = [], set()
         for c in complements:
             if not isinstance(c, dict):
-                raise InitialRefuse('Complément invalide.')
+                raise InitialRefuse('complement_invalide')
             libelle = texte(c.get('libelle', ''), 200)
             code = compte(c.get('compte'))
             cle = libelle.casefold()
             if not libelle or cle in vus or code == d['compte'] or not code.startswith('641'):
-                raise InitialRefuse('Chaque complément doit être nommé une seule fois, sur un autre compte 641 que la base.')
+                raise InitialRefuse('complement_compte_unique')
             vus.add(cle)
             d['complements'].append({'libelle': libelle, 'compte': code,
                                     'mois': [_chaine(v) for v in douze(c.get('mois'))]})
     else:
         if d['compte'].startswith('641'):
-            raise InitialRefuse('Renseignez les 641 dans une ligne salarié ou poste pour éviter les doubles comptes.')
+            raise InitialRefuse('salaire_ligne_requise')
         if d['mode'] not in MODES:
-            raise InitialRefuse('Choisissez un mode manuel, mensuel ou proportionnel.')
+            raise InitialRefuse('mode_invalide')
         d['annuel'] = _chaine(nombre(d['annuel']))
         d['poids'] = [_chaine(v) for v in douze(d['poids'], '1', ZERO)]
         if any(v is None for v in d['poids']) or sum(map(Decimal, d['poids'])) <= 0:
-            raise InitialRefuse('Les poids mensuels doivent être connus, positifs ou nuls, avec un total positif.')
+            raise InitialRefuse('poids_mensuels_invalides')
         d['mois'] = [_chaine(v) for v in douze(d['mois'])]
         d['reference'] = normaliser_reference(d['reference'])
     return d
@@ -187,16 +249,16 @@ def normaliser_reference(value):
     if value is None:
         value = {}
     if not isinstance(value, dict):
-        raise InitialRefuse('Référence de taux invalide.')
+        raise InitialRefuse('reference_taux_invalide')
     d = {k: texte(value.get(k) or '', 1000) for k in ('source', 'assiette', 'perimetre', 'verification')}
     d['annee'] = texte(str(value.get('annee') or ''), 4)
     if d['annee'] and not re.fullmatch(r'(19|20|21|22)\d{2}', d['annee']):
-        raise InitialRefuse('Année de référence invalide.')
+        raise InitialRefuse('reference_annee_invalide')
     if d['verification']:
         try:
             date.fromisoformat(d['verification'])
         except ValueError:
-            raise InitialRefuse('Date de vérification invalide.') from None
+            raise InitialRefuse('verification_date_invalide') from None
     d['complete_comparable'] = value.get('complete_comparable') is True
     for key in ('numerateur', 'denominateur'):
         d[key] = _chaine(nombre(value.get(key), ZERO if key == 'denominateur' else None))
@@ -233,7 +295,7 @@ def calculer(annee, hypotheses, lignes, secteurs, premiers=None, premiers_charge
     """
     option = hypotheses.get('taux_individuels', False)
     if type(option) is not bool:
-        raise InitialRefuse('Option des taux individuels invalide.')
+        raise InitialRefuse('option_taux_invalide')
     calculs, ecritures, alertes = [], [], []
     secteurs = dict(secteurs)
     for l in lignes:
@@ -342,7 +404,7 @@ def calculer(annee, hypotheses, lignes, secteurs, premiers=None, premiers_charge
             # Une ligne proportionnelle appartient à UN secteur : évite une double
             # ventilation d'une assiette déjà sectorisée.
             if len(d['secteurs']) != 1:
-                raise InitialRefuse('Créez une ligne proportionnelle par secteur, à 100 %, pour une assiette non ambiguë.')
+                raise InitialRefuse('proportionnel_secteur_unique')
             sid = next(iter(d['secteurs']))
             vals = [euros(v * ratio) if v is not None and ratio is not None else None for v in bruts[sid]]
             formule = 'Brut global mensuel du secteur × (numérateur annuel / assiette annuelle de référence).'
@@ -412,36 +474,36 @@ def charger(conn, annee):
 
 def verifier_revision(conn, annee, revision):
     if type(revision) is not int or revision != charger(conn, annee)['revision']:
-        raise InitialRefuse('La construction a changé. Rechargez la page avant d’enregistrer.')
+        raise InitialRefuse('construction_perimee')
 
 
 def enregistrer(conn, annee, revision, uid, secteurs, hypotheses=None, ligne=None, supprimer=None):
     verifier_revision(conn, annee, revision)
     if type(annee) is not int or not 1900 <= annee <= 2200:
-        raise InitialRefuse('Année invalide.')
+        raise InitialRefuse('annee_invalide')
     conn.execute('INSERT OR IGNORE INTO budget_initial_hypotheses (annee) VALUES (?)', (annee,))
     if hypotheses is not None:
         if not isinstance(hypotheses, dict) or type(hypotheses.get('taux_individuels')) is not bool:
-            raise InitialRefuse('Hypothèses invalides.')
+            raise InitialRefuse('hypotheses_invalides')
         h = {'note': texte(hypotheses.get('note', '')), 'taux_individuels': hypotheses['taux_individuels']}
         conn.execute('UPDATE budget_initial_hypotheses SET donnees=? WHERE annee=?', (json.dumps(h, ensure_ascii=False), annee))
     if ligne is not None:
         if not isinstance(ligne, dict):
-            raise InitialRefuse('Ligne invalide.')
+            raise InitialRefuse('ligne_invalide')
         identifiant = ligne.get('id')
         if identifiant is not None and (not isinstance(identifiant, str) or len(identifiant) > 36):
-            raise InitialRefuse('Identifiant de ligne invalide.')
+            raise InitialRefuse('identifiant_ligne_invalide')
         if identifiant and not conn.execute('SELECT 1 FROM budget_initial_lignes WHERE id=? AND annee=?', (identifiant, annee)).fetchone():
-            raise InitialRefuse('Ligne absente de cette année.')
+            raise InitialRefuse('ligne_absente')
         d = normaliser_ligne(ligne.get('donnees'), secteurs)
         if d.get('salarie_id'):
             if not conn.execute('SELECT 1 FROM users WHERE id=?', (d['salarie_id'],)).fetchone():
-                raise InitialRefuse('Salarié introuvable.')
+                raise InitialRefuse('salarie_introuvable')
             for existante in charger(conn, annee)['lignes']:
                 if existante['id'] != identifiant and existante['donnees'].get('salarie_id') == d['salarie_id']:
-                    raise InitialRefuse('Ce salarié possède déjà une ligne. Modifiez sa ventilation pour éviter un doublon.')
+                    raise InitialRefuse('salarie_doublon')
         if not identifiant and len(charger(conn, annee)['lignes']) >= 2000:
-            raise InitialRefuse('La construction est limitée à 2 000 lignes par année.')
+            raise InitialRefuse('limite_lignes')
         identifiant = identifiant or str(uuid.uuid4())
         conn.execute('''INSERT INTO budget_initial_lignes (id, annee, donnees, updated_by)
             VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET donnees=excluded.donnees,
@@ -449,7 +511,7 @@ def enregistrer(conn, annee, revision, uid, secteurs, hypotheses=None, ligne=Non
             (identifiant, annee, json.dumps(d, ensure_ascii=False), uid))
     if supprimer is not None:
         if not isinstance(supprimer, str) or conn.execute('DELETE FROM budget_initial_lignes WHERE id=? AND annee=?', (supprimer, annee)).rowcount != 1:
-            raise InitialRefuse('Ligne absente de cette année.')
+            raise InitialRefuse('ligne_absente')
     conn.execute('''UPDATE budget_initial_hypotheses SET revision=revision+1,
         updated_by=?, updated_at=CURRENT_TIMESTAMP WHERE annee=?''', (uid, annee))
 
@@ -509,9 +571,9 @@ def reporter(conn, annee, revision, uid, calcul, reference):
     verifier_revision(conn, annee, revision)
     propositions, empreinte = preparer_report(conn, annee, calcul)
     if not isinstance(reference, str) or reference != empreinte:
-        raise InitialRefuse('Les montants du budget ont changé. Rechargez et vérifiez le report proposé.')
+        raise InitialRefuse('report_perime')
     if not calcul['complet']:
-        raise InitialRefuse('Complétez la construction et les lignes à revoir avant le report.')
+        raise InitialRefuse('construction_incomplete')
     reportes = 0
     for p in propositions:
         if not p['possible']:
