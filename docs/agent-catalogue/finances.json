@@ -1672,7 +1672,7 @@
         ]
       },
       "invariants": [
-        "Aucune conversion des budgets existants, aucune écriture dans l’actualisé ou les fiches RH.",
+        "Aucune conversion des budgets existants, aucune écriture dans l’actualisé ou les fiches RH. Les erreurs des routes de construction sont traduites depuis une liste fermée de codes, sans publication du contenu des exceptions.",
         "Un ancien montant manuel, y compris zéro, n’est pas écrasé par un report.",
         "Les anciens endpoints, simulations, commentaires et PDF restent inchangés.",
         "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct.",
