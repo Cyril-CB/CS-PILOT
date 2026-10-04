@@ -1,5 +1,11 @@
 # Budget initial et actualisé : références et calculs
 
+La direction et la comptabilité disposent également d’une
+[construction détaillée de l’initial annuel](budget-initial.md) : lignes
+identifiées, hypothèses et ventilation mensuelle/sectorielle. Son activation
+et ses reports sont explicites ; elle ne convertit pas les budgets existants
+et ne modifie pas l’actualisé. Les règles du parcours ci-dessous sont conservées.
+
 Dans **Budget prévisionnel**, choisir l'année, le secteur et le type de budget.
 Les paramètres sont propres à ce triplet : un réglage ne modifie pas les autres
 secteurs ni les budgets d'autres années. Tous les numéros de comptes viennent

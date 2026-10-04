@@ -107,6 +107,7 @@ TABLES_REQUISES = {
     '0074': ('cse_messages_lectures',),
     '0075': ('stagiaires', 'stagiaires_creneaux'),
     '0076': ('stagiaires_annonces_lectures',),
+    '0077': ('budget_initial_hypotheses', 'budget_initial_lignes', 'budget_initial_reports'),
 }
 
 
