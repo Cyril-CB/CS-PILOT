@@ -156,3 +156,28 @@ def test_comptes_ordinaires_supprimes_puis_report(admin_client,db,sample_users,c
     assert row['valeur_def']==1200 and row['valeur_temp']==1200
     if geste!='retirer':
         assert row['commentaire']=='Note à conserver'
+
+
+@pytest.mark.parametrize('code,nature',[('606100','depense'),('706100','financement')])
+@pytest.mark.parametrize('temporaire',[None,0,125.5])
+@pytest.mark.parametrize('montant_edite',[False,True])
+def test_commentaire_ne_recopie_pas_proposition(admin_client,db,sample_users,code,nature,temporaire,montant_edite):
+    from tests.test_budget_initial_moteur import depense
+    sid=sample_users['secteur_id']
+    assert admin_client.post('/api/budget-previsionnel/ajouter-compte',json={
+        'annee':2026,'type_budget':'initial','secteur_id':sid,'compte_num':code}).status_code==200
+    assert post(admin_client,sid,'save-lines','initial',lignes=[{'compte_num':code,
+        'valeur_def':None,'valeur_temp':temporaire}]).status_code==200
+    row=next(r for r in lire(admin_client,sid,'initial')['rows'] if r['compte_num']==code)
+    assert row['temp_saisie']==temporaire
+    valeur=250 if montant_edite else row['def']
+    assert post(admin_client,sid,'save-lines','initial',lignes=[{'compte_num':code,
+        'valeur_def':valeur,'valeur_temp':row['temp_saisie'],'commentaire':'Commentaire après rechargement'}]).status_code==200
+    stored=db.execute("SELECT valeur_def,valeur_temp,commentaire FROM budget_prev_saisies WHERE type_budget='initial' AND compte_num=?",(code,)).fetchone()
+    assert tuple(stored)==(valeur,temporaire,'Commentaire après rechargement')
+    assert sauver(admin_client,depense(compte=code,nature=nature,secteurs={str(sid):'100'})).status_code==200
+    state=etat(admin_client)
+    libre=temporaire is None and not montant_edite
+    assert state['reports'][0]['possible'] is libre
+    assert admin_client.post('/api/budget-initial-detaille/reporter',json={
+        'annee':2026,'revision':state['revision'],'reference_report':state['reference_report']}).get_json()['reportes']==int(libre)

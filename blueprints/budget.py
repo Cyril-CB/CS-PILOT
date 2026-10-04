@@ -980,6 +980,10 @@ def _compute_budget_previsionnel(conn, type_budget, annee, secteur_id=None, infl
         }
         if type_budget == 'actualise':
             account['initial'] = round(initial_map.get(compte, 0.0), 2)
+        else:
+            # La proposition affichée peut être recalculée même après effacement.
+            # Les éditions du tableau doivent conserver le temporaire persisté.
+            account['temp_saisie'] = save_data.get('valeur_temp')
         accounts.append(account)
 
     accounts.sort(key=lambda r: r['compte_num'])

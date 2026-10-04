@@ -782,7 +782,8 @@ function queueSave(compte, valeurDef, commentaire){
     if (valeurDef !== null) row.def = valeurDef === '' ? null : Number(valeurDef);
     if (commentaire !== null) row.commentaire = commentaire || '';
     const effacer = valeurDef !== null ? valeurDef === '' : !!(budgetDirty[compte] && budgetDirty[compte].effacer_montant);
-    budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: row.temp, commentaire: row.commentaire || '', effacer_montant: effacer};
+    const tempSaisie = document.getElementById('typeBudget').value === 'initial' ? row.temp_saisie : row.temp;
+    budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: tempSaisie, commentaire: row.commentaire || '', effacer_montant: effacer};
     marquerBudgetSale();
 }
 function budgetSansSaisie(){

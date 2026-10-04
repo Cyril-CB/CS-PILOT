@@ -280,3 +280,8 @@ puis **Enregistrer les saisies** retire aussi le temporaire, même si le champ
 affiche déjà « Non renseigné ». Le commentaire et une éventuelle simulation
 restent conservés. Cette action vaut pour les charges et les produits, pas
 seulement pour les comptes de paie.
+
+La proposition temporaire affichée et la valeur temporaire enregistrée sont
+distinctes : après effacement et rechargement, modifier un commentaire conserve
+le temporaire enregistré (y compris NULL ou zéro), sans recopier la proposition
+calculée. Une modification du montant définitif reste une saisie protégée.

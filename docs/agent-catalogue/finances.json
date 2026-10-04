@@ -155,7 +155,7 @@
         "Ajout d’un compte sans historique, retrait d’une saisie manuelle, enregistrement groupé et recalcul serveur des comptes automatiques.",
         "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées : deux PDF (secteur et consolidation générale), sections Charges puis Produits séparées, sous-total par compte à deux chiffres et total de section.",
         "Construction volontaire détaillée de l’initial annuel, accessible à la direction et à la comptabilité ; rapprochement et report explicite des seuls comptes libres ou précédemment reportés et restés inchangés.",
-        "Vider explicitement un montant du budget initial, ou utiliser Effacer le montant même sur un champ déjà vide, efface aussi sa valeur temporaire à l’enregistrement ; un commentaire seul, un zéro saisi ou un budget actualisé ne déclenche pas cet effacement."
+        "Vider explicitement un montant du budget initial, ou utiliser Effacer le montant même sur un champ déjà vide, efface aussi sa valeur temporaire à l’enregistrement ; un commentaire seul, un zéro saisi ou un budget actualisé ne déclenche pas cet effacement. Après rechargement, les éditions de l’initial conservent le temporaire réellement enregistré, distinct de la proposition calculée affichée."
       ],
       "entry_points": [
         "budget_bp.budget_previsionnel",

@@ -102,6 +102,20 @@ partialRows[1].temp = 0;
 context.queueSave('706100', '', null);
 context.updateEcartCell('706100');
 assert(element('budgetResultat').innerHTML.includes('Définitif : Produits À compléter - Charges 90,00 € = <strong>À compléter</strong>'));
+// Une proposition affichée ne remplace pas le temporaire persisté de l'initial.
+for (const stored of [null, 0, 125.5]) {
+  element('typeBudget').value = 'initial';
+  context.currentRows = [{compte_num:'606100', def:null, temp:999, temp_saisie:stored, commentaire:''}];
+  context.budgetDirty = {};
+  context.queueSave('606100', null, 'Commentaire seul');
+  assert.equal(context.budgetDirty['606100'].valeur_temp, stored);
+  context.queueSave('606100', '250', null);
+  assert.equal(context.budgetDirty['606100'].valeur_def, 250);
+  assert.equal(context.budgetDirty['606100'].valeur_temp, stored);
+  element('typeBudget').value = 'actualise';
+  context.queueSave('606100', null, 'Actualisé inchangé');
+  assert.equal(context.budgetDirty['606100'].valeur_temp, 999);
+}
 context.currentRows = data.rows;
 tableRoot.querySelector = () => null;
 (async () => {

@@ -76,6 +76,12 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             }
             await page.locator('#budgetSaveSaisies').click();
             await page.waitForFunction(() => !budgetFetching && !budgetSaving && !Object.keys(budgetDirty).length);
+            await page.reload();
+            for (const code of ['606100','706100']) {
+                await page.locator('[data-bp-comment-compte="'+code+'"]').fill('Commentaire après effacement et rechargement');
+            }
+            await page.locator('#budgetSaveSaisies').click();
+            await page.waitForFunction(() => !budgetFetching && !budgetSaving && !Object.keys(budgetDirty).length);
             await page.screenshot({path:path.join(output,name+'-effacer-comptes.png'),fullPage:true});
             assert.ok(await page.evaluate(async year => {
                 const state = () => fetch('/api/budget-initial-detaille?annee='+year).then(r=>r.json());
@@ -118,6 +124,10 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             assert.equal(await amountInput.getAttribute('placeholder'), 'Non renseigné');
             const simUrl = base + '/api/budget-previsionnel/paie-simulation?type_budget=initial&annee='+year+'&secteur_id=1';
             assert.equal((await (await context.request.get(simUrl)).json()).found,true);
+            await page.reload();
+            await page.locator('[data-bp-comment-compte="641100"]').fill('Commentaire paie après effacement');
+            await page.locator('#budgetSaveSaisies').click();
+            await page.waitForFunction(() => !budgetFetching && !budgetSaving && !Object.keys(budgetDirty).length);
             await page.locator('[data-paie-compte="641100"]').click();
             await page.locator('#paieAbandonner').waitFor();
             await page.screenshot({path:path.join(output,name+'-abandon.png'),fullPage:true});
