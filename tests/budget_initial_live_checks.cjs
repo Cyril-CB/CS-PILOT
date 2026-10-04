@@ -53,6 +53,46 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
                     body:JSON.stringify({actif:true})});
                 return response.ok && (await response.json()).actif;
             }));
+            // Charges et produits déjà vides : reprise explicite des anciens temporaires.
+            const legacyYear = year - 3;
+            await page.goto(base + '/budget-previsionnel?annee=' + legacyYear + '&secteur_id=1');
+            await page.waitForFunction(() => !budgetFetching);
+            await page.evaluate(async year => {
+                const scope = {type_budget:'initial',annee:year,secteur_id:1};
+                const send = async (action,data) => {
+                    const response = await fetch('/api/budget-previsionnel/' + action, {method:'POST',
+                        headers:{'Content-Type':'application/json'},body:JSON.stringify({...scope,...data})});
+                    if (!response.ok) throw new Error(await response.text());
+                };
+                for (const compte_num of ['606100','706100']) await send('ajouter-compte',{compte_num});
+                const state = await (await fetch('/api/budget-previsionnel/donnees?type_budget=initial&annee='+year+'&secteur_id=1')).json();
+                await send('save-lines',{reference_budget:state.reference_budget,lignes:['606100','706100'].map(compte_num =>
+                    ({compte_num,valeur_def:null,valeur_temp:1200,commentaire:'Note conservée'}))});
+            }, legacyYear);
+            await page.reload();
+            for (const code of ['606100','706100']) {
+                assert.equal(await page.locator('[data-bp-def-compte="'+code+'"]').inputValue(),'');
+                await page.locator('[data-effacer-montant="'+code+'"]').click();
+            }
+            await page.locator('#budgetSaveSaisies').click();
+            await page.waitForFunction(() => !budgetFetching && !budgetSaving && !Object.keys(budgetDirty).length);
+            await page.screenshot({path:path.join(output,name+'-effacer-comptes.png'),fullPage:true});
+            assert.ok(await page.evaluate(async year => {
+                const state = () => fetch('/api/budget-initial-detaille?annee='+year).then(r=>r.json());
+                for (const code of ['606100','706100']) {
+                    const d = await state();
+                    const response = await fetch('/api/budget-initial-detaille/enregistrer',{method:'POST',
+                        headers:{'Content-Type':'application/json'},body:JSON.stringify({annee:year,revision:d.revision,
+                        action:'ligne',ligne:{donnees:{libelle:'Compte fictif',nature:code[0]==='6'?'depense':'financement',
+                        compte:code,secteurs:{'1':'100'},mode:'manuel',annuel:'1200'}}})});
+                    if (!response.ok) return false;
+                }
+                const d = await state();
+                if (!d.reports.every(r=>r.possible)) return false;
+                const response = await fetch('/api/budget-initial-detaille/reporter',{method:'POST',
+                    headers:{'Content-Type':'application/json'},body:JSON.stringify({annee:year,revision:d.revision,reference_report:d.reference_report})});
+                return response.ok && (await response.json()).reportes===2;
+            },legacyYear));
             // Vraie simulation puis effacement UI : la simulation reste jusqu'à l'abandon confirmé.
             await page.goto(base + '/budget-previsionnel?annee=' + year + '&secteur_id=1');
             await page.waitForFunction(() => !budgetFetching);

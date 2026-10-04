@@ -128,3 +128,31 @@ def test_comptable_autorise_et_anonyme_refuse(request,db,scenario,admin_client):
     assert admin_client.post(URL,json={'type_budget':'initial','confirmer':True}).status_code==302
     comptable=request.getfixturevalue('comptable_client')
     assert comptable.post(URL,json=payload(comptable,sid)).status_code==200
+
+
+@pytest.mark.parametrize('code,nature',[('606100','depense'),('706100','financement')])
+@pytest.mark.parametrize('geste',['vider','deja_vide','retirer'])
+def test_comptes_ordinaires_supprimes_puis_report(admin_client,db,sample_users,code,nature,geste):
+    from tests.test_budget_initial_moteur import depense
+    sid=sample_users['secteur_id']
+    assert admin_client.post('/api/budget-previsionnel/ajouter-compte',json={
+        'annee':2026,'type_budget':'initial','secteur_id':sid,'compte_num':code}).status_code==200
+    assert post(admin_client,sid,'save-lines','initial',lignes=[{'compte_num':code,
+        'valeur_def':None if geste=='deja_vide' else 1200,'valeur_temp':1200,'commentaire':'Note à conserver'}]).status_code==200
+    assert sauver(admin_client,depense(compte=code,nature=nature,secteurs={str(sid):'100'})).status_code==200
+    assert not etat(admin_client)['reports'][0]['possible']
+    if geste=='retirer':
+        # La corbeille annonce explicitement la suppression du commentaire aussi.
+        assert admin_client.post('/api/budget-previsionnel/retirer-compte',json={
+            'annee':2026,'type_budget':'initial','secteur_id':sid,'compte_num':code}).status_code==200
+    else:
+        assert post(admin_client,sid,'save-lines','initial',lignes=[{'compte_num':code,
+            'valeur_def':None,'valeur_temp':1200,'commentaire':'Note à conserver','effacer_montant':True}]).status_code==200
+    state=etat(admin_client)
+    assert state['reports'][0]['possible']
+    assert admin_client.post('/api/budget-initial-detaille/reporter',json={
+        'annee':2026,'revision':state['revision'],'reference_report':state['reference_report']}).get_json()['reportes']==1
+    row=db.execute("SELECT * FROM budget_prev_saisies WHERE type_budget='initial' AND compte_num=?",(code,)).fetchone()
+    assert row['valeur_def']==1200 and row['valeur_temp']==1200
+    if geste!='retirer':
+        assert row['commentaire']=='Note à conserver'

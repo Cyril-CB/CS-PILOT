@@ -274,6 +274,9 @@ manuel si nécessaire, vider explicitement leurs montants et enregistrer.
 Revenir ensuite dans l’initial détaillé, recharger et contrôler le rapprochement
 avant de reporter. Les autres secteurs, exercices et budgets actualisés ne
 sont pas modifiés. Une simulation NULL ou illisible ne vaut jamais abandon.
-Les montants temporaires effacés avant ce correctif ne sont pas nettoyés
-automatiquement : saisir puis vider le champ avant d’enregistrer exprime
-explicitement l’effacement.
+Les montants temporaires laissés avant ce correctif ne sont pas nettoyés
+automatiquement. Sur un compte non automatique de l’initial, **Effacer le montant**
+puis **Enregistrer les saisies** retire aussi le temporaire, même si le champ
+affiche déjà « Non renseigné ». Le commentaire et une éventuelle simulation
+restent conservés. Cette action vaut pour les charges et les produits, pas
+seulement pour les comptes de paie.

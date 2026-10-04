@@ -556,6 +556,15 @@ function bindBudgetInputHandlers(targetId){
             retirerCompteBudget(this.dataset.retirerCompte || '');
         });
     });
+    root.querySelectorAll('button[data-effacer-montant]').forEach((btn) => {
+        btn.addEventListener('click', function(){
+            if (budgetSaving || budgetFetching) return;
+            const input = this.closest('tr').querySelector('input[data-bp-def-compte]');
+            input.value = '';
+            queueSave(this.dataset.effacerMontant, '', null);
+            updateEcartCell(this.dataset.effacerMontant);
+        });
+    });
 }
 
 function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
@@ -635,7 +644,9 @@ function buildTable(rows, labelTemp, labelDef, globalMode, ctx){
         const retirerBtn = (!globalMode && canEditPs && r.manuel && r.mode !== 'taux_salaries')
             ? '<button type="button" class="btn btn-sm btn-danger bp-ps-btn" data-retirer-compte="' + escapeHtml(r.compte_num) + '" title="Compte ajouté manuellement au budget — le retirer (supprime les montants saisis)" aria-label="Retirer ce compte du budget">🗑</button>'
             : '';
-        const boutons = psBtn + paieBtn + ficheBtn + retirerBtn;
+        const effacerBtn = (!globalMode && !isReadOnly && !actualise && !auto)
+            ? '<button type="button" class="btn btn-sm btn-secondary bp-ps-btn" data-effacer-montant="' + escapeHtml(r.compte_num) + '" title="Effacer le montant et sa proposition temporaire, puis enregistrer. Le commentaire et la simulation restent conservés.">Effacer le montant</button>' : '';
+        const boutons = psBtn + paieBtn + ficheBtn + retirerBtn + effacerBtn;
         html += '<tr' + rowStyle + '>' +
           '<td>' + escapeHtml(r.compte_num) + '</td>' +
           '<td><div class="bp-libelle-flex"><span>' + escapeHtml(r.libelle) +
