@@ -12,6 +12,13 @@ from tests.test_budget_regles import cadre, config, lire as lire_ancien, post, s
 API = '/api/budget-initial-detaille'
 
 
+@pytest.fixture(autouse=True)
+def plan_general(db):
+    db.executemany('INSERT OR IGNORE INTO plan_comptable_general (compte_num,libelle) VALUES (?,?)',
+                   [(c, 'Compte synthétique ' + c) for c in ('606100','606200','641100','641200','645100','631100','706100','741100')])
+    db.commit()
+
+
 def etat(client, annee=2026):
     r = client.get(API, query_string={'annee': annee})
     assert r.status_code == 200, r.get_data(as_text=True)
@@ -327,3 +334,144 @@ def test_simulation_autre_perimetre_ne_bloque_pas_report(admin_client, sample_us
     response = admin_client.post(API + '/reporter', json={'annee': 2026, 'revision': state['revision'],
         'reference_report': state['reference_report']})
     assert response.status_code == 200 and response.get_json()['reportes'] == 1
+
+
+@pytest.mark.parametrize('nature,code,ok', [
+    ('salaire','641100',True), ('salaire','606100',False),
+    ('depense','606100',True), ('depense','631100',False),
+    ('depense','645100',False), ('depense','641100',False),
+    ('financement','706100',True), ('financement','606100',False),
+    ('depense','609999',False), ('financement','799999',False),
+])
+def test_comptes_plan_general_filtres_serveur(admin_client, sample_users, nature, code, ok):
+    factory = salaire if nature == 'salaire' else depense
+    data = factory(nature=nature, compte=code, secteurs={str(sample_users['secteur_id']): '100'})
+    before = etat(admin_client)
+    r = sauver(admin_client, data)
+    assert r.status_code == (200 if ok else 409), r.get_json()
+    if not ok:
+        assert etat(admin_client)['revision'] == before['revision']
+        assert etat(admin_client)['lignes'] == before['lignes']
+
+
+def test_ancien_compte_preserve_sans_autoriser_nouveau(admin_client, sample_users, db):
+    assert sauver(admin_client, ligne_secteur(sample_users)).status_code == 200
+    line = etat(admin_client)['lignes'][0]
+    line['donnees']['compte'] = '631100'
+    db.execute('UPDATE budget_initial_lignes SET donnees=? WHERE id=?',
+               (json.dumps(line['donnees']), line['id']))
+    db.commit()
+    line['donnees']['note'] = 'Reprise du budget existant'
+    assert sauver(admin_client, None, ligne=line).status_code == 200
+    assert sauver(admin_client, line['donnees']).status_code == 409
+    line['donnees']['compte'] = '645100'
+    assert sauver(admin_client, None, ligne=line).status_code == 409
+
+
+def test_compte_retire_du_plan_et_complement(admin_client, sample_users, db):
+    data = salaire(secteurs={str(sample_users['secteur_id']): '100'},
+                   complements=[{'libelle':'Prime','compte':'641200','mois':['10'] * 12}])
+    assert sauver(admin_client, data).status_code == 200
+    line = etat(admin_client)['lignes'][0]
+    db.execute("DELETE FROM plan_comptable_general WHERE compte_num LIKE '641%'")
+    db.commit()
+    assert sauver(admin_client, None, ligne=line).status_code == 200
+    assert sauver(admin_client, data).status_code == 409
+    line['donnees']['complements'][0]['compte'] = '641999'
+    assert sauver(admin_client, None, ligne=line).status_code == 409
+
+
+@pytest.mark.parametrize('fixture', ['admin_client','comptable_client'])
+def test_alisfa_copie_modifiable_sans_ecriture_rh(request, fixture, sample_users, db):
+    client = request.getfixturevalue(fixture)
+    uid = sample_users['salarie_id']
+    db.execute('UPDATE users SET pesee=20, competence=3, maintien=0 WHERE id=?', (uid,))
+    db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,temps_hebdo) VALUES (?,'CDI','2020-01-01',28)", (uid,))
+    db.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,temps_hebdo) VALUES (?,'CEE','2025-01-01',5)", (uid,))
+    db.commit()
+    before = [tuple(r) for r in db.execute('SELECT * FROM users')], [tuple(r) for r in db.execute('SELECT * FROM contrats')]
+    r = client.get(API + '/alisfa?annee=2026&salarie_id=' + str(uid))
+    assert r.status_code == 200
+    values = r.get_json()['valeurs']
+    assert values == {'socle':23000, 'point':55, 'pesee':20, 'competence':3, 'maintien':0, 'anciennete':6, 'quotite':'80.0'}
+    values['pesee'] = '99'
+    data = salaire(base='alisfa', poste='occupe', salarie_id=str(uid), source='', note='',
+                   secteurs={str(sample_users['secteur_id']):'100'}, **values)
+    assert sauver(client, data).status_code == 200
+    d = etat(client)
+    assert d['calcul']['complet']
+    assert d['lignes'][0]['donnees']['pesee'] == '99'
+    assert client.post(API + '/reporter', json={'annee':2026, 'revision':d['revision'],
+                                               'reference_report':d['reference_report']}).status_code == 200
+    assert etat(client)['lignes'][0]['donnees']['pesee'] == '99'
+    after = [tuple(r) for r in db.execute('SELECT * FROM users')], [tuple(r) for r in db.execute('SELECT * FROM contrats')]
+    assert before == after
+
+
+def test_alisfa_donnees_absentes_et_identifiants(admin_client, sample_users, db):
+    uid = sample_users['salarie_id']
+    db.execute('UPDATE users SET pesee=NULL, competence=NULL, maintien=NULL WHERE id=?', (uid,))
+    db.commit()
+    r = admin_client.get(API + '/alisfa?annee=2026&salarie_id=' + str(uid))
+    assert r.status_code == 200
+    assert all(r.get_json()['valeurs'][k] is None for k in ('pesee','competence','maintien','quotite','anciennete'))
+    for ident in ('0','9999999','abc','1 OR 1=1','9'*30):
+        assert admin_client.get(API + '/alisfa', query_string={'annee':2026,'salarie_id':ident}).status_code == 400
+    assert admin_client.get(API + '/alisfa', query_string={'annee':'bad','salarie_id':uid}).status_code == 400
+
+
+@pytest.mark.parametrize('fixture', ['client','auth_client','resp_client','prestataire_client'])
+def test_alisfa_confidentialite(request, fixture, sample_users):
+    r = request.getfixturevalue(fixture).get(API + '/alisfa?annee=2026&salarie_id=' + str(sample_users['salarie_id']))
+    assert r.status_code == (302 if fixture == 'client' else 403)
+    assert 'valeurs' not in (r.get_json(silent=True) or {})
+
+
+def test_documents_facultatifs_calculs_obligatoires(admin_client, sample_users):
+    assert sauver(admin_client, ligne_secteur(sample_users, source='', note='')).status_code == 200
+    d = etat(admin_client)
+    assert d['calcul']['complet']
+    assert admin_client.post(API + '/reporter', json={'annee':2026,'revision':d['revision'],
+                                                    'reference_report':d['reference_report']}).status_code == 200
+    line = d['lignes'][0]
+    line['donnees']['annuel'] = None
+    assert sauver(admin_client, None, ligne=line).status_code == 200
+    assert not etat(admin_client)['calcul']['complet']
+    line['donnees']['annuel'] = '1200'
+    line['donnees']['a_revoir'] = True
+    assert sauver(admin_client, None, ligne=line).status_code == 200
+    assert not etat(admin_client)['calcul']['complet']
+
+
+def test_taux_individuels_sans_creation_manuelle_645(admin_client, sample_users, db):
+    data = salaire(secteurs={str(sample_users['secteur_id']):'100'})
+    data['reference_charges']['source'] = ''
+    assert sauver(admin_client, data).status_code == 200
+    assert sauver(admin_client, {'note':'', 'taux_individuels':True}, action='hypotheses').status_code == 200
+    d = etat(admin_client)
+    assert d['calcul']['complet']
+    assert d['calcul']['general']['charges_annuel'] == '33600'
+    assert set(d['calcul']['ventilation'][str(sample_users['secteur_id'])]) == {'641100','645100'}
+    assert db.execute('SELECT COUNT(*) FROM budget_prev_saisies').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('code', [[], {}, None, 641200])
+def test_complement_compte_malforme_refuse(admin_client, sample_users, code):
+    data = salaire(secteurs={str(sample_users['secteur_id']):'100'},
+                   complements=[{'libelle':'Prime','compte':code,'mois':['0']*12}])
+    assert sauver(admin_client, data).status_code == 409
+
+
+def test_taux_individuels_preserve_645_ancienne_construction(admin_client, sample_users, db):
+    from budget_initial import enregistrer
+    sid = str(sample_users['secteur_id'])
+    # Ancienne saisie autorisée avant le filtrage des nouveaux comptes.
+    enregistrer(db, 2026, 0, sample_users['directeur_id'], {sid:'Pilote'},
+                ligne={'donnees':depense(compte='645200', secteurs={sid:'100'})})
+    db.commit()
+    assert sauver(admin_client, salaire(secteurs={sid:'100'})).status_code == 200
+    assert sauver(admin_client, {'note':'', 'taux_individuels':True}, action='hypotheses').status_code == 200
+    d = etat(admin_client)
+    assert d['calcul']['complet']
+    assert set(d['calcul']['ventilation'][sid]) == {'641100','645200'}
+    assert d['calcul']['general']['charges_annuel'] == '33600'

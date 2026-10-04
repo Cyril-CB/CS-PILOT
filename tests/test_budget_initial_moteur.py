@@ -179,10 +179,16 @@ class MoteurInitialTest(unittest.TestCase):
         self.assertIn('négatif', str(d['alertes']))
 
     def test_reference_complete_comparable_pas_deduite_de_2025(self):
-        for ref in [reference(complete_comparable=False), reference(annee='2026'), reference(source=''), reference(denominateur='0')]:
+        for ref in [reference(complete_comparable=False), reference(annee='2026'), reference(denominateur='0')]:
             d = calcul(salaire(), depense(compte='645100', mode='proportionnel', reference=ref))
             self.assertFalse(d['complet'])
             self.assertIsNone(sum(d['ventilation']['1']['645100']) if all(v is not None for v in d['ventilation']['1']['645100']) else None)
+
+    def test_source_et_justification_facultatives(self):
+        d = calcul(salaire(source='', note=''), depense(source='', note='',
+                    mode='proportionnel', reference=reference(source='')))
+        self.assertTrue(d['complet'])
+        self.assertEqual(d['general']['charges_annuel'], 33600)
 
     def test_modes_charges_manuels_mensuels_proportionnels(self):
         d = calcul(salaire(), depense(compte='645100', annuel='1200'),

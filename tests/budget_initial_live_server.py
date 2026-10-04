@@ -32,6 +32,9 @@ if __name__ == '__main__':
         conn.execute("INSERT INTO users (nom,prenom,login,password,profil,force_password_change) VALUES ('Recette','Direction','recette',?,'directeur',0)",
                      (generate_password_hash('Recette-locale-2026!'),))
         conn.execute("INSERT INTO budget_prev_saisies (type_budget,annee,secteur_id,compte_num,valeur_temp,valeur_def,commentaire) VALUES ('actualise',2026,1,'606100',55.55,55.55,'Actualisé synthétique préservé')")
+        conn.executemany("INSERT INTO plan_comptable_general (compte_num,libelle) VALUES (?,?)", [(c, 'Compte synthétique ' + c) for c in ('641100','641200','606100','631100','645100','706100')])
+        conn.execute("INSERT INTO users (nom,prenom,login,password,profil,pesee,competence,maintien) VALUES ('ALISFA','Test','alisfa','inutilisable','salarie',20,3,0)")
+        conn.execute("INSERT INTO contrats (user_id,type_contrat,date_debut,temps_hebdo) VALUES (2,'CDI','2020-01-01',28)")
         conn.commit()
         conn.close()
         with make_server('127.0.0.1', 0, app, threaded=True) as server:

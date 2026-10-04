@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/budget_initial.css') }}">
 <div id="initial-app" data-annee="{{ annee }}"
      data-lecture="{{ url_for('budget_initial_bp.donnees') }}"
+     data-alisfa="{{ url_for('budget_initial_bp.alisfa') }}"
      data-sauvegarde="{{ url_for('budget_initial_bp.sauvegarder') }}"
      data-report="{{ url_for('budget_initial_bp.report') }}">
   <div class="page-header">

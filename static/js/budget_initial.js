@@ -6,6 +6,8 @@
     const $ = id => document.getElementById(id);
     const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     let state, editing = null, busy = false, dirty = false, hypothesesDirty = false;
+    let original = {}, copies = new Map(), copiedEmployee = '', fieldsEmployee = '', prefillGeneration = 0, prefillPending = false;
+    const alisfaKeys = ['socle','point','pesee','anciennete','competence','maintien','quotite'];
     const amount = v => v === null || v === undefined ? 'À compléter' : Number(v).toLocaleString('fr-FR', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
     function element(tag, text, cls) {
         const el = document.createElement(tag);
@@ -38,7 +40,7 @@
     const monthValues = key => months.map((_, i) => get(key + i));
     function reference(id, prefix, r = {}) {
         $(id).replaceChildren();
-        [['source', 'Source du taux'], ['annee', 'Année complète de référence'], ['assiette', 'Assiette et méthode'], ['perimetre', 'Périmètre comparable'], ['verification', 'Date de vérification']].forEach(([k, label]) => input($(id), prefix + k, label, r[k] ?? (k === 'annee' ? '2025' : ''), null, k === 'verification' ? 'date' : 'text'));
+        [['source', 'Source du taux (facultatif)'], ['annee', 'Année complète de référence'], ['assiette', 'Assiette et méthode'], ['perimetre', 'Périmètre comparable'], ['verification', 'Date de vérification']].forEach(([k, label]) => input($(id), prefix + k, label, r[k] ?? (k === 'annee' ? '2025' : ''), null, k === 'verification' ? 'date' : 'text'));
         input($(id), prefix + 'complete_comparable', 'Je confirme une année complète et un périmètre comparable', r.complete_comparable, null, 'checkbox');
         if (prefix === 'ref-') {
             input($(id), prefix + 'numerateur', 'Montant annuel du compte de référence', r.numerateur);
@@ -52,13 +54,57 @@
         return r;
     }
     let complementCounter = 0;
+    function accountOptions(nature, preserved = '') {
+        const rows = (state.comptes || []).filter(c => nature === 'salaire' ? c.compte_num.startsWith('641') : nature === 'financement' ? c.compte_num.startsWith('7') : c.compte_num.startsWith('6') && !/^6[34]/.test(c.compte_num));
+        const options = [['', 'Choisir dans le plan général'], ...rows.map(c => [c.compte_num, c.compte_num + ' · ' + c.libelle])];
+        if (preserved && !rows.some(c => c.compte_num === preserved)) options.push([preserved, preserved + ' · Compte existant conservé']);
+        return options;
+    }
+    function refreshAccounts() {
+        const field = $('bi-f-compte'), previous = field.value;
+        const options = accountOptions(get('nature'), original.nature === get('nature') ? original.compte : '');
+        field.replaceChildren(...options.map(([value, label]) => { const o = element('option', label); o.value = value; return o; }));
+        field.value = options.some(([value]) => value === previous) ? previous : '';
+    }
+    async function prefill() {
+        if (copiedEmployee && !prefillPending) copies.set(copiedEmployee, Object.fromEntries(alisfaKeys.map(k => [k,get(k)])));
+        const generation = ++prefillGeneration;
+        prefillPending = false;
+        copiedEmployee = '';
+        if (get('nature') !== 'salaire' || get('base') !== 'alisfa' || !get('salarie_id')) return;
+        const id = get('salarie_id');
+        $('bi-f-poste').value = 'occupe';
+        if (copies.has(id)) {
+            if (fieldsEmployee !== id) alisfaKeys.forEach(k => { $('bi-f-' + k).value = copies.get(id)[k] ?? ''; });
+            fieldsEmployee = id;
+            copiedEmployee = id;
+            return;
+        }
+        alisfaKeys.forEach(k => { $('bi-f-' + k).value = ''; });
+        fieldsEmployee = id;
+        prefillPending = true;
+        status('Chargement de la copie ALISFA…');
+        try {
+            const r = await fetch(root.dataset.alisfa + '?annee=' + root.dataset.annee + '&salarie_id=' + encodeURIComponent(id));
+            const data = await responseData(r);
+            if (generation !== prefillGeneration) return;
+            if (!r.ok) throw new Error(data.error || 'Préremplissage indisponible.');
+            // Une saisie faite pendant la lecture RH reste prioritaire.
+            alisfaKeys.forEach(k => { if (get(k) === '') $('bi-f-' + k).value = data.valeurs[k] ?? ''; });
+            copiedEmployee = id;
+            copies.set(id, Object.fromEntries(alisfaKeys.map(k => [k,get(k)])));
+            dirty = true;
+            status(data.message);
+        } catch (e) { if (generation === prefillGeneration) status(e.message, true); }
+        finally { if (generation === prefillGeneration) prefillPending = false; }
+    }
     function complement(c = {}) {
         const key = 'comp-' + complementCounter++ + '-';
         const block = element('fieldset'); block.dataset.key = key;
         block.append(element('legend', 'Complément 641'));
         const fields = element('div', undefined, 'bi-grid'); block.append(fields);
         input(fields, key + 'libelle', 'Prime ou complément (nom unique)', c.libelle);
-        input(fields, key + 'compte', 'Autre compte 641', c.compte);
+        input(fields, key + 'compte', 'Autre compte 641', c.compte, accountOptions('salaire', c.compte));
         const ms = element('div', undefined, 'bi-months'); block.append(ms);
         months.forEach((m, i) => input(ms, key + i, m, c.mois?.[i]));
         const remove = element('button', 'Retirer ce complément', 'btn btn-secondary btn-sm'); remove.type = 'button';
@@ -80,10 +126,11 @@
         if (busy || (dirty && !window.confirm('Abandonner les modifications non enregistrées ?'))) return;
         editing = line?.id || null;
         const d = line?.donnees || {};
+        original = d; copies = new Map(); copiedEmployee = ''; fieldsEmployee = ''; ++prefillGeneration; prefillPending = false;
         ['bi-common', 'bi-salary-fields', 'bi-brut-fields', 'bi-alisfa-fields', 'bi-cee-fields', 'bi-other-fields', 'bi-secteurs', 'bi-rate', 'bi-notes', 'bi-complements'].forEach(id => $(id).replaceChildren());
         input($('bi-common'), 'libelle', 'Salarié, poste ou libellé', d.libelle);
         input($('bi-common'), 'nature', 'Nature', d.nature || 'salaire', [['salaire','Salarié ou poste'],['depense','Dépense / charge'],['financement','Financement']]);
-        input($('bi-common'), 'compte', 'Compte général (premier 641 pour le brut de base)', d.compte);
+        input($('bi-common'), 'compte', 'Compte général (premier 641 pour le brut de base)', d.compte, accountOptions(d.nature || 'salaire', d.compte));
         Object.entries(state.secteurs).forEach(([id, name]) => input($('bi-secteurs'), 'secteur-' + id, name + ' (%)', d.secteurs?.[id] ?? (Object.keys(state.secteurs).length === 1 ? '100' : '')));
         input($('bi-salary-fields'), 'poste', 'Poste', d.poste || 'occupe', [['occupe','Occupé'],['vacant','Vacant']]);
         input($('bi-salary-fields'), 'salarie_id', 'Salarié facultatif', d.salarie_id || '',
@@ -105,10 +152,17 @@
         monthInputs('bi-weights', 'poids-', d.poids, '1');
         monthInputs('bi-monthly-fields', 'mois-', d.mois);
         reference('bi-reference', 'ref-', d.reference || {});
-        input($('bi-notes'), 'source', 'Source / document de référence', d.source, null, 'textarea');
-        input($('bi-notes'), 'note', 'Justification, période et hypothèses de la ligne', d.note, null, 'textarea');
+        input($('bi-notes'), 'source', 'Source / document de référence (facultatif)', d.source, null, 'textarea');
+        input($('bi-notes'), 'note', 'Justification, période et hypothèses de la ligne (facultatif)', d.note, null, 'textarea');
         input($('bi-notes'), 'a_revoir', 'Ligne à revoir', d.a_revoir, null, 'checkbox');
         ['nature', 'base', 'mode'].forEach(k => $('bi-f-' + k).addEventListener('change', visibility));
+        $('bi-f-nature').addEventListener('change', refreshAccounts);
+        ['nature','base','salarie_id'].forEach(k => $('bi-f-' + k).addEventListener('change', prefill));
+        if (d.salarie_id && (d.base === 'alisfa' || alisfaKeys.filter(k => k !== 'quotite').some(k => d[k] !== null && d[k] !== undefined && d[k] !== ''))) {
+            copies.set(String(d.salarie_id), Object.fromEntries(alisfaKeys.map(k => [k,get(k)])));
+            fieldsEmployee = String(d.salarie_id);
+            if (d.base === 'alisfa') copiedEmployee = String(d.salarie_id);
+        }
         visibility(); dirty = false; $('bi-editor').hidden = false;
         $('bi-editor-title').textContent = editing ? 'Modifier · ' + editing : 'Nouvelle ligne';
         $('bi-f-libelle').focus();
@@ -185,10 +239,10 @@
     $('bi-hypotheses').addEventListener('input',()=>{hypothesesDirty=true;});
     $('bi-cancel-hypotheses').addEventListener('click',()=>{if(!state)return;$('bi-note').value=state.hypotheses.note;$('bi-taux').checked=state.hypotheses.taux_individuels;hypothesesDirty=false;});
     $('bi-editor').addEventListener('input',()=>{dirty=true;});
-    $('bi-editor').addEventListener('submit',e=>{e.preventDefault();save('ligne',readLine());});
+    $('bi-editor').addEventListener('submit',e=>{e.preventDefault();if(prefillPending){status('Attendez la fin du préremplissage ALISFA avant d’enregistrer.',true);return;}save('ligne',readLine());});
     $('bi-hypotheses').addEventListener('submit',e=>{e.preventDefault();if(dirty){status('Enregistrez ou annulez la ligne en cours avant les hypothèses.',true);return;} save('hypotheses',{note:$('bi-note').value,taux_individuels:$('bi-taux').checked});});
     $('bi-new').addEventListener('click',()=>edit());
-    $('bi-cancel').addEventListener('click',()=>{dirty=false;$('bi-editor').hidden=true;});
+    $('bi-cancel').addEventListener('click',()=>{++prefillGeneration;prefillPending=false;dirty=false;$('bi-editor').hidden=true;});
     $('bi-add-complement').addEventListener('click',()=>{complement();dirty=true;});
     $('bi-report').addEventListener('click',()=>{if(dirty||hypothesesDirty){status('Enregistrez ou annulez les saisies en cours avant le report.',true);return;}if(window.confirm('Reporter les comptes autorisés selon le rapprochement affiché ? Les autres comptes resteront inchangés.'))mutate(root.dataset.report,{reference_report:state.reference_report});});
     window.addEventListener('beforeunload',e=>{if(dirty||hypothesesDirty){e.preventDefault();e.returnValue='';}});

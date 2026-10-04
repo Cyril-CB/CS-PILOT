@@ -1602,16 +1602,20 @@
         "Une base active : brut mensuel vérifié à la quotité saisie, formule ALISFA explicable ou forfait journalier CEE ; permanents sur douze mois et saisonniers selon fractions mensuelles normales. Aucun accès en écriture aux fiches RH.",
         "Brut de base au premier 641 sectoriel, compléments mensuels sur les autres 641 sans libellé doublonné ; somme des 641 égale au brut global.",
         "Charges et autres lignes en montant annuel manuel ventilé par poids, projection mensuelle ou ratio au brut global sectoriel ; provenance annuelle complète comparable explicitement confirmée, source, année, assiette, périmètre et date de vérification.",
-        "Option des taux individuels sur le brut de chaque personne, compléments inclus : regroupement au premier 645 et autres 645–648 à zéro dans la construction ; saisies manuelles mémorisées et restaurées à la désactivation, comptes 63 inchangés.",
+        "Option des taux individuels sur le brut de chaque personne, compléments inclus : regroupement au premier 645 sectoriel (à défaut, celui de la construction existante puis premier 645 du plan général) et autres 645–648 à zéro dans la construction ; saisies manuelles mémorisées et restaurées à la désactivation, comptes 63 inchangés.",
         "Calcul Decimal côté serveur et ventilation exacte au centime, totaux mensuels, sectoriels et généraux concordants ; None reste distinct de zéro.",
         "Révision technique pour refuser les modifications concurrentes, dernière modification, report atomique explicite et rapprochement des montants existants ; commentaires et simulations conservés.",
-        "Migration 0077 additive et idempotente, partagée avec l’installation neuve, tables déclarées au diagnostic de résilience."
+        "Migration 0077 additive et idempotente, partagée avec l’installation neuve, tables déclarées au diagnostic de résilience.",
+        "Choix dans le plan général : 641 salaires/compléments, 6 hors 63/64 dépenses, 7 financements ; contrôle serveur et reprise des anciens comptes.",
+        "Copie ALISFA ponctuelle depuis le salarié et son dernier contrat hors CEE couvrant l’année ; valeurs modifiables, ajustements conservés à la reprise, aucune écriture RH.",
+        "Source et justification visibles mais facultatives, y compris source des taux ; leur absence seule ne bloque ni sauvegarde ni report."
       ],
       "entry_points": [
         "budget_initial_bp.construction",
         "budget_initial_bp.donnees",
         "budget_initial_bp.sauvegarder",
-        "budget_initial_bp.report"
+        "budget_initial_bp.report",
+        "budget_initial_bp.alisfa"
       ],
       "implementation": {
         "route_files": [
@@ -1637,7 +1641,9 @@
           "budget_paie_simulations",
           "secteurs",
           "users",
-          "budget_ps_simulations"
+          "budget_ps_simulations",
+          "contrats",
+          "plan_comptable_general"
         ],
         "tests": [
           "tests/test_budget_initial_moteur.py",

@@ -201,7 +201,7 @@ def normaliser_reference(value):
 
 
 def reference_complete(ref, annee, ratio=False):
-    ok = (all(ref.get(k) for k in ('source', 'annee', 'assiette', 'perimetre', 'verification'))
+    ok = (all(ref.get(k) for k in ('annee', 'assiette', 'perimetre', 'verification'))
           and int(ref['annee']) < annee and ref.get('complete_comparable'))
     if ratio:
         ok = ok and ref.get('numerateur') is not None and nombre(ref.get('denominateur')) not in (None, ZERO)
@@ -273,8 +273,6 @@ def calculer(annee, hypotheses, lignes, secteurs, premiers=None, premiers_charge
         d = l['donnees']
         if d['a_revoir']:
             signaler(l, 'Ligne marquée à revoir.')
-        if not d['source'] or not d['note']:
-            signaler(l, 'Source ou justification manquante.')
         if d['nature'] != 'salaire':
             continue
         if any(d['compte'] != bases[sid] for sid in d['secteurs']):
@@ -363,7 +361,7 @@ def calculer(annee, hypotheses, lignes, secteurs, premiers=None, premiers_charge
             for sid in poids:
                 code = charges[sid]
                 if code is None:
-                    signaler(l, 'Ajoutez une ligne sur le premier compte 645 de chaque secteur pour les charges individuelles.')
+                    signaler(l, 'Renseignez un compte 645 dans le plan général ou le tableau budgétaire pour les charges individuelles.')
                     continue
                 parts = [repartir(v, poids)[sid] for v in valeurs]
                 copie = {**l, 'donnees': {**d, 'secteurs': {sid: '100'}}}

@@ -11,7 +11,8 @@ automatiquement les budgets ni les simulations déjà enregistrés.
 2. Ajouter une ligne par salarié ou poste identifié, y compris vacant. Le nom
    du poste est obligatoire ; la référence à un salarié existant est facultative.
    Une même référence salarié ne peut être utilisée deux fois dans l’année.
-3. Renseigner la quotité, la base de rémunération, la source et la justification.
+3. Renseigner la quotité et la base de rémunération. Source et justification
+   restent facultatives.
    Ventiler entre les secteurs à **100 % au total**. Un poste vacant conserve son
    identifiant lorsqu’il est complété ou renommé.
 4. Ajouter les dépenses, charges et financements, avec leur méthode et leur
@@ -63,7 +64,7 @@ Trois méthodes restent disponibles :
 Une ligne proportionnelle appartient à un seul secteur à 100 %, afin de ne pas
 ventiler deux fois une assiette déjà sectorisée. La référence **2025** est
 proposée dans le formulaire, sans présumer qu’elle est complète. Renseigner
-source, année, assiette, périmètre et date de vérification, puis confirmer
+année, assiette, périmètre et date de vérification (source facultative), puis confirmer
 explicitement l’exercice complet et le périmètre comparable. Le numérateur et
 l’assiette annuelle sont conservés ; l’assiette ne peut être nulle pour le ratio.
 Il n’existe pas de liaison automatique avec un import comptable dans ce lot.
@@ -79,8 +80,9 @@ sa provenance, y compris un taux nul explicitement vérifié.
 ## Inconnus, arrondis et contrôles
 
 Vide signifie **inconnu**, jamais zéro. Une donnée requise manquante rend le
-montant et les totaux concernés « À compléter » et bloque le report. Source,
-justification et marque « à revoir » participent au contrôle de complétude.
+montant et les totaux concernés « À compléter » et bloque le report. La marque
+« à revoir » bloque également le report. Source et justification restent visibles et
+facultatives : leur absence seule ne bloque ni sauvegarde ni report.
 
 Les calculs sont faits sur le serveur avec `Decimal`, arrondi monétaire au
 centime (`ROUND_HALF_UP`). Une ventilation répartit les centimes par plus grands
@@ -213,3 +215,30 @@ de l’actualisé. Un PDF n’est pas comparé octet pour octet : les métadonn�
 génération peuvent varier. Un rejet CSRF invalide la session et redirige vers
 la connexion selon le contrat global existant ; l’écran conserve la saisie et
 explique désormais cette situation.
+
+## Choix des comptes et copie ALISFA
+
+Pour les taux individuels, le premier 645 du tableau sectoriel reste prioritaire ;
+s’il est absent, celui d’une construction existante est conservé. À défaut,
+le premier 645 du plan général sert au calcul. Aucun report
+n’est automatique et aucune ligne manuelle 64 n’est nécessaire pour ce choix.
+
+Les comptes se choisissent dans le plan comptable général existant : **641** pour
+les salaires et compléments, **6 hors 63 et 64** pour les dépenses, **7** pour les
+financements. Ces règles sont vérifiées par le serveur. Un compte déjà enregistré
+reste utilisable sur sa ligne, même retiré du plan ou exclu des nouveaux choix ;
+les anciens budgets ne sont pas convertis. Si la liste est vide, compléter le plan
+général dans son écran habituel avant de créer une ligne.
+
+En mode ALISFA, sélectionner un salarié copie sa pesée, ses points de compétences
+et son maintien. Le dernier contrat hors CEE couvrant l’année fournit la quotité
+(heures hebdomadaires / 35) et l’ancienneté révolue au 1er janvier, comme dans le
+simulateur de paie. Socle et point sont les valeurs par défaut du simulateur,
+explicitement à vérifier. Les données absentes restent à compléter, sans zéro
+inventé. Cette copie ne reprend pas les absences et ne modifie jamais la fiche RH.
+
+Les valeurs sont modifiables dans le budget. Recalculer ou rouvrir une ligne
+conserve ces ajustements. Changer de mode puis revenir à ALISFA, ou revenir au
+salarié précédent pendant l’édition, conserve les ajustements déjà saisis.
+Changer de salarié initialise la copie du nouveau salarié ; aucune synchronisation
+RH permanente n’est créée. Cette lecture est réservée à direction et comptabilité.

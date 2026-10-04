@@ -59,11 +59,9 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             await page.screenshot({path:path.join(output,name+'-focus.png')});
             await page.locator('#bi-new').click();
             await page.locator('#bi-f-libelle').fill('Poste vacant synthétique');
-            await page.locator('#bi-f-compte').fill('641100');
+            await page.locator('#bi-f-compte').selectOption('641100');
             await page.locator('#bi-f-poste').selectOption('vacant');
             await page.locator('#bi-f-quotite').fill('100');
-            await page.locator('#bi-f-source').fill('Référence de recette synthétique');
-            await page.locator('#bi-f-note').fill('Douze mois, aucun remplacement imprévisible');
             await page.locator('#bi-editor button[type=submit]').click();
             await page.getByText('Enregistré et recalculé.', {exact:true}).waitFor();
             assert.equal(await page.locator('#bi-report').isDisabled(), true);
@@ -110,6 +108,53 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             await page.getByText('Construction chargée.', {exact:true}).waitFor();
             assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
             await page.screenshot({path:path.join(output,name+'-classique.png'),fullPage:true});
+            // Listes filtrées et copie ALISFA réelle, indépendante des ajustements RH.
+            await page.locator('#bi-lines button').first().click();
+            const codes = () => page.locator('#bi-f-compte option').evaluateAll(os => os.map(o => o.value).filter(Boolean));
+            assert.deepEqual(await codes(), ['641100','641200']);
+            await page.locator('#bi-f-nature').selectOption('depense');
+            assert.deepEqual(await codes(), ['606100']);
+            await page.locator('#bi-f-nature').selectOption('financement');
+            assert.deepEqual(await codes(), ['706100']);
+            await page.locator('#bi-f-nature').selectOption('salaire');
+            await page.locator('#bi-f-compte').selectOption('641100');
+            await page.locator('#bi-f-salarie_id').selectOption('2');
+            await page.locator('#bi-f-base').selectOption('alisfa');
+            await page.waitForFunction(() => document.getElementById('bi-f-pesee').value === '20');
+            assert.equal(await page.locator('#bi-f-quotite').inputValue(), '80.0');
+            assert.equal(await page.locator('#bi-f-maintien').inputValue(), '0');
+            await page.locator('#bi-f-pesee').fill('99');
+            await page.locator('#bi-f-base').selectOption('brut');
+            await page.locator('#bi-f-quotite').fill('75');
+            await page.locator('#bi-f-base').selectOption('alisfa');
+            assert.equal(await page.locator('#bi-f-pesee').inputValue(), '99');
+            assert.equal(await page.locator('#bi-f-quotite').inputValue(), '75');
+            await page.locator('#bi-f-salarie_id').selectOption('1');
+            await page.getByText(/Copie budgétaire modifiable/).waitFor();
+            await page.waitForFunction(() => document.getElementById('bi-f-socle').value === '23000');
+            assert.equal(await page.locator('#bi-f-quotite').inputValue(), '');
+            await page.locator('#bi-f-salarie_id').selectOption('2');
+            assert.equal(await page.locator('#bi-f-pesee').inputValue(), '99');
+            assert.equal(await page.locator('#bi-f-quotite').inputValue(), '75');
+            await page.screenshot({path:path.join(output,name+'-alisfa.png'),fullPage:true});
+            await page.locator('#bi-editor button[type=submit]').click();
+            await page.getByText('Enregistré et recalculé.', {exact:true}).waitFor();
+            await page.reload();
+            await page.getByText('Construction chargée.', {exact:true}).waitFor();
+            await page.locator('#bi-lines button').first().click();
+            assert.equal(await page.locator('#bi-f-pesee').inputValue(), '99');
+            assert.equal(await page.locator('#bi-f-source').inputValue(), '');
+            assert.equal(await page.locator('#bi-f-note').inputValue(), '');
+            // Les paramètres ALISFA restent mémorisés même après une sauvegarde en brut.
+            await page.locator('#bi-f-base').selectOption('brut');
+            await page.locator('#bi-editor button[type=submit]').click();
+            await page.getByText('Enregistré et recalculé.', {exact:true}).waitFor();
+            await page.reload();
+            await page.getByText('Construction chargée.', {exact:true}).waitFor();
+            await page.locator('#bi-lines button').first().click();
+            await page.locator('#bi-f-base').selectOption('alisfa');
+            assert.equal(await page.locator('#bi-f-pesee').inputValue(), '99');
+            await page.locator('#bi-cancel').click();
             // Invalider la session par un vrai POST sans CSRF, puis essayer de sauver.
             await page.locator('#bi-lines button').first().click();
             await page.locator('#bi-f-libelle').fill('Saisie à conserver après expiration');
@@ -118,7 +163,7 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             await page.getByText('Votre session a expiré ou est invalide. Conservez vos saisies affichées, puis reconnectez-vous et rechargez la page.', {exact:true}).waitFor();
             assert.equal(await page.locator('#bi-f-libelle').inputValue(), 'Saisie à conserver après expiration');
             assert.deepEqual(errors, []);
-            console.log(name + ': connexion, CSRF, vide/incomplet, erreur, reprise/UUID, report, PDF, actualisé 2026, interfaces flux/classique, focus/survol et expiration OK');
+            console.log(name + ': connexion, CSRF, vide/incomplet, erreur, reprise/UUID, report, PDF, actualisé 2026, interfaces flux/classique, focus/survol, comptes filtrés, copie ALISFA et ajustements conservés, documents facultatifs et expiration OK');
             await context.close();
         }
         console.log('Captures : ' + output);
