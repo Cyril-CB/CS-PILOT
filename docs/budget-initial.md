@@ -84,6 +84,10 @@ montant et les totaux concernés « À compléter » et bloque le report. La mar
 « à revoir » bloque également le report. Source et justification restent visibles et
 facultatives : leur absence seule ne bloque ni sauvegarde ni report.
 
+Les saisies numériques acceptent au maximum 28 décimales. Les exposants
+extrêmes sont refusés avant calcul, sans écriture partielle ; les plafonds
+monétaires restent inchangés.
+
 Les calculs sont faits sur le serveur avec `Decimal`, arrondi monétaire au
 centime (`ROUND_HALF_UP`). Une ventilation répartit les centimes par plus grands
 restes ; les ex æquo sont départagés par clé stable. Les douze mois totalisent
@@ -242,3 +246,7 @@ conserve ces ajustements. Changer de mode puis revenir à ALISFA, ou revenir au
 salarié précédent pendant l’édition, conserve les ajustements déjà saisis.
 Changer de salarié initialise la copie du nouveau salarié ; aucune synchronisation
 RH permanente n’est créée. Cette lecture est réservée à direction et comptabilité.
+
+Les anciennes simulations de paie dont le contenu est nul, vide, malformé ou
+non structuré restent conservées. Leur lecture ne bloque pas la construction ;
+leur compte propriétaire reste protégé du report, même sans contenu exploitable.

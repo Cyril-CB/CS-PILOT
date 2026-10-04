@@ -475,3 +475,39 @@ def test_taux_individuels_preserve_645_ancienne_construction(admin_client, sampl
     assert d['calcul']['complet']
     assert set(d['calcul']['ventilation'][sid]) == {'641100','645200'}
     assert d['calcul']['general']['charges_annuel'] == '33600'
+
+
+@pytest.mark.parametrize('payload', [None, '', '{invalide', 'null', '[]', '42'])
+@pytest.mark.parametrize('proprietaire', [True, False])
+def test_simulation_legacy_sans_objet_chargeable_et_protegee(admin_client, sample_users, db, payload, proprietaire):
+    sid = sample_users['secteur_id']
+    data = salaire(secteurs={str(sid):'100'}, source='', note='') if proprietaire else ligne_secteur(sample_users, source='', note='')
+    assert sauver(admin_client, data).status_code == 200
+    db.execute('''INSERT INTO budget_paie_simulations (type_budget,annee,secteur_id,compte_num,donnees,total)
+                  VALUES ('initial',2026,?,'641100',?,24000)''', (sid,payload))
+    db.commit()
+    before = [tuple(r) for r in db.execute('SELECT * FROM budget_paie_simulations')]
+    d = etat(admin_client)
+    assert d['calcul']['complet']
+    assert d['reports'][0]['possible'] is not proprietaire
+    if proprietaire:
+        assert 'Simulation' in d['reports'][0]['motif']
+    response = admin_client.post(API + '/reporter', json={'annee':2026,'revision':d['revision'],
+                                                         'reference_report':d['reference_report']})
+    assert response.status_code == 200
+    assert response.get_json()['reportes'] == (0 if proprietaire else 1)
+    assert [tuple(r) for r in db.execute('SELECT * FROM budget_paie_simulations')] == before
+
+
+@pytest.mark.parametrize('champ,valeur', [('denominateur','1e-999999'), ('numerateur','1e999999999'), ('denominateur','0e-999999')])
+def test_exposant_extreme_refuse_sans_ecriture(admin_client, sample_users, champ, valeur):
+    from tests.test_budget_initial_moteur import reference
+    assert sauver(admin_client, salaire(secteurs={str(sample_users['secteur_id']):'100'})).status_code == 200
+    before = etat(admin_client)
+    data = ligne_secteur(sample_users, mode='proportionnel', reference=reference(**{champ:valeur}), source='', note='')
+    response = sauver(admin_client, data)
+    assert response.status_code == 409
+    assert 'Nombre invalide' in response.get_json()['error']
+    after = etat(admin_client)
+    assert after['revision'] == before['revision']
+    assert after['lignes'] == before['lignes']

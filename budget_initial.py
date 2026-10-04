@@ -30,7 +30,10 @@ def nombre(value, minimum=None, maximum=Decimal('999999999.99')):
         if isinstance(value, bool):
             raise ValueError
         n = Decimal(str(value).replace(',', '.'))
-        if not n.is_finite() or abs(n) > maximum or (minimum is not None and n < minimum):
+        # Borner les décimales avant calcul ou conversion en notation fixe :
+        # un exposant extrême peut déborder même pour une valeur proche de zéro.
+        if (not n.is_finite() or n.as_tuple().exponent < -28
+                or n.copy_abs() > maximum or (minimum is not None and n < minimum)):
             raise ValueError
         return n
     except (InvalidOperation, ValueError, TypeError):
@@ -472,7 +475,14 @@ def preparer_report(conn, annee, calcul):
         simulation_ps = conn.execute('''SELECT 1 FROM budget_ps_simulations
             WHERE type_budget='initial' AND annee=? AND secteur_id=? AND compte_num=?''',
             (annee, sid, code)).fetchone()
-        donnees_sim = json.loads(simulation['donnees']) if simulation else {}
+        # Même tolérance que la lecture du simulateur pour les anciennes lignes.
+        # Le compte propriétaire reste protégé, indépendamment du contenu JSON.
+        try:
+            donnees_sim = json.loads(simulation['donnees'] or '{}') if simulation else {}
+        except (ValueError, TypeError):
+            donnees_sim = {}
+        if not isinstance(donnees_sim, dict):
+            donnees_sim = {}
         avant = nombre(ancien['valeur_def']) if ancien else None
         temp = nombre(ancien['valeur_temp']) if ancien else None
         precedent = nombre(precedents.get((sid, code)))

@@ -1603,7 +1603,7 @@
         "Brut de base au premier 641 sectoriel, compléments mensuels sur les autres 641 sans libellé doublonné ; somme des 641 égale au brut global.",
         "Charges et autres lignes en montant annuel manuel ventilé par poids, projection mensuelle ou ratio au brut global sectoriel ; provenance annuelle complète comparable explicitement confirmée, source, année, assiette, périmètre et date de vérification.",
         "Option des taux individuels sur le brut de chaque personne, compléments inclus : regroupement au premier 645 sectoriel (à défaut, celui de la construction existante puis premier 645 du plan général) et autres 645–648 à zéro dans la construction ; saisies manuelles mémorisées et restaurées à la désactivation, comptes 63 inchangés.",
-        "Calcul Decimal côté serveur et ventilation exacte au centime, totaux mensuels, sectoriels et généraux concordants ; None reste distinct de zéro.",
+        "Calcul Decimal côté serveur et ventilation exacte au centime, totaux mensuels, sectoriels et généraux concordants ; None reste distinct de zéro ; saisies limitées à 28 décimales, exposants extrêmes refusés avant calcul.",
         "Révision technique pour refuser les modifications concurrentes, dernière modification, report atomique explicite et rapprochement des montants existants ; commentaires et simulations conservés.",
         "Migration 0077 additive et idempotente, partagée avec l’installation neuve, tables déclarées au diagnostic de résilience.",
         "Choix dans le plan général : 641 salaires/compléments, 6 hors 63/64 dépenses, 7 financements ; contrôle serveur et reprise des anciens comptes.",
@@ -1676,7 +1676,7 @@
         "Un ancien montant manuel, y compris zéro, n’est pas écrasé par un report.",
         "Les anciens endpoints, simulations, commentaires et PDF restent inchangés.",
         "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct.",
-        "Un compte propriétaire d’une simulation de paie ou PS de l’initial reste protégé même à montant identique au dernier report ; la suppression d’un secteur ayant un report est refusée pour préserver son historique."
+        "Un compte propriétaire d’une simulation de paie ou PS de l’initial reste protégé même à montant identique au dernier report ou si le contenu de la simulation est nul/malformé ; la suppression d’un secteur ayant un report est refusée pour préserver son historique."
       ],
       "extension_points": [
         "Les UUID et colonnes de liaison nullables préparent les lots ultérieurs sans les activer."

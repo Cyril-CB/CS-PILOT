@@ -173,6 +173,14 @@ class MoteurInitialTest(unittest.TestCase):
         with self.assertRaises(InitialRefuse):
             calcul(salaire(), depense(mode='proportionnel', reference=reference(denominateur='0.00000000000000001')))
 
+    def test_exposants_bornes_avant_calcul(self):
+        for valeur in ('1e-999999', '-1e-999999', '0e-999999', '1e999999999', '1e-29'):
+            with self.subTest(valeur=valeur), self.assertRaises(InitialRefuse):
+                nombre(valeur)
+        for valeur in ('1e-28', '0e-28', '2.5e3', '28.57142857142857142857142857'):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(nombre(valeur), D(valeur))
+
     def test_brut_negatif_a_revoir(self):
         d = calcul(salaire(complements=[{'libelle':'Réduction','compte':'641200','mois':['-3000']*12}]))
         self.assertFalse(d['complet'])

@@ -107,9 +107,9 @@ def _contexte(conn, annee):
     secteurs = {str(r['id']): r['nom'] for r in conn.execute('SELECT id, nom FROM secteurs ORDER BY nom')}
     bases, charges = {}, {}
     for sid in secteurs:
-        data = _compute_budget_previsionnel(conn, 'initial', annee, int(sid))
-        bases[sid] = data.get('salary_brut_account')
-        charges[sid] = next((r['compte_num'] for r in data['rows'] if r['compte_num'].startswith('645')), None)
+        rows = _compute_budget_previsionnel(conn, 'initial', annee, int(sid), comptes_seuls=True)
+        bases[sid] = next((r['compte_num'] for r in rows if r['compte_num'].startswith('641')), None)
+        charges[sid] = next((r['compte_num'] for r in rows if r['compte_num'].startswith('645')), None)
     return secteurs, bases, charges
 
 

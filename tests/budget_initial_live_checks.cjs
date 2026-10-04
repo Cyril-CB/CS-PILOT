@@ -74,6 +74,11 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             await page.locator('#bi-lines button').first().click();
             assert.equal(await page.locator('#bi-f-poste').inputValue(), 'vacant');
             await page.locator('#bi-f-libelle').fill('Poste vacant renommé');
+            await page.locator('#bi-f-brut_mensuel').fill('1e-999999');
+            await page.locator('#bi-editor button[type=submit]').click();
+            await page.getByText('Nombre invalide ou hors limites.', {exact:true}).waitFor();
+            assert.equal(await page.locator('#bi-f-brut_mensuel').inputValue(), '1e-999999');
+            assert.equal((await (await context.request.get(base + api)).json()).revision, state.revision);
             await page.locator('#bi-f-brut_mensuel').fill('2000');
             await page.locator('#bi-f-brut_verifie').check();
             await page.locator('#bi-f-secteur-1').fill('99');
