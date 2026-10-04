@@ -1,10 +1,13 @@
 """Intégration Flask sur les fixtures synthétiques ; nécessite requirements.txt."""
 import json
+import importlib
+import io
 
+import pdfplumber
 import pytest
 
 from tests.test_budget_initial_moteur import depense, salaire
-from tests.test_budget_regles import lire as lire_ancien
+from tests.test_budget_regles import cadre, config, lire as lire_ancien, post, saisir
 
 API = '/api/budget-initial-detaille'
 
@@ -64,11 +67,18 @@ def test_non_connecte(client):
     assert client.post(API + '/enregistrer', json={}).status_code == 302
 
 
-def test_csrf_requis(app, admin_client):
+@pytest.mark.parametrize('path', ['enregistrer', 'reporter'])
+def test_csrf_requis(app, admin_client, db, path):
     app.config['WTF_CSRF_ENABLED'] = True
     try:
-        for path in ('enregistrer', 'reporter'):
-            assert admin_client.post(API + '/' + path, json={'annee': 2026}).status_code == 400
+        # Le garde global invalide la session puis redirige vers la connexion.
+        # Chaque endpoint est essayé avec une session authentifiée distincte.
+        response = admin_client.post(API + '/' + path, json={'annee': 2026})
+        assert response.status_code == 302
+        assert response.headers['Location'].endswith('/login')
+        with admin_client.session_transaction() as session:
+            assert 'user_id' not in session
+        assert db.execute('SELECT count(*) FROM budget_initial_hypotheses').fetchone()[0] == 0
     finally:
         app.config['WTF_CSRF_ENABLED'] = False
 
@@ -141,3 +151,93 @@ def test_report_salaire_pas_decriture_rh(admin_client,sample_users,db):
 @pytest.mark.parametrize('annee',['actualise','NaN','1899','2201'])
 def test_annees_invalides(admin_client,annee):
     assert admin_client.get(API,query_string={'annee':annee}).status_code==400
+
+
+def pdf_texte(client, sid):
+    response = client.get('/api/budget-previsionnel/export-pdf', query_string={
+        'type_budget': 'actualise', 'annee': 2026, 'secteur_id': sid})
+    assert response.status_code == 200 and response.data.startswith(b'%PDF')
+    with pdfplumber.open(io.BytesIO(response.data)) as pdf:
+        return [page.extract_text() for page in pdf.pages]
+
+
+def test_actualise_2026_recalcul_simulation_pdf_apres_migration_et_report(cadre, admin_client, db):
+    sid, uid = cadre
+    assert admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
+        'type_budget': 'actualise', 'annee': 2026, 'secteur_id': sid, 'compte_num': '606100'}).status_code == 200
+    assert config(admin_client, sid).status_code == 200
+    assert saisir(admin_client, sid, {'641100': 120000, '641200': 10000, '606100': 0}).status_code == 200
+    assert post(admin_client, sid, 'paie-simulation', compte_num='641100', donnees={
+        'salaire_socle': 120000, 'valeur_point': 0, 'temps_plein': 35,
+        'employes': {str(uid): {'pesee': 0, 'competence': 0, 'anciennete': 0, 'maintien': 0}}
+    }).status_code == 200
+    db.execute("UPDATE budget_prev_saisies SET commentaire='Manuel zéro conservé' WHERE type_budget='actualise' AND compte_num='606100'")
+    db.commit()
+    # L'ancien actualisé affiche une colonne comparative « Initial ».
+    # Établir son résultat de référence avec une écriture par l'ancien parcours.
+    assert admin_client.post('/api/budget-previsionnel/ajouter-compte', json={
+        'type_budget': 'initial', 'annee': 2026, 'secteur_id': sid, 'compte_num': '606100'}).status_code == 200
+    assert saisir(admin_client, sid, {'606100': 1200}, typ='initial').status_code == 200
+    attendu_apres_report = lire_ancien(admin_client, sid)
+    pdf_attendu_apres_report = pdf_texte(admin_client, sid)
+    db.execute("DELETE FROM budget_prev_saisies WHERE type_budget='initial'")
+    # Reconstituer le schéma précédent sur cette seule base synthétique.
+    for table in ('budget_initial_reports', 'budget_initial_lignes', 'budget_initial_hypotheses'):
+        db.execute('DROP TABLE ' + table)
+    db.execute("DELETE FROM schema_migrations WHERE version='0077'")
+    db.commit()
+    tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT IN ('schema_migrations','schema_migrations_tentatives','sqlite_sequence') ORDER BY name")]
+    avant = {t: [tuple(r) for r in db.execute('SELECT * FROM "' + t + '"')] for t in tables}
+    donnees_avant = lire_ancien(admin_client, sid)
+    pdf_avant = pdf_texte(admin_client, sid)
+    from migration_manager import appliquer_toutes_en_attente
+    appliquer_toutes_en_attente(appliquee_par='pytest')
+    importlib.import_module('migrations.0077_budget_initial_detaille').upgrade(db)
+    db.commit()
+    for table, valeurs in avant.items():
+        assert [tuple(r) for r in db.execute('SELECT * FROM "' + table + '"')] == valeurs, table
+    assert db.execute("SELECT statut FROM schema_migrations WHERE version='0077'").fetchone()[0] == 'ok'
+    assert lire_ancien(admin_client, sid) == donnees_avant
+    assert pdf_texte(admin_client, sid) == pdf_avant
+    assert sauver(admin_client, depense(secteurs={str(sid): '100'})).status_code == 200
+    state = etat(admin_client)
+    response = admin_client.post(API + '/reporter', json={
+        'annee': 2026, 'revision': state['revision'], 'reference_report': state['reference_report']})
+    assert response.status_code == 200 and response.get_json()['reportes'] == 1
+    apres = lire_ancien(admin_client, sid)
+    assert apres['rows'] == attendu_apres_report['rows']
+    assert apres['totaux'] == attendu_apres_report['totaux']
+    assert pdf_texte(admin_client, sid) == pdf_attendu_apres_report
+    assert post(admin_client, sid, 'recalculer').status_code == 200
+    apres = lire_ancien(admin_client, sid)
+    assert apres['rows'] == attendu_apres_report['rows']
+    assert apres['totaux'] == donnees_avant['totaux']
+    assert pdf_texte(admin_client, sid) == pdf_attendu_apres_report
+    for table in ('budget_modes_comptes', 'budget_paie_simulations', 'users', 'contrats'):
+        assert [tuple(r) for r in db.execute('SELECT * FROM ' + table)] == avant[table]
+    assert saisir(admin_client, sid, {'606100': 1250}).status_code == 200
+    assert next(r for r in lire_ancien(admin_client, sid)['rows'] if r['compte_num'] == '606100')['def'] == 1250
+
+
+def test_premiere_ligne_sans_hypotheses_reste_reouvrable(admin_client, sample_users):
+    avant = etat(admin_client)['hypotheses']
+    assert avant == {'note': '', 'taux_individuels': False}
+    assert sauver(admin_client, ligne_secteur(sample_users)).status_code == 200
+    assert etat(admin_client)['hypotheses'] == avant
+
+
+def test_report_perime_et_incomplet_refuses_sans_ecriture(admin_client, sample_users, db):
+    assert sauver(admin_client, ligne_secteur(sample_users, annuel=None)).status_code == 200
+    state = etat(admin_client)
+    payload = {'annee': 2026, 'revision': state['revision'], 'reference_report': state['reference_report']}
+    assert admin_client.post(API + '/reporter', json=payload).status_code == 409
+    assert db.execute('SELECT count(*) FROM budget_prev_saisies').fetchone()[0] == 0
+    assert sauver(admin_client, ligne_secteur(sample_users), ligne={
+        'id': state['lignes'][0]['id'], 'donnees': ligne_secteur(sample_users)}).status_code == 200
+    state = etat(admin_client)
+    assert admin_client.post(API + '/reporter', json=payload).status_code == 409
+    db.execute("INSERT INTO budget_prev_saisies (type_budget,annee,secteur_id,compte_num,valeur_def) VALUES ('initial',2026,?,'606100',42)", (sample_users['secteur_id'],))
+    db.commit()
+    assert admin_client.post(API + '/reporter', json={
+        'annee': 2026, 'revision': state['revision'], 'reference_report': state['reference_report']}).status_code == 409
+    assert db.execute('SELECT valeur_def FROM budget_prev_saisies').fetchone()[0] == 42

@@ -157,10 +157,17 @@
         state.reports.forEach(p=>row($('bi-reports'),[(state.secteurs[p.secteur_id]||'Secteur supprimé')+' · '+p.compte,amount(p.avant),amount(p.montant),p.motif||(p.retire?'Ancien report retiré : remise à zéro proposée.':'Report autorisé.')]));
         $('bi-report').disabled = !state.calcul.complet || !state.reports.some(p=>p.possible);
     }
+    async function responseData(r) {
+        if (r.redirected || !(r.headers.get('content-type') || '').includes('application/json')) {
+            throw new Error('Votre session a expiré ou est invalide. Conservez vos saisies affichées, puis reconnectez-vous et rechargez la page.');
+        }
+        return r.json();
+    }
     async function load() {
         const r = await fetch(root.dataset.lecture+'?annee='+root.dataset.annee);
-        if (!r.ok) { const d=await r.json(); throw new Error(d.error || 'Chargement impossible.'); }
-        state = await r.json(); render();
+        const d = await responseData(r);
+        if (!r.ok) throw new Error(d.error || 'Chargement impossible.');
+        state = d; render();
     }
     async function mutate(url, payload) {
         if (busy || !state) return false;
@@ -169,7 +176,7 @@
         const disabled=controls.map(c=>c.disabled); controls.forEach(c=>{c.disabled=true;});
         try {
             const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name="csrf-token"]').content},body:JSON.stringify({annee:Number(root.dataset.annee),revision:state.revision,...payload})});
-            const data=await r.json(); if (!r.ok) throw new Error(data.error || 'Enregistrement refusé.');
+            const data=await responseData(r); if (!r.ok) throw new Error(data.error || 'Enregistrement refusé.');
             await load(); status(data.reportes !== undefined ? data.reportes+' compte(s) reporté(s). Vérifiez les comptes conservés avant le PDF.' : 'Enregistré et recalculé.'); return true;
         } catch(e) { status(e.message || 'Échec de connexion. Vos saisies restent affichées ; rechargez avant de réessayer.',true); return false; }
         finally { busy=false; root.removeAttribute('aria-busy'); controls.forEach((c,i)=>{if(c.isConnected)c.disabled=disabled[i];}); if(state)$('bi-report').disabled=!state.calcul.complet||!state.reports.some(p=>p.possible); }

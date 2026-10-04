@@ -119,6 +119,16 @@ enregistrés, et non les hypothèses non reportées.
 Les révisions servent uniquement à refuser une page périmée. Elles ne sont pas
 un gel/versionnement métier. Aucun recalcul n’écrit spontanément dans un budget.
 
+L’ancien actualisé conserve sa colonne comparative **Initial** : après un report
+explicite, cette colonne et celle du PDF reflètent les nouveaux montants initiaux,
+comme après une saisie dans le tableau habituel. Les montants actualisés,
+leurs méthodes, commentaires et simulations ne sont pas modifiés.
+
+Il est possible de commencer par une ligne : les hypothèses générales restent
+alors vides, avec les taux individuels désactivés. Les paramètres transversaux
+tels que l’inflation sont documentés dans la note d’hypothèses ; ce lot ne propose
+pas de coefficient d’inflation appliqué automatiquement aux lignes.
+
 ## Migration et périmètre
 
 La migration **0077** crée seulement `budget_initial_hypotheses`,
@@ -172,3 +182,25 @@ synthétique : états vide/incomplet/complet, erreur, création/modification d�
 poste vacant, réouverture, report refusé/périmé, comparaison des PDF et
 préservation d’un actualisé 2026. Les résultats réellement obtenus et les
 contrôles bloqués sont consignés dans la PR.
+
+Un harnais reproductible réalise ce parcours avec Flask et SQLite réels :
+
+```bash
+PYTHON=/chemin/vers/venv/bin/python node tests/budget_initial_live_checks.cjs
+```
+
+Il crée son propre dossier temporaire et un serveur sur loopback, puis se
+connecte avec un compte synthétique. CSRF et les protections de session restent
+actifs ; les requêtes externes du navigateur sont bloquées. Il vérifie les états
+vide/incomplet/complet, une ventilation refusée sans perte de saisie, le poste
+vacant renommé avec UUID conservé, la reprise, le report, le PDF, l’actualisé
+2026, les interfaces flux/classique et l’expiration de session. Les captures
+desktop/mobile restent dans un dossier temporaire indiqué en sortie.
+
+Les tests Flask vérifient aussi la migration sur un schéma antérieur synthétique
+peuplé (y compris simulations, formules, zéro manuel et commentaire), son
+idempotence, le contenu textuel des PDF avant/après, le recalcul et l’édition
+de l’actualisé. Un PDF n’est pas comparé octet pour octet : les métadonnées de
+génération peuvent varier. Un rejet CSRF invalide la session et redirige vers
+la connexion selon le contrat global existant ; l’écran conserve la saisie et
+explique désormais cette situation.

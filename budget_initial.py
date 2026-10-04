@@ -404,7 +404,8 @@ def charger(conn, annee):
     for l in lignes:
         l['donnees'] = json.loads(l['donnees'])
     return {'annee': annee, 'revision': row['revision'] if row else 0,
-            'hypotheses': json.loads(row['donnees']) if row else {'note': '', 'taux_individuels': False},
+            'hypotheses': {'note': '', 'taux_individuels': False,
+                          **(json.loads(row['donnees']) if row else {})},
             'updated_at': row['updated_at'] if row else None, 'lignes': lignes}
 
 

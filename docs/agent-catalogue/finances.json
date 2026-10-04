@@ -1641,7 +1641,9 @@
         "tests": [
           "tests/test_budget_initial_moteur.py",
           "tests/test_budget_initial_routes.py",
-          "tests/budget_initial_frontend_checks.cjs"
+          "tests/budget_initial_frontend_checks.cjs",
+          "tests/budget_initial_live_checks.cjs",
+          "tests/budget_initial_live_server.py"
         ],
         "docs": [
           "docs/budget-initial.md",
@@ -1679,7 +1681,8 @@
         "La construction ne reprend pas automatiquement les montants ni simulations existants. La saisie du secteur pilote et son contrôle métier restent explicites.",
         "Une ligne proportionnelle est ventilée à 100 % sur un seul secteur pour éviter une assiette ambiguë.",
         "Le report ne remplace ni une saisie manuelle existante ni un compte automatique ; les différences sont affichées. Le PDF habituel reflète uniquement les montants du tableau enregistrés.",
-        "Les taux et la référence annuelle sont des hypothèses saisies et confirmées, sans connexion automatique à un import ou un autre module."
+        "Les taux et la référence annuelle sont des hypothèses saisies et confirmées, sans connexion automatique à un import ou un autre module.",
+        "L’inflation est documentée dans la note d’hypothèses, sans coefficient automatique. La colonne comparative Initial de l’ancien actualisé et de son PDF reflète les reports explicites, sans écriture dans les montants actualisés."
       ]
     }
   ]
