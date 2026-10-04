@@ -223,14 +223,18 @@
           "secteurs",
           "types_secteur",
           "users",
-          "stagiaires_creneaux"
+          "stagiaires_creneaux",
+          "stagiaires_annonces_lectures",
+          "budget_initial_reports"
         ],
         "tests": [
           "tests/test_administration_acces.py",
-          "tests/test_stagiaires.py"
+          "tests/test_stagiaires.py",
+          "tests/test_budget_initial_routes.py"
         ],
         "docs": [
-          "docs/quick-start.md"
+          "docs/quick-start.md",
+          "docs/budget-initial.md"
         ]
       },
       "access": {
@@ -248,7 +252,8 @@
         "La suppression d’un type encore utilisé par un secteur est refusée.",
         "Les codes de type contiennent uniquement lettres minuscules et underscores, dans une limite de 50 caractères.",
         "Les synonymes doivent rester associés au secteur existant et ne pas créer un deuxième secteur pour une autre formulation.",
-        "Supprimer un secteur sans utilisateur retire dans la même transaction les demi-journées de stagiaires (stagiaires_creneaux) qui lui sont rattachées : PRAGMA foreign_keys n'étant pas activé, un orphelin ferait échouer le diagnostic de résilience."
+        "Supprimer un secteur sans utilisateur retire dans la même transaction les demi-journées de stagiaires (stagiaires_creneaux) qui lui sont rattachées : PRAGMA foreign_keys n'étant pas activé, un orphelin ferait échouer le diagnostic de résilience. Les lectures liées au secteur sont également retirées.",
+        "La suppression d’un secteur ayant un historique de report de budget initial est refusée sous verrou d’écriture, même sans utilisateur, pour conserver les montants et éviter les références orphelines."
       ],
       "extension_points": [
         "Réutiliser secteurs.synonymes pour enrichir la recherche avant de développer un nouveau parcours.",

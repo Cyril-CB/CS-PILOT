@@ -204,7 +204,8 @@
         "Horizon RH et échéances : fins de contrat, retours d'absence autorisés, étapes subventions et tâches personnelles jusqu'à 120 jours.",
         "Fragments HTML pour rafraîchir la file sans recharger la page.",
         "Accusé déclaratif de signalement des cas particuliers de paie, nominatif pour l'acteur courant.",
-        "Bouton « Pourquoi ? » des cartes : déroulé explicatif des étapes, rôles, étape courante et conséquences de l'attente, adapté au circuit de la demande."
+        "Bouton « Pourquoi ? » des cartes : déroulé explicatif des étapes, rôles, étape courante et conséquences de l'attente, adapté au circuit de la demande.",
+        "Annonces de stagiaires acquittables individuellement avec « J’ai lu », y compris la carte groupée : choix personnel persistant, sans effacer les fiches ni masquer les annonces des collègues."
       ],
       "entry_points": [
         "accueil_bp.accueil",
@@ -243,14 +244,17 @@
           "commandes_salaries",
           "planif_taches",
           "stagiaires",
-          "stagiaires_creneaux"
+          "stagiaires_creneaux",
+          "stagiaires_annonces_lectures"
         ],
         "tests": [
           "tests/test_interface_flux.py",
           "tests/test_dashboard_actions.py",
           "tests/test_flux_circuits.py",
           "tests/test_circuit_fiches.py",
-          "tests/test_stagiaires.py"
+          "tests/test_stagiaires.py",
+          "tests/test_stagiaires_lectures.py",
+          "tests/test_stagiaires_lectures_frontend.py"
         ],
         "docs": [
           "docs/interface-sans-menu.md",
@@ -459,7 +463,8 @@
         "Effectifs et ETP issus des contrats, absences en cours et à venir, fiches et validations.",
         "Demandes de congés/récupérations et actions à traiter, dont les arrivées de stagiaires sur le secteur.",
         "Factures du secteur, budgets et subventions affectées au responsable.",
-        "Compteurs personnels du responsable."
+        "Compteurs personnels du responsable.",
+        "Annonces de stagiaires acquittables individuellement avec « J’ai lu », y compris la carte groupée : choix personnel persistant, sans effacer les fiches ni masquer les annonces des collègues."
       ],
       "entry_points": [
         "dashboard_responsable_bp.dashboard_responsable"
@@ -490,13 +495,15 @@
           "budget_reel_lignes",
           "subventions",
           "stagiaires",
-          "stagiaires_creneaux"
+          "stagiaires_creneaux",
+          "stagiaires_annonces_lectures"
         ],
         "tests": [
           "tests/test_dashboard_responsable.py",
           "tests/test_equipe_responsable.py",
           "tests/test_dashboard_actions.py",
-          "tests/test_stagiaires.py"
+          "tests/test_stagiaires.py",
+          "tests/test_stagiaires_lectures.py"
         ],
         "docs": [
           "docs/sessions-et-perimetres.md"

@@ -10,14 +10,16 @@ responsable de ce secteur en est averti dans son fil d'actions
 (`dashboard_actions._stagiaires_attendus`).
 
 Six mois après le dernier jour, la fiche est anonymisée une fois par jour, à
-la première requête applicative (`_anonymisation_quotidienne`) ; elle ne peut
-plus alors qu'être consultée ou supprimée.
+la première requête applicative (`_anonymisation_quotidienne`), et dès une
+création ou modification dont la période est déjà échue ; elle ne peut plus
+alors qu'être consultée ou supprimée.
 """
 from contextlib import closing
+import json
 import logging
 import sqlite3
 
-from flask import (Blueprint, abort, flash, redirect, render_template,
+from flask import (Blueprint, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
 
 from database import get_db
@@ -215,6 +217,8 @@ def nouveau():
                 (v['nom'], v['prenom'], v['etudes'], v['etablissement'], v['tuteur_id'],
                  v['date_debut'], v['date_fin'], session['user_id'], _horodatage()))
             stagiaire_id = curseur.lastrowid
+            service.anonymiser_stages_termines(conn, aujourd_hui(), _horodatage())
+            anonymise = bool(_stagiaire(conn, stagiaire_id)['anonymise_le'])
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -223,6 +227,10 @@ def nouveau():
             conn.rollback()
             logger.error('Création de la fiche stagiaire impossible', exc_info=True)
             return _page_fiche(conn, valeurs=request.form, erreur=_ERREUR_TECHNIQUE, statut=503)
+    if anonymise:
+        flash('Fiche enregistrée et anonymisée : le stage est terminé depuis au moins '
+              'six mois. Elle est consultable et supprimable uniquement.', 'success')
+        return redirect(url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id))
     flash('Stagiaire enregistré. Indiquez maintenant les secteurs qui l’accueillent, '
           'demi-journée par demi-journée.', 'success')
     return redirect(url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id,
@@ -265,6 +273,8 @@ def modifier(stagiaire_id):
                 '''DELETE FROM stagiaires_creneaux
                    WHERE stagiaire_id = ? AND (date < ? OR date > ?)''',
                 (stagiaire_id, v['date_debut'], v['date_fin'])).rowcount
+            service.anonymiser_stages_termines(conn, aujourd_hui(), _horodatage())
+            anonymise = bool(_stagiaire(conn, stagiaire_id)['anonymise_le'])
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -276,6 +286,9 @@ def modifier(stagiaire_id):
             return _page_fiche(conn, _stagiaire(conn, stagiaire_id), valeurs=request.form,
                                erreur=_ERREUR_TECHNIQUE, statut=503)
     message = 'Fiche du stagiaire enregistrée.'
+    if anonymise:
+        message = ('Fiche enregistrée et anonymisée : le stage est terminé depuis au moins '
+                   'six mois. Elle est consultable et supprimable uniquement.')
     if retires:
         message += (f" {retires} demi-journée{'s' if retires > 1 else ''} hors de la "
                     f"nouvelle période {'ont été retirées' if retires > 1 else 'a été retirée'}"
@@ -340,6 +353,8 @@ def supprimer(stagiaire_id):
             _stagiaire(conn, stagiaire_id)
             conn.execute('DELETE FROM stagiaires_creneaux WHERE stagiaire_id = ?',
                          (stagiaire_id,))
+            conn.execute('DELETE FROM stagiaires_annonces_lectures WHERE stagiaire_id = ?',
+                         (stagiaire_id,))
             conn.execute('DELETE FROM stagiaires WHERE id = ?', (stagiaire_id,))
             conn.commit()
         except sqlite3.Error:
@@ -349,3 +364,63 @@ def supprimer(stagiaire_id):
             return redirect(url_for('stagiaires_bp.fiche', stagiaire_id=stagiaire_id))
     flash('Fiche du stagiaire supprimée, emploi du temps compris.', 'success')
     return redirect(url_for('stagiaires_bp.liste'))
+
+
+@stagiaires_bp.route('/stagiaires/annonces/lire', methods=['POST'])
+@login_required
+def lire_annonces():
+    """Acquitte seulement les annonces affichées au responsable connecté."""
+    _autoriser()
+    try:
+        donnees = request.get_json(silent=True) if request.is_json else {
+            'annonces': json.loads(request.form.get('annonces', 'null')),
+            'secteur_id': request.form.get('secteur_id'),
+        }
+        if not isinstance(donnees, dict):
+            raise ValueError
+        annonces = donnees.get('annonces')
+        secteur_id = service.lire_identifiant(donnees.get('secteur_id'))
+        if not isinstance(annonces, list) or not annonces or len(annonces) > 1000:
+            raise ValueError
+        lectures = set()
+        for annonce in annonces:
+            if not isinstance(annonce, dict):
+                raise ValueError
+            stagiaire_id = service.lire_identifiant(annonce.get('stagiaire_id'))
+            jour = service.lire_date(annonce.get('date'), 'Date d’accueil')
+            if stagiaire_id is None:
+                raise ValueError
+            lectures.add((stagiaire_id, jour.isoformat()))
+    except (ValueError, TypeError):
+        return jsonify({'ok': False, 'erreur': 'Annonce invalide. Rechargez la page.'}), 400
+
+    with closing(get_db()) as conn:
+        try:
+            refus = _ouvrir_ecriture(conn)
+            if refus is not None:
+                return refus
+            if (session.get('profil') != 'responsable' or not secteur_id
+                    or secteur_id != session.get('secteur_id')):
+                abort(403)
+            today = aujourd_hui()
+            fin = service.fin_fenetre_annonce(today).isoformat()
+            for stagiaire_id, jour in lectures:
+                if not today.isoformat() <= jour <= fin or not conn.execute(
+                        '''SELECT 1 FROM stagiaires_creneaux c
+                           JOIN stagiaires s ON s.id = c.stagiaire_id
+                           WHERE c.stagiaire_id = ? AND c.date = ? AND c.secteur_id = ?''',
+                        (stagiaire_id, jour, secteur_id)).fetchone():
+                    abort(404)
+            conn.executemany(
+                '''INSERT OR IGNORE INTO stagiaires_annonces_lectures
+                   (stagiaire_id, date, secteur_id, user_id) VALUES (?, ?, ?, ?)''',
+                [(sid, jour, secteur_id, session['user_id']) for sid, jour in lectures])
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            logger.error('Lecture des annonces de stagiaires impossible', exc_info=True)
+            return jsonify({'ok': False, 'erreur': _ERREUR_TECHNIQUE}), 503
+    if request.is_json:
+        return jsonify({'ok': True})
+    flash('Annonce(s) marquée(s) comme lue(s) pour vous.', 'success')
+    return redirect(url_for('dashboard_responsable_bp.dashboard_responsable'))

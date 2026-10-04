@@ -7,7 +7,7 @@
     <div>
         <div class="flx-date">{{ date_texte }}</div>
         <h1 class="flx-titre">{{ salutation }}</h1>
-        <p class="flx-resume">
+        <p class="flx-resume" id="flxResume">
             {% if nb_actions %}
             {{ nb_actions }} décision{{ 's' if nb_actions > 1 }} vous attend{{ 'ent' if nb_actions > 1 }}.
             Rien d'autre ne bloque — le reste de l'application viendra à vous quand il le faudra.
@@ -24,7 +24,7 @@
                 title="Seuils d'alerte — trésorerie, budget, congés, surcharge">⚙</button>
         {% endif %}
         <div class="flx-compte-chiffres">
-            <div class="flx-compte-valeur"><span id="flxFaites">0</span><span>/{{ nb_actions }}</span></div>
+            <div class="flx-compte-valeur"><span id="flxFaites">0</span><span id="flxTotal">/{{ nb_actions }}</span></div>
             <div class="flx-compte-label">traitées</div>
         </div>
         <div class="flx-anneau" id="flxAnneau"><i>◈</i></div>
@@ -88,6 +88,10 @@
         var restantes = items().length;
         var total = faites + restantes;
         document.getElementById('flxFaites').textContent = faites;
+        document.getElementById('flxTotal').textContent = '/' + total;
+        document.getElementById('flxResume').textContent = restantes
+            ? restantes + (restantes > 1 ? ' décisions vous attendent.' : ' décision vous attend.')
+            : 'Tout est traité. L’application se tait.';
         var anneau = document.getElementById('flxAnneau');
         if (anneau) {
             anneau.style.setProperty('--p', (total ? Math.round(faites / total * 100) : 0) + '%');
@@ -182,6 +186,19 @@
               .then(function (res) {
                   if (!res.ok || !res.d.ok) throw 0;
                   retirer(ref, '💶 Étape marquée comme faite');
+              })
+              .catch(function () { btn.disabled = false; echec(); });
+
+        } else if (act === 'stagiaire') {
+            fetch('{{ url_for('stagiaires_bp.lire_annonces') }}', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({annonces: JSON.parse(btn.getAttribute('data-annonces')),
+                                      secteur_id: btn.getAttribute('data-secteur-id')})
+            }).then(function (r) { return r.json().then(function (d) { return {ok: r.ok, d: d}; }); })
+              .then(function (res) {
+                  if (!res.ok || !res.d.ok) throw 0;
+                  retirer(ref, '✓ Annonce marquée comme lue pour vous');
               })
               .catch(function () { btn.disabled = false; echec(); });
 

@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Initial annuel détaillé - CS-PILOT{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/budget_initial.css') }}">
+<div id="initial-app" data-annee="{{ annee }}"
+     data-lecture="{{ url_for('budget_initial_bp.donnees') }}"
+     data-alisfa="{{ url_for('budget_initial_bp.alisfa') }}"
+     data-sauvegarde="{{ url_for('budget_initial_bp.sauvegarder') }}"
+     data-report="{{ url_for('budget_initial_bp.report') }}">
+  <div class="page-header">
+    <h1>Initial annuel détaillé · {{ annee }}</h1>
+    <a class="btn btn-secondary" href="{{ url_for('budget_bp.budget_previsionnel', annee=annee) }}">Tableau budgétaire et PDF</a>
+  </div>
+  <p>Prévoir le fonctionnement normal : permanents sur douze mois, saisonniers et CEE selon l’activité habituelle. Les absences et remplacements imprévisibles ne sont pas inclus.</p>
+  <p>Cette construction est volontaire. Vos budgets enregistrés restent consultables dans le tableau habituel. Le report ci-dessous préserve les saisies manuelles existantes et l’actualisé.</p>
+  <form method="get" class="bi-toolbar form-group">
+    <label for="bi-year">Année</label><input id="bi-year" name="annee" type="text" inputmode="numeric" pattern="[0-9]{4}" value="{{ annee }}" required>
+    <button class="btn btn-secondary" type="submit">Ouvrir</button>
+  </form>
+  <p id="bi-status" role="status" aria-live="polite">Chargement…</p>
+  <section class="proposition-carte bi-card">
+    <h2>Hypothèses de l’année</h2>
+    <form id="bi-hypotheses">
+      <div class="form-group"><label for="bi-note">Hypothèses et méthode de construction</label>
+      <textarea id="bi-note" maxlength="4000" rows="3"></textarea></div>
+      <label><input id="bi-taux" type="checkbox"> Utiliser les taux de charges individuels</label>
+      <p>Cette option regroupe les charges sur le premier 645 de chaque secteur et met les autres 645–648 à zéro dans la construction. Leurs saisies sont conservées et réapparaissent à la désactivation. Les comptes 63 gardent leur mode.</p>
+      <button class="btn btn-primary" type="submit">Enregistrer les hypothèses et recalculer</button>
+      <button class="btn btn-secondary" id="bi-cancel-hypotheses" type="button">Annuler les hypothèses modifiées</button>
+    </form>
+    <p id="bi-modification"></p>
+  </section>
+  <section class="proposition-carte bi-card">
+    <h2>Lignes de construction</h2>
+    <p>Une ligne par salarié ou poste, même vacant. Les identifiants restent stables à la réouverture et à la modification. Un champ vide signifie « inconnu » ; saisissez 0 pour une valeur nulle vérifiée.</p>
+    <div class="bi-scroll"><table><thead><tr><th>Libellé / identifiant</th><th>Nature</th><th>Compte</th><th>Actions</th></tr></thead><tbody id="bi-lines"></tbody></table></div>
+    <button class="btn btn-secondary" id="bi-new" type="button">Ajouter une ligne</button>
+    <form id="bi-editor" hidden>
+      <h3 id="bi-editor-title">Nouvelle ligne</h3>
+      <div class="bi-grid" id="bi-common"></div>
+      <fieldset><legend>Ventilation sectorielle · total 100 %</legend><div class="bi-grid" id="bi-secteurs"></div></fieldset>
+      <fieldset id="bi-salary"><legend>Rémunération et activité normale</legend>
+        <div class="bi-grid" id="bi-salary-fields"></div>
+        <div id="bi-brut"><p>Le brut vérifié est le brut de base mensuel à la quotité saisie, hors compléments ci-dessous. Il n’est pas multiplié une deuxième fois par la quotité.</p><div class="bi-grid" id="bi-brut-fields"></div></div>
+        <div id="bi-alisfa"><p>Calcul identique au simulateur existant : ((socle annuel + pesée × point) × quotité / 100 + (ancienneté + compétences) × point) / 12 + maintien mensuel. Aucune fiche RH n’est modifiée.</p><div class="bi-grid" id="bi-alisfa-fields"></div></div>
+        <div id="bi-cee"><div class="bi-grid" id="bi-cee-fields"></div><div class="bi-months" id="bi-cee-months"></div></div>
+        <details id="bi-activity"><summary>Fraction d’activité normale par mois (0 à 1)</summary><p>Permanents : douze mois à 1. Saisonniers : 0 hors activité, fraction du mois en période d’activité.</p><div class="bi-months" id="bi-activity-months"></div></details>
+        <h4>Compléments 641</h4><p>Une prime doit figurer une seule fois, sur un autre 641 que le brut de base. Les compléments sont inclus dans l’assiette des charges.</p>
+        <div id="bi-complements"></div><button id="bi-add-complement" class="btn btn-secondary btn-sm" type="button">Ajouter un complément</button>
+        <details><summary>Taux individuel et provenance</summary><div class="bi-grid" id="bi-rate"></div><div class="bi-grid" id="bi-rate-reference"></div></details>
+      </fieldset>
+      <fieldset id="bi-other"><legend>Dépense ou financement</legend>
+        <div class="bi-grid" id="bi-other-fields"></div>
+        <div id="bi-manual"><p>Le montant annuel manuel est réparti selon les poids ci-dessous (1 partout = répartition égale). La somme des douze mois reste exactement égale au montant annuel.</p><div class="bi-months" id="bi-weights"></div></div>
+        <div id="bi-monthly"><p>Projection explicite pour chacun des douze mois.</p><div class="bi-months" id="bi-monthly-fields"></div></div>
+        <div id="bi-proportional"><p>Montant = brut global mensuel du secteur × numérateur annuel / assiette annuelle. Une ligne proportionnelle par secteur, ventilée à 100 %. La référence 2025 doit couvrir une année complète et comparable.</p><div class="bi-grid" id="bi-reference"></div></div>
+      </fieldset>
+      <div class="bi-grid" id="bi-notes"></div>
+      <div class="bi-toolbar"><button class="btn btn-primary" type="submit">Enregistrer la ligne et recalculer</button><button id="bi-cancel" class="btn btn-secondary" type="button">Annuler</button></div>
+    </form>
+  </section>
+  <section class="proposition-carte bi-card"><h2>Contrôle et informations manquantes</h2><ul id="bi-alerts"></ul></section>
+  <section class="proposition-carte bi-card"><h2>Totaux mensuels et sectoriels</h2><p>Les calculs proviennent du serveur. Les montants inconnus restent « À compléter » dans les totaux.</p><div id="bi-totals"></div></section>
+  <section class="proposition-carte bi-card"><h2>Calculs expliqués</h2><div id="bi-calculations"></div></section>
+  <section class="proposition-carte bi-card"><h2>Report contrôlé vers le tableau budgétaire</h2>
+    <p>Seuls les comptes libres ou déjà alimentés par cette construction et restés inchangés peuvent être reportés. Les montants manuels et les modes automatiques existants sont conservés. Vérifiez les écarts avant d’utiliser le PDF habituel.</p>
+    <div class="bi-scroll"><table><thead><tr><th>Secteur / compte</th><th>Initial enregistré</th><th>Construction</th><th>Décision</th></tr></thead><tbody id="bi-reports"></tbody></table></div>
+    <button class="btn btn-primary" id="bi-report" type="button" disabled>Reporter les comptes autorisés</button>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='js/budget_initial.js') }}" defer></script>
+{% endblock %}
