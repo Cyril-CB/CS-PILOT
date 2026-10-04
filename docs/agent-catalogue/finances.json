@@ -155,7 +155,8 @@
         "Ajout d’un compte sans historique, retrait d’une saisie manuelle, enregistrement groupé et recalcul serveur des comptes automatiques.",
         "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées : deux PDF (secteur et consolidation générale), sections Charges puis Produits séparées, sous-total par compte à deux chiffres et total de section.",
         "Construction volontaire détaillée de l’initial annuel, accessible à la direction et à la comptabilité ; rapprochement et report explicite des seuls comptes libres ou précédemment reportés et restés inchangés.",
-        "Vider explicitement un montant du budget initial, ou utiliser Effacer le montant même sur un champ déjà vide, efface aussi sa valeur temporaire à l’enregistrement ; un commentaire seul, un zéro saisi ou un budget actualisé ne déclenche pas cet effacement. Après rechargement, les éditions de l’initial conservent le temporaire réellement enregistré, distinct de la proposition calculée affichée."
+        "Vider explicitement un montant du budget initial, ou utiliser Effacer le montant même sur un champ déjà vide, efface aussi sa valeur temporaire à l’enregistrement ; un commentaire seul, un zéro saisi ou un budget actualisé ne déclenche pas cet effacement. Après rechargement, les éditions de l’initial conservent le temporaire réellement enregistré, distinct de la proposition calculée affichée.",
+        "Effacer tous les montants définitifs et temporaires du secteur, exercice et type sélectionnés (initial ou actualisé), y compris les résidus derrière Non renseigné, après confirmation et avec enregistrement atomique immédiat ; commentaires, simulations et modes conservés."
       ],
       "entry_points": [
         "budget_bp.budget_previsionnel",
@@ -169,7 +170,8 @@
         "budget_bp.api_budget_prev_comptes_disponibles",
         "budget_bp.api_budget_prev_ajouter_compte",
         "budget_bp.api_budget_prev_retirer_compte",
-        "budget_bp.api_budget_previsionnel_export_pdf"
+        "budget_bp.api_budget_previsionnel_export_pdf",
+        "budget_bp.api_budget_previsionnel_effacer_montants"
       ],
       "implementation": {
         "route_files": [
@@ -200,7 +202,9 @@
           "tests/test_budget.py",
           "tests/test_budget_regles.py",
           "tests/test_budget_taux_charges.py",
-          "tests/budget_frontend_checks.cjs"
+          "tests/budget_frontend_checks.cjs",
+          "tests/test_budget_effacement.py",
+          "tests/budget_effacement_live_checks.cjs"
         ],
         "docs": [
           "docs/budget-actualise.md"
@@ -228,7 +232,8 @@
         "Compléments 641 proportionnels : ratio au premier 641 ; autres charges proportionnelles : ratio annuel au total des 641. Actualisé : réel à l’arrêté + projection de la seule période restante.",
         "Les saisies groupées, paramètres, recalculs, fiches et report de paie utilisent une référence signée du budget et une transaction ; une page périmée est refusée.",
         "La consolidation additionne les budgets sectoriels, compte chaque écriture réelle une seule fois et signale les arrêtés sectoriels différents.",
-        "Les PDF utilisent les montants enregistrés et signalent les données à compléter ou recalculer ; sous-totaux par compte à deux chiffres et totaux de section suivent la même règle que l’écran : un montant manquant rend le cumul inconnu, jamais nul. Une section sans aucun compte totalise zéro, comme _totaux_budget, et conserve sa ligne de total pour que le document se recompose."
+        "Les PDF utilisent les montants enregistrés et signalent les données à compléter ou recalculer ; sous-totaux par compte à deux chiffres et totaux de section suivent la même règle que l’écran : un montant manquant rend le cumul inconnu, jamais nul. Une section sans aucun compte totalise zéro, comme _totaux_budget, et conserve sa ligne de total pour que le document se recompose.",
+        "L’effacement groupé bloque les saisies non enregistrées et les doubles clics, vérifie droits, CSRF et référence sous transaction ; aucun recalcul, abandon de simulation ou changement RH implicite. Un commentaire seul ne réenregistre pas de proposition calculée et ne reporte pas les comptes automatiques, y compris après rechargement."
       ],
       "extension_points": [
         "Réutiliser budget_calculs.py pour toute évolution de projection ; préserver les règles de références, modes et montants inconnus.",

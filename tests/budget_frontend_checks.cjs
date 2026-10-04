@@ -113,8 +113,8 @@ for (const stored of [null, 0, 125.5]) {
   assert.equal(context.budgetDirty['606100'].valeur_def, 250);
   assert.equal(context.budgetDirty['606100'].valeur_temp, stored);
   element('typeBudget').value = 'actualise';
-  context.queueSave('606100', null, 'Actualisé inchangé');
-  assert.equal(context.budgetDirty['606100'].valeur_temp, 999);
+  context.queueSave('606100', null, 'Commentaire de l’actualisé');
+  assert.equal(context.budgetDirty['606100'].valeur_temp, stored);
 }
 context.currentRows = data.rows;
 tableRoot.querySelector = () => null;

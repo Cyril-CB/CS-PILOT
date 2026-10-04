@@ -305,8 +305,10 @@
         <button type="button" class="btn btn-primary" id="budgetSaveSaisies" onclick="saveBudgetSaisies()" disabled>Enregistrer les saisies et recalculer</button>
         <button type="button" class="btn btn-secondary" onclick="chargerBudget()">Annuler les saisies non enregistrées</button>
         <button type="button" class="btn btn-secondary" onclick="recalculerBudget()">Recalculer et reporter les comptes automatiques</button>
+        <button type="button" class="btn btn-danger" id="budgetEffacerMontants" onclick="effacerMontantsBudget()" disabled>Effacer tous les montants</button>
         <span id="budgetSaveEtat" role="status"></span>
     </div>
+    <p id="budgetEffacementEtat" role="status" aria-live="polite"></p>
     {% endif %}
     <div id="budgetTables"></div>
     <div id="budgetResultat" style="margin-top:16px;padding:12px;background:var(--bg-secondary,#f8f9fa);border-radius:8px;"></div>
@@ -467,6 +469,8 @@ function getParams(globalMode){
 
 function chargerBudget(){
     if (budgetSaving) return;
+    const effacementEtat = document.getElementById('budgetEffacementEtat');
+    if (effacementEtat) effacementEtat.textContent = '';
     closePaieSimulator(); closeFicheTravail(); closePsSimulator();
     ++globalLoading;
     const loadId = ++budgetLoading;
@@ -772,6 +776,8 @@ function marquerBudgetSale(){
     document.querySelectorAll('#budgetTables input').forEach(el => { el.disabled = budgetSaving || budgetFetching; });
     const btn = document.getElementById('budgetSaveSaisies');
     if (btn) btn.disabled = !dirty || budgetSaving || budgetFetching;
+    const effacerBtn = document.getElementById('budgetEffacerMontants');
+    if (effacerBtn) effacerBtn.disabled = budgetSaving || budgetFetching || !salaryMeta;
     const etat = document.getElementById('budgetSaveEtat');
     if (etat) etat.textContent = budgetSaving ? 'Enregistrement…' : budgetFetching ? 'Chargement…' : dirty ? 'Saisies non enregistrées' : '';
 }
@@ -782,7 +788,7 @@ function queueSave(compte, valeurDef, commentaire){
     if (valeurDef !== null) row.def = valeurDef === '' ? null : Number(valeurDef);
     if (commentaire !== null) row.commentaire = commentaire || '';
     const effacer = valeurDef !== null ? valeurDef === '' : !!(budgetDirty[compte] && budgetDirty[compte].effacer_montant);
-    const tempSaisie = document.getElementById('typeBudget').value === 'initial' ? row.temp_saisie : row.temp;
+    const tempSaisie = row.temp_saisie;
     budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: tempSaisie, commentaire: row.commentaire || '', effacer_montant: effacer};
     marquerBudgetSale();
 }
@@ -813,6 +819,22 @@ function saveBudgetSaisies(){
 function recalculerBudget(){
     if (!budgetSansSaisie()) return;
     return budgetPost('/api/budget-previsionnel/recalculer', {});
+}
+async function effacerMontantsBudget(){
+    if (!canEditPs || isReadOnly || budgetSaving || budgetFetching || !salaryMeta) return;
+    if (!budgetSansSaisie()) return;
+    const ctx = getCurrentBudgetContext();
+    const secteur = document.getElementById('secteurBudget').selectedOptions[0].textContent;
+    const type = ctx.type_budget === 'initial' ? 'initial' : 'actualisé';
+    const portee = 'budget ' + type + ' — exercice ' + ctx.annee + ' — secteur « ' + secteur + ' »';
+    if (!confirm('Effacer tous les montants du ' + portee + ' ?\n\n' +
+        'Les montants définitifs et temporaires de tous les comptes de ce périmètre, y compris derrière « Non renseigné », seront effacés et enregistrés immédiatement.\n' +
+        'Les commentaires, simulations et modes de calcul seront conservés. L’abandon des simulations reste une action distincte. Les propositions calculées peuvent rester affichées ; aucun recalcul ne sera enregistré.\n' +
+        'Les autres secteurs, exercices, types de budget et les données RH resteront inchangés.')) return;
+    document.getElementById('budgetEffacementEtat').textContent = '';
+    if (await budgetPost('/api/budget-previsionnel/effacer-montants', {confirmer:true})) {
+        document.getElementById('budgetEffacementEtat').textContent = 'Tous les montants du ' + portee + ' ont été effacés et enregistrés.';
+    }
 }
 function renderBudgetParametres(data){
     const p = data.parametres || {};
