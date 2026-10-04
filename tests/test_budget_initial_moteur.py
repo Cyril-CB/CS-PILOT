@@ -233,9 +233,10 @@ class PersistenceInitialTest(unittest.TestCase):
                 updated_by INTEGER, updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(type_budget, annee, secteur_id, compte_num));
             CREATE TABLE budget_modes_comptes (type_budget TEXT, annee INTEGER, secteur_id INTEGER, compte_num TEXT, mode TEXT);
-            CREATE TABLE budget_paie_simulations (type_budget TEXT, annee INTEGER, secteur_id INTEGER, donnees TEXT);
+            CREATE TABLE budget_paie_simulations (type_budget TEXT, annee INTEGER, secteur_id INTEGER, donnees TEXT, compte_num TEXT);
+            CREATE TABLE budget_ps_simulations (type_budget TEXT, annee INTEGER, secteur_id INTEGER, compte_num TEXT);
             INSERT INTO budget_prev_saisies VALUES ('actualise',2026,1,'606100',-12.34,-12.34,'Commentaire fictif',1,'2026-01-01');
-            INSERT INTO budget_paie_simulations VALUES ('actualise',2026,1,'{"ajouts":[]}');
+            INSERT INTO budget_paie_simulations (type_budget,annee,secteur_id,donnees) VALUES ('actualise',2026,1,'{"ajouts":[]}');
         ''')
         creer_schema(self.conn)
         self.conn.commit()
@@ -331,7 +332,7 @@ class PersistenceInitialTest(unittest.TestCase):
         self.conn.execute("INSERT INTO budget_modes_comptes VALUES ('initial',2026,1,'645100','mensuel')");self.conn.commit()
         self.assertEqual(self.report(),0)
         self.conn.execute('DELETE FROM budget_modes_comptes')
-        self.conn.execute('INSERT INTO budget_paie_simulations VALUES (?,?,?,?)',('initial',2026,1,'{"utiliser_taux_charges":true}'));self.conn.commit()
+        self.conn.execute('INSERT INTO budget_paie_simulations (type_budget,annee,secteur_id,donnees) VALUES (?,?,?,?)',('initial',2026,1,'{"utiliser_taux_charges":true}'));self.conn.commit()
         self.assertEqual(self.report(),0)
 
     def test_report_incomplet_refuse(self):

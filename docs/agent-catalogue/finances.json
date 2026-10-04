@@ -1636,7 +1636,8 @@
           "budget_modes_comptes",
           "budget_paie_simulations",
           "secteurs",
-          "users"
+          "users",
+          "budget_ps_simulations"
         ],
         "tests": [
           "tests/test_budget_initial_moteur.py",
@@ -1668,7 +1669,8 @@
         "Aucune conversion des budgets existants, aucune écriture dans l’actualisé ou les fiches RH.",
         "Un ancien montant manuel, y compris zéro, n’est pas écrasé par un report.",
         "Les anciens endpoints, simulations, commentaires et PDF restent inchangés.",
-        "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct."
+        "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct.",
+        "Un compte propriétaire d’une simulation de paie ou PS de l’initial reste protégé même à montant identique au dernier report ; la suppression d’un secteur ayant un report est refusée pour préserver son historique."
       ],
       "extension_points": [
         "Les UUID et colonnes de liaison nullables préparent les lots ultérieurs sans les activer."

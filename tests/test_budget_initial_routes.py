@@ -241,3 +241,89 @@ def test_report_perime_et_incomplet_refuses_sans_ecriture(admin_client, sample_u
     assert admin_client.post(API + '/reporter', json={
         'annee': 2026, 'revision': state['revision'], 'reference_report': state['reference_report']}).status_code == 409
     assert db.execute('SELECT valeur_def FROM budget_prev_saisies').fetchone()[0] == 42
+
+
+@pytest.mark.parametrize('simulateur', ['paie', 'ps'])
+def test_simulation_apres_report_meme_montant_reste_proprietaire(admin_client, db, simulateur):
+    sid = db.execute("INSERT INTO secteurs (nom) VALUES ('Simulation sans RH')").lastrowid
+    db.commit()
+    code = '641100' if simulateur == 'paie' else '706100'
+    ligne = (salaire(secteurs={str(sid): '100'}, brut_mensuel='0') if simulateur == 'paie'
+             else depense(secteurs={str(sid): '100'}, nature='financement', compte=code, annuel='0'))
+    assert sauver(admin_client, ligne).status_code == 200
+    state = etat(admin_client)
+    ident = state['lignes'][0]['id']
+    payload = lambda s: {'annee': 2026, 'revision': s['revision'], 'reference_report': s['reference_report']}
+    assert admin_client.post(API + '/reporter', json=payload(state)).get_json()['reportes'] == 1
+    ancien_etat = etat(admin_client)
+    response = post(admin_client, sid, simulateur + '-simulation', typ='initial', compte_num=code, donnees={})
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()['total'] == 0
+    simulation_avant = [tuple(r) for r in db.execute('SELECT * FROM budget_' + simulateur + '_simulations')]
+    # Même montant, mais le propriétaire a changé : une page déjà ouverte est périmée.
+    assert admin_client.post(API + '/reporter', json=payload(ancien_etat)).status_code == 409
+    ligne['brut_mensuel' if simulateur == 'paie' else 'annuel'] = '1200'
+    assert sauver(admin_client, ligne, ligne={'id': ident, 'donnees': ligne}).status_code == 200
+    # Un compte indépendant reste reportable dans le même secteur.
+    assert sauver(admin_client, depense(secteurs={str(sid): '100'}, compte='606200', annuel='24')).status_code == 200
+    state = etat(admin_client)
+    proposition = next(r for r in state['reports'] if r['compte'] == code)
+    assert not proposition['possible'] and 'Simulation' in proposition['motif']
+    assert admin_client.post(API + '/reporter', json=payload(state)).get_json()['reportes'] == 1
+    assert db.execute("SELECT valeur_def FROM budget_prev_saisies WHERE type_budget='initial' AND compte_num=?", (code,)).fetchone()[0] == 0
+    assert [tuple(r) for r in db.execute('SELECT * FROM budget_' + simulateur + '_simulations')] == simulation_avant
+
+
+@pytest.mark.parametrize('profil', ['admin_client', 'comptable_client'])
+def test_secteur_avec_report_ne_peut_pas_etre_supprime(request, profil, db, tmp_path, app):
+    client = request.getfixturevalue(profil)
+    sid = db.execute("INSERT INTO secteurs (nom) VALUES ('Secteur avec historique initial')").lastrowid
+    db.commit()
+    assert sauver(client, depense(secteurs={str(sid): '100'})).status_code == 200
+    state = etat(client)
+    assert client.post(API + '/reporter', json={'annee': 2026, 'revision': state['revision'],
+        'reference_report': state['reference_report']}).status_code == 200
+    avant = {t: [tuple(r) for r in db.execute('SELECT * FROM ' + t)] for t in (
+        'budget_initial_lignes', 'budget_initial_reports', 'budget_prev_saisies')}
+    response = client.post('/gestion_secteurs', data={'action': 'supprimer', 'secteur_id': sid}, follow_redirects=True)
+    assert response.status_code == 200
+    assert 'report de budget initial' in response.get_data(as_text=True)
+    assert db.execute('SELECT 1 FROM secteurs WHERE id=?', (sid,)).fetchone()
+    assert db.execute('PRAGMA foreign_key_check').fetchall() == []
+    import database
+    from resilience import diagnostiquer
+    diagnostic = diagnostiquer(tmp_path, app.secret_key, db_path=database.DATABASE)
+    assert diagnostic['integrite'] and not diagnostic['erreurs']
+    for table, rows in avant.items():
+        assert [tuple(r) for r in db.execute('SELECT * FROM ' + table)] == rows
+
+
+@pytest.mark.parametrize('simulateur', ['paie', 'ps'])
+@pytest.mark.parametrize('hors_perimetre', ['actualise', 'annee', 'secteur', 'compte'])
+def test_simulation_autre_perimetre_ne_bloque_pas_report(admin_client, sample_users, db, simulateur, hors_perimetre):
+    sid = sample_users['secteur_id']
+    code = '641100' if simulateur == 'paie' else '706100'
+    ligne = (salaire(secteurs={str(sid): '100'}) if simulateur == 'paie'
+             else depense(secteurs={str(sid): '100'}, nature='financement', compte=code))
+    assert sauver(admin_client, ligne).status_code == 200
+    typ, annee, secteur, compte = 'initial', 2026, sid, code
+    if hors_perimetre == 'actualise':
+        typ = 'actualise'
+    elif hors_perimetre == 'annee':
+        annee = 2027
+    elif hors_perimetre == 'secteur':
+        secteur = db.execute("INSERT INTO secteurs (nom) VALUES ('Autre périmètre')").lastrowid
+    else:
+        compte = '641200' if simulateur == 'paie' else '706200'
+    if simulateur == 'paie':
+        db.execute('INSERT INTO budget_paie_simulations (type_budget,annee,secteur_id,compte_num,donnees) VALUES (?,?,?,?,?)',
+                   (typ, annee, secteur, compte, '{}'))
+    else:
+        db.execute('INSERT INTO budget_ps_simulations (type_budget,annee,secteur_id,compte_num,donnees,type_ps) VALUES (?,?,?,?,?,?)',
+                   (typ, annee, secteur, compte, '{}', 'eaje'))
+    db.commit()
+    state = etat(admin_client)
+    assert state['reports'][0]['possible']
+    response = admin_client.post(API + '/reporter', json={'annee': 2026, 'revision': state['revision'],
+        'reference_report': state['reference_report']})
+    assert response.status_code == 200 and response.get_json()['reportes'] == 1

@@ -107,6 +107,10 @@ autorisés** est une action explicite :
   modifié ensuite à la main reste également intact. Les comptes automatiques
   existants et les comptes pilotés par une simulation avec taux sont conservés.
 - Les commentaires et simulations ne sont jamais remplacés par cette action.
+- Un compte piloté par une simulation de paie ou de prestation de service
+  reste protégé, même si son montant est identique au précédent report.
+  La protection porte sur le compte, le secteur et l’exercice de l’initial ;
+  une simulation de l’actualisé ou d’un autre périmètre ne bloque pas le report.
 - La disparition d’une ligne déjà reportée propose explicitement zéro pour
   son ancien compte, si d’autres lignes subsistent et si ce compte est resté
   inchangé. Supprimer toute la construction n’efface jamais l’ancien budget.
@@ -138,6 +142,11 @@ conversion, copie de données existantes ou réécriture de budget n’est effec
 Les nouvelles tables sont déclarées au contrôle de résilience ; les sauvegardes
 SQLite les incluent. Un retour arrière demande une sauvegarde cohérente : le
 downgrade refuse leur suppression silencieuse.
+
+La suppression d’un secteur ayant reçu un report est refusée, même sans salarié
+rattaché, pour conserver l’historique budgétaire et éviter une référence
+orpheline dans le diagnostic de sauvegarde. Ce contrôle est réalisé dans la
+même transaction que la suppression, sous verrou d’écriture.
 
 UUID et colonnes de liaison nullables préparent les liens futurs ; les routes
 ne permettent pas de les activer. Gel versionné, suivi en direct, subventions,

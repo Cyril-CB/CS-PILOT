@@ -469,8 +469,11 @@ def preparer_report(conn, annee, calcul):
             WHERE type_budget='initial' AND annee=? AND secteur_id=? AND compte_num=?''', (annee, sid, code)).fetchone()
         mode = conn.execute('''SELECT mode FROM budget_modes_comptes WHERE type_budget='initial'
             AND annee=? AND secteur_id=? AND compte_num=?''', (annee, sid, code)).fetchone()
-        simulation = conn.execute('''SELECT donnees FROM budget_paie_simulations
+        simulation = conn.execute('''SELECT compte_num, donnees FROM budget_paie_simulations
             WHERE type_budget='initial' AND annee=? AND secteur_id=?''', (annee, sid)).fetchone()
+        simulation_ps = conn.execute('''SELECT 1 FROM budget_ps_simulations
+            WHERE type_budget='initial' AND annee=? AND secteur_id=? AND compte_num=?''',
+            (annee, sid, code)).fetchone()
         donnees_sim = json.loads(simulation['donnees']) if simulation else {}
         avant = nombre(ancien['valeur_def']) if ancien else None
         temp = nombre(ancien['valeur_temp']) if ancien else None
@@ -481,6 +484,8 @@ def preparer_report(conn, annee, calcul):
             motif = 'Construction incomplète ou lignes à revoir.'
         elif mode and mode['mode'] != 'manuel':
             motif = 'Mode automatique existant conservé.'
+        elif simulation_ps or (simulation and simulation['compte_num'] == code):
+            motif = 'Simulation existante propriétaire de ce compte conservée.'
         elif donnees_sim.get('utiliser_taux_charges') and code.startswith(('641', '645', '646', '647', '648')):
             motif = 'Simulation existante avec taux individuels conservée.'
         elif (avant is not None or temp is not None) and (precedent is None or avant != precedent or temp != precedent):
