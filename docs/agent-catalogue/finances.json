@@ -154,7 +154,8 @@
         "Modes manuel, proportionnel au brut et projection mensuelle pour les comptes 63/64 ; le premier 641 porte le brut de base.",
         "Ajout d’un compte sans historique, retrait d’une saisie manuelle, enregistrement groupé et recalcul serveur des comptes automatiques.",
         "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées : deux PDF (secteur et consolidation générale), sections Charges puis Produits séparées, sous-total par compte à deux chiffres et total de section.",
-        "Construction volontaire détaillée de l’initial annuel, accessible à la direction et à la comptabilité ; rapprochement et report explicite des seuls comptes libres ou précédemment reportés et restés inchangés."
+        "Construction volontaire détaillée de l’initial annuel, accessible à la direction et à la comptabilité ; rapprochement et report explicite des seuls comptes libres ou précédemment reportés et restés inchangés.",
+        "Vider explicitement un montant du budget initial, ou utiliser Effacer le montant même sur un champ déjà vide, efface aussi sa valeur temporaire à l’enregistrement ; un commentaire seul, un zéro saisi ou un budget actualisé ne déclenche pas cet effacement. Après rechargement, les éditions de l’initial conservent le temporaire réellement enregistré, distinct de la proposition calculée affichée."
       ],
       "entry_points": [
         "budget_bp.budget_previsionnel",
@@ -344,12 +345,14 @@
         "Coût collectif CEE par nombre d’animateurs le mercredi/en vacances × jours du calendrier × forfait journalier, avec fermetures saisies.",
         "Initial : projection annuelle ; actualisé : réalisé du premier 641 jusqu’à l’arrêté + seuls mois restants.",
         "Option désactivée par défaut : taux de charges par salarié/ajout et taux CEE global ; moyenne pondérée appliquée au brut global de tous les 641, compléments compris.",
-        "Sauvegarde du scénario JSON et report du brut sur le premier 641 ; avec taux activés, report unique des charges sur le premier 645 et pilotage des 645 à 648."
+        "Sauvegarde du scénario JSON et report du brut sur le premier 641 ; avec taux activés, report unique des charges sur le premier 645 et pilotage des 645 à 648.",
+        "Abandon explicite et confirmé de la simulation de paie du budget initial pour une année et un secteur : supprime la simulation et ses taux individuels, conserve les montants reportés, commentaires et modes ; aucun recalcul ni restauration automatique."
       ],
       "entry_points": [
         "budget_bp.api_paie_context",
         "budget_bp.api_paie_simulation_get",
-        "budget_bp.api_paie_simulation_save"
+        "budget_bp.api_paie_simulation_save",
+        "budget_bp.api_paie_simulation_abandonner"
       ],
       "implementation": {
         "route_files": [
@@ -1676,7 +1679,8 @@
         "Un ancien montant manuel, y compris zéro, n’est pas écrasé par un report.",
         "Les anciens endpoints, simulations, commentaires et PDF restent inchangés.",
         "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct.",
-        "Un compte propriétaire d’une simulation de paie ou PS de l’initial reste protégé même à montant identique au dernier report ou si le contenu de la simulation est nul/malformé ; la suppression d’un secteur ayant un report est refusée pour préserver son historique."
+        "Un compte propriétaire d’une simulation de paie ou PS de l’initial reste protégé même à montant identique au dernier report ou si le contenu de la simulation est nul/malformé ; la suppression d’un secteur ayant un report est refusée pour préserver son historique.",
+        "Une simulation conservée bloque son compte même si les montants ont été vidés ; le message guide vers son abandon explicite dans le simulateur de paie du secteur."
       ],
       "extension_points": [
         "Les UUID et colonnes de liaison nullables préparent les lots ultérieurs sans les activer."

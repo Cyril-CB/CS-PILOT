@@ -256,3 +256,32 @@ Le texte, les arguments et les causes des exceptions ne sont jamais renvoyés
 par les cinq routes de la construction ; un code inconnu reçoit un message
 générique. Les validations, statuts HTTP, droits et protections CSRF restent
 identiques.
+
+### Passer d’une simulation de paie à la construction détaillée
+
+« Non renseigné » signifie que le montant définitif est vide, pas que la
+simulation enregistrée a été abandonnée. Vider explicitement un montant de
+l’initial et enregistrer le tableau efface désormais aussi sa valeur temporaire.
+Un commentaire seul ne l’efface pas et un zéro reste une saisie à préserver.
+
+Dans le budget initial de l’année et du secteur concernés, ouvrir **🧮 Paie**,
+puis **Abandonner cette simulation** et confirmer le périmètre affiché. Cette
+action supprime la simulation enregistrée et ses taux individuels ; elle ne
+supprime aucun montant reporté ni commentaire et ne restaure aucune ancienne
+saisie. Les modes de calcul précédemment paramétrés restent présents et
+reprennent effet. Pour libérer les comptes encore renseignés, passer en mode
+manuel si nécessaire, vider explicitement leurs montants et enregistrer.
+Revenir ensuite dans l’initial détaillé, recharger et contrôler le rapprochement
+avant de reporter. Les autres secteurs, exercices et budgets actualisés ne
+sont pas modifiés. Une simulation NULL ou illisible ne vaut jamais abandon.
+Les montants temporaires laissés avant ce correctif ne sont pas nettoyés
+automatiquement. Sur un compte non automatique de l’initial, **Effacer le montant**
+puis **Enregistrer les saisies** retire aussi le temporaire, même si le champ
+affiche déjà « Non renseigné ». Le commentaire et une éventuelle simulation
+restent conservés. Cette action vaut pour les charges et les produits, pas
+seulement pour les comptes de paie.
+
+La proposition temporaire affichée et la valeur temporaire enregistrée sont
+distinctes : après effacement et rechargement, modifier un commentaire conserve
+le temporaire enregistré (y compris NULL ou zéro), sans recopier la proposition
+calculée. Une modification du montant définitif reste une saisie protégée.
