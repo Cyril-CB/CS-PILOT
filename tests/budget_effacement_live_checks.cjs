@@ -71,6 +71,14 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-effacement-captures
                 await button.hover();
                 const box = await button.boundingBox();
                 assert(box.x >= 0 && box.x + box.width <= width, 'Bouton visible dans la largeur');
+                // Le panneau de paramètres possède aussi des saisies non enregistrées.
+                await page.locator('#budgetParametres summary').click();
+                await page.locator('#budgetReferenceComplete').check();
+                await button.click();
+                assert.match(dialogs.at(-1), /paramètres non enregistrés/);
+                assert(await page.locator('#budgetReferenceComplete').isChecked());
+                await page.locator('#budgetReferenceComplete').uncheck();
+                await page.locator('#budgetParametres summary').click();
                 // Les saisies non enregistrées sont conservées, sans confirmation destructive.
                 await page.locator('[data-bp-comment-compte="606100"]').fill('Commentaire non enregistré');
                 await button.click();
@@ -108,6 +116,7 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-effacement-captures
                 await page.waitForFunction(() => budgetSaving);
                 assert(await button.isDisabled());
                 assert(await page.locator('#secteurBudget').isDisabled());
+                assert(await page.locator('#budgetReferenceComplete').isDisabled());
                 assert.equal(await page.locator('#budgetEffacementEtat').textContent(), '');
                 await page.screenshot({path:path.join(output,name+'-'+typ+'-enregistrement.png'),fullPage:true});
                 release();

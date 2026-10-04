@@ -440,6 +440,7 @@ var budgetLoading = 0;
 var globalLoading = 0;
 var budgetSaving = false;
 var budgetFetching = false;
+var budgetParametresEnregistres = '[]';
 
 function fmt(n){ return n === null || n === undefined ? '—' : Number(n).toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function escapeHtml(value){
@@ -774,6 +775,8 @@ function marquerBudgetSale(){
     const dirty = Object.keys(budgetDirty).length > 0;
     ['typeBudget','anneeBudget','secteurBudget','inflation'].forEach(id => { document.getElementById(id).disabled = dirty || budgetSaving || budgetFetching; });
     document.querySelectorAll('#budgetTables input').forEach(el => { el.disabled = budgetSaving || budgetFetching; });
+    document.querySelectorAll('#budgetParametresContenu input, #budgetParametresContenu select, #budgetParametresContenu button')
+        .forEach(el => { el.disabled = !canEditPs || budgetSaving || budgetFetching; });
     const btn = document.getElementById('budgetSaveSaisies');
     if (btn) btn.disabled = !dirty || budgetSaving || budgetFetching;
     const effacerBtn = document.getElementById('budgetEffacerMontants');
@@ -823,6 +826,10 @@ function recalculerBudget(){
 async function effacerMontantsBudget(){
     if (!canEditPs || isReadOnly || budgetSaving || budgetFetching || !salaryMeta) return;
     if (!budgetSansSaisie()) return;
+    if (empreinteParametresBudget() !== budgetParametresEnregistres) {
+        alert('Des paramètres non enregistrés sont présents. Enregistrez-les ou annulez les saisies non enregistrées avant d’effacer les montants.');
+        return;
+    }
     const ctx = getCurrentBudgetContext();
     const secteur = document.getElementById('secteurBudget').selectedOptions[0].textContent;
     const type = ctx.type_budget === 'initial' ? 'initial' : 'actualisé';
@@ -835,6 +842,10 @@ async function effacerMontantsBudget(){
     if (await budgetPost('/api/budget-previsionnel/effacer-montants', {confirmer:true})) {
         document.getElementById('budgetEffacementEtat').textContent = 'Tous les montants du ' + portee + ' ont été effacés et enregistrés.';
     }
+}
+function empreinteParametresBudget(){
+    return JSON.stringify(Array.from(document.getElementById('budgetParametresContenu').querySelectorAll('input, select'),
+        el => [el.value, el.checked]));
 }
 function renderBudgetParametres(data){
     const p = data.parametres || {};
@@ -863,6 +874,7 @@ function renderBudgetParametres(data){
     html += '</tbody></table></div><p>Le mode manuel préserve vos montants, y compris zéro. Choisir un mode automatique autorise le remplacement du montant de ce compte par son calcul. Une référence manquante ne transforme jamais une charge en zéro.</p>';
     if (canEditPs) html += '<button type="button" class="btn btn-primary" onclick="saveBudgetParametres()">Enregistrer les paramètres et recalculer</button>';
     document.getElementById('budgetParametresContenu').innerHTML = html;
+    budgetParametresEnregistres = empreinteParametresBudget();
 }
 function saveBudgetParametres(){
     if (!budgetSansSaisie()) return;

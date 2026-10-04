@@ -114,8 +114,8 @@ tant que le résultat actualisé est incomplet.
 
 Dans **Budget secteur**, la direction et la comptabilité disposent du bouton
 **Effacer tous les montants**, pour l’initial comme pour l’actualisé. Enregistrer
-ou annuler d’abord les saisies du tableau : l’action est bloquée tant qu’elles
-ne sont pas traitées, sans les perdre. La confirmation rappelle le **secteur,
+ou annuler d’abord les saisies du tableau et du panneau de paramètres : l’action
+est bloquée tant qu’elles ne sont pas traitées, sans les perdre. La confirmation rappelle le **secteur,
 l’exercice et le type de budget** sélectionnés. Annuler cette confirmation
 ne modifie rien.
 

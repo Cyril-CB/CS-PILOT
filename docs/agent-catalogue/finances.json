@@ -233,7 +233,7 @@
         "Les saisies groupées, paramètres, recalculs, fiches et report de paie utilisent une référence signée du budget et une transaction ; une page périmée est refusée.",
         "La consolidation additionne les budgets sectoriels, compte chaque écriture réelle une seule fois et signale les arrêtés sectoriels différents.",
         "Les PDF utilisent les montants enregistrés et signalent les données à compléter ou recalculer ; sous-totaux par compte à deux chiffres et totaux de section suivent la même règle que l’écran : un montant manquant rend le cumul inconnu, jamais nul. Une section sans aucun compte totalise zéro, comme _totaux_budget, et conserve sa ligne de total pour que le document se recompose.",
-        "L’effacement groupé bloque les saisies non enregistrées et les doubles clics, vérifie droits, CSRF et référence sous transaction ; aucun recalcul, abandon de simulation ou changement RH implicite. Un commentaire seul ne réenregistre pas de proposition calculée et ne reporte pas les comptes automatiques, y compris après rechargement."
+        "L’effacement groupé bloque les saisies non enregistrées du tableau et des paramètres ainsi que les doubles clics, vérifie droits, CSRF et référence sous transaction ; aucun recalcul, abandon de simulation ou changement RH implicite. Un commentaire seul ne réenregistre pas de proposition calculée et ne reporte pas les comptes automatiques, y compris après rechargement."
       ],
       "extension_points": [
         "Réutiliser budget_calculs.py pour toute évolution de projection ; préserver les règles de références, modes et montants inconnus.",
