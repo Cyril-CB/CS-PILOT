@@ -153,7 +153,8 @@
         "Arrêté explicite du réalisé, année antérieure de référence et confirmation de sa complétude liée à l’empreinte des données et du périmètre.",
         "Modes manuel, proportionnel au brut et projection mensuelle pour les comptes 63/64 ; le premier 641 porte le brut de base.",
         "Ajout d’un compte sans historique, retrait d’une saisie manuelle, enregistrement groupé et recalcul serveur des comptes automatiques.",
-        "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées : deux PDF (secteur et consolidation générale), sections Charges puis Produits séparées, sous-total par compte à deux chiffres et total de section."
+        "Détail des opérations importées, consolidation générale des secteurs, alertes d’incomplétude/recalcul et export PDF des valeurs enregistrées : deux PDF (secteur et consolidation générale), sections Charges puis Produits séparées, sous-total par compte à deux chiffres et total de section.",
+        "Construction volontaire détaillée de l’initial annuel, accessible à la direction et à la comptabilité ; rapprochement et report explicite des seuls comptes libres ou précédemment reportés et restés inchangés."
       ],
       "entry_points": [
         "budget_bp.budget_previsionnel",
@@ -239,7 +240,8 @@
         "finances.import_bi",
         "finances.plan_analytique",
         "finances.simulation_paie",
-        "finances.simulation_ps"
+        "finances.simulation_ps",
+        "finances.budget_initial_detaille"
       ],
       "limitations": [
         "L’affichage de la page propose N-3 à N+3.",
@@ -1583,6 +1585,104 @@
       "limitations": [
         "Les ratios annualisés et le score ne vérifient pas que l’exercice importé est complet.",
         "La trésorerie calculée ici est issue de la classe 5 du BI, distincte de la projection mensuelle du module tresorerie."
+      ]
+    },
+    {
+      "id": "finances.budget_initial_detaille",
+      "title": "Construction détaillée de l’initial annuel (lot 1)",
+      "purpose": "Fiabiliser l’initial en fonctionnement normal, identifier les postes et hypothèses, expliquer et ventiler les calculs avant un report contrôlé.",
+      "example_requests": [
+        "Construire le budget initial annuel",
+        "Prévoir un poste vacant sur douze mois",
+        "Ventiler un salarié entre secteurs",
+        "Vérifier les hypothèses et les charges de l’initial"
+      ],
+      "capabilities": [
+        "Lignes à identifiant UUID stable, par salarié ou poste identifié, dépense ou financement ; secteur, source, note, activité, inconnus et lignes à revoir.",
+        "Une base active : brut mensuel vérifié à la quotité saisie, formule ALISFA explicable ou forfait journalier CEE ; permanents sur douze mois et saisonniers selon fractions mensuelles normales. Aucun accès en écriture aux fiches RH.",
+        "Brut de base au premier 641 sectoriel, compléments mensuels sur les autres 641 sans libellé doublonné ; somme des 641 égale au brut global.",
+        "Charges et autres lignes en montant annuel manuel ventilé par poids, projection mensuelle ou ratio au brut global sectoriel ; provenance annuelle complète comparable explicitement confirmée, source, année, assiette, périmètre et date de vérification.",
+        "Option des taux individuels sur le brut de chaque personne, compléments inclus : regroupement au premier 645 et autres 645–648 à zéro dans la construction ; saisies manuelles mémorisées et restaurées à la désactivation, comptes 63 inchangés.",
+        "Calcul Decimal côté serveur et ventilation exacte au centime, totaux mensuels, sectoriels et généraux concordants ; None reste distinct de zéro.",
+        "Révision technique pour refuser les modifications concurrentes, dernière modification, report atomique explicite et rapprochement des montants existants ; commentaires et simulations conservés.",
+        "Migration 0077 additive et idempotente, partagée avec l’installation neuve, tables déclarées au diagnostic de résilience."
+      ],
+      "entry_points": [
+        "budget_initial_bp.construction",
+        "budget_initial_bp.donnees",
+        "budget_initial_bp.sauvegarder",
+        "budget_initial_bp.report"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget_initial.py"
+        ],
+        "service_files": [
+          "budget_initial.py",
+          "schema_budget_initial.py",
+          "migrations/0077_budget_initial_detaille.py",
+          "static/js/budget_initial.js",
+          "static/css/budget_initial.css"
+        ],
+        "templates": [
+          "templates/budget_initial.html",
+          "templates/budget_previsionnel.html"
+        ],
+        "tables": [
+          "budget_initial_hypotheses",
+          "budget_initial_lignes",
+          "budget_initial_reports",
+          "budget_prev_saisies",
+          "budget_modes_comptes",
+          "budget_paie_simulations",
+          "secteurs",
+          "users"
+        ],
+        "tests": [
+          "tests/test_budget_initial_moteur.py",
+          "tests/test_budget_initial_routes.py",
+          "tests/budget_initial_frontend_checks.cjs",
+          "tests/budget_initial_live_checks.cjs",
+          "tests/budget_initial_live_server.py"
+        ],
+        "docs": [
+          "docs/budget-initial.md",
+          "docs/budget-actualise.md"
+        ]
+      },
+      "access": {
+        "summary": "Lecture et écriture de la construction intersectorielle nominative réservées à directeur et comptable ; session et profil revérifiés sous verrou avant chaque écriture. Les autres profils gardent leurs accès existants au tableau budgétaire.",
+        "scope": "Année, ensemble des secteurs ; les reports concernent exclusivement le type initial.",
+        "conditions": [
+          "Authentification et CSRF obligatoires.",
+          "Saisie d’une référence annuelle complète comparable pour les modes proportionnels et les taux individuels."
+        ],
+        "sources": [
+          "blueprints/budget_initial.py",
+          "sessions_securite.py",
+          "utils.py",
+          "blueprints/auth.py"
+        ]
+      },
+      "invariants": [
+        "Aucune conversion des budgets existants, aucune écriture dans l’actualisé ou les fiches RH.",
+        "Un ancien montant manuel, y compris zéro, n’est pas écrasé par un report.",
+        "Les anciens endpoints, simulations, commentaires et PDF restent inchangés.",
+        "Les futurs liens restent inactifs ; aucun gel versionné ni suivi en direct."
+      ],
+      "extension_points": [
+        "Les UUID et colonnes de liaison nullables préparent les lots ultérieurs sans les activer."
+      ],
+      "related_features": [
+        "finances.budget_previsionnel",
+        "finances.simulation_paie"
+      ],
+      "limitations": [
+        "La construction ne reprend pas automatiquement les montants ni simulations existants. La saisie du secteur pilote et son contrôle métier restent explicites.",
+        "Une ligne proportionnelle est ventilée à 100 % sur un seul secteur pour éviter une assiette ambiguë.",
+        "Le report ne remplace ni une saisie manuelle existante ni un compte automatique ; les différences sont affichées. Le PDF habituel reflète uniquement les montants du tableau enregistrés.",
+        "Les taux et la référence annuelle sont des hypothèses saisies et confirmées, sans connexion automatique à un import ou un autre module.",
+        "L’inflation est documentée dans la note d’hypothèses, sans coefficient automatique. La colonne comparative Initial de l’ancien actualisé et de son PDF reflète les reports explicites, sans écriture dans les montants actualisés."
       ]
     }
   ]
