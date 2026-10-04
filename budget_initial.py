@@ -555,9 +555,11 @@ def preparer_report(conn, annee, calcul):
         elif mode and mode['mode'] != 'manuel':
             motif = 'Mode automatique existant conservé.'
         elif simulation_ps or (simulation and simulation['compte_num'] == code):
-            motif = 'Simulation existante propriétaire de ce compte conservée.'
+            motif = 'Simulation existante propriétaire de ce compte conservée, même si ses montants ont été vidés.'
+            if simulation and simulation['compte_num'] == code:
+                motif += ' Ouvrez le simulateur de paie du budget initial de ce secteur pour l’abandonner explicitement.'
         elif donnees_sim.get('utiliser_taux_charges') and code.startswith(('641', '645', '646', '647', '648')):
-            motif = 'Simulation existante avec taux individuels conservée.'
+            motif = 'Simulation existante avec taux individuels conservée. Ouvrez le simulateur de paie du budget initial de ce secteur pour l’abandonner explicitement.'
         elif (avant is not None or temp is not None) and (precedent is None or avant != precedent or temp != precedent):
             motif = 'Saisie ou simulation manuelle existante conservée.'
         propositions.append({'secteur_id': sid, 'compte': code, 'avant': avant, 'montant': valeur,

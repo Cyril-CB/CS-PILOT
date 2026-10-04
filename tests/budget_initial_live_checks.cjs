@@ -34,7 +34,11 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
             const page = await context.newPage();
             const errors = [];
             page.on('pageerror', error => errors.push(error.message));
-            page.on('dialog', dialog => dialog.accept());
+            let dismissNextDialog = false;
+            page.on('dialog', dialog => {
+                if (dismissNextDialog) { dismissNextDialog = false; return dialog.dismiss(); }
+                return dialog.accept();
+            });
             await page.goto(base + '/login');
             await page.locator('#login').fill('recette');
             await page.locator('#password').fill('Recette-locale-2026!');
@@ -49,6 +53,44 @@ const output = fs.mkdtempSync(path.join(os.tmpdir(), 'budget-initial-live-captur
                     body:JSON.stringify({actif:true})});
                 return response.ok && (await response.json()).actif;
             }));
+            // Vraie simulation puis effacement UI : la simulation reste jusqu'à l'abandon confirmé.
+            await page.goto(base + '/budget-previsionnel?annee=' + year + '&secteur_id=1');
+            await page.waitForFunction(() => !budgetFetching);
+            await page.evaluate(async year => {
+                const scope = {type_budget:'initial',annee:year,secteur_id:1};
+                const send = async (action,data) => {
+                    const response = await fetch('/api/budget-previsionnel/' + action, {
+                        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...scope,...data})});
+                    if (!response.ok) throw new Error(await response.text());
+                };
+                await send('ajouter-compte',{compte_num:'641100'});
+                const state = await (await fetch('/api/budget-previsionnel/donnees?type_budget=initial&annee='+year+'&secteur_id=1')).json();
+                await send('paie-simulation',{compte_num:'641100',reference_budget:state.reference_budget,
+                    donnees:{salaire_socle:24000,ajouts:[{type:'cdi',pesee:100}]}});
+            }, year);
+            await page.reload();
+            const amountInput = page.locator('[data-bp-def-compte="641100"]');
+            await amountInput.waitFor();
+            await amountInput.fill('');
+            await page.locator('#budgetSaveSaisies').click();
+            await page.waitForFunction(() => !budgetFetching && !budgetSaving && !Object.keys(budgetDirty).length);
+            assert.equal(await amountInput.inputValue(), '');
+            assert.equal(await amountInput.getAttribute('placeholder'), 'Non renseigné');
+            const simUrl = base + '/api/budget-previsionnel/paie-simulation?type_budget=initial&annee='+year+'&secteur_id=1';
+            assert.equal((await (await context.request.get(simUrl)).json()).found,true);
+            await page.locator('[data-paie-compte="641100"]').click();
+            await page.locator('#paieAbandonner').waitFor();
+            await page.screenshot({path:path.join(output,name+'-abandon.png'),fullPage:true});
+            dismissNextDialog = true;
+            await page.locator('#paieAbandonner').click();
+            assert.equal((await (await context.request.get(simUrl)).json()).found,true);
+            // Appels rapprochés : la garde empêche une deuxième requête pendant l'abandon.
+            let abandons = 0;
+            page.on('request', request => {if(request.url().endsWith('/paie-simulation/abandonner')) abandons++;});
+            await page.evaluate(() => { abandonnerPaieSimulator(); abandonnerPaieSimulator(); });
+            await page.waitForFunction(() => !paieSim && !budgetFetching);
+            assert.equal(abandons,1);
+            assert.equal((await (await context.request.get(simUrl)).json()).found,false);
             await page.goto(base + '/budget-initial-detaille?annee=' + year);
             await page.getByText('Construction chargée.', {exact:true}).waitFor();
             assert.equal(await page.locator('#bi-report').isDisabled(), true);

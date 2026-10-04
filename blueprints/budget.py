@@ -1405,6 +1405,10 @@ def api_budget_previsionnel_save_line():
                 raise BudgetRefuse('compte_a_ajouter')
             valeur = montant_budget(ligne.get('valeur_def'), nullable=True)
             temp = montant_budget(ligne.get('valeur_temp'), nullable=True)
+            # Un effacement explicite dans l'initial concerne aussi l'ancienne
+            # proposition temporaire ; une modification de commentaire ne suffit pas.
+            if typ == 'initial' and ligne.get('effacer_montant') is True and valeur is None:
+                temp = None
             if row['mode'] in ('proportionnel', 'mensuel', 'taux_salaries') and valeur != row['def']:
                 raise BudgetRefuse('charges_pilotees' if row['mode'] == 'taux_salaries' else 'mode_manuel_requis')
             commentaire = str(ligne.get('commentaire') or '').strip()
@@ -3162,6 +3166,7 @@ def api_paie_simulation_get():
         return jsonify({'error': 'Année et secteur requis'}), 400
     conn = get_db()
     try:
+        conn.execute('BEGIN')
         row = conn.execute('''
             SELECT donnees, total, updated_at FROM budget_paie_simulations
             WHERE annee = ? AND secteur_id = ? AND type_budget = ?
@@ -3173,7 +3178,38 @@ def api_paie_simulation_get():
         except (ValueError, TypeError):
             donnees = None
         return jsonify({'found': True, 'donnees': donnees, 'total': row['total'],
+                        'reference_budget': reference_budget(conn, type_budget, annee, secteur_id) if type_budget == 'initial' else None,
                         'updated_at': row['updated_at']})
+    finally:
+        conn.close()
+
+
+@budget_bp.route('/api/budget-previsionnel/paie-simulation/abandonner', methods=['POST'])
+@login_required
+def api_paie_simulation_abandonner():
+    """Abandon explicite de l'initial : conserve saisies, modes et commentaires."""
+    data = request.get_json() or {}
+    if not isinstance(data, dict) or data.get('type_budget') != 'initial' or data.get('confirmer') is not True:
+        return jsonify({'error': 'Confirmez l’abandon de la simulation du budget initial sélectionné.'}), 400
+    conn = get_db()
+    try:
+        refus = _budget_ecriture(conn, data)
+        if refus is not None:
+            return refus
+        annee, sid = contexte_valide(conn, 'initial', data.get('annee'), data.get('secteur_id'))
+        # Ne pas déduire l'abandon du JSON, du total ou de montants vides.
+        # Aucun recalcul ni restauration d'anciennes saisies : les valeurs
+        # actuelles restent protégées jusqu'à leur modification explicite.
+        conn.execute("""DELETE FROM budget_paie_simulations
+            WHERE type_budget='initial' AND annee=? AND secteur_id=?""", (annee, sid))
+        conn.commit()
+        return jsonify({'success': True})
+    except BudgetRefuse as exc:
+        conn.rollback()
+        return jsonify({'error': message_budget(exc.code)}), 409
+    except sqlite3.Error:
+        conn.rollback()
+        return jsonify({'error': 'Abandon indisponible. Rechargez le budget avant de réessayer.'}), 503
     finally:
         conn.close()
 

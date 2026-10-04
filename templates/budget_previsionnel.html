@@ -126,6 +126,11 @@
     border-radius: 0 0 12px 12px;
 }
 .ps-table-scroll { overflow-x: auto; }
+#paieSimFooter { flex-wrap: wrap; }
+@media (max-width: 600px) {
+    #paieSimFooter button { flex: 1 1 100%; }
+    #paieSaveMsg:empty { display: none; }
+}
 .ps-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .ps-table th, .ps-table td {
     border: 1px solid var(--gray-200);
@@ -765,7 +770,8 @@ function queueSave(compte, valeurDef, commentaire){
     if (!row) return;
     if (valeurDef !== null) row.def = valeurDef === '' ? null : Number(valeurDef);
     if (commentaire !== null) row.commentaire = commentaire || '';
-    budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: row.temp, commentaire: row.commentaire || ''};
+    const effacer = valeurDef !== null ? valeurDef === '' : !!(budgetDirty[compte] && budgetDirty[compte].effacer_montant);
+    budgetDirty[compte] = {compte_num: compte, valeur_def: row.def, valeur_temp: row.temp, commentaire: row.commentaire || '', effacer_montant: effacer};
     marquerBudgetSale();
 }
 function budgetSansSaisie(){
@@ -2039,25 +2045,26 @@ function openPaieSimulator(compteNum){
         '&type_budget=' + encodeURIComponent(ctx.type_budget);
     Promise.all([
         fetch(curl).then(function(r){ return r.json().then(d => r.ok ? d : {__error:true, message:d.error}); }).catch(function(){ return {__error: true}; }),
-        fetch(surl).then(r => r.json()).then(function(d){ return (d && d.found) ? d.donnees : null; }).catch(function(){ return null; })
+        fetch(surl).then(r => r.json()).catch(function(){ return null; })
     ]).then(function(res){
         if (paieSim !== instance) return;
+        paieSim.saved = res[1];
         if (res[0] && res[0].__error){
             document.getElementById('paieSimBody').innerHTML =
                 '<p class="ps-legend" style="color:#b00;">' + escapeHtml(res[0].message || 'Impossible de charger les salariés. Rechargez le budget.') + '</p>';
             document.getElementById('paieSimFooter').innerHTML =
-                '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Fermer</button>';
+                '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Fermer</button>' + paieAbandonButton();
             document.getElementById('paieSimulatorModal').classList.add('open');
             return;
         }
         paieSim.context = res[0] || {employes:[], mercredis_dates:[], vacances_dates:[]};
-        paieSim.state = mergePaieState(res[1], paieSim.context);
+        paieSim.state = mergePaieState(res[1] && res[1].found ? res[1].donnees : null, paieSim.context);
         renderPaieSimulator();
         recomputePaie();
         document.getElementById('paieSimulatorModal').classList.add('open');
     });
 }
-function closePaieSimulator(){ document.getElementById('paieSimulatorModal').classList.remove('open'); paieSim = null; }
+function closePaieSimulator(){ if (paieSim && paieSim.abandonBusy) return; document.getElementById('paieSimulatorModal').classList.remove('open'); paieSim = null; }
 document.addEventListener('keydown', function(e){
     if (e.key === 'Escape' && document.getElementById('paieSimulatorModal').classList.contains('open')) closePaieSimulator();
 });
@@ -2353,7 +2360,7 @@ function renderPaieSimulator(){
     document.getElementById('paieSimFooter').innerHTML =
         '<span id="paieSaveMsg" style="margin-right:auto;color:var(--primary);font-weight:600;"></span>' +
         '<button class="btn btn-secondary" type="button" onclick="closePaieSimulator()">Annuler</button>' +
-        '<button id="paieReporter" class="btn btn-primary" type="button" onclick="savePaieSimulator()">💾 Reporter le brut et les charges</button>';
+        '<button id="paieReporter" class="btn btn-primary" type="button" onclick="savePaieSimulator()">💾 Reporter le brut et les charges</button>' + paieAbandonButton();
     bindPaieInputs();
 }
 function bindPaieInputs(){
@@ -2425,8 +2432,37 @@ function recomputePaie(){
         '<div class="ps-total-box"><span>Charges à reporter sur ' + escapeHtml(charges.compte) + '</span><strong>' + fmt(charges.total) + ' €</strong></div>';
     document.getElementById('paieReporter').disabled = !!(charges && charges.erreur);
 }
+function paieAbandonButton(){
+    return paieSim && paieSim.ctx.type_budget === 'initial' && paieSim.saved && paieSim.saved.found
+        ? '<button id="paieAbandonner" class="btn btn-danger" type="button" onclick="abandonnerPaieSimulator()">Abandonner cette simulation</button>' : '';
+}
+async function abandonnerPaieSimulator(){
+    const instance = paieSim;
+    if (!instance || instance.abandonBusy || !instance.saved || !instance.saved.found) return;
+    const secteur = document.getElementById('secteurBudget').selectedOptions[0].textContent;
+    if (!confirm('Abandonner la simulation de paie du budget initial ' + instance.ctx.annee + ' — ' + secteur + ' ?\n' +
+        'La simulation enregistrée et ses taux individuels seront supprimés. Les montants déjà reportés, commentaires et modes de calcul seront conservés ; les modes précédents reprendront effet. Aucun montant antérieur ne sera restauré.\n' +
+        'Pour libérer un montant encore renseigné, videz-le ensuite et enregistrez le tableau (en mode manuel si nécessaire). Les autres secteurs, exercices et budgets actualisés restent inchangés.')) return;
+    instance.abandonBusy = true;
+    document.querySelectorAll('#paieSimulatorModal button, #paieSimulatorModal input').forEach(el => { el.disabled = true; });
+    try {
+        const response = await fetch('/api/budget-previsionnel/paie-simulation/abandonner', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(Object.assign({}, instance.ctx, {confirmer:true, reference_budget:instance.saved.reference_budget}))});
+        const data = await response.json();
+        if (!response.ok || !data.success) { alert(data.error || 'Abandon non confirmé. Rechargez le budget.'); return; }
+        instance.abandonBusy = false;
+        closePaieSimulator();
+        chargerBudget();
+    } catch (e) { alert('Abandon non confirmé. Rechargez le budget pour vérifier son état.'); }
+    finally {
+        instance.abandonBusy = false;
+        document.querySelectorAll('#paieSimulatorModal button, #paieSimulatorModal input').forEach(el => { el.disabled = false; });
+        if (paieSim === instance && instance.context) recomputePaie();
+    }
+}
 function savePaieSimulator(){
-    if (!paieSim) return;
+    if (!paieSim || paieSim.abandonBusy) return;
     var ctx = paieSim.ctx;
     var msg = document.getElementById('paieSaveMsg');
     if (msg) msg.textContent = 'Enregistrement…';
