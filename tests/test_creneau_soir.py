@@ -155,11 +155,24 @@ class _FieldsParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.fields = {}
+        self.scripts = []
+        self._script = None
 
     def handle_starttag(self, tag, attrs):
+        if tag == 'script':
+            self._script = []
         attrs = dict(attrs)
         if 'id' in attrs:
             self.fields[attrs['id']] = attrs
+
+    def handle_data(self, data):
+        if self._script is not None:
+            self._script.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'script' and self._script is not None:
+            self.scripts.append(''.join(self._script))
+            self._script = None
 
 
 def _form_fields(html):
@@ -210,9 +223,10 @@ def test_transitions_modes_journee(
     db.commit()
     response = auth_client.get('/saisie_heures?date=2025-01-13')
     assert response.status_code == 200
-    html = response.get_data(as_text=True)
+    parser = _FieldsParser()
+    parser.feed(response.get_data(as_text=True))
     result = subprocess.run(
         ['node', str(Path(__file__).with_name('saisie_modes_frontend.cjs'))],
-        input=json.dumps({'html': html, 'fields': _form_fields(html)}),
+        input=json.dumps({'scripts': parser.scripts, 'fields': parser.fields}),
         capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -2,7 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const {html, fields} = JSON.parse(fs.readFileSync(0, 'utf8'));
+const {scripts, fields} = JSON.parse(fs.readFileSync(0, 'utf8'));
 const nodes = {};
 for (const [id, attrs] of Object.entries(fields)) {
     nodes[id] = {
@@ -19,8 +19,7 @@ const context = vm.createContext({document: {
     getElementById: id => nodes[id] || null,
     querySelectorAll: () => [], addEventListener() {}, body: {appendChild() {}},
 }});
-const script = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
-    .map(match => match[1]).find(source => source.includes('function toggleSoir()'));
+const script = scripts.find(source => source.includes('function toggleSoir()'));
 assert(script, 'Script de saisie présent');
 vm.runInContext(script, context);
 const toggle = nodes.toggle_soir;
