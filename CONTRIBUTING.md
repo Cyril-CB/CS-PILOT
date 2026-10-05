@@ -7,16 +7,16 @@ canoniques applicables aux agents se trouvent dans `AGENTS.md`.
 
 - `main` est la branche stable utilisée pour la production.
 - `dev` est la branche d'intégration des changements validés.
-- Toute branche de travail doit être créée depuis un `dev` propre et à jour.
-- Une branche traite une seule demande et les pull requests ciblent `dev`.
+- Toute branche de travail doit être créée depuis un `main` propre et à jour.
+- Une branche traite une seule demande et les pull requests ciblent `main`.
 - Trois développements non intégrés au maximum peuvent être menés en parallèle.
 
 Exemple de préparation :
 
 ```bash
 git fetch origin
-git switch dev
-git pull --ff-only origin dev
+git switch main
+git pull --ff-only origin main
 git switch -c docs/decrire-le-changement
 ```
 
@@ -33,12 +33,12 @@ Utiliser un nom court et descriptif avec l'un des préfixes suivants :
 
 ## Cycle de contribution
 
-1. Créer une branche de travail depuis `dev` à jour.
+1. Créer une branche de travail depuis `main` à jour.
 2. Réaliser un changement ciblé et relire le diff.
 3. Exécuter les contrôles et tests pertinents.
 4. Créer un ou plusieurs commits cohérents.
 5. Pousser uniquement la branche de travail.
-6. Ouvrir une pull request vers `dev` et remplir sa checklist.
+6. Ouvrir une pull request vers `main` et remplir sa checklist.
 7. Répondre aux retours de revue sur la même branche.
 8. Attendre la validation humaine.
 

@@ -5,6 +5,13 @@ change avant le verrouillage, les anciennes approbations restent dans
 l'historique mais une nouvelle signature est nécessaire. Une fiche verrouillée
 conserve ses journées, ses totaux et ses soldes, y compris dans le PDF.
 
+## Saisie des heures
+
+La case **Ajouter un créneau du soir** est disponible toute l’année, pendant
+et hors vacances. Le troisième créneau reste masqué tant que la case n’est pas
+cochée. Si des heures du soir sont déjà enregistrées, la case est précochée et
+les champs affichent ces horaires, y compris pour une ancienne saisie.
+
 ## Parcours utilisateur
 
 Le salarié, le responsable et la direction conservent leurs droits habituels.

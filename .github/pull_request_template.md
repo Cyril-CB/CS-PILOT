@@ -2,7 +2,7 @@
 
 <!-- Décrire le besoin, le changement réalisé et ce qui reste hors périmètre. -->
 
-- [ ] La pull request traite une seule demande et cible `dev`.
+- [ ] La pull request traite une seule demande et cible `main`.
 - [ ] Le diff est limité aux fichiers nécessaires et a été relu intégralement.
 
 ## Risque et utilisateurs concernés
