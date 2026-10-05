@@ -182,7 +182,7 @@ def saisie_heures():
             heure_fin_matin = request.form.get('heure_fin_matin') or None
             heure_debut_aprem = request.form.get('heure_debut_aprem') or None
             heure_fin_aprem = request.form.get('heure_fin_aprem') or None
-            # Créneau soir optionnel (proposé uniquement en période de vacances).
+            # Créneau soir optionnel, disponible toute l'année en saisie manuelle.
             heure_debut_soir = request.form.get('heure_debut_soir') or None
             heure_fin_soir = request.form.get('heure_fin_soir') or None
             type_saisie = 'heures_modifiees'
@@ -395,9 +395,8 @@ def saisie_heures():
 
     next_page = request.args.get('next', '')
 
-    # Le 3e créneau « soir » n'est proposé qu'en période de vacances (personnel
-    # d'entretien). On l'affiche aussi si une saisie soir existe déjà pour ce jour.
-    est_vacances = get_type_periode(date_defaut) == 'vacances'
+    # Le créneau soir est optionnel toute l'année. Une valeur existante
+    # ouvre automatiquement les champs pour préserver sa visibilité.
     a_soir = bool(heures_existantes and (heures_existantes.get('heure_debut_soir')
                                          or heures_existantes.get('heure_fin_soir')))
 
@@ -411,6 +410,5 @@ def saisie_heures():
                           mois_verrouille=mois_verrouille,
                           sans_contrat=sans_contrat,
                           message_sans_contrat=message_sans_contrat,
-                          soir_disponible=est_vacances or a_soir,
                           soir_rempli=a_soir,
                           declaration_conforme_active=declaration_conforme_active)

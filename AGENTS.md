@@ -16,11 +16,11 @@ clarification avant de poursuivre.
 
 - `main` est la branche stable de production. `dev` est la branche
   d'intégration.
-- Toute branche de travail part d'un `dev` propre, à jour avec `origin/dev`.
+- Toute branche de travail part d'un `main` propre, à jour avec `origin/main`.
 - Une branche correspond à une seule demande. Le dépôt ne doit pas compter plus
   de trois développements non intégrés en parallèle.
 - Utilisez un préfixe adapté (`feat/`, `fix/`, `chore/`, `docs/`, `test/` ou
-  `refactor/`) et ouvrez les pull requests vers `dev`.
+  `refactor/`) et ouvrez les pull requests vers `main`.
 - Seul Cyril fusionne les pull requests et réalise les déploiements.
 - Un agent ne pousse jamais directement vers `main` ou `dev` : il pousse
   uniquement sa branche de travail.
@@ -36,7 +36,7 @@ Un agent peut, dans le périmètre explicite de la demande :
 - exécuter les contrôles et tests locaux ;
 - créer des données synthétiques et des bases temporaires isolées ;
 - committer et pousser uniquement une branche de travail ;
-- ouvrir ou mettre à jour une pull request vers `dev` ;
+- ouvrir ou mettre à jour une pull request vers `main` ;
 - répondre aux retours de revue par de nouveaux changements vérifiés.
 
 ### Actions interdites

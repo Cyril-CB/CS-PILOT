@@ -3,9 +3,12 @@ Tests du 3e créneau optionnel « soir ».
 
 Le personnel d'entretien travaille parfois en trois créneaux (matin / après-midi
 / soir), notamment en période de vacances. Le créneau soir est optionnel, proposé
-en contexte vacances, et doit compter dans tous les totaux d'heures.
+toute l’année, et doit compter dans tous les totaux d'heures.
 """
 from datetime import date
+from html.parser import HTMLParser
+
+import pytest
 
 from utils import (calculer_heures_reelles_jour, get_heures_theoriques_jour,
                    calculer_recup_partielle)
@@ -78,8 +81,14 @@ class TestMetriquesTempsSoir:
 
 
 class TestSaisieSoir:
-    def test_saisie_enregistre_le_creneau_soir(self, auth_client, app, db, sample_users, sample_contrat):
+    @pytest.mark.parametrize('vacances', [False, True])
+    def test_saisie_enregistre_le_creneau_soir(
+            self, auth_client, app, db, sample_users, sample_contrat, vacances):
         date_test = '2025-01-13'  # lundi
+        if vacances:
+            db.execute("INSERT INTO periodes_vacances (nom, date_debut, date_fin) "
+                       "VALUES ('Vac test', '2025-01-01', '2025-01-31')")
+            db.commit()
         with app.app_context():
             auth_client.post('/saisie_heures', data={
                 'date': date_test,
@@ -92,21 +101,84 @@ class TestSaisieSoir:
         assert row['heure_debut_soir'] == '18:00'
         assert row['heure_fin_soir'] == '20:00'
 
-    def test_toggle_soir_reserve_aux_vacances(self, auth_client, app, db, sample_users):
-        # Sans période de vacances : date scolaire → pas de champ soir proposé
-        # (la fonction JS toggleSoir existe toujours, mais pas la case ni la section).
-        html_scol = auth_client.get('/saisie_heures?date=2025-01-13').get_data(as_text=True)
-        assert 'id="toggle_soir"' not in html_scol
-        assert 'id="soir-section"' not in html_scol
-        # On déclare une période de vacances couvrant la date → champ soir proposé.
-        with app.app_context():
+    @pytest.mark.parametrize('vacances', [False, True])
+    @pytest.mark.parametrize('client_fixture', ['auth_client', 'resp_client', 'admin_client'])
+    def test_toggle_soir_disponible_toute_annee(
+            self, request, client_fixture, db, sample_users, sample_contrat, vacances):
+        client = request.getfixturevalue(client_fixture)
+        if vacances:
             db.execute("INSERT INTO periodes_vacances (nom, date_debut, date_fin) "
                        "VALUES ('Vac test', '2025-01-01', '2025-01-31')")
             db.commit()
-        html_vac = auth_client.get('/saisie_heures?date=2025-01-13').get_data(as_text=True)
-        assert 'id="toggle_soir"' in html_vac
-        assert 'id="soir-section"' in html_vac
-        assert 'créneau du soir' in html_vac
+        url = f"/saisie_heures?date=2025-01-13&user_id={sample_users['salarie_id']}"
+        response = client.get(url)
+        assert response.status_code == 200
+        fields = _form_fields(response.get_data(as_text=True))
+        assert 'checked' not in fields['toggle_soir']
+        assert 'disabled' not in fields['toggle_soir']
+        assert fields['soir-section']['style'] == 'display:none;'
+        for name in ('heure_debut_soir', 'heure_fin_soir'):
+            assert 'disabled' in fields[name]
+            assert fields[name]['value'] == ''
+
+    @pytest.mark.parametrize('vacances', [False, True])
+    @pytest.mark.parametrize('debut,fin', [('18:00', '20:00'), ('18:00', None),
+                                         (None, '20:00'), (None, None)])
+    def test_saisie_existante_preservee(
+            self, auth_client, db, sample_users, vacances, debut, fin):
+        # Ancienne saisie manuelle, même sans contrat : aucune réécriture au GET.
+        if vacances:
+            db.execute("INSERT INTO periodes_vacances (nom, date_debut, date_fin) "
+                       "VALUES ('Vac test', '2025-01-01', '2025-01-31')")
+        db.execute("""INSERT INTO heures_reelles
+            (user_id, date, heure_debut_matin, heure_fin_matin,
+             heure_debut_soir, heure_fin_soir, type_saisie)
+            VALUES (?, '2025-01-13', '08:00', '12:00', ?, ?, 'heures')""",
+            (sample_users['salarie_id'], debut, fin))
+        db.commit()
+        before = dict(db.execute('SELECT * FROM heures_reelles').fetchone())
+        response = auth_client.get('/saisie_heures?date=2025-01-13')
+        assert response.status_code == 200
+        fields = _form_fields(response.get_data(as_text=True))
+        rempli = bool(debut or fin)
+        assert ('checked' in fields['toggle_soir']) == rempli
+        assert ('style' not in fields['soir-section']) == rempli
+        for name, value in [('heure_debut_soir', debut), ('heure_fin_soir', fin)]:
+            assert fields[name]['value'] == (value or '')
+            assert ('disabled' not in fields[name]) == rempli
+        assert fields['heure_debut_matin']['value'] == '08:00'
+        assert fields['heure_fin_matin']['value'] == '12:00'
+        assert dict(db.execute('SELECT * FROM heures_reelles').fetchone()) == before
+
+
+class _FieldsParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.fields = {}
+        self.scripts = []
+        self._script = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'script':
+            self._script = []
+        attrs = dict(attrs)
+        if 'id' in attrs:
+            self.fields[attrs['id']] = attrs
+
+    def handle_data(self, data):
+        if self._script is not None:
+            self._script.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == 'script' and self._script is not None:
+            self.scripts.append(''.join(self._script))
+            self._script = None
+
+
+def _form_fields(html):
+    parser = _FieldsParser()
+    parser.feed(html)
+    return parser.fields
 
 
 class TestPlanningSoir:
@@ -126,3 +198,35 @@ class TestPlanningSoir:
         assert row['lundi_soir_debut'] == '17:00'
         assert row['lundi_soir_fin'] == '19:00'
         assert row['total_hebdo'] == 8.0
+
+
+@pytest.mark.parametrize('mode', ['vide', 'soir', 'recup_journee', 'declaration_conforme'])
+@pytest.mark.parametrize('option_conforme', [False, True])
+def test_transitions_modes_journee(
+        auth_client, db, sample_users, sample_contrat, mode, option_conforme):
+    import json
+    from pathlib import Path
+    import shutil
+    import subprocess
+
+    if not shutil.which('node'):
+        pytest.skip('Node requis pour exécuter le JavaScript livré')
+    db.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+               ('saisie_afficher_declaration_conforme', '1' if option_conforme else '0'))
+    if mode != 'vide':
+        db.execute("""INSERT INTO heures_reelles
+            (user_id, date, type_saisie, declaration_conforme, heure_debut_soir, heure_fin_soir)
+            VALUES (?, '2025-01-13', ?, ?, ?, ?)""",
+            (sample_users['salarie_id'], 'heures_modifiees' if mode == 'soir' else mode,
+             int(mode == 'declaration_conforme'),
+             '18:00' if mode == 'soir' else None, '20:00' if mode == 'soir' else None))
+    db.commit()
+    response = auth_client.get('/saisie_heures?date=2025-01-13')
+    assert response.status_code == 200
+    parser = _FieldsParser()
+    parser.feed(response.get_data(as_text=True))
+    result = subprocess.run(
+        ['node', str(Path(__file__).with_name('saisie_modes_frontend.cjs'))],
+        input=json.dumps({'scripts': parser.scripts, 'fields': parser.fields}),
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
