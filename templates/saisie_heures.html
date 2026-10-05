@@ -41,14 +41,15 @@
             </label>
         </div>
         
-        <div id="saisie-heures-detail" {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}style="opacity: 0.5;"{% endif %}>
+        {% set mode_journee = heures_existantes and (heures_existantes.type_saisie == 'recup_journee' or (declaration_conforme_active and heures_existantes.declaration_conforme)) %}
+        <div id="saisie-heures-detail" {% if mode_journee %}style="opacity: 0.5;"{% endif %}>
             <div style="display: flex; align-items: center; margin-bottom: 0.5rem;">
                 <span style="font-size: 0.9rem; font-weight: 600; color: var(--gray-700);">Horaires réels</span>
                 <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Saisissez vos heures réelles de travail, pas vos heures théoriques. Un écart supérieur à 3 heures par rapport à votre planning déclenchera une anomalie visible par la direction — ce n'est pas bloquant mais sera examiné.</span></span>
             </div>
             <div class="form-group" style="margin-bottom: 0.75rem;">
                 <label style="display: flex; align-items: center; gap: 0.4rem;">
-                    <input type="checkbox" id="toggle_soir" onchange="toggleSoir()" {% if soir_rempli %}checked{% endif %}>
+                    <input type="checkbox" id="toggle_soir" onchange="toggleSoir()" {% if soir_rempli %}checked{% endif %} {% if mode_journee %}disabled{% endif %}>
                     <strong>🌙 Ajouter un créneau du soir</strong>
                     <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Troisième créneau optionnel disponible toute l'année, pendant et hors vacances. Cochez pour saisir des horaires de soirée en plus du matin et de l'après-midi.</span></span>
                 </label>
@@ -60,13 +61,13 @@
                         <label for="heure_debut_matin">Heure d'arrivée</label>
                         <input type="time" id="heure_debut_matin" name="heure_debut_matin" 
                                value="{{ heures_existantes.heure_debut_matin or '' if heures_existantes else '' }}"
-                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                               {% if mode_journee %}disabled{% endif %}>
                     </div>
                     <div class="form-group">
                         <label for="heure_fin_matin">Heure de départ</label>
                         <input type="time" id="heure_fin_matin" name="heure_fin_matin" 
                                value="{{ heures_existantes.heure_fin_matin or '' if heures_existantes else '' }}"
-                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                               {% if mode_journee %}disabled{% endif %}>
                     </div>
                 </div>
                 
@@ -76,13 +77,13 @@
                         <label for="heure_debut_aprem">Heure d'arrivée</label>
                         <input type="time" id="heure_debut_aprem" name="heure_debut_aprem" 
                                value="{{ heures_existantes.heure_debut_aprem or '' if heures_existantes else '' }}"
-                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                               {% if mode_journee %}disabled{% endif %}>
                     </div>
                     <div class="form-group">
                         <label for="heure_fin_aprem">Heure de départ</label>
                         <input type="time" id="heure_fin_aprem" name="heure_fin_aprem"
                                value="{{ heures_existantes.heure_fin_aprem or '' if heures_existantes else '' }}"
-                               {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                               {% if mode_journee %}disabled{% endif %}>
                     </div>
                 </div>
 
@@ -92,13 +93,13 @@
                         <label for="heure_debut_soir">Heure d'arrivée</label>
                         <input type="time" id="heure_debut_soir" name="heure_debut_soir"
                                value="{{ heures_existantes.heure_debut_soir or '' if heures_existantes else '' }}"
-                               {% if (heures_existantes and heures_existantes.type_saisie == 'recup_journee') or not soir_rempli %}disabled{% endif %}>
+                               {% if mode_journee or not soir_rempli %}disabled{% endif %}>
                     </div>
                     <div class="form-group">
                         <label for="heure_fin_soir">Heure de départ</label>
                         <input type="time" id="heure_fin_soir" name="heure_fin_soir"
                                value="{{ heures_existantes.heure_fin_soir or '' if heures_existantes else '' }}"
-                               {% if (heures_existantes and heures_existantes.type_saisie == 'recup_journee') or not soir_rempli %}disabled{% endif %}>
+                               {% if mode_journee or not soir_rempli %}disabled{% endif %}>
                     </div>
                 </div>
             </div>
@@ -108,7 +109,7 @@
                     <input type="checkbox" id="pause_remuneree" name="pause_remuneree" value="1"
                            onchange="togglePauseRemuneree()"
                            {% if heures_existantes and heures_existantes.pause_remuneree %}checked{% endif %}
-                           {% if heures_existantes and heures_existantes.type_saisie == 'recup_journee' %}disabled{% endif %}>
+                           {% if mode_journee %}disabled{% endif %}>
                     <strong>☕ Pause rémunérée (pause prise sur place, en restant à disposition)</strong>
                     <span class="ctx-help ctx-help--below" onclick="toggleCtxHelp(event, this)">?<span class="ctx-help-bubble">Réservé aux salariés qui prennent leur pause sans pouvoir s'absenter du poste (accueil de loisirs, crèche…). Le temps entre la fin du matin et le début de l'après-midi est alors compté dans les heures travaillées (temps de travail effectif, art. L3121-2 du Code du travail) et ne déclenche pas d'alerte pause.</span></span>
                 </label>
@@ -267,6 +268,7 @@
                 pauseCheckbox.disabled = false;
             }
         }
+        toggleSoir();
     }
 
     function toggleRecupJournee() {
@@ -304,6 +306,7 @@
                 pauseCheckbox.disabled = false;
             }
         }
+        toggleSoir();
     }
 
     // Pause rémunérée : avertissement à chaque coche — la pause doit avoir
@@ -338,6 +341,10 @@
         const section = document.getElementById('soir-section');
         if (!checkbox || !section) return;
         const inputs = section.querySelectorAll('input[type="time"]');
+        const modeJournee = document.getElementById('recup_journee').checked
+            || Boolean(document.getElementById('declaration_conforme')?.checked);
+        checkbox.disabled = modeJournee;
+        if (modeJournee) checkbox.checked = false;
         if (checkbox.checked) {
             section.style.display = '';
             inputs.forEach(i => { i.disabled = false; });
@@ -345,6 +352,15 @@
             section.style.display = 'none';
             inputs.forEach(i => { i.disabled = true; i.value = ''; });
         }
+    }
+
+    // Synchroniser aussi une journée déjà enregistrée, dès le chargement.
+    if (document.getElementById('recup_journee').checked) {
+        toggleRecupJournee();
+    } else if (document.getElementById('declaration_conforme')?.checked) {
+        toggleDeclaration();
+    } else {
+        toggleSoir();
     }
 
     // Recharger la page quand on change la date pour charger les données de cette date

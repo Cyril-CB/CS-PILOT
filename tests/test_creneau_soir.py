@@ -185,3 +185,34 @@ class TestPlanningSoir:
         assert row['lundi_soir_debut'] == '17:00'
         assert row['lundi_soir_fin'] == '19:00'
         assert row['total_hebdo'] == 8.0
+
+
+@pytest.mark.parametrize('mode', ['vide', 'soir', 'recup_journee', 'declaration_conforme'])
+@pytest.mark.parametrize('option_conforme', [False, True])
+def test_transitions_modes_journee(
+        auth_client, db, sample_users, sample_contrat, mode, option_conforme):
+    import json
+    from pathlib import Path
+    import shutil
+    import subprocess
+
+    if not shutil.which('node'):
+        pytest.skip('Node requis pour exécuter le JavaScript livré')
+    db.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+               ('saisie_afficher_declaration_conforme', '1' if option_conforme else '0'))
+    if mode != 'vide':
+        db.execute("""INSERT INTO heures_reelles
+            (user_id, date, type_saisie, declaration_conforme, heure_debut_soir, heure_fin_soir)
+            VALUES (?, '2025-01-13', ?, ?, ?, ?)""",
+            (sample_users['salarie_id'], 'heures_modifiees' if mode == 'soir' else mode,
+             int(mode == 'declaration_conforme'),
+             '18:00' if mode == 'soir' else None, '20:00' if mode == 'soir' else None))
+    db.commit()
+    response = auth_client.get('/saisie_heures?date=2025-01-13')
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    result = subprocess.run(
+        ['node', str(Path(__file__).with_name('saisie_modes_frontend.cjs'))],
+        input=json.dumps({'html': html, 'fields': _form_fields(html)}),
+        capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr

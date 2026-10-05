@@ -147,7 +147,7 @@
         "conditions": [
           "Option saisie_afficher_declaration_conforme.",
           "Un contrat doit couvrir la journée pour une nouvelle saisie ; une ancienne saisie manuelle reste corrigeable hors contrat. Une ligne générée par absence/récup ne constitue pas cette exception.",
-          "Le créneau soir est proposé toute l’année ; ses champs restent masqués tant que la case n’est pas cochée, et une valeur soir existante coche la case et affiche les champs automatiquement."
+          "Le créneau soir est proposé toute l’année ; ses champs restent masqués tant que la case n’est pas cochée, et une valeur soir existante coche la case et affiche les champs automatiquement. Les modes récupération journée complète et déclaration conforme désactivent et décochent le soir ; revenir en saisie manuelle laisse ses champs masqués et désactivés."
         ],
         "sources": [
           "blueprints/saisie.py",

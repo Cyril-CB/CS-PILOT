@@ -182,7 +182,7 @@ def saisie_heures():
             heure_fin_matin = request.form.get('heure_fin_matin') or None
             heure_debut_aprem = request.form.get('heure_debut_aprem') or None
             heure_fin_aprem = request.form.get('heure_fin_aprem') or None
-            # Créneau soir optionnel (proposé uniquement en période de vacances).
+            # Créneau soir optionnel, disponible toute l'année en saisie manuelle.
             heure_debut_soir = request.form.get('heure_debut_soir') or None
             heure_fin_soir = request.form.get('heure_fin_soir') or None
             type_saisie = 'heures_modifiees'
