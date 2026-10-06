@@ -118,6 +118,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0075', 'Suivi des stagiaires'),
     ('0076', 'Lectures individuelles des annonces de stagiaires'),
     ('0077', 'Budget initial annuel détaillé'),
+    ('0078', 'Gel annuel et suivi des écarts'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2154,6 +2155,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_stagiaires_lectures(conn)
     from schema_budget_initial import creer_schema as creer_schema_budget_initial
     creer_schema_budget_initial(conn)
+    from schema_budget_suivi import creer_schema as creer_schema_budget_suivi
+    creer_schema_budget_suivi(conn)
 
 
 def preparer_demarrage():

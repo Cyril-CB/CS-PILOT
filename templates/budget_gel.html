@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Vérifier et figer l’initial - CS-PILOT{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/budget_initial.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/budget_suivi.css') }}">
+<div id="initial-app">
+<div class="page-header"><h1>Vérifier et figer l’initial · {{ annee }}</h1></div>
+<nav class="bi-toolbar" aria-label="Parcours budget">
+<a class="btn btn-secondary" href="{{ url_for('budget_initial_bp.construction', annee=annee) }}">1. Construire l’initial</a>
+<a class="btn btn-secondary" href="{{ url_for('budget_bp.budget_previsionnel', annee=annee) }}">Montants définitifs</a>
+<a class="btn btn-secondary" href="{{ url_for('budget_suivi_bp.direct', annee=annee) }}">3. Suivi en direct</a></nav>
+<form method="get" class="bi-toolbar form-group bs-filtres"><label for="annee">Exercice</label><input id="annee" name="annee" type="text" inputmode="numeric" pattern="[0-9]{4}" value="{{ annee }}"><button class="btn btn-secondary">Ouvrir</button></form>
+<p>Le gel copie les montants définitifs enregistrés de tous les secteurs et les explications disponibles, sans recalcul ni report. Vide ne vaut jamais zéro. Une nouvelle version conserve les anciennes et ne change pas automatiquement la référence du suivi.</p>
+{% if archive %}<p>Archive immuable v{{ archive.version }} · {{ archive.date }} · auteur #{{ archive.auteur }} · {{ archive.motif }}</p><a class="btn btn-secondary" href="{{ url_for('budget_suivi_bp.gel', annee=annee) }}">Vérifier le budget de travail actuel</a>{% endif %}
+{% if controle %}
+<section class="proposition-carte bi-card"><h2>Contrôles de l’exercice complet</h2>
+{% for message in controle.blocages %}<p role="alert">{{ message }}</p>{% else %}<p>Les montants requis sont renseignés. Vérifiez les divergences et les montants manuels conservés ci-dessous.</p>{% endfor %}
+<p>Sur petit écran, faites défiler le tableau horizontalement pour lire les contrôles.</p><div class="bi-scroll" tabindex="0" role="region" aria-label="Montants et contrôles par compte"><table class="bs-controle"><thead><tr><th>Secteur</th><th>Compte</th><th>Proposition</th><th>Définitif retenu</th><th>Contrôle</th></tr></thead><tbody>
+{% for l in controle.lignes %}<tr><td>{{ l.secteur }}</td><td>{{ l.compte }} · {{ l.libelle }}</td><td>{{ l.proposition if l.proposition is not none else 'À compléter' }}</td><td>{{ l.montant if l.montant is not none else 'À compléter' }}</td><td>{{ l.controle|join(' · ') }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+<details class="proposition-carte bi-card"><summary>Hypothèses, ventilations et calculs disponibles (confidentiel)</summary>
+<p>{{ controle.construction.hypotheses.note }}</p>
+{% for l in controle.calcul.lignes %}<h3>{{ l.libelle }} · {{ l.compte }}</h3><p>{{ l.explication }}</p><p>Total : {{ l.total if l.total is not none else 'À compléter' }} · Source : {{ l.source }} · {{ l.note }}</p>{% endfor %}</details>
+{% if not archive %}<form method="post" class="proposition-carte bi-card">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ annee }}"><input type="hidden" name="empreinte" value="{{ controle.empreinte }}">
+<div class="form-group"><label for="motif">Motif du gel ou de la correction</label><input id="motif" name="motif" maxlength="500" required value="{{ request.form.get('motif', '') }}" type="text"></div>
+<label><input type="checkbox" name="confirme" value="oui" required> J’ai vérifié l’exercice complet, tous les secteurs/comptes, les divergences et les manuels conservés. Je confirme la copie immuable.</label>
+<p><button class="btn btn-primary" {% if controle.blocages %}disabled{% endif %}>Figer une nouvelle version annuelle</button></p></form>{% endif %}
+{% else %}<a class="btn btn-secondary" href="{{ url_for('budget_suivi_bp.gel', annee=annee) }}">Recharger le contrôle</a>{% endif %}
+<section class="proposition-carte bi-card"><h2>Versions conservées</h2>{% for v in versions %}<p>v{{ v.version }} · {{ v.date }} · auteur #{{ v.auteur }} · {{ v.motif }} <a class="btn btn-secondary btn-sm" href="{{ url_for('budget_suivi_bp.gel', annee=annee, version=v.id) }}">Consulter la version {{ v.version }}</a></p>{% else %}<p>Aucune version figée.</p>{% endfor %}</section>
+</div>
+{% endblock %}

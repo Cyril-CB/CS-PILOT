@@ -92,6 +92,8 @@
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
                     <a href="{{ url_for('budget_bp.budget_previsionnel') }}">📘 Budget prévisionnel</a>
+                    <a href="{{ url_for('budget_suivi_bp.gel') }}">❄️ Vérifier et figer l’initial</a>
+                    <a href="{{ url_for('budget_suivi_bp.direct') }}">📈 Suivi budgétaire en direct</a>
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
                     <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}">📊 Bilan secteurs/actions</a>
@@ -213,6 +215,8 @@
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('budget_bp.gestion_budgets') }}">💰 Budgets</a>
                     <a href="{{ url_for('budget_bp.budget_previsionnel') }}">📘 Budget prévisionnel</a>
+                    <a href="{{ url_for('budget_suivi_bp.gel') }}">❄️ Vérifier et figer l’initial</a>
+                    <a href="{{ url_for('budget_suivi_bp.direct') }}">📈 Suivi budgétaire en direct</a>
                     <a href="{{ url_for('subventions_bp.gestion_subventions') }}">📋 Subventions</a>
                     <a href="{{ url_for('tresorerie_bp.tresorerie') }}">📈 Trésorerie</a>
                     <a href="{{ url_for('bilan_secteurs_bp.bilan_secteurs') }}">📊 Bilan secteurs/actions</a>
@@ -306,6 +310,7 @@
                 </button>
                 <div class="sidebar-section-menu">
                     <a href="{{ url_for('budget_bp.mon_budget') }}">💰 Mon budget</a>
+                    <a href="{{ url_for('budget_suivi_bp.direct') }}">📈 Suivi budgétaire en direct</a>
                     {% if budget_previsionnel_responsable_autorise %}
                     <a href="{{ url_for('budget_bp.budget_previsionnel') }}">📘 Budget prévisionnel</a>
                     {% endif %}

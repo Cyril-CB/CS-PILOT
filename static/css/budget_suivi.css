@@ -1,0 +1,5 @@
+/* Compléments du suivi ; composants et palette de l'initial conservés. */
+.bs-controle { min-width: 760px; }
+.bs-controle th, .bs-controle td { vertical-align: top; }
+#initial-app .bs-filtres select { width: min(100%, 28rem); }
+.bs-historique { white-space: pre-wrap; overflow-wrap: anywhere; }
