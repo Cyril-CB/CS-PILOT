@@ -1718,7 +1718,7 @@
         "Gel confirmé, indépendant, versionné, auteur/date, hypothèses et ventilations détaillées conservées ; changement de référence explicite et historisé.",
         "Ajustements annuels charge/recette, période, état et lien facultatif compte ou détail initial ; historique append-only, révision remplaçant l’impact, annulation tracée.",
         "Consolidation, filtres exercice/secteur, détail des variations et synthèse par rubrique ; incomplets signalés et sources non connectées distinctes.",
-        "Instantanés datés et octets PDF synthèse/détail archivés, réservés à direction/comptabilité.",
+        "Instantanés datés et octets PDF synthèse/détail archivés, réservés à direction/comptabilité ; création idempotente par exercice/gel/périmètre/révision, y compris pour les requêtes concurrentes, sans régénération des PDF existants.",
         "Préparation des identifiants et remplacement futur du manuel par source stable, sans connecteur actif."
       ],
       "entry_points": [

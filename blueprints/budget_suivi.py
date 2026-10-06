@@ -121,12 +121,19 @@ def direct():
                     data = suivi(conn, annee, sid)
                     if revision != data['revision']:
                         raise SuiviRefuse('Page périmée : rechargez avant de créer l’instantané.')
-                    data['instantane_date'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                    ident = str(uuid.uuid4())
-                    conn.execute('''INSERT INTO budget_instantanes
-                        (id,annee,secteur_id,gel_id,revision,donnees,pdf_synthese,pdf_detail,auteur,date)
-                        VALUES (?,?,?,?,?,?,?,?,?,?)''', (ident, annee, sid, data['gel_id'], revision,
-                        encoder(data), pdf_suivi(data), pdf_suivi(data, True), session['user_id'], data['instantane_date']))
+                    # BEGIN IMMEDIATE couvre recherche et insertion : deux requêtes
+                    # concurrentes ne peuvent pas archiver le même état. IS traite
+                    # aussi le périmètre consolidé (secteur_id NULL).
+                    archive = conn.execute('''SELECT id FROM budget_instantanes
+                        WHERE annee=? AND gel_id=? AND revision=? AND secteur_id IS ?
+                        LIMIT 1''', (annee, data['gel_id'], revision, sid)).fetchone()
+                    if archive is None:
+                        data['instantane_date'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
+                        ident = str(uuid.uuid4())
+                        conn.execute('''INSERT INTO budget_instantanes
+                            (id,annee,secteur_id,gel_id,revision,donnees,pdf_synthese,pdf_detail,auteur,date)
+                            VALUES (?,?,?,?,?,?,?,?,?,?)''', (ident, annee, sid, data['gel_id'], revision,
+                            encoder(data), pdf_suivi(data), pdf_suivi(data, True), session['user_id'], data['instantane_date']))
                 else:
                     raise SuiviRefuse('Action inconnue.')
                 conn.commit()

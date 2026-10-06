@@ -405,3 +405,59 @@ def test_total_signe_de_remplacement_et_source_http_non_activable(budget,db,admi
     response = admin_client.post('/budget/suivi',data={'annee':2026,'revision':1,'action':'ajuster',**saisie(budget)})
     assert response.status_code == 409
     assert len(suivi(db,2026)['details']) == 2
+
+
+@pytest.mark.parametrize('sectoriel', [False, True])
+def test_instantane_rejoue_reutilise_archive(budget, db, admin_client, monkeypatch, sectoriel):
+    geler(db)
+    payload = {'annee': 2026, 'revision': 0, 'action': 'instantane'}
+    if sectoriel:
+        payload['secteur_id'] = str(budget)
+    assert admin_client.post('/budget/suivi', data=payload).status_code == 302
+    avant = tuple(db.execute('SELECT * FROM budget_instantanes').fetchone())
+
+    def pas_de_regeneration(*args, **kwargs):
+        pytest.fail('Une répétition ne doit pas régénérer les PDF archivés.')
+
+    monkeypatch.setattr('blueprints.budget_suivi.pdf_suivi', pas_de_regeneration)
+    for _ in range(2):
+        assert admin_client.post('/budget/suivi', data=payload).status_code == 302
+    assert [tuple(r) for r in db.execute('SELECT * FROM budget_instantanes')] == [avant]
+    assert suivi(db, 2026)['revision'] == 0
+
+
+@pytest.mark.parametrize('sectoriel', [False, True])
+def test_instantanes_concurrents_une_archive(budget, db, app, admin_client, sectoriel):
+    from threading import Barrier
+    geler(db)
+    cookie = admin_client.get_cookie(app.config['SESSION_COOKIE_NAME'])
+    rendez_vous = Barrier(2)
+    payload = {'annee': 2026, 'revision': 0, 'action': 'instantane'}
+    if sectoriel:
+        payload['secteur_id'] = str(budget)
+
+    def envoyer(_):
+        with app.test_client() as client:
+            client.set_cookie(cookie.key, cookie.value)
+            rendez_vous.wait(timeout=10)
+            return client.post('/budget/suivi', data=payload).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        assert list(pool.map(envoyer, range(2))) == [302, 302]
+    assert db.execute('SELECT count(*) FROM budget_instantanes').fetchone()[0] == 1
+    assert suivi(db, 2026)['revision'] == 0
+
+
+def test_instantanes_distinguent_perimetres_et_revisions(budget, db, admin_client):
+    geler(db)
+    payload = {'annee': 2026, 'revision': 0, 'action': 'instantane'}
+    for scope in ({}, {'secteur_id': str(budget)}):
+        assert admin_client.post('/budget/suivi', data={**payload, **scope}).status_code == 302
+    avant = [tuple(r) for r in db.execute('SELECT * FROM budget_instantanes ORDER BY id')]
+    assert len(avant) == 2
+    ajouter(db, budget, montant=50)
+    # Le rejeu périmé reste refusé, sans produire une archive du nouvel état.
+    assert admin_client.post('/budget/suivi', data=payload).status_code == 409
+    assert [tuple(r) for r in db.execute('SELECT * FROM budget_instantanes ORDER BY id')] == avant
+    assert admin_client.post('/budget/suivi', data={**payload, 'revision': 1}).status_code == 302
+    assert db.execute('SELECT count(*) FROM budget_instantanes').fetchone()[0] == 3

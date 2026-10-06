@@ -80,7 +80,12 @@ origine/historique. Les sources **non connectées** sont distinctes d’aucune
 variation manuelle. Les filtres portent sur exercice et secteur.
 
 **Créer un instantané daté et ses PDF** archive le contenu sélectionné et les
-octets exacts des PDF synthèse/détail, dans une transaction. Les téléchargements
+octets exacts des PDF synthèse/détail, dans une transaction. Pour un même
+exercice, gel, secteur (ou consolidation) et révision, les répétitions et doubles
+clics réutilisent l’archive existante sans régénérer les PDF, la date ou l’auteur.
+Le verrou d’écriture couvre la recherche et la création, y compris entre deux
+requêtes concurrentes. Une nouvelle révision ou un autre périmètre peut être
+archivé séparément ; une demande périmée reste refusée. Les téléchargements
 ultérieurs utilisent ces octets ; ni nouveau calcul ni données courantes ne
 modifient le document. Les PDF indiquent les incomplets et sources non connectées.
 Les archives et PDF détaillés restent réservés à direction/comptabilité car
