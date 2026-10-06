@@ -1739,7 +1739,8 @@
         ],
         "templates": [
           "templates/budget_gel.html",
-          "templates/budget_suivi.html"
+          "templates/budget_suivi.html",
+          "templates/base.html"
         ],
         "tables": [
           "budget_gels",
