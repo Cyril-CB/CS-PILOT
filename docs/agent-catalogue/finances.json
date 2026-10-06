@@ -1616,7 +1616,8 @@
         "Migration 0077 additive et idempotente, partagée avec l’installation neuve, tables déclarées au diagnostic de résilience.",
         "Choix dans le plan général : 641 salaires/compléments, 6 hors 63/64 dépenses, 7 financements ; contrôle serveur et reprise des anciens comptes.",
         "Copie ALISFA ponctuelle depuis le salarié et son dernier contrat hors CEE couvrant l’année ; valeurs modifiables, ajustements conservés à la reprise, aucune écriture RH.",
-        "Source et justification visibles mais facultatives, y compris source des taux ; leur absence seule ne bloque ni sauvegarde ni report."
+        "Source et justification visibles mais facultatives, y compris source des taux ; leur absence seule ne bloque ni sauvegarde ni report.",
+        "Parcours vers la vérification et le gel annuel puis le suivi en direct (lot 2), sans conversion de l’actualisé."
       ],
       "entry_points": [
         "budget_initial_bp.construction",
@@ -1692,7 +1693,8 @@
       ],
       "related_features": [
         "finances.budget_previsionnel",
-        "finances.simulation_paie"
+        "finances.simulation_paie",
+        "finances.budget_suivi"
       ],
       "limitations": [
         "La construction ne reprend pas automatiquement les montants ni simulations existants. La saisie du secteur pilote et son contrôle métier restent explicites.",
@@ -1700,6 +1702,91 @@
         "Le report ne remplace ni une saisie manuelle existante ni un compte automatique ; les différences sont affichées. Le PDF habituel reflète uniquement les montants du tableau enregistrés.",
         "Les taux et la référence annuelle sont des hypothèses saisies et confirmées, sans connexion automatique à un import ou un autre module.",
         "L’inflation est documentée dans la note d’hypothèses, sans coefficient automatique. La colonne comparative Initial de l’ancien actualisé et de son PDF reflète les reports explicites, sans écriture dans les montants actualisés."
+      ]
+    },
+    {
+      "id": "finances.budget_suivi",
+      "title": "Gel annuel et suivi en direct du budget (lot 2)",
+      "purpose": "Conserver une référence indépendante et immuable, expliquer les écarts et produire des instantanés reproductibles.",
+      "example_requests": [
+        "Figer l’initial annuel",
+        "Suivre les écarts budgétaires",
+        "Créer un instantané pour le CA"
+      ],
+      "capabilities": [
+        "Vérification exhaustive des secteurs/comptes, définitifs manquants, calculs à actualiser et divergences proposition/retenu.",
+        "Gel confirmé, indépendant, versionné, auteur/date, hypothèses et ventilations détaillées conservées ; changement de référence explicite et historisé.",
+        "Ajustements annuels charge/recette, période, état et lien facultatif compte ou détail initial ; historique append-only, révision remplaçant l’impact, annulation tracée.",
+        "Consolidation, filtres exercice/secteur, détail des variations et synthèse par rubrique ; incomplets signalés et sources non connectées distinctes.",
+        "Instantanés datés et octets PDF synthèse/détail archivés, réservés à direction/comptabilité.",
+        "Préparation des identifiants et remplacement futur du manuel par source stable, sans connecteur actif."
+      ],
+      "entry_points": [
+        "budget_suivi_bp.gel",
+        "budget_suivi_bp.direct",
+        "budget_suivi_bp.pdf"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/budget_suivi.py"
+        ],
+        "service_files": [
+          "budget_suivi.py",
+          "schema_budget_suivi.py",
+          "migrations/0078_budget_gel_suivi.py",
+          "navigation.py",
+          "static/css/budget_suivi.css"
+        ],
+        "templates": [
+          "templates/budget_gel.html",
+          "templates/budget_suivi.html"
+        ],
+        "tables": [
+          "budget_gels",
+          "budget_suivis",
+          "budget_evenements",
+          "budget_instantanes"
+        ],
+        "tests": [
+          "tests/test_budget_suivi.py",
+          "tests/budget_suivi_live_checks.cjs",
+          "tests/budget_suivi_live_server.py"
+        ],
+        "docs": [
+          "docs/budget-suivi.md"
+        ]
+      },
+      "access": {
+        "summary": "Direction/comptabilité : lecture/écriture consolidée et PDF. Responsables : lecture de leur seul secteur, sans texte libre ni données nominatives. Autres profils refusés.",
+        "scope": "Exercice annuel complet pour le gel, secteur pour le suivi responsable.",
+        "conditions": [
+          "Authentification, CSRF sur mutations, session revérifiée sous verrou.",
+          "Option de l’ancien prévisionnel sans effet sur le nouveau suivi."
+        ],
+        "sources": [
+          "blueprints/budget_suivi.py",
+          "sessions_securite.py",
+          "budget_suivi.py"
+        ]
+      },
+      "invariants": [
+        "Aucun effet rétroactif des données RH/paramètres sur un gel ; aucune conversion des actualisés.",
+        "Une correction ne déplace pas silencieusement la référence ; anciennes versions et PDF préservés.",
+        "Vide reste inconnu ; résultats provisoires signalés. Charge négative, recette positive, différence seulement pour un élément prévu.",
+        "Révision technique et verrou transactionnel évitent doubles écritures ; triggers interdisent modification et suppression des archives.",
+        "Un élément prévu ne peut être suivi deux fois ni simultanément au niveau compte et détail."
+      ],
+      "extension_points": [
+        "UUID d’événement et de ligne initiale, secteur/compte, source_type/source_id/remplace_revision dans les événements ; adaptateurs futurs sous transaction, aucune route de synchronisation."
+      ],
+      "related_features": [
+        "finances.budget_initial_detaille"
+      ],
+      "limitations": [
+        "Aucune synchronisation subvention/facture/contrat/IJ ; contrôle mensuel des comptes stables seulement documenté.",
+        "Détails disponibles comme bases d’écart uniquement si leur somme concorde avec le définitif retenu.",
+        "Justificatif : référence textuelle facultative, pas de nouvel upload.",
+        "PDF complets réservés à direction/comptabilité ; responsables sans données nominatives."
       ]
     }
   ]

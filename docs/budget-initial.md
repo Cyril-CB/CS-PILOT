@@ -297,3 +297,9 @@ La proposition temporaire affichée et la valeur temporaire enregistrée sont
 distinctes : après effacement et rechargement, modifier un commentaire conserve
 le temporaire enregistré (y compris NULL ou zéro), sans recopier la proposition
 calculée. Une modification du montant définitif reste une saisie protégée.
+
+## Suite du parcours : gel et suivi
+
+Le [lot 2](budget-suivi.md) permet de vérifier les définitifs de tous les secteurs,
+de figer une version annuelle puis de suivre les écarts. Le lot 1 reste le
+budget de travail ; aucun report ni gel ne se déclenche automatiquement.

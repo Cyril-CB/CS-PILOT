@@ -9,6 +9,7 @@
      data-report="{{ url_for('budget_initial_bp.report') }}">
   <div class="page-header">
     <h1>Initial annuel détaillé · {{ annee }}</h1>
+    <a class="btn btn-primary" href="{{ url_for('budget_suivi_bp.gel', annee=annee) }}">2. Vérifier et figer l’initial</a>
     <a class="btn btn-secondary" href="{{ url_for('budget_bp.budget_previsionnel', annee=annee) }}">Tableau budgétaire et PDF</a>
   </div>
   <p>Prévoir le fonctionnement normal : permanents sur douze mois, saisonniers et CEE selon l’activité habituelle. Les absences et remplacements imprévisibles ne sont pas inclus.</p>
