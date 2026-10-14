@@ -32,7 +32,7 @@ le navigateur. Le contexte reprend également la page (route sans identifiants
 ni paramètres), la version du code et le résultat recalculé de la recherche
 dans les droits actuels. Aucun autre document métier n’est joint automatiquement.
 
-La destination est fixée côté serveur : **cspilot@outlook.fr**. Les emails utilisent
+La destination est fixée côté serveur : **support@cs-pilot.com**. Les emails utilisent
 la configuration SMTP du centre, accessible à la direction/comptabilité.
 Une messagerie absente, désactivée ou en échec n’efface pas la demande.
 « Mes propositions » permet de retrouver référence, pièces et état de
@@ -42,7 +42,7 @@ que leurs propres demandes.
 
 « Envoyée » signifie que le service SMTP a accepté le mail. Cela ne prouve
 ni réception dans la boîte principale, ni lecture, ni décision de développement.
-Cette étape ne relève aucune boîte Outlook et ne développe aucun module.
+Cette étape ne relève aucune boîte de réception et ne développe aucun module.
 Le traitement de la demande se fait ensuite hors de l'application : la lecture
 du mail, l'arbitrage et le développement éventuel restent des décisions
 humaines, sans aucun automatisme déclenché par le dépôt.

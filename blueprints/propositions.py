@@ -167,7 +167,8 @@ def _expedier(reference, confirmation=False):
         flash('La demande est conservée, mais la transmission reste à vérifier.', 'warning')
         return redirect(retour)
     if statut == 'envoyee':
-        flash('Votre proposition a été envoyée à cspilot@outlook.fr. Conservez sa référence pour les échanges.', 'success')
+        flash(f'Votre proposition a été envoyée à {service.DESTINATAIRE}. '
+              'Conservez sa référence pour les échanges.', 'success')
     else:
         flash(service.ERREURS_ENVOI[code], 'warning')
     return redirect(retour)

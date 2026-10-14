@@ -851,7 +851,7 @@
     {
       "id": "interface.propositions_amelioration",
       "title": "Propositions d’amélioration avec contexte et pièces jointes",
-      "purpose": "Recueillir un besoin exprimé par un utilisateur, le conserver et le transmettre à cspilot@outlook.fr dans un mail structuré et exploitable.",
+      "purpose": "Recueillir un besoin exprimé par un utilisateur, le conserver et le transmettre à support@cs-pilot.com dans un mail structuré et exploitable.",
       "example_requests": [
         "proposer une amélioration",
         "je ne trouve pas ce que je veux",

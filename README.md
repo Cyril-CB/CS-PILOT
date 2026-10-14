@@ -160,7 +160,7 @@ classique depuis « Mon espace ».
   reprendre le contexte et joindre un outil ou un exemple (Excel, PDF, etc.).
 - Retrouver ses propositions et réessayer un mail en échec ; direction et
   comptabilité peuvent aider à transmettre les demandes du centre.
-- Envoi à `cspilot@outlook.fr` via la messagerie configurée du centre, avec une
+- Envoi à `support@cs-pilot.com` via la messagerie configurée du centre, avec une
   référence unique et une fiche JSON structurée jointe au mail.
 - [Parcours, pièces jointes et contrat du mail](docs/propositions-amelioration.md).
 

@@ -25,7 +25,7 @@ from search_palette import construire_suggestions
 from stockage_restaure import chemin_relatif_sur
 from utils import aujourd_hui
 
-DESTINATAIRE = 'cspilot@outlook.fr'
+DESTINATAIRE = 'support@cs-pilot.com'
 PROFILS = ('directeur', 'comptable', 'responsable', 'salarie', 'prestataire')
 GESTIONNAIRES = ('directeur', 'comptable')
 MAX_PIECES = 3
