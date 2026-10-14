@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+{% block title %}Produits d’entretien - CS-PILOT{% endblock %}
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header"><div><h1>Produits d’entretien</h1><p class="subtitle">Exprimer les besoins, passer commande et être informé de l’arrivée des produits.</p></div></div>
+    <div class="appro-actions appro-no-print">
+        {% if peut_configurer %}<a class="btn btn-secondary" href="{{ url_for('entretien_bp.parametres') }}">Catalogue et lieux demandeurs</a>{% endif %}
+        {% if est_admin %}<a class="btn btn-secondary" href="{{ url_for('sites_bp.gestion') }}">Sites et responsables</a>{% endif %}
+    </div>
+    {% if lieux_demande %}
+    <section class="appro-card appro-no-print">
+        <h2>Nouvelle demande</h2>
+        <form method="get" class="appro-actions">
+            <div class="form-group"><label for="choix_lieu">Lieu concerné</label><select name="lieu_id" id="choix_lieu">{% for lieu in lieux_demande %}<option value="{{ lieu.id }}" {% if selection and selection.id == lieu.id %}selected{% endif %}>{{ lieu.nom }} — {{ lieu.site_nom }}</option>{% endfor %}</select></div>
+            <button type="submit" class="btn btn-secondary">Afficher le catalogue</button>
+        </form>
+        {% if produits %}
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="lieu_id" value="{{ selection.id }}">
+            <input type="hidden" name="lieu_revision" value="{{ selection.revision }}">
+            <input type="hidden" name="cle_envoi" value="{{ cle_envoi }}">
+            <h3>Besoins de {{ selection.nom }}</h3>
+            <p class="appro-help">Indiquez les quantités nécessaires. Laissez les autres produits à zéro. La demande est transmise sans validation préalable.</p>
+            <div class="appro-grid">
+                {% for produit in produits %}
+                <div class="appro-product">
+                    <input type="hidden" name="revision_produit_{{ produit.id }}" value="{{ produit.revision }}">
+                    <label for="quantite-{{ produit.id }}">{{ produit.nom }}<small>Unité : {{ produit.unite }}</small></label>
+                    <input type="number" id="quantite-{{ produit.id }}" name="quantite_{{ produit.id }}" min="0" max="9999" step="1" value="0" inputmode="numeric" aria-label="Quantité — {{ produit.nom }} ({{ produit.unite }})">
+                </div>
+                {% endfor %}
+            </div>
+            <div class="form-group"><label for="commentaire">Commentaire facultatif</label><textarea id="commentaire" name="commentaire" maxlength="1000" rows="2"></textarea></div>
+            <div class="appro-actions"><button class="btn btn-primary" type="submit">Transmettre les besoins de {{ selection.nom }}</button></div>
+        </form>
+        {% else %}<p class="appro-help">Le catalogue de ce site n’est pas encore renseigné. La personne chargée des commandes peut le préparer dans « Catalogue et lieux demandeurs ».</p>{% endif %}
+    </section>
+    {% endif %}
+    {% for regroupement in regroupements %}
+    <section class="appro-card">
+        <h2>À commander — {{ regroupement.site.nom }}</h2>
+        <p class="appro-help">Total des besoins transmis par les lieux de ce site. La commande auprès du fournisseur se passe hors application.</p>
+        <ul class="appro-list">{% for ligne in regroupement.lignes %}<li><strong>{{ ligne.quantite }} × {{ ligne.unite }}</strong> — {{ ligne.nom }}</li>{% endfor %}</ul>
+        <form method="post" action="{{ url_for('entretien_bp.commander') }}" class="appro-no-print">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="site_id" value="{{ regroupement.site.id }}">
+            {% for besoin in regroupement.besoins %}<input type="hidden" name="demandes" value="{{ besoin.id }}">{% endfor %}
+            <button type="submit" class="btn btn-primary">Marquer ces {{ regroupement.besoins|length }} demande(s) commandées</button>
+        </form>
+    </section>
+    {% endfor %}
+    <h2>Suivi des demandes</h2>
+    <p class="appro-help">Quand les produits sont disponibles, le responsable du lieu reçoit une notification. Vous organisez ensuite leur récupération directement entre vous.</p>
+    {% for demande in demandes %}
+    <article class="appro-card" id="demande-{{ demande.id }}">
+        <h3>{{ demande.lieu_nom }} — {{ demande.site_nom }} <span class="appro-status">{{ statuts[demande.statut] }}</span></h3>
+        <p class="appro-help">Demande n° {{ demande.id }} · {{ demande.created_at[:10] }} · {{ demande.prenom }} {{ demande.nom }}</p>
+        <ul class="appro-list">{% for ligne in demande.lignes %}<li>{{ ligne.quantite }} × {{ ligne.unite }} — {{ ligne.produit_nom }}</li>{% endfor %}</ul>
+        {% if demande.commentaire %}<p class="appro-note">{{ demande.commentaire }}</p>{% endif %}
+        {% if demande.reception_note %}<p class="appro-note"><strong>À la réception :</strong> {{ demande.reception_note }}</p>{% endif %}
+        {% if demande.recue_at %}<p class="appro-help">Produits disponibles depuis le {{ demande.recue_at[:10] }}.</p>{% endif %}
+        {% if demande.peut_gerer and demande.statut in ('en_cours', 'commandee') %}
+        <form method="post" action="{{ url_for('entretien_bp.statut', demande_id=demande.id) }}" class="appro-no-print">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="revision" value="{{ demande.revision }}">
+            {% if demande.statut == 'commandee' %}
+            <div class="form-group"><label for="reception-{{ demande.id }}">Précision à la réception (facultatif)</label><textarea id="reception-{{ demande.id }}" name="reception_note" maxlength="1000" rows="2" placeholder="Ex. Les sacs de 100 litres sont manquants."></textarea></div>
+            {% endif %}
+            <div class="appro-actions">
+                {% if demande.statut == 'en_cours' %}<button class="btn btn-primary" name="statut" value="commandee" type="submit">Marquer commandée</button>{% else %}<button class="btn btn-primary" name="statut" value="recue" type="submit">Produits reçus — notifier le responsable</button>{% endif %}
+                <button class="btn btn-secondary" name="statut" value="annulee" type="submit">Annuler la demande</button>
+            </div>
+        </form>
+        {% endif %}
+    </article>
+    {% else %}<div class="appro-card"><p>Aucune demande pour le moment.</p>{% if est_admin %}<p class="appro-help">Commencez par créer les sites et leurs responsables, puis renseignez le catalogue et les lieux demandeurs.</p>{% endif %}</div>{% endfor %}
+</div>
+{% endblock %}

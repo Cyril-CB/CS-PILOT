@@ -353,7 +353,8 @@
         "Attribution ou retrait d’un unique délégataire par mission : suivi_commandes_fournitures et suivi_validations_relances.",
         "Attribution à plusieurs salariés du droit de réservation récurrente des salles.",
         "Attribution à plusieurs salariés de la gestion complète du répertoire et des heures des bénévoles.",
-        "Sélection limitée côté serveur aux comptes actifs de profil salarie ou responsable."
+        "Sélection limitée côté serveur aux comptes actifs de profil salarie ou responsable.",
+        "L’ancienne mission fournitures ne couvre que Global / historique ; lien vers la configuration indépendante des responsables par site et module."
       ],
       "entry_points": [
         "admin_bp.delegations"
@@ -380,7 +381,9 @@
           "tests/test_delegation_recurrence_salles.py",
           "tests/test_perimetres_sessions.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/sites-approvisionnement.md"
+        ]
       },
       "access": {
         "summary": "Direction et comptable peuvent consulter la page. Seule la direction modifie les deux missions unitaires. Direction et comptable peuvent attribuer ou retirer les droits complémentaires de salles et de bénévoles.",
@@ -409,7 +412,8 @@
         "administration.relances_fiches",
         "association.benevoles_repertoire",
         "association.salles_reservations",
-        "temps.validation_fiches"
+        "temps.validation_fiches",
+        "administration.sites_physiques"
       ],
       "limitations": [
         "blueprints/delegations.py est un service, sans Blueprint ni routes ; le point d’entrée réel est admin_bp.delegations, enregistré par admin_bp dans app.py.",
@@ -1520,6 +1524,82 @@
       ],
       "limitations": [
         "En installation historique sans fichier de correspondance de restauration, resoudre_fichier conserve la compatibilité des chemins absolus ; il ne réalise pas à lui seul un contrôle de droit ou de confinement de tous ces anciens chemins."
+      ]
+    },
+    {
+      "id": "administration.sites_physiques",
+      "title": "Sites physiques et responsables des commandes",
+      "purpose": "Organiser les files de commandes dans une seule installation, avec accès et responsables distincts par site et module.",
+      "example_requests": [
+        "configurer Cyprian et Les Brosses",
+        "nommer deux responsables des commandes de fournitures",
+        "rattacher un salarié à plusieurs sites"
+      ],
+      "capabilities": [
+        "Créer, renommer ou archiver un site physique sans changer les secteurs analytiques.",
+        "Affecter plusieurs salariés à plusieurs sites pour le dépôt de fournitures.",
+        "Désigner un responsable fournitures et un responsable entretien pour chaque site ; accès courant indépendant du profil global et de l’autre module."
+      ],
+      "entry_points": [
+        "sites_bp.gestion"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/sites.py"
+        ],
+        "service_files": [
+          "sites_acces.py",
+          "schema_sites_approvisionnement.py",
+          "migrations/0079_sites_approvisionnement.py",
+          "database.py",
+          "resilience.py"
+        ],
+        "templates": [
+          "templates/sites.html"
+        ],
+        "tables": [
+          "sites",
+          "sites_utilisateurs",
+          "sites_responsables_modules",
+          "users"
+        ],
+        "tests": [
+          "tests/test_sites_approvisionnement.py",
+          "tests/test_migrations_resilience.py"
+        ],
+        "docs": [
+          "docs/sites-approvisionnement.md"
+        ]
+      },
+      "access": {
+        "summary": "Administration réservée à direction/comptabilité ; bénéficiaires limités aux comptes internes actifs.",
+        "scope": "Organisation commune aux deux modules de commandes seulement, au sein d’une installation.",
+        "conditions": [
+          "Contrôle courant sous transaction, révision du site pour refuser les anciennes pages.",
+          "Archivage sans effacer données ni délégations ; missions inopérantes tant que le site est archivé."
+        ],
+        "sources": [
+          "blueprints/sites.py",
+          "sites_acces.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Ni secteur RH/analytique ni base séparée par site.",
+        "Aucun nom de site ou rattachement déduit automatiquement lors de la migration.",
+        "Les anciennes demandes et missions globales restent inchangées ; elles ne confèrent pas de droit sur un site."
+      ],
+      "extension_points": [
+        "Étendre explicitement MODULES et le schéma de missions pour un nouveau module borné par site."
+      ],
+      "related_features": [
+        "association.commandes_fournitures",
+        "association.produits_entretien",
+        "administration.delegations"
+      ],
+      "limitations": [
+        "Aucune isolation générale des données RH/comptables de l’application par site.",
+        "Pas d’affectation rétrospective ou automatique des commandes globales ; configuration manuelle de mise en service."
       ]
     }
   ]

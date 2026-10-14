@@ -114,7 +114,8 @@
         "Libellés adaptés au profil, voisinage des pages et vue d'ensemble par thèmes.",
         "Activation par centre et préférence personnelle ; identité et fonction affichées dans le shell.",
         "Navigation classique conservée sur téléphone selon détection User-Agent.",
-        "Bandeaux d'information contextuels sur factures, écritures, subventions, validation des fiches et dossiers/contrats : compteurs, état et lien d'action pertinents pour la page."
+        "Bandeaux d'information contextuels sur factures, écritures, subventions, validation des fiches et dossiers/contrats : compteurs, état et lien d'action pertinents pour la page.",
+        "Accès aux commandes de fournitures de chaque site autorisé et au module entretien pour ses acteurs ; recherche par nom de site."
       ],
       "entry_points": [
         "accueil_bp.api_basculer"
@@ -183,7 +184,9 @@
         "association.cse_messages",
         "interface.accueil_flux",
         "interface.mon_espace",
-        "interface.recherche"
+        "interface.recherche",
+        "association.produits_entretien",
+        "administration.sites_physiques"
       ],
       "limitations": [
         "Les bandeaux sont définis uniquement pour les endpoints présents dans flux_infos.CONSTRUCTEURS ; une erreur de lecture produit un flux vide pour préserver la page."
@@ -205,7 +208,8 @@
         "Fragments HTML pour rafraîchir la file sans recharger la page.",
         "Accusé déclaratif de signalement des cas particuliers de paie, nominatif pour l'acteur courant.",
         "Bouton « Pourquoi ? » des cartes : déroulé explicatif des étapes, rôles, étape courante et conséquences de l'attente, adapté au circuit de la demande.",
-        "Annonces de stagiaires acquittables individuellement avec « J’ai lu », y compris la carte groupée : choix personnel persistant, sans effacer les fiches ni masquer les annonces des collègues."
+        "Annonces de stagiaires acquittables individuellement avec « J’ai lu », y compris la carte groupée : choix personnel persistant, sans effacer les fiches ni masquer les annonces des collègues.",
+        "Besoins de fournitures et d’entretien adressés au seul responsable de chaque site/module ; avis de réception entretien personnels sur les pages de l’application."
       ],
       "entry_points": [
         "accueil_bp.accueil",
@@ -222,7 +226,9 @@
           "flux_accueil.py",
           "flux_circuits.py",
           "interface_flux.py",
-          "stagiaires.py"
+          "stagiaires.py",
+          "sites_acces.py",
+          "entretien.py"
         ],
         "templates": [
           "templates/accueil_flux.html",
@@ -245,7 +251,11 @@
           "planif_taches",
           "stagiaires",
           "stagiaires_creneaux",
-          "stagiaires_annonces_lectures"
+          "stagiaires_annonces_lectures",
+          "sites",
+          "sites_responsables_modules",
+          "entretien_demandes",
+          "entretien_notifications"
         ],
         "tests": [
           "tests/test_interface_flux.py",
@@ -299,7 +309,9 @@
         "interface.digest_direction",
         "interface.navigation",
         "temps.validation_demandes_absence",
-        "temps.validation_fiches"
+        "temps.validation_fiches",
+        "association.produits_entretien",
+        "administration.sites_physiques"
       ],
       "limitations": []
     },

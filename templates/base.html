@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}CS-PILOT{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v={{ static_version['css/style.css'] }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/approvisionnement.css') }}?v={{ static_version['css/approvisionnement.css'] }}">
     <script>
         (function(){var t=localStorage.getItem('theme');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');})();
     </script>
@@ -85,6 +86,7 @@
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+            {% if can_access_entretien %}<a href="{{ url_for('entretien_bp.liste') }}" class="sidebar-link">🧴 Produits d’entretien</a>{% endif %}
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
                     <span>💶 Financier</span><span class="sidebar-arrow">&#9662;</span>
@@ -138,6 +140,7 @@
                     <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
                     <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
                     <a href="{{ url_for('admin_bp.delegations') }}">🤝 Délégation</a>
+                    <a href="{{ url_for('sites_bp.gestion') }}">🏢 Sites et commandes</a>
                     <a href="{{ url_for('administration_bp.options') }}">⚙️ Options</a>
                     <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes</a>
                     <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
@@ -208,6 +211,7 @@
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+            {% if can_access_entretien %}<a href="{{ url_for('entretien_bp.liste') }}" class="sidebar-link">🧴 Produits d’entretien</a>{% endif %}
             <div class="sidebar-section">
                 <button class="sidebar-section-toggle" onclick="toggleSection(this)">
                     <span>💶 Financier</span><span class="sidebar-arrow">&#9662;</span>
@@ -261,6 +265,7 @@
                     <a href="{{ url_for('api_keys_bp.gestion_cles_api') }}">🔑 Clés API</a>
                     <a href="{{ url_for('notifications_bp.configuration_email') }}">📧 Notifications email</a>
                     <a href="{{ url_for('admin_bp.delegations') }}">🤝 Délégation</a>
+                    <a href="{{ url_for('sites_bp.gestion') }}">🏢 Sites et commandes</a>
                     <a href="{{ url_for('administration_bp.options') }}">⚙️ Options</a>
                     <a href="{{ url_for('backup_bp.liste_sauvegardes') }}">💾 Sauvegardes</a>
                     <a href="{{ url_for('administration_bp.administration') }}">🛠️ Mises à jour BDD</a>
@@ -335,6 +340,7 @@
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+            {% if can_access_entretien %}<a href="{{ url_for('entretien_bp.liste') }}" class="sidebar-link">🧴 Produits d’entretien</a>{% endif %}
             <a href="{{ url_for('factures_bp.approbation_factures') }}" class="sidebar-link">🧾 Approbation factures</a>
             <a href="{{ url_for('salles_bp.salles') }}" class="sidebar-link">🏠 Salles</a>
             {% if is_delegue_benevoles %}
@@ -373,6 +379,7 @@
                 </div>
 	            </div>
                 <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
+            {% if can_access_entretien %}<a href="{{ url_for('entretien_bp.liste') }}" class="sidebar-link">🧴 Produits d’entretien</a>{% endif %}
                 {% if is_cse_membre %}
                 <a href="{{ url_for('cse_bp.cse_accueil') }}" class="sidebar-link">🧑‍⚖️ CSE</a>
                 {% endif %}
@@ -441,6 +448,22 @@
             {% if ui_flux and request.endpoint not in ('accueil_bp.accueil', 'accueil_bp.mon_espace') %}
             {% include '_flux_page_entete.html' %}
             {% endif %}
+
+            {% for avis in entretien_notifications[:5] %}
+            <div class="appro-card appro-notification appro-no-print" role="status">
+                <strong>Produits d’entretien disponibles — {{ avis.lieu_nom }}</strong>
+                <p>Vos produits sont arrivés ({{ avis.site_nom }}). Vous pouvez organiser leur récupération.</p>
+                {% if avis.reception_note %}<p class="appro-note">{{ avis.reception_note }}</p>{% endif %}
+                <div class="appro-actions">
+                    <a class="btn btn-secondary btn-sm" href="{{ url_for('entretien_bp.liste', _anchor='demande-' ~ avis.id) }}">Voir la demande</a>
+                    <form method="post" action="{{ url_for('entretien_bp.lire_notification', demande_id=avis.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-secondary btn-sm">J’ai lu</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+            {% if entretien_notifications|length > 5 %}<p>{{ entretien_notifications|length - 5 }} autre(s) avis de réception à lire.</p>{% endif %}
 
             {% block content %}{% endblock %}
         </div>

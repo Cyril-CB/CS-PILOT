@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Paramètres des produits d’entretien - CS-PILOT{% endblock %}
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header"><div><h1>Catalogue et lieux demandeurs</h1><p class="subtitle">Paramètres des produits d’entretien, indépendants des fournitures.</p></div></div>
+    <div class="appro-actions"><a class="btn btn-secondary" href="{{ url_for('entretien_bp.liste') }}">Retour aux demandes</a></div>
+    <form method="get" class="appro-card appro-actions">
+        <div class="form-group"><label for="choix_site">Site qui gère les commandes</label><select id="choix_site" name="site_id">{% for site in sites %}<option value="{{ site.id }}" {% if site.id == site_id %}selected{% endif %}>{{ site.nom }}</option>{% endfor %}</select></div>
+        <button type="submit" class="btn btn-secondary">Afficher ce site</button>
+    </form>
+    <section class="appro-card">
+        <h2>Lieux demandeurs</h2>
+        <p class="appro-help">Un responsable exprime les besoins de chaque lieu. Plusieurs lieux, par exemple Gribouille et Angle 9, peuvent dépendre du même site pour leurs commandes.</p>
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="action" value="lieu">
+            <div class="appro-grid">
+                <div class="form-group"><label for="nouveau_lieu">Nom du lieu</label><input type="text" id="nouveau_lieu" name="nom" maxlength="100" required placeholder="Ex. Gribouille"></div>
+                <div class="form-group"><label for="nouveau_demandeur">Responsable des besoins</label><select id="nouveau_demandeur" name="demandeur_id" required><option value="">Choisir une personne</option>{% for user in utilisateurs %}<option value="{{ user.id }}">{{ user.prenom }} {{ user.nom }}</option>{% endfor %}</select></div>
+            </div>
+            <button class="btn btn-primary" type="submit">Ajouter le lieu</button>
+        </form>
+        <div class="appro-config-list">
+            {% for lieu in lieux %}
+            <details class="appro-edit"><summary>{{ lieu.nom }}{% if not lieu.actif %} — Archivé{% endif %}</summary>
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="action" value="lieu"><input type="hidden" name="id" value="{{ lieu.id }}"><input type="hidden" name="revision" value="{{ lieu.revision }}">
+                    <div class="appro-grid">
+                        <div class="form-group"><label for="lieu-{{ lieu.id }}">Nom du lieu</label><input type="text" id="lieu-{{ lieu.id }}" name="nom" value="{{ lieu.nom }}" maxlength="100" required></div>
+                        <div class="form-group"><label for="demandeur-{{ lieu.id }}">Responsable des besoins</label><select id="demandeur-{{ lieu.id }}" name="demandeur_id" required><option value="">Choisir une personne</option>{% for user in utilisateurs %}<option value="{{ user.id }}" {% if lieu.demandeur_id == user.id %}selected{% endif %}>{{ user.prenom }} {{ user.nom }}</option>{% endfor %}</select></div>
+                    </div>
+                    <label class="appro-check"><input type="checkbox" name="actif" value="1" {% if lieu.actif %}checked{% endif %}>Lieu actif</label>
+                    <div class="appro-actions"><button class="btn btn-primary" type="submit">Enregistrer le lieu</button></div>
+                </form>
+            </details>
+            {% endfor %}
+        </div>
+    </section>
+    <section class="appro-card">
+        <h2>Catalogue du site</h2>
+        <p class="appro-help">Les quantités portent sur l’unité indiquée : boîte, paquet, bidon… Ajustez ces unités à vos conditionnements habituels. Les anciennes demandes conservent leurs libellés et unités.</p>
+        <form method="post" class="appro-actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="action" value="catalogue_initial">
+            <button class="btn btn-secondary" type="submit">Ajouter la liste de départ des 22 produits</button>
+            <span class="appro-help">Les produits déjà présents ne sont pas modifiés.</span>
+        </form>
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="action" value="produit">
+            <div class="appro-grid">
+                <div class="form-group"><label for="nouveau_produit">Nom du produit</label><input type="text" id="nouveau_produit" name="nom" maxlength="150" required></div>
+                <div class="form-group"><label for="nouvelle_unite">Unité de commande</label><input type="text" id="nouvelle_unite" name="unite" maxlength="40" required placeholder="Ex. bidon de 5 litres"></div>
+            </div>
+            <button class="btn btn-primary" type="submit">Ajouter le produit</button>
+        </form>
+        <div class="appro-config-list">
+            {% for produit in produits %}
+            <details class="appro-edit"><summary>{{ produit.nom }} — {{ produit.unite }}{% if not produit.actif %} — Archivé{% endif %}</summary>
+                <form method="post">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="site_id" value="{{ site_id }}"><input type="hidden" name="action" value="produit"><input type="hidden" name="id" value="{{ produit.id }}"><input type="hidden" name="revision" value="{{ produit.revision }}">
+                    <div class="appro-grid">
+                        <div class="form-group"><label for="produit-{{ produit.id }}">Nom</label><input type="text" id="produit-{{ produit.id }}" name="nom" value="{{ produit.nom }}" maxlength="150" required></div>
+                        <div class="form-group"><label for="unite-{{ produit.id }}">Unité</label><input type="text" id="unite-{{ produit.id }}" name="unite" value="{{ produit.unite }}" maxlength="40" required></div>
+                    </div>
+                    <label class="appro-check"><input type="checkbox" name="actif" value="1" {% if produit.actif %}checked{% endif %}>Produit actif</label>
+                    <div class="appro-actions"><button class="btn btn-primary" type="submit">Enregistrer le produit</button></div>
+                </form>
+            </details>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

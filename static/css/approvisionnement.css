@@ -1,0 +1,24 @@
+.appro-card { background: var(--white); border: 1px solid var(--gray-200); border-radius: 14px; padding: 24px; margin-bottom: 20px; box-shadow: var(--shadow-sm); overflow-wrap: anywhere; }
+.appro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+.appro-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.appro-help { color: var(--gray-600); line-height: 1.6; }
+.appro-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.appro-checklist { max-height: 240px; overflow: auto; display: grid; gap: 8px; padding: 12px 0; }
+.appro-check { display: flex; align-items: center; gap: 10px; }
+.appro-check input[type=checkbox] { width: 20px; height: 20px; flex: 0 0 auto; }
+.appro-product { display: grid; grid-template-columns: minmax(0, 1fr) 100px; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--gray-200); border-radius: 8px; }
+.appro-product label { margin: 0; }
+.appro-product small { display: block; color: var(--gray-600); }
+.appro-product input { width: 100%; }
+.appro-product input[type=number], .commandes-form-card input[type=number] { width: 100%; padding: .75rem; border: 1px solid var(--gray-300); border-radius: 6px; font: inherit; font-size: .95rem; color: var(--gray-900); background: var(--white); }
+.appro-product input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.appro-status { display: inline-block; padding: 5px 12px; border-radius: 18px; background: var(--gray-100); font-weight: 600; font-size: .9rem; }
+.appro-list { padding-left: 22px; line-height: 1.8; }
+.appro-note { white-space: pre-wrap; overflow-wrap: anywhere; }
+.appro-notification { border-left: 4px solid var(--success); }
+.appro-card summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
+.appro-card h2, .appro-card h3 { margin-bottom: 12px; }
+.appro-config-list { display: grid; gap: 12px; margin-top: 16px; }
+.appro-edit { padding: 16px; border: 1px solid var(--gray-200); border-radius: 10px; }
+@media (max-width: 600px) { .appro-card { padding: 16px; } .appro-actions .btn { white-space: normal; } }
+@media print { .appro-no-print, .sidebar, .flux-barre, .flux-nav-bas { display: none !important; } .appro-card { break-inside: avoid; box-shadow: none; } }

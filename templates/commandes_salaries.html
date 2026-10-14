@@ -61,17 +61,36 @@
 <div class="sv-page">
     <div class="sv-header">
         <div>
-            <h1>Commandes salariés</h1>
+            <h1>{{ 'Commandes ' ~ titre_site if titre_site else 'Commandes salariés' }}</h1>
             <p class="subtitle">Demandes de fournitures regroupées par statut</p>
         </div>
     </div>
 
+    <nav class="appro-tabs" aria-label="Files de commandes par site">
+        <a class="btn {{ 'btn-primary' if not filtre else 'btn-secondary' }} btn-sm" href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}">Toutes mes files</a>
+        {% for site_id, site_nom in sites_visibles.items() %}
+        <a class="btn {{ 'btn-primary' if filtre == site_id|string else 'btn-secondary' }} btn-sm" href="{{ url_for('commandes_salaries_bp.commandes_salaries', site_id=site_id) }}">Commandes {{ site_nom }}</a>
+        {% endfor %}
+        <a class="btn {{ 'btn-primary' if filtre == 'global' else 'btn-secondary' }} btn-sm" href="{{ url_for('commandes_salaries_bp.commandes_salaries', site_id='global') }}">Global / historique</a>
+        {% if session.profil in ('directeur', 'comptable') %}<a class="btn btn-secondary btn-sm" href="{{ url_for('sites_bp.gestion') }}">Sites et responsables</a>{% endif %}
+    </nav>
+    {% if sites or not sites_configures %}
     <div class="commandes-form-card">
         <h2>Nouvelle demande</h2>
         <p class="commandes-help">Complétez votre demande de fournitures. La date du jour est renseignée automatiquement.</p>
 
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="commandes-form-grid">
+                {% if sites_configures %}
+                <div class="form-group">
+                    <label for="site_id">Site de la commande *</label>
+                    <select id="site_id" name="site_id" required>
+                        <option value="">Choisir un site</option>
+                        {% for site in sites %}<option value="{{ site.id }}" {% if site.id == site_selectionne %}selected{% endif %}>{{ site.nom }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label for="date_demande">Date</label>
                     <input type="date" id="date_demande" value="{{ aujourd_hui }}" readonly>
@@ -113,6 +132,7 @@
             </div>
         </form>
     </div>
+    {% else %}<p class="appro-card appro-help">Pour déposer une nouvelle demande, demandez à la direction ou à la comptabilité de vous rattacher à un site. Vos anciennes demandes restent consultables.</p>{% endif %}
 
     {% for groupe in groupes %}
     <div class="sv-group" data-groupe="{{ groupe.key }}">
@@ -131,6 +151,7 @@
                             <th class="sv-col-name">Demandeur</th>
                             {% endif %}
                             <th class="sv-col-date">Date</th>
+                            <th class="sv-col-text">Site</th>
                             <th class="sv-col-comment">Description</th>
                             <th class="commandes-col-qty">Quantité</th>
                             <th class="sv-col-text">Référence</th>
@@ -156,6 +177,7 @@
                             <td class="sv-col-date">
                                 {{ commande.date_demande[8:10] }}/{{ commande.date_demande[5:7] }}/{{ commande.date_demande[0:4] }}
                             </td>
+                            <td class="sv-col-text">{{ commande.site_nom or 'Global / historique' }}</td>
                             <td class="sv-col-comment">{{ commande.description }}</td>
                             <td class="commandes-col-qty">{{ commande.quantite }}</td>
                             <td class="sv-col-text">{{ commande.reference or '—' }}</td>
@@ -168,7 +190,10 @@
                             </td>
                             {% if peut_suivre %}
                             <td class="sv-col-status">
+                                {% if commande.peut_traiter %}
                                 <form method="POST" action="{{ url_for('commandes_salaries_bp.modifier_statut_commande', commande_id=commande.id) }}" class="commandes-inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="groupe_actuel" value="{{ commande.groupe }}">
                                     <input type="hidden" name="groupe" value="{{ 'commandee' if commande.groupe != 'commandee' else 'en_cours' }}">
                                     <input type="checkbox"
                                            class="commandes-checkbox"
@@ -176,15 +201,20 @@
                                            {% if commande.groupe == 'annulee' %}disabled{% endif %}
                                            onchange="this.form.submit()">
                                 </form>
+                                {% else %}—{% endif %}
                             </td>
                             <td class="sv-col-status">
+                                {% if commande.peut_traiter %}
                                 <form method="POST" action="{{ url_for('commandes_salaries_bp.modifier_statut_commande', commande_id=commande.id) }}" class="commandes-inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="groupe_actuel" value="{{ commande.groupe }}">
                                     <select name="groupe" onchange="this.form.submit()">
                                         {% for option in groupes_config %}
                                         <option value="{{ option.key }}" {% if option.key == commande.groupe %}selected{% endif %}>{{ option.label }}</option>
                                         {% endfor %}
                                     </select>
                                 </form>
+                                {% else %}<span class="appro-status">{{ groupe.label }}</span>{% endif %}
                             </td>
                             {% else %}
                             <td class="sv-col-status">

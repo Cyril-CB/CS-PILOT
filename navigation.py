@@ -251,6 +251,11 @@ ZONES = [
             _page('commandes_salaries_bp.commandes_salaries', 'Commandes salariés',
                   mots='commande achat fourniture approvisionnement demande salarie',
                   expressions=('commander des fournitures', 'achat de fournitures')),
+            _page('entretien_bp.liste', 'Produits d’entretien',
+                  profils=(), condition='can_access_entretien',
+                  resume='Besoins par lieu, commande et avis de réception des produits.',
+                  mots='produit entretien menager nettoyage bidon savon besoin reception approvisionnement',
+                  expressions=('produits d’entretien', 'produits ménagers')),
         ],
     },
     {
@@ -460,6 +465,9 @@ ACCES_DIRECTS = [
             _page('admin_bp.delegations', 'Délégations',
                   profils=('directeur', 'comptable'),
                   mots='delegation mission droit acces confier salarie'),
+            _page('sites_bp.gestion', 'Sites et commandes',
+                  profils=('directeur', 'comptable'),
+                  mots='site batiment brosses cyprian commande responsable fourniture entretien acces'),
             _page('administration_bp.options', 'Options',
                   profils=('directeur', 'comptable'),
                   mots='option reglage configuration module activation parametre'),
@@ -525,6 +533,15 @@ def _construire_groupe(groupe, contexte):
             'expressions': list(page['expressions']),
             'lien': lien,
         })
+        if page['endpoint'] == 'commandes_salaries_bp.commandes_salaries':
+            for site in contexte.get('sites_fournitures', []):
+                pages.append({
+                    'endpoint': page['endpoint'], 'label': 'Commandes ' + site['nom'],
+                    'resume': 'Demandes de fournitures du site ' + site['nom'],
+                    'mots': 'commande fourniture site ' + site['nom'],
+                    'expressions': ['commandes ' + site['nom'], 'fournitures ' + site['nom']],
+                    'lien': url_for(page['endpoint'], site_id=site['id']),
+                })
     if not pages:
         return None
     return {
@@ -548,7 +565,7 @@ def carte_navigation(contexte):
     return {'zones': zones, 'directs': directs}
 
 
-def localiser(carte, endpoint):
+def localiser(carte, endpoint, lien=None):
     """Zone (ou accès direct) contenant un endpoint, et la page elle-même.
 
     Retourne `(groupe, page)` ou `(None, None)`. Sert à afficher, en haut de
@@ -557,11 +574,15 @@ def localiser(carte, endpoint):
     """
     if not endpoint:
         return None, None
+    premier = (None, None)
     for groupe in carte['zones'] + carte['directs']:
         for page in groupe['pages']:
             if page['endpoint'] == endpoint:
-                return groupe, page
-    return None, None
+                if lien is None or page['lien'] == lien:
+                    return groupe, page
+                if premier[1] is None:
+                    premier = (groupe, page)
+    return premier
 
 
 def est_eligible(profil, user_id):
@@ -581,6 +602,12 @@ def est_eligible(profil, user_id):
                                         user_has_delegation,
                                         user_peut_gerer_benevoles)
     try:
+        from contextlib import closing
+        from database import get_db
+        from sites_acces import a_acces_entretien, sites_geres
+        with closing(get_db()) as conn:
+            if a_acces_entretien(conn, user_id) or sites_geres(conn, user_id, 'fournitures'):
+                return True
         return bool(
             user_has_delegation(user_id, MISSION_SUIVI_VALIDATIONS_RELANCES)
             or user_has_delegation(user_id, MISSION_SUIVI_COMMANDES_FOURNITURES)
