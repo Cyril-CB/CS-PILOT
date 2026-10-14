@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+{% block title %}Suivi budgétaire en direct - CS-PILOT{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/budget_initial.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/budget_suivi.css') }}">
+<div id="initial-app">
+<div class="page-header"><h1>Suivi en direct · {{ annee }}</h1>{% if gestion %}<a class="btn btn-secondary" href="{{ url_for('budget_suivi_bp.gel', annee=annee) }}">2. Vérifier et figer l’initial</a>{% endif %}</div>
+<form method="get" class="bi-toolbar form-group bs-filtres"><label for="annee">Exercice</label><input id="annee" name="annee" type="text" inputmode="numeric" pattern="[0-9]{4}" value="{{ annee }}">
+{% if gestion and data %}<label for="filtre-secteur">Secteur</label><select id="filtre-secteur" name="secteur_id"><option value="">Tous les secteurs</option>{% for sid, nom in data.tous_secteurs.items() %}<option value="{{ sid }}" {% if data.secteur_id == sid %}selected{% endif %}>{{ nom }}</option>{% endfor %}</select>{% endif %}<button class="btn btn-secondary">Filtrer</button></form>
+{% if erreur %}<p role="alert">{{ erreur }}</p>{% endif %}
+{% if data %}
+<section class="proposition-carte bi-card"><h2>Résultat annuel</h2><p>Référence v{{ data.version }} du {{ data.date_gel }} · dernière variation {{ data.date }} · révision {{ data.revision }}</p>
+<div class="bi-grid"><p>Initial figé<br><strong>{{ data.initial }} €</strong></p><p>Écart connu<br><strong>{{ data.impact }} €</strong></p><p>Courant{% if data.incomplets %} provisoire{% endif %}<br><strong>{{ data.courant }} €</strong></p></div>
+{% if data.incomplets %}<p role="alert">{{ data.incomplets }} ajustement(s) à compléter. Les impacts inconnus ne sont pas assimilés à zéro ; le résultat courant est provisoire.</p>{% endif %}
+<p>Charges nouvelles : impact négatif. Recettes nouvelles : impact positif. Pour un compte déjà prévu, saisir son nouveau montant annuel total de l’élément choisi ; seule la différence est comptée. La période décrit la variation, elle ne multiplie pas le montant.</p></section>
+<section class="proposition-carte bi-card"><h2>Sources et variations par rubrique</h2><p>{% for nom, statut in data.sources.items() %}{{ nom }} : {{ statut }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+{% for code, r in data.rubriques.items() %}<p>Rubrique {{ code }} : {{ r.impact }} €{% if r.incomplet %} · à compléter{% endif %}</p>{% else %}<p>Aucune variation manuelle enregistrée. Les sources externes restent non connectées.</p>{% endfor %}</section>
+{% macro tokens(action) %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="annee" value="{{ annee }}"><input type="hidden" name="revision" value="{{ data.revision }}"><input type="hidden" name="action" value="{{ action }}">{% endmacro %}
+{% macro editeur(d) %}
+<form method="post" class="bi-card">{{ tokens('ajuster') }}{% if d %}<input type="hidden" name="element_id" value="{{ d.id }}">{% endif %}
+{% set prefix = d.id if d else 'nouveau' %}
+{% set values = request.form if request.form.get('action') == 'ajuster' and request.form.get('element_id', '') == (d.id if d else '') else (d or {}) %}
+<div class="bi-grid">
+<div class="form-group"><label for="{{ prefix }}-libelle">Libellé</label><input id="{{ prefix }}-libelle" name="libelle" required maxlength="500" value="{{ values.get('libelle','') }}" type="text"></div>
+<div class="form-group"><label for="{{ prefix }}-nature">Nature</label><select id="{{ prefix }}-nature" name="nature"><option value="charge">Charge</option><option value="recette" {% if values.get('nature') == 'recette' %}selected{% endif %}>Recette</option></select></div>
+<div class="form-group"><label for="{{ prefix }}-secteur">Secteur</label><select id="{{ prefix }}-secteur" name="secteur_id" required>{% for sid, nom in data.secteurs.items() %}<option value="{{ sid }}" {% if values.get('secteur_id') == sid %}selected{% endif %}>{{ nom }}</option>{% endfor %}</select></div>
+<div class="form-group"><label for="{{ prefix }}-compte">Compte général</label><input id="{{ prefix }}-compte" name="compte" list="comptes" required value="{{ values.get('compte','') }}" maxlength="20" type="text"></div>
+<div class="form-group"><label for="{{ prefix }}-debut">Début</label><input id="{{ prefix }}-debut" type="date" name="debut" required value="{{ values.get('debut', annee|string + '-01-01') }}"></div>
+<div class="form-group"><label for="{{ prefix }}-fin">Fin</label><input id="{{ prefix }}-fin" type="date" name="fin" required value="{{ values.get('fin', annee|string + '-12-31') }}"></div>
+<div class="form-group"><label for="{{ prefix }}-montant">Montant annuel (€), vide = inconnu</label><input id="{{ prefix }}-montant" name="montant" inputmode="decimal" value="{{ values.get('montant') if values.get('montant') is not none else '' }}" type="text"></div>
+<div class="form-group"><label for="{{ prefix }}-etat">État</label><select id="{{ prefix }}-etat" name="etat">{% for val,nom in [('estime','Estimé'),('confirme','Confirmé'),('a_completer','À compléter')] %}<option value="{{ val }}" {% if values.get('etat') == val %}selected{% endif %}>{{ nom }}</option>{% endfor %}</select></div>
+</div>
+<div class="form-group"><label for="{{ prefix }}-lien">Élément déjà prévu (facultatif : nouveau total annuel de l’élément)</label><select id="{{ prefix }}-lien" name="initial_id"><option value="">Nouvel élément, non prévu</option>{% for l in data.lignes + data.elements %}<option value="{{ l.id }}" {% if values.get('initial_id') == l.id %}selected{% endif %}>{{ l.secteur }} · {{ l.compte }} · {{ l.libelle if l.parent_id is defined else 'Compte entier' }} · {{ l.montant }} €</option>{% endfor %}</select></div>
+<div class="form-group"><label for="{{ prefix }}-note">Note facultative (confidentielle)</label><textarea id="{{ prefix }}-note" name="note" maxlength="4000">{{ values.get('note','') }}</textarea></div>
+<div class="form-group"><label for="{{ prefix }}-justif">Référence de justificatif facultative (confidentielle)</label><input id="{{ prefix }}-justif" name="justificatif" maxlength="4000" value="{{ values.get('justificatif','') }}" type="text"></div>
+<button class="btn btn-primary">{{ 'Enregistrer la révision' if d else 'Ajouter l’ajustement' }}</button></form>
+{% endmacro %}
+{% if gestion %}<datalist id="comptes">{% for c in comptes %}<option value="{{ c }}">{% endfor %}</datalist><section class="proposition-carte bi-card"><h2>Nouvel ajustement manuel</h2>{{ editeur(none) }}</section>{% endif %}
+<section class="proposition-carte bi-card"><h2>Détail des variations</h2>
+{% for d in data.details %}<article><h3>{{ d.libelle }}{% if d.annule %} · Annulé{% endif %}</h3><p>{{ data.secteurs[d.secteur_id] }} · {{ d.compte }} · {{ d.debut }} au {{ d.fin }} · {{ d.etat }} · {{ d.source_type }}</p>
+<p>Prévu : {{ d.prevu }} € · courant : {{ d.courant if d.courant is not none else 'À compléter' }} · impact : {{ d.impact if d.impact is not none else 'À compléter' }}</p>
+<details><summary>Historique · {{ d.historique|length }} version(s)</summary>{% for h in d.historique %}<p>Révision {{ h.revision }} · {{ h.date }}{% if gestion %} · auteur #{{ h.auteur }}{% endif %}</p><pre class="bs-historique">{{ h.donnees|tojson(indent=2) }}</pre>{% endfor %}</details>
+{% if gestion and d.source_type == 'manuel' %}<details><summary>Modifier cet ajustement</summary>{{ editeur(d) }}</details>{% if not d.annule %}<form method="post">{{ tokens('annuler') }}<input type="hidden" name="element_id" value="{{ d.id }}"><button class="btn btn-secondary">Annuler cet ajustement (historique conservé)</button></form>{% endif %}{% endif %}
+</article>{% else %}<p>Aucun ajustement.</p>{% endfor %}</section>
+{% if gestion %}<section class="proposition-carte bi-card"><h2>Référence du suivi</h2><p>Créer un gel ne change pas cette référence. Un changement explicite recalcule les différences liées aux comptes prévus, conserve les ajustements et est historisé.</p>
+<form method="post">{{ tokens('reference') }}<div class="form-group"><label for="version">Version à utiliser</label><select id="version" name="gel_id">{% for v in versions %}<option value="{{ v.id }}" {% if v.id == data.gel_id %}selected{% endif %}>v{{ v.version }} · {{ v.date }} · {{ v.motif }}</option>{% endfor %}</select></div><div class="form-group"><label for="raison">Motif du changement explicite</label><input id="raison" name="motif" required maxlength="500" type="text"></div><button class="btn btn-secondary">Changer explicitement la référence du suivi</button></form>
+{% for e in data.changements %}<p>{{ e.date }} · {{ e.donnees.motif }} · {{ e.donnees.avant }} → {{ e.donnees.apres }}</p>{% endfor %}</section>
+<section class="proposition-carte bi-card"><h2>Instantanés pour le CA</h2><p>La synthèse et le détail sont conservés exactement tels que produits, même après une nouvelle référence ou une correction.</p><form method="post">{{ tokens('instantane') }}<input type="hidden" name="secteur_id" value="{{ data.secteur_id or '' }}"><button class="btn btn-primary">Créer un instantané daté et ses PDF</button></form>
+{% for a in archives %}<p>{{ a.date }} · révision {{ a.revision }} · {{ 'secteur #' ~ a.secteur_id if a.secteur_id else 'tous secteurs' }} <a class="btn btn-secondary btn-sm" href="{{ url_for('budget_suivi_bp.pdf', ident=a.id, mode='synthese') }}">PDF synthèse</a> <a class="btn btn-secondary btn-sm" href="{{ url_for('budget_suivi_bp.pdf', ident=a.id, mode='detail') }}">PDF détail</a></p>{% endfor %}</section>{% endif %}
+{% endif %}</div>
+{% endblock %}

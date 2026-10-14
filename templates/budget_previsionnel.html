@@ -2,6 +2,7 @@
 {% block title %}Budget prévisionnel - CS-PILOT{% endblock %}
 
 {% block content %}
+<p><a class="btn btn-secondary" href="{{ url_for('budget_suivi_bp.direct', annee=annee_courante) }}">Suivi en direct de l’initial figé</a></p>
 {% if profil in ('directeur', 'comptable') %}
 <p><a class="btn btn-secondary" href="{{ url_for('budget_initial_bp.construction', annee=annee_courante) }}">Construire l’initial annuel détaillé</a></p>
 {% endif %}

@@ -130,6 +130,18 @@ class TestGetDb:
 class TestDataDir:
     """Vérifie la résolution conditionnelle de DATA_DIR selon sys.frozen."""
 
+    @pytest.fixture(autouse=True)
+    def _isoler_resolution_chemins(self, monkeypatch):
+        # Ces tests vérifient les valeurs par défaut, indépendamment du dossier
+        # temporaire imposé à la suite. Ils ne doivent créer aucun dossier réel
+        # dans le profil utilisateur, ni ouvrir une base existante.
+        with monkeypatch.context() as paths:
+            paths.delenv('CSPILOT_DATA_DIR', raising=False)
+            paths.setattr(database.os, 'makedirs', lambda *args, **kwargs: None)
+            yield
+            monkeypatch.undo()
+        importlib.reload(database)
+
     def _reload_database(self):
         """Recharge le module database et retourne les nouvelles valeurs DATA_DIR / DATABASE."""
         importlib.reload(database)

@@ -318,6 +318,7 @@ from blueprints.notifications import notifications_bp
 from blueprints.parametres import parametres_bp
 from blueprints.budget import budget_bp
 from blueprints.budget_initial import budget_initial_bp
+from blueprints.budget_suivi import budget_suivi_bp
 from blueprints.subventions import subventions_bp
 from blueprints.benevoles import benevoles_bp
 from blueprints.salles import salles_bp
@@ -382,6 +383,7 @@ app.register_blueprint(notifications_bp)
 app.register_blueprint(parametres_bp)
 app.register_blueprint(budget_bp)
 app.register_blueprint(budget_initial_bp)
+app.register_blueprint(budget_suivi_bp)
 app.register_blueprint(subventions_bp)
 app.register_blueprint(benevoles_bp)
 app.register_blueprint(salles_bp)
