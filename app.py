@@ -344,6 +344,8 @@ from blueprints.compte_resultat import compte_resultat_bp
 from blueprints.indicateurs_financiers import indicateurs_financiers_bp
 from blueprints.import_bi import import_bi_bp
 from blueprints.commandes_salaries import commandes_salaries_bp
+from blueprints.sites import sites_bp
+from blueprints.entretien import entretien_bp
 from blueprints.cse import cse_bp
 from blueprints.planificateur import planificateur_bp
 from blueprints.contrats import contrats_bp
@@ -407,6 +409,8 @@ app.register_blueprint(compte_resultat_bp)
 app.register_blueprint(indicateurs_financiers_bp)
 app.register_blueprint(import_bi_bp)
 app.register_blueprint(commandes_salaries_bp)
+app.register_blueprint(sites_bp)
+app.register_blueprint(entretien_bp)
 app.register_blueprint(cse_bp)
 app.register_blueprint(planificateur_bp)
 app.register_blueprint(contrats_bp)
@@ -470,7 +474,7 @@ def inject_static_version():
     d'elle-même à chaque livraison, et jamais autrement.
     """
     empreintes = {}
-    for nom in ('css/style.css', 'js/flux.js', 'js/propositions.js'):
+    for nom in ('css/style.css', 'css/approvisionnement.css', 'js/flux.js', 'js/propositions.js'):
         chemin = os.path.join(app.static_folder, nom)
         try:
             empreintes[nom] = str(int(os.path.getmtime(chemin)))
@@ -479,6 +483,25 @@ def inject_static_version():
             # qu'une page qui ne se rend pas.
             empreintes[nom] = ''
     return {'static_version': empreintes}
+
+
+@app.context_processor
+def inject_approvisionnement():
+    """Accès et avis de réception personnels, relus en base à chaque requête."""
+    defaults = {'can_access_entretien': False, 'entretien_notifications': []}
+    if not session.get('user_id') or session.get('profil') == 'prestataire':
+        return defaults
+    conn = get_db()
+    try:
+        from sites_acces import a_acces_entretien
+        from entretien import notifications_non_lues
+        return {'can_access_entretien': a_acces_entretien(conn, session['user_id']),
+                'entretien_notifications': notifications_non_lues(conn, session['user_id'])}
+    except sqlite3.Error:
+        logger.warning('Accès approvisionnement indisponibles', exc_info=True)
+        return defaults
+    finally:
+        conn.close()
 
 
 @app.context_processor

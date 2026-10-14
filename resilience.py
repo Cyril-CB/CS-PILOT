@@ -109,6 +109,9 @@ TABLES_REQUISES = {
     '0076': ('stagiaires_annonces_lectures',),
     '0077': ('budget_initial_hypotheses', 'budget_initial_lignes', 'budget_initial_reports'),
     '0078': ('budget_gels', 'budget_suivis', 'budget_evenements', 'budget_instantanes'),
+    '0079': ('sites', 'sites_utilisateurs', 'sites_responsables_modules',
+             'entretien_lieux', 'entretien_produits', 'entretien_demandes',
+             'entretien_lignes', 'entretien_notifications'),
 }
 
 

@@ -812,7 +812,7 @@
     {
       "id": "association.commandes_fournitures",
       "title": "Demandes de fournitures des salariés",
-      "purpose": "Recueillir les besoins de fournitures et suivre leur traitement centralisé.",
+      "purpose": "Recueillir les besoins de fournitures et suivre leur traitement dans des files distinctes par site.",
       "example_requests": [
         "demander une commande de fournitures",
         "où en est ma demande d’achat",
@@ -821,7 +821,8 @@
       "capabilities": [
         "Déposer description, référence facultative, quantité, prix facultatif et urgence peut_attendre/normal/urgent.",
         "Afficher les demandes regroupées en cours, commandées et annulées.",
-        "Suivre globalement les demandes et changer leur statut avec auteur/date de traitement."
+        "Suivre et traiter les demandes par site avec un responsable des fournitures distinct pour chaque site ; conserver la file globale historique.",
+        "Accès directs et recherche « Commandes [site] », rattachements multisites et contrôle du site à chaque dépôt et traitement."
       ],
       "entry_points": [
         "commandes_salaries_bp.commandes_salaries",
@@ -832,7 +833,9 @@
           "blueprints/commandes_salaries.py"
         ],
         "service_files": [
-          "blueprints/delegations.py"
+          "blueprints/delegations.py",
+          "sites_acces.py",
+          "schema_sites_approvisionnement.py"
         ],
         "templates": [
           "templates/commandes_salaries.html"
@@ -840,31 +843,42 @@
         "tables": [
           "commandes_salaries",
           "delegations_missions",
-          "users"
+          "users",
+          "sites",
+          "sites_utilisateurs",
+          "sites_responsables_modules"
         ],
         "tests": [
-          "tests/test_commandes_salaries.py"
+          "tests/test_commandes_salaries.py",
+          "tests/test_sites_approvisionnement.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/sites-approvisionnement.md"
+        ]
       },
       "access": {
-        "summary": "Page et dépôt : profils salarie/responsable/comptable/directeur. Lecture personnelle par défaut ; vue globale et changement de statut pour direction/comptabilité ou délégation MISSION_SUIVI_COMMANDES_FOURNITURES via _peut_suivre_globalement.",
-        "scope": "Propres demandes pour salarié/responsable ordinaires ; toutes les demandes pour le gestionnaire ou titulaire de mission, sans filtrage de secteur.",
+        "summary": "Profils internes actifs uniquement. Dépôt sur sites de rattachement ou de mission fournitures ; lecture personnelle, ou file de ses sites gérés ; direction/comptabilité consolidée. Ancienne mission limitée aux demandes sans site.",
+        "scope": "Aucun accès croisé implicite entre sites ou entre modules ; historique personnel des fournitures conservé même après archivage du site.",
         "conditions": [
           "Délégation de mission lue en base à chaque contrôle ; session active.",
-          "Quantité entière entre 1 et 9999, 1 si vide ; prix facultatif à deux décimales maximum."
+          "Quantité entière entre 1 et 9999, 1 si vide ; prix facultatif à deux décimales maximum.",
+          "Sites actifs pour les nouvelles demandes et les traitements. Après création du premier site, aucun nouveau dépôt global.",
+          "Compte, site et mission relus sous verrou de transaction avant les mutations."
         ],
         "sources": [
           "blueprints/commandes_salaries.py",
           "utils.py",
           "blueprints/auth.py",
           "sessions_securite.py",
-          "blueprints/delegations.py"
+          "blueprints/delegations.py",
+          "sites_acces.py"
         ]
       },
       "invariants": [
         "Une nouvelle demande est attribuée à session.user_id, datée du jour et créée en_cours.",
-        "Le changement de statut conserve traite_par, date_traitement et updated_at."
+        "Le changement de statut conserve traite_par, date_traitement et updated_at.",
+        "Aucune affectation automatique des anciennes fournitures ; site NULL désigne Global / historique.",
+        "Les profils, secteurs analytiques et lieux de contrats ne sont pas modifiés."
       ],
       "extension_points": [
         "Réutiliser le suivi centralisé et la délégation pour améliorer la collecte des besoins d’achat.",
@@ -872,7 +886,9 @@
       ],
       "related_features": [
         "finances.budgets_secteurs",
-        "interface.accueil_flux"
+        "interface.accueil_flux",
+        "administration.sites_physiques",
+        "association.produits_entretien"
       ],
       "limitations": [
         "Le traitement change seulement le statut de la demande ; aucune commande fournisseur ni écriture comptable n’est générée par ces routes."
@@ -1321,6 +1337,97 @@
         "Pas de multi-établissements, d'historique de versions des documents ni de corbeille ; restauration via sauvegarde.",
         "Contrôles de formats hérités des propositions, sans analyse antivirus ; les documents restent des contenus non fiables.",
         "Nettoyage disque non bloquant après commit ; un échec peut laisser un fichier orphelin privé, sans rétablir son accès par l'application."
+      ]
+    },
+    {
+      "id": "association.produits_entretien",
+      "title": "Besoins et commandes de produits d’entretien",
+      "purpose": "Recueillir les quantités par lieu et informer le responsable des besoins de l’arrivée des produits.",
+      "example_requests": [
+        "demander des produits ménagers pour Gribouille",
+        "regrouper les besoins en produits d’entretien",
+        "signaler que les produits sont disponibles"
+      ],
+      "capabilities": [
+        "Catalogue modifiable propre au site, liste initiale explicite de 22 produits avec unités et variantes.",
+        "Un demandeur par lieu ; saisie multi-produits avec quantités entières et commentaire facultatif, sans validation.",
+        "Regroupement des demandes affichées par site et produit/unité, puis marquage commandé.",
+        "Réception avec note facultative et notification interne personnelle au titulaire courant du lieu, acquittable par « J’ai lu ».",
+        "Historique conservant noms de lieu, produits et unités ; archivage des lieux/produits sans suppression des demandes."
+      ],
+      "entry_points": [
+        "entretien_bp.liste",
+        "entretien_bp.statut",
+        "entretien_bp.commander",
+        "entretien_bp.lire_notification",
+        "entretien_bp.parametres"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/entretien.py"
+        ],
+        "service_files": [
+          "entretien.py",
+          "sites_acces.py",
+          "schema_sites_approvisionnement.py",
+          "dashboard_actions.py",
+          "app.py"
+        ],
+        "templates": [
+          "templates/entretien.html",
+          "templates/entretien_parametres.html",
+          "templates/base.html"
+        ],
+        "tables": [
+          "sites",
+          "sites_responsables_modules",
+          "entretien_lieux",
+          "entretien_produits",
+          "entretien_demandes",
+          "entretien_lignes",
+          "entretien_notifications",
+          "users"
+        ],
+        "tests": [
+          "tests/test_sites_approvisionnement.py",
+          "tests/approvisionnement_live_checks.cjs",
+          "tests/approvisionnement_live_server.py"
+        ],
+        "docs": [
+          "docs/sites-approvisionnement.md"
+        ]
+      },
+      "access": {
+        "summary": "Demandeur courant du lieu pour saisie/lecture ; responsable entretien du site pour traitement/configuration ; direction/comptabilité pour administration et remplacement. Prestataire refusé.",
+        "scope": "Mission entretien indépendante des fournitures, bornée au site actif ; lecture demandeur bornée au lieu actif. Notifications du seul destinataire courant et autorisé.",
+        "conditions": [
+          "Compte interne actif et permissions relues sous BEGIN IMMEDIATE pour les mutations.",
+          "Contrôle des produits et du lieu dans le même site ; révisions contre les formulaires périmés."
+        ],
+        "sources": [
+          "blueprints/entretien.py",
+          "sites_acces.py",
+          "sessions_securite.py",
+          "entretien.py"
+        ]
+      },
+      "invariants": [
+        "Pas de validation préalable, transport organisé hors application.",
+        "Une clé d’envoi empêche un double dépôt ; réception et notification atomiques et rejouables sans réinitialiser la lecture.",
+        "Transitions en_cours → commandee → recue ; annulation possible avant réception, états terminaux non réouverts.",
+        "Une modification du catalogue ne modifie pas les lignes historiques."
+      ],
+      "extension_points": [
+        "Réutiliser les sites et missions bornées pour les évolutions explicites du module."
+      ],
+      "related_features": [
+        "administration.sites_physiques",
+        "association.commandes_fournitures",
+        "interface.accueil_flux"
+      ],
+      "limitations": [
+        "Aucun stock, calendrier, transport, envoi SMTP, achat fournisseur automatique ni écriture comptable.",
+        "Réception pour une demande entière ; les manquants sont un commentaire, sans gestion de reliquat."
       ]
     }
   ]

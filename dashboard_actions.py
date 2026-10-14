@@ -29,8 +29,7 @@ from flask import url_for
 from fiches_circuit import (planifier_signature, etape_courante, LIBELLES_ETAPES,
                             fiches_historiques_a_confirmer)
 
-from blueprints.delegations import (MISSION_SUIVI_COMMANDES_FOURNITURES,
-                                    MISSION_SUIVI_VALIDATIONS_RELANCES,
+from blueprints.delegations import (MISSION_SUIVI_VALIDATIONS_RELANCES,
                                     user_has_delegation)
 import flux_circuits
 from stagiaires import (fin_fenetre_annonce, moment as moment_stagiaire,
@@ -460,7 +459,8 @@ def _preparation_paie(conn, profil, user_id, secteur_id, today):
 def _fournitures_en_attente(conn, profil, user_id, today):
     """Demandes de fournitures que personne n'a encore traitées.
 
-    Réservées au **seul porteur de la délégation** « suivi des commandes ».
+    Réservées au responsable explicitement désigné pour chaque site ;
+    l'ancienne délégation ne concerne que la file globale historique.
     C'est une mission confiée à quelqu'un : la servir aussi à la direction et
     à la comptabilité doublerait le travail et diluerait la responsabilité —
     chacun supposant que l'autre s'en charge. Sans délégué désigné, ces cartes
@@ -470,18 +470,24 @@ def _fournitures_en_attente(conn, profil, user_id, today):
     Classées par urgence déclarée, celle du demandeur — c'est la seule
     information dont on dispose sur ce qui presse.
     """
-    if not user_has_delegation(user_id, MISSION_SUIVI_COMMANDES_FOURNITURES):
+    from sites_acces import compte_interne
+    if not compte_interne(conn, user_id):
         return []
 
     rows = conn.execute(
-        '''SELECT c.id, c.description, c.quantite, c.urgence, c.date_demande,
-                  u.nom, u.prenom
+        '''SELECT c.id, c.description, c.quantite, c.urgence, c.date_demande, c.site_id,
+                  u.nom, u.prenom, s.nom AS site_nom
            FROM commandes_salaries c
            JOIN users u ON u.id = c.user_id
-           WHERE c.groupe = 'en_cours'
+           LEFT JOIN sites s ON s.id = c.site_id
+           WHERE c.groupe = 'en_cours' AND (
+               (c.site_id IS NULL AND EXISTS (SELECT 1 FROM delegations_missions d
+                WHERE d.mission_key = 'suivi_commandes_fournitures' AND d.delegated_user_id = ?))
+               OR (s.actif = 1 AND EXISTS (SELECT 1 FROM sites_responsables_modules r
+                   WHERE r.site_id = c.site_id AND r.module = 'fournitures' AND r.user_id = ?)))
            ORDER BY CASE c.urgence WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1
                                    ELSE 2 END,
-                    c.date_demande ASC'''
+                    c.date_demande ASC''', (user_id, user_id)
     ).fetchall()
     if not rows:
         return []
@@ -502,8 +508,9 @@ def _fournitures_en_attente(conn, profil, user_id, today):
             'icone': '📦',
             'titre': f"{quantite}{r['description']} — {r['prenom']} {r['nom']}",
             'detail': (f"{libelles.get(r['urgence'], r['urgence'])}"
-                       + (f", demandé le {_fr(depot)}" if depot else '')),
-            'lien': url_for('commandes_salaries_bp.commandes_salaries'),
+                       + (f", demandé le {_fr(depot)}" if depot else '')
+                       + (f" · {r['site_nom']}" if r['site_nom'] else ' · Global / historique')),
+            'lien': url_for('commandes_salaries_bp.commandes_salaries', site_id=r['site_id'] or 'global'),
             'lien_texte': 'Traiter',
             'urgence': tons.get(r['urgence'], 'normal'),
             'circuit': flux_circuits.fourniture(r['date_demande'], profil, today,
@@ -517,6 +524,20 @@ def _fournitures_en_attente(conn, profil, user_id, today):
             url_for('commandes_salaries_bp.commandes_salaries'), 'Fournitures',
             'fournitures', '📦', 'facture'))
     return actions
+
+
+def _entretien_en_attente(conn, profil, user_id, today):
+    """Une file par responsable explicitement désigné, même s'il est salarié."""
+    from sites_acces import compte_interne
+    if not compte_interne(conn, user_id):
+        return []
+    rows = conn.execute('''SELECT s.id, s.nom, COUNT(*) AS nb FROM entretien_demandes d
+        JOIN sites s ON s.id = d.site_id JOIN sites_responsables_modules r ON r.site_id = s.id
+        WHERE r.module = 'entretien' AND r.user_id = ? AND s.actif = 1 AND d.statut = 'en_cours'
+        GROUP BY s.id ORDER BY s.nom''', (user_id,)).fetchall()
+    return [{'id': f"entretien-site-{r['id']}", 'categorie': 'facture', 'type': 'lien', 'icone': '🧴',
+             'titre': f"Produits d’entretien — {r['nom']}", 'detail': f"{r['nb']} demande(s) à commander",
+             'lien': url_for('entretien_bp.liste'), 'lien_texte': 'Préparer la commande', 'urgence': 'normal'} for r in rows]
 
 
 def _budgets_depasses(conn, profil, user_id, secteur_id, today):
@@ -978,6 +999,7 @@ def construire_actions(conn, profil, user_id, secteur_id=None,
         (_factures_a_valider, (profil, user_id, secteur_id, today)),
         (_preparation_paie, (profil, user_id, secteur_id, today)),
         (_fournitures_en_attente, (profil, user_id, today)),
+        (_entretien_en_attente, (profil, user_id, today)),
         (_budgets_depasses, (profil, user_id, secteur_id, today)),
         (_taches_du_jour, (user_id, today)),
         (_contrats_sans_pdf, (profil, today)),

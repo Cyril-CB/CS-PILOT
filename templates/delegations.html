@@ -40,6 +40,7 @@
     <div class="form-container">
         <h1>Délégation</h1>
         <p class="subtitle">Permettez à un salarié de suivre certaines missions en votre nom.</p>
+        <p class="appro-help">Pour désigner des responsables différents des fournitures ou des produits d’entretien selon le site : <a class="btn btn-secondary btn-sm" href="{{ url_for('sites_bp.gestion') }}">Sites et commandes</a>. La mission fournitures ci-dessous concerne uniquement la file globale et son historique.</p>
 
         {% for mission in missions %}
         <div class="delegation-card">

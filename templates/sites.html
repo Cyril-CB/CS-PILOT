@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Sites et commandes - CS-PILOT{% endblock %}
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header"><div><h1>Sites et commandes</h1><p class="subtitle">Des lieux physiques, des accès et un responsable par module et par site.</p></div></div>
+    <div class="appro-card">
+        <p class="appro-help">Créez par exemple Cyprian et Les Brosses. Les sites sont indépendants des secteurs analytiques. Un salarié peut appartenir à plusieurs sites.</p>
+        <p class="appro-help">Les anciennes fournitures restent dans « Global / historique ». Leur délégataire conserve uniquement cette file. Les accès ci-dessous concernent les nouvelles commandes par site.</p>
+        <form method="post" class="appro-actions">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="creer">
+            <div class="form-group"><label for="nouveau_site">Nom du nouveau site</label><input type="text" id="nouveau_site" name="nom" maxlength="100" required placeholder="Ex. Les Brosses"></div>
+            <button class="btn btn-primary" type="submit">Créer le site</button>
+        </form>
+    </div>
+    {% for site in sites %}
+    <section class="appro-card" aria-labelledby="site-titre-{{ site.id }}">
+        <h2 id="site-titre-{{ site.id }}">{{ site.nom }} {% if not site.actif %}<span class="appro-status">Archivé</span>{% endif %}</h2>
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="modifier">
+            <input type="hidden" name="site_id" value="{{ site.id }}">
+            <input type="hidden" name="revision" value="{{ site.revision }}">
+            <div class="appro-grid">
+                <div class="form-group"><label for="site-nom-{{ site.id }}">Nom du site</label><input type="text" id="site-nom-{{ site.id }}" name="nom" value="{{ site.nom }}" maxlength="100" required></div>
+                {% for module, libelle in modules.items() %}
+                <div class="form-group">
+                    <label for="responsable-{{ module }}-{{ site.id }}">Responsable — {{ libelle }}</label>
+                    <select id="responsable-{{ module }}-{{ site.id }}" name="responsable_{{ module }}">
+                        <option value="">Non désigné</option>
+                        {% for user in utilisateurs %}<option value="{{ user.id }}" {% if site.responsables.get(module) == user.id %}selected{% endif %}>{{ user.prenom }} {{ user.nom }}</option>{% endfor %}
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+            <details>
+                <summary>Salariés autorisés à demander des fournitures — {{ site.membres|length }} sélectionné(s)</summary>
+                <div class="appro-checklist">
+                    {% for user in utilisateurs %}<label class="appro-check"><input type="checkbox" name="membres" value="{{ user.id }}" {% if user.id in site.membres %}checked{% endif %}>{{ user.prenom }} {{ user.nom }}</label>{% endfor %}
+                </div>
+            </details>
+            <p class="appro-help">Le responsable d’un module gère les commandes de ce module sur ce site. La direction et la comptabilité conservent une vue sur tous les sites. Pour l’entretien, les demandeurs sont désignés par lieu dans les paramètres du module.</p>
+            <label class="appro-check"><input type="checkbox" name="actif" value="1" {% if site.actif %}checked{% endif %}>Site actif</label>
+            <p class="appro-help">Archiver ferme les nouvelles demandes et les traitements du site ; l’historique est conservé. Les responsables perdent l’accès à la file du site.</p>
+            <div class="appro-actions"><button class="btn btn-primary" type="submit">Enregistrer {{ site.nom }}</button>
+                {% if site.actif %}<a class="btn btn-secondary" href="{{ url_for('commandes_salaries_bp.commandes_salaries', site_id=site.id) }}">Fournitures du site</a><a class="btn btn-secondary" href="{{ url_for('entretien_bp.parametres', site_id=site.id) }}">Configurer l’entretien</a>{% endif %}
+            </div>
+        </form>
+    </section>
+    {% else %}<p class="appro-card">Aucun site configuré. Les commandes de fournitures continuent à fonctionner comme auparavant.</p>{% endfor %}
+</div>
+{% endblock %}

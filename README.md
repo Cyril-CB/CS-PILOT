@@ -165,6 +165,8 @@ classique depuis « Mon espace ».
 - [Parcours, pièces jointes et contrat du mail](docs/propositions-amelioration.md).
 
 ### Outils specifiques
+- Produits d’entretien : catalogue, besoins par lieu, regroupement des commandes et notification interne à la réception ; récupération organisée hors application.
+- Sites physiques : files de fournitures et responsables distincts par site, séparés des produits d’entretien. [Configuration, droits et migration](docs/sites-approvisionnement.md).
 - ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques)
 - Pesee ALISFA (avec integration IA)
 - Assistant RH (avec integration IA)

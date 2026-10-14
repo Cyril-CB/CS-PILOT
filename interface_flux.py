@@ -14,7 +14,7 @@ L'activation se décide à trois niveaux, du plus général au plus personnel :
 import logging
 import re
 
-from flask import has_request_context, request, session
+from flask import has_request_context, request, session, url_for
 
 import navigation
 from utils import delete_setting, get_setting, save_setting
@@ -171,6 +171,8 @@ def _drapeaux(profil, user_id):
         'can_access_vue_ensemble_validation': profil in ('directeur', 'comptable', 'responsable'),
         'generation_contrats_responsable_autorise': True,
         'budget_previsionnel_responsable_autorise': True,
+        'can_access_entretien': False,
+        'sites_fournitures': [],
     }
 
     try:
@@ -181,6 +183,16 @@ def _drapeaux(profil, user_id):
             'budget_previsionnel_responsable_autorise')
     except Exception:
         logger.warning("Options applicatives illisibles", exc_info=True)
+
+    try:
+        from contextlib import closing
+        from database import get_db
+        from sites_acces import a_acces_entretien, sites_fournitures
+        with closing(get_db()) as conn:
+            drapeaux['can_access_entretien'] = a_acces_entretien(conn, user_id)
+            drapeaux['sites_fournitures'] = [dict(s) for s in sites_fournitures(conn, user_id)]
+    except Exception:
+        logger.warning('Sites de navigation illisibles', exc_info=True)
 
     # La direction et la comptabilité voient déjà les bénévoles, le CSE et la
     # vue d'ensemble par leur profil : inutile d'interroger la base pour des
@@ -284,7 +296,10 @@ def contexte():
         }
     else:
         carte = carte_pour_utilisateur(profil, user_id)
-        zone, page = navigation.localiser(carte, request.endpoint)
+        lien_site = None
+        if request.endpoint == 'commandes_salaries_bp.commandes_salaries' and request.args.get('site_id'):
+            lien_site = url_for(request.endpoint, site_id=request.args['site_id'])
+        zone, page = navigation.localiser(carte, request.endpoint, lien=lien_site)
         donnees = {
             'ui_flux': True,
             'ui_flux_eligible': True,

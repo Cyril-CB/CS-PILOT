@@ -13,7 +13,7 @@
         <span class="flx-chips-label">{{ nav_zone.icone }} {{ nav_zone.nom }}</span>
         {% for p in nav_zone.pages %}
         <a href="{{ p.lien }}"
-           class="flx-chip{% if nav_page and p.endpoint == nav_page.endpoint %} flx-chip-actif{% endif %}">{{ p.label }}</a>
+           class="flx-chip{% if nav_page and p.lien == nav_page.lien %} flx-chip-actif{% endif %}">{{ p.label }}</a>
         {% endfor %}
     </div>
     {% endif %}
