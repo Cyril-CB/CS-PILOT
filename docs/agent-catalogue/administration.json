@@ -657,7 +657,7 @@
         "interface.propositions_amelioration"
       ],
       "limitations": [
-        "Ce service envoie des emails ; il ne relève pas de boîte Outlook et ne lit pas les réponses.",
+        "Ce service envoie des emails ; il ne relève aucune boîte de réception et ne lit pas les réponses.",
         "Le mode de connexion implémenté est SMTP STARTTLS avec mot de passe ; aucun flux OAuth Microsoft ou lecteur IMAP n’est implémenté dans email_service.py.",
         "Il n’y a pas de file durable ni de reprise automatique d’envoi dans ce service synchrone."
       ]

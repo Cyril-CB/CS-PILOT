@@ -178,9 +178,9 @@ def test_envoi_complet_et_mail_exploitable(app, db, environnement, sample_users)
     assert row['statut'] == 'envoyee' and row['tentatives'] == 1
     assert row['user_id'] == sample_users['directeur_id']
     appel = environnement.send_message.call_args
-    assert appel.kwargs == {'from_addr': 'centre@exemple.test', 'to_addrs': ['cspilot@outlook.fr']}
+    assert appel.kwargs == {'from_addr': 'centre@exemple.test', 'to_addrs': ['support@cs-pilot.com']}
     message = BytesParser(policy=policy.default).parsebytes(appel.args[0].as_bytes())
-    assert message['To'] == 'cspilot@outlook.fr'
+    assert message['To'] == 'support@cs-pilot.com'
     assert message['Reply-To'] == 'reponse@exemple.test'
     assert message['X-CS-PILOT-Type'] == 'proposition-v1'
     assert message['X-CS-PILOT-Reference'] == row['id']
@@ -204,7 +204,9 @@ def test_envoi_complet_et_mail_exploitable(app, db, environnement, sample_users)
     assert piece['fichier_path'].startswith('propositions/')
     chemin = Path(database.DATA_DIR) / 'documents' / piece['fichier_path']
     assert chemin.read_bytes() == fichier
-    assert client.get(reponse.location).status_code == 200
+    page = client.get(reponse.location)
+    assert page.status_code == 200
+    assert 'envoyée à support@cs-pilot.com' in page.text
     telechargement = client.get(f'/propositions/{row["id"]}/pieces/{piece["id"]}')
     assert telechargement.data == fichier
     assert 'attachment' in telechargement.headers['Content-Disposition']
@@ -465,7 +467,7 @@ def test_historique_signale_envoi_interrompu_comme_la_fiche(
 
 def test_piece_absente_interdit_envoi_partiel(app, db, environnement):
     client = connecter(app)
-    environnement.send_message.return_value = {'cspilot@outlook.fr': (550, b'refus')}
+    environnement.send_message.return_value = {'support@cs-pilot.com': (550, b'refus')}
     data = preparer(client)
     data['pieces'] = [(io.BytesIO(b'exemple fictif'), 'modele.txt')]
     response = soumettre(client, data)
