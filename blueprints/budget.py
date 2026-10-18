@@ -1583,6 +1583,46 @@ def api_budget_prev_retirer_compte():
         conn.close()
 
 
+def _comparatifs_pdf_initial(conn, annee, secteur_id, global_mode, rows):
+    """Enrichit seulement le PDF, sans report ni recalcul des budgets passés."""
+    lignes = {r['compte_num']: dict(r) for r in rows}
+    secteurs = ([s['id'] for s in conn.execute('SELECT id FROM secteurs')]
+                if global_mode else [secteur_id])
+    historiques = {'initial': {}, 'actualise': {}}
+    for sid in secteurs:
+        comptes_enregistres = {r['compte_num'] for r in conn.execute('''
+            SELECT DISTINCT compte_num FROM budget_prev_saisies
+            WHERE annee = ? AND secteur_id = ? AND type_budget IN ('initial', 'actualise')
+        ''', (annee - 1, sid))}
+        for typ, montants in historiques.items():
+            # Le périmètre existant inclut les comptes sans saisie : une
+            # consolidation partielle ne doit pas transformer leur absence en 0.
+            precedents = _compute_budget_previsionnel(
+                conn, typ, annee - 1, sid, comptes_seuls=True)
+            for r in precedents:
+                compte = r['compte_num']
+                total = montants.get(compte, 0)
+                montants[compte] = (None if total is None or r['def'] is None
+                                   else round(total + r['def'], 2))
+                if compte in comptes_enregistres and compte not in lignes:
+                    lignes[compte] = {**r, 'def': None, 'N-2': 0}
+
+    codes = _secteur_allowed_codes(conn, secteur_id) if not global_mode else set()
+    comptes_n2 = {r['compte_num'] for r in conn.execute('''
+        SELECT DISTINCT compte_num, code_analytique FROM bilan_fec_donnees
+        WHERE annee = ? AND montant IS NOT NULL
+    ''', (annee - 2,)) if global_mode or _code_allowed(
+        r['code_analytique'], r['compte_num'], codes)}
+    for compte, r in lignes.items():
+        r['pdf_n2'] = r['N-2'] if compte in comptes_n2 else None
+        r['pdf_initial_n1'] = historiques['initial'].get(compte)
+        r['pdf_actualise_n1'] = historiques['actualise'].get(compte)
+        r['pdf_initial_n'] = r['def']
+        r['pdf_ecart'] = (None if r['def'] is None or r['pdf_initial_n1'] is None
+                          else round(r['def'] - r['pdf_initial_n1'], 2))
+    return sorted(lignes.values(), key=lambda r: r['compte_num'])
+
+
 @budget_bp.route('/api/budget-previsionnel/export-pdf')
 @login_required
 def api_budget_previsionnel_export_pdf():
@@ -1625,8 +1665,14 @@ def api_budget_previsionnel_export_pdf():
             CondPageBreak,
         )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from xml.sax.saxutils import escape
 
         actualise = (type_budget == 'actualise')
+        if not actualise:
+            data['rows'] = _comparatifs_pdf_initial(
+                conn, annee, secteur_id, global_mode, data['rows'])
+        colonnes_initial = ('pdf_n2', 'pdf_initial_n1', 'pdf_actualise_n1',
+                            'pdf_initial_n', 'pdf_ecart')
         libelle_type = 'Actualisé' if actualise else 'Initial'
         titre = f"Budget {'global' if global_mode else 'secteur'} - {libelle_type} - {annee}"
         if secteur_id and not global_mode:
@@ -1650,8 +1696,10 @@ def api_budget_previsionnel_export_pdf():
             headers = ['Compte', 'Libellé', 'N-2', 'N-1', 'Initial N', 'Actualisé N', 'Écart']
             largeurs = [2 * cm, 6.3 * cm, 2 * cm, 2 * cm, 2.2 * cm, 2.2 * cm, 2.2 * cm]
         else:
-            headers = ['Compte', 'Libellé', 'N-2', 'N-1', 'N', 'Temp.', 'Déf.']
-            largeurs = [2 * cm, 6.4 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm, 2 * cm]
+            headers = ['Compte', 'Libellé', f'N-2\n{annee - 2}',
+                       f'N-1 initial\n{annee - 1}', f'N-1 actualisé\n{annee - 1}',
+                       f'Initial N\n{annee}', 'Différence\ninitial N - N-1']
+            largeurs = [1.8 * cm, 5.2 * cm, 2 * cm, 2.4 * cm, 2.6 * cm, 2.3 * cm, 2.7 * cm]
         if data.get('incomplet') or data.get('alertes'):
             elements.append(Paragraph('Budget en cours de construction — montants non saisis ou calculs à revoir.', styles['Normal']))
         if data.get('charges_salaries'):
@@ -1669,6 +1717,8 @@ def api_budget_previsionnel_export_pdf():
             'BudgetSection', parent=styles['Heading2'],
             textColor=vert_section, spaceBefore=2, spaceAfter=4
         )
+        style_libelle = ParagraphStyle('BudgetLibelle', parent=styles['Normal'],
+                                       fontSize=8, leading=10)
 
         def somme_budget(valeurs):
             """Un montant inconnu rend la somme inconnue, jamais nulle.
@@ -1706,10 +1756,9 @@ def api_budget_previsionnel_export_pdf():
                     montant_pdf(ecart_ligne(r), defaut='—', signe=True),
                 ]
             return [
-                r['compte_num'], r['libelle'],
-                f"{r['N-2']:.2f}", f"{r['N-1']:.2f}", f"{r['N']:.2f}",
-                montant_pdf(r['temp']),
-                montant_pdf(r['def'], defaut='Non saisi'),
+                r['compte_num'], Paragraph(escape(r['libelle']), style_libelle),
+                *(montant_pdf(r[cle], defaut='', signe=(cle == 'pdf_ecart'))
+                  for cle in colonnes_initial),
             ]
 
         def cellules_cumul(libelle, groupe):
@@ -1726,11 +1775,11 @@ def api_budget_previsionnel_export_pdf():
                     montant_pdf(somme_budget(ecart_ligne(r) for r in groupe),
                                 defaut='—', signe=True),
                 ]
-            return base + [
-                f"{sum(r['N'] for r in groupe):.2f}",
-                montant_pdf(somme_budget(r['temp'] for r in groupe)),
-                montant_pdf(somme_budget(r['def'] for r in groupe)),
-            ]
+            return [libelle, '', *[
+                montant_pdf(somme_budget(r[cle] for r in groupe),
+                            defaut='', signe=(cle == 'pdf_ecart'))
+                for cle in colonnes_initial
+            ]]
 
         def bloc_section(titre_section, lignes):
             """Une section (charges ou produits) : ses comptes, un sous-total
@@ -1818,8 +1867,12 @@ def api_budget_previsionnel_export_pdf():
                 styles['Heading3']
             ))
         else:
+            charges_n = somme_budget(r['pdf_initial_n'] for r in charges)
+            produits_n = somme_budget(r['pdf_initial_n'] for r in produits)
+            resultat_n = (None if charges_n is None or produits_n is None
+                          else produits_n - charges_n)
             elements.append(Paragraph(
-                f"Résultat Temp. : {resultat_pdf(tot['resultat_temp'])} | Résultat Déf. : {resultat_pdf(tot['resultat_def'])}",
+                f"Résultat initial {annee} : " + (resultat_pdf(resultat_n) if resultat_n is not None else ''),
                 styles['Heading3']
             ))
         doc.build(elements)

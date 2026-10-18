@@ -2042,8 +2042,8 @@ def test_ecart_ecran_compare_definitif_et_initial(admin_client):
         "l'écart affiché ne doit plus retomber sur la colonne Temporaire"
 
 
-def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
-    """PDF d'un budget initial : présentation inchangée (N, Temp., Déf.)."""
+def test_export_pdf_initial_colonnes_comparatives(app, db, admin_client):
+    """Les propositions de saisie laissent place aux budgets comparatifs."""
     annee = datetime.now().year
     with app.app_context():
         sid = _setup_fiche_secteur(db, annee)
@@ -2051,27 +2051,22 @@ def test_export_pdf_initial_conserve_ses_colonnes(app, db, admin_client):
         f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
     assert r.status_code == 200
     texte = _texte_pdf_budget(r.data)
-    assert b'Temp.' in texte
-    assert b'Initial N' not in texte
+    assert b'Temp.' not in texte
+    assert b'Initial N' in texte
+    assert b'N-1 initial' in texte
 
 
 def _cellules_pdf_apres(data, libelle, nb):
-    """Les nb valeurs imprimées juste après un libellé donné du PDF.
-
-    ReportLab dessine chaque cellule par un opérateur Tj et échappe les
-    accents en octal ; on rétablit le texte lisible pour les assertions.
-    """
-    import re as _re
-
-    def _lisible(valeur):
-        valeur = _re.sub(r'\\([0-7]{3})', lambda m: chr(int(m.group(1), 8)), valeur)
-        return valeur.replace('\\(', '(').replace('\\)', ')').replace('\\\\', '\\')
-
-    cellules = [_lisible(v) for v in
-                _re.findall(r'\((.*?)\)\s*Tj', _texte_pdf_budget(data).decode('latin-1'))]
-    assert libelle in cellules, f'{libelle!r} absent du PDF'
-    depart = cellules.index(libelle) + 1
-    return cellules[depart:depart + nb]
+    """Lit les cellules du tableau, y compris les cellules désormais vides."""
+    import io
+    import pdfplumber
+    with pdfplumber.open(io.BytesIO(data)) as pdf:
+        for page in pdf.pages:
+            for table in page.extract_tables():
+                for row in table:
+                    if row[0] == libelle:
+                        return row[2:2 + nb]
+    raise AssertionError(f'{libelle!r} absent du PDF')
 
 
 def _setup_budget_categories(db, annee, secteur_nom='Secteur categories'):
@@ -2119,13 +2114,13 @@ def test_export_pdf_sous_totaux_par_compte_a_deux_chiffres(app, db, admin_client
 
     for categorie, total in (('60', '300.00'), ('61', '400.00'), ('64', '1000.00'),
                              ('70', '1000.00'), ('74', '2000.00')):
-        # Cellules chiffrées du sous-total : N-2, N-1, N, Temp., Déf.
+        # N-2, initial N-1, actualisé N-1, initial N, différence.
         cellules = _cellules_pdf_apres(r.data, f'Sous-total {categorie}xxxx', 5)
-        assert cellules[-1] == total, f'sous-total {categorie} : {cellules}'
+        assert cellules[3] == total, f'sous-total {categorie} : {cellules}'
 
     # 300 + 400 + 1000 = 1700 de charges ; 1000 + 2000 = 3000 de produits.
-    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[-1] == '1700.00'
-    assert _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)[-1] == '3000.00'
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[3] == '1700.00'
+    assert _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)[3] == '3000.00'
 
 
 def test_export_pdf_section_vide_garde_son_total_a_zero(app, db, admin_client):
@@ -2144,7 +2139,7 @@ def test_export_pdf_section_vide_garde_son_total_a_zero(app, db, admin_client):
     assert r.status_code == 200
 
     cellules = _cellules_pdf_apres(r.data, 'TOTAL PRODUITS', 5)
-    assert cellules == ['0.00', '0.00', '0.00', '0.00', '0.00'], cellules
+    assert cellules == ['0.00', '0.00', '0.00', '0.00', '+0.00'], cellules
     # La section reste explicite sur son absence de compte.
     texte = _texte_pdf_budget(r.data)
     assert 'Aucun compte sur cette section'.encode() in texte
@@ -2190,12 +2185,12 @@ def test_export_pdf_sous_total_incomplet_n_affiche_pas_un_montant_exact(app, db,
         f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
 
     cellules_60 = _cellules_pdf_apres(r.data, 'Sous-total 60xxxx', 5)
-    assert cellules_60[-1] == 'À compléter', f'le sous-total 60 doit rester inconnu : {cellules_60}'
+    assert cellules_60[3] == '', f'le sous-total 60 doit rester inconnu : {cellules_60}'
     assert '100.00' not in cellules_60, 'ne pas additionner les seules lignes saisies'
     # Les familles complètes gardent leur sous-total chiffré.
-    assert _cellules_pdf_apres(r.data, 'Sous-total 61xxxx', 5)[-1] == '400.00'
+    assert _cellules_pdf_apres(r.data, 'Sous-total 61xxxx', 5)[3] == '400.00'
     # Et le total de section reste inconnu lui aussi.
-    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[-1] == 'À compléter'
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[3] == ''
 
 
 def test_export_pdf_actualise_sous_totaux_avec_ecart(app, db, admin_client):
@@ -2235,8 +2230,10 @@ def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, glob
     response = admin_client.get(url)
     assert response.status_code == 200
     texte = _texte_pdf_budget(response.data)
-    # Les deux résumés (résultat + écart, ou proposition + définitif) sont incomplets.
-    assert texte.count(b' : \\300 compl\\351ter') == 2
+    if typ == 'actualise':
+        assert texte.count(b' : \\300 compl\\351ter') == 2
+    else:
+        assert _cellules_pdf_apres(response.data, 'TOTAL CHARGES', 5)[3] == ''
     assert b'150.00' not in texte
 
     _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
@@ -2249,7 +2246,8 @@ def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, glob
     assert b'150.00' in texte
 
 
-def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
+@pytest.mark.parametrize('typ', ['initial', 'actualise'])
+def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users, typ):
     """Export d'un budget (données financières) : refus hors direction /
     comptabilité et sur paramètres invalides. Les fixtures de clients
     authentifiés partagent le même client de test : on gère les connexions
@@ -2257,7 +2255,7 @@ def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
     annee = datetime.now().year
     with app.app_context():
         sid = _setup_fiche_secteur(db, annee)
-    url = (f'/api/budget-previsionnel/export-pdf?type_budget=actualise'
+    url = (f'/api/budget-previsionnel/export-pdf?type_budget={typ}'
            f'&annee={annee}&secteur_id={sid}')
 
     # Non connecté : redirigé vers la connexion, aucun PDF servi.
@@ -2273,7 +2271,7 @@ def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
     # si l'option lui ouvre la page de son secteur.
     client.post('/login', data={'login': 'resp_test', 'password': 'resp123'}, follow_redirects=True)
     assert client.get(
-        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&annee={annee}&global=1'
+        f'/api/budget-previsionnel/export-pdf?type_budget={typ}&annee={annee}&global=1'
     ).status_code == 403
     client.get('/logout', follow_redirects=True)
 
@@ -2283,7 +2281,7 @@ def test_export_pdf_controle_acces_et_parametres(app, db, client, sample_users):
         f'/api/budget-previsionnel/export-pdf?type_budget=inconnu&annee={annee}&secteur_id={sid}'
     ).status_code == 400
     assert client.get(
-        f'/api/budget-previsionnel/export-pdf?type_budget=actualise&secteur_id={sid}'
+        f'/api/budget-previsionnel/export-pdf?type_budget={typ}&secteur_id={sid}'
     ).status_code == 400
     # Et l'export légitime reste servi.
     assert client.get(url).status_code == 200
