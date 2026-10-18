@@ -53,32 +53,34 @@ def test_pdf_initial_comparatifs_et_aucune_mutation(db, admin_client, sample_use
     ]
     assert montants(r.data, '606000') == ['123.00', '200.00', '250.00', '300.00', '+100.00']
     assert montants(r.data, '706000') == ['0.00', '500.00', '450.00', '400.00', '-100.00']
-    assert montants(r.data, '611000') == ['', '0.00', '0.00', '0.00', '+0.00']
-    assert montants(r.data, '612000') == ['', '', '75.00', '100.00', '']
-    assert montants(r.data, '613000') == ['', '40.00', '', '', '']
-    assert montants(r.data, '614000') == ['', '', '60.00', '', '']
-    assert montants(r.data, '615000') == ['', '', '', '', '']
+    assert montants(r.data, '611000') == ['0.00', '0.00', '0.00', '0.00', '+0.00']
+    assert montants(r.data, '612000') == ['0.00', '0.00', '75.00', '100.00', '+100.00']
+    assert montants(r.data, '613000') == ['0.00', '40.00', '0.00', '0.00', '-40.00']
+    assert montants(r.data, '614000') == ['0.00', '0.00', '60.00', '0.00', '+0.00']
+    assert montants(r.data, '615000') == ['0.00', '0.00', '0.00', '0.00', '+0.00']
     assert montants(r.data, 'Sous-total 60xxxx') == ['123.00', '200.00', '250.00', '300.00', '+100.00']
-    assert montants(r.data, 'TOTAL CHARGES') == ['', '', '', '', '']
+    assert montants(r.data, 'TOTAL CHARGES') == ['123.00', '240.00', '385.00', '400.00', '+160.00']
     assert montants(r.data, 'TOTAL PRODUITS') == ['0.00', '500.00', '450.00', '400.00', '-100.00']
     assert admin_client.get(api).get_json() == ecran_avant
     assert list(db.iterdump()) == avant
 
 
 @pytest.mark.parametrize('valeur_autre', [None, 0, 50])
-def test_pdf_initial_global_consolide_sans_masquer_les_absences(db, admin_client, sample_users, valeur_autre):
+def test_pdf_initial_global_additionne_les_montants_et_remplace_les_absences_par_zero(db, admin_client, sample_users, valeur_autre):
     sid = sample_users['secteur_id']
     autre = db.execute("INSERT INTO secteurs (nom) VALUES ('Autre secteur PDF')").lastrowid
     for secteur, valeur in [(sid, 100), (autre, valeur_autre)]:
         for annee, typ in [(2026, 'initial'), (2026, 'actualise'), (2027, 'initial')]:
-            saisir(db, secteur, annee, typ, '606000', valeur)
+            saisir(db, secteur, annee, typ, '606000',
+                   valeur * 2 if annee == 2027 and valeur is not None else valeur)
     db.commit()
     url = '/api/budget-previsionnel/export-pdf?type_budget=initial&annee=2027&'
     secteur_pdf = admin_client.get(url + f'secteur_id={sid}').data
-    assert montants(secteur_pdf, '606000') == ['', '100.00', '100.00', '100.00', '+0.00']
+    assert montants(secteur_pdf, '606000') == ['0.00', '100.00', '100.00', '200.00', '+100.00']
     global_pdf = admin_client.get(url + 'global=1').data
-    attendu = ['', '', '', '', ''] if valeur_autre is None else [
-        '', f'{100 + valeur_autre:.2f}', f'{100 + valeur_autre:.2f}', f'{100 + valeur_autre:.2f}', '+0.00']
+    total_n1 = 100 + (valeur_autre or 0)
+    attendu = ['0.00', f'{total_n1:.2f}', f'{total_n1:.2f}',
+               f'{total_n1 * 2:.2f}', f'{total_n1:+.2f}']
     assert montants(global_pdf, '606000') == attendu
     assert montants(global_pdf, 'TOTAL CHARGES') == attendu
 
@@ -95,5 +97,5 @@ def test_pdf_initial_responsable_limite_a_son_secteur(db, resp_client, sample_us
     url = '/api/budget-previsionnel/export-pdf?type_budget=initial&annee=2027&'
     r = resp_client.get(url + f'secteur_id={autre}')
     assert r.status_code == 200
-    assert montants(r.data, '606000') == ['', '100.00', '100.00', '100.00', '+0.00']
+    assert montants(r.data, '606000') == ['0.00', '100.00', '100.00', '100.00', '+0.00']
     assert resp_client.get(url + 'global=1').status_code == 403

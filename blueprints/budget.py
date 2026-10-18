@@ -1589,37 +1589,36 @@ def _comparatifs_pdf_initial(conn, annee, secteur_id, global_mode, rows):
     secteurs = ([s['id'] for s in conn.execute('SELECT id FROM secteurs')]
                 if global_mode else [secteur_id])
     historiques = {'initial': {}, 'actualise': {}}
+    initiaux_n = {}
     for sid in secteurs:
+        if global_mode:
+            # Pour ce PDF seulement, remplacer les absences avant la somme :
+            # le total de l'écran peut être None malgré des secteurs renseignés.
+            for r in _compute_budget_previsionnel(
+                    conn, 'initial', annee, sid, comptes_seuls=True):
+                compte = r['compte_num']
+                initiaux_n[compte] = round(initiaux_n.get(compte, 0) + (r['def'] or 0), 2)
         comptes_enregistres = {r['compte_num'] for r in conn.execute('''
             SELECT DISTINCT compte_num FROM budget_prev_saisies
             WHERE annee = ? AND secteur_id = ? AND type_budget IN ('initial', 'actualise')
         ''', (annee - 1, sid))}
         for typ, montants in historiques.items():
-            # Le périmètre existant inclut les comptes sans saisie : une
-            # consolidation partielle ne doit pas transformer leur absence en 0.
+            # Les comptes non utilisés contribuent à zéro dans l'édition.
             precedents = _compute_budget_previsionnel(
                 conn, typ, annee - 1, sid, comptes_seuls=True)
             for r in precedents:
                 compte = r['compte_num']
                 total = montants.get(compte, 0)
-                montants[compte] = (None if total is None or r['def'] is None
-                                   else round(total + r['def'], 2))
+                montants[compte] = round(total + (r['def'] or 0), 2)
                 if compte in comptes_enregistres and compte not in lignes:
                     lignes[compte] = {**r, 'def': None, 'N-2': 0}
 
-    codes = _secteur_allowed_codes(conn, secteur_id) if not global_mode else set()
-    comptes_n2 = {r['compte_num'] for r in conn.execute('''
-        SELECT DISTINCT compte_num, code_analytique FROM bilan_fec_donnees
-        WHERE annee = ? AND montant IS NOT NULL
-    ''', (annee - 2,)) if global_mode or _code_allowed(
-        r['code_analytique'], r['compte_num'], codes)}
     for compte, r in lignes.items():
-        r['pdf_n2'] = r['N-2'] if compte in comptes_n2 else None
-        r['pdf_initial_n1'] = historiques['initial'].get(compte)
-        r['pdf_actualise_n1'] = historiques['actualise'].get(compte)
-        r['pdf_initial_n'] = r['def']
-        r['pdf_ecart'] = (None if r['def'] is None or r['pdf_initial_n1'] is None
-                          else round(r['def'] - r['pdf_initial_n1'], 2))
+        r['pdf_n2'] = r['N-2'] or 0
+        r['pdf_initial_n1'] = historiques['initial'].get(compte, 0)
+        r['pdf_actualise_n1'] = historiques['actualise'].get(compte, 0)
+        r['pdf_initial_n'] = initiaux_n.get(compte, 0) if global_mode else (r['def'] or 0)
+        r['pdf_ecart'] = round(r['pdf_initial_n'] - r['pdf_initial_n1'], 2)
     return sorted(lignes.values(), key=lambda r: r['compte_num'])
 
 

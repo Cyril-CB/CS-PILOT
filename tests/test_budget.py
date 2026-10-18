@@ -2168,12 +2168,8 @@ def test_export_pdf_separe_les_sections_charges_et_produits(app, db, admin_clien
     assert b'606000' in section_charges and b'641100' in section_charges
 
 
-def test_export_pdf_sous_total_incomplet_n_affiche_pas_un_montant_exact(app, db, admin_client):
-    """Un compte non saisi rend le sous-total de sa famille inconnu.
-
-    Additionner les seules lignes renseignées donnerait un sous-total exact
-    mais faux : la règle est la même qu'à l'écran et que pour le résultat.
-    """
+def test_export_pdf_initial_sous_total_compte_non_utilise_vaut_zero(app, db, admin_client):
+    """Un compte historique non utilisé ne masque plus les totaux du PDF initial."""
     annee = datetime.now().year
     with app.app_context():
         sid = _setup_budget_categories(db, annee, 'Secteur incomplet')
@@ -2185,12 +2181,10 @@ def test_export_pdf_sous_total_incomplet_n_affiche_pas_un_montant_exact(app, db,
         f'/api/budget-previsionnel/export-pdf?type_budget=initial&annee={annee}&secteur_id={sid}')
 
     cellules_60 = _cellules_pdf_apres(r.data, 'Sous-total 60xxxx', 5)
-    assert cellules_60[3] == '', f'le sous-total 60 doit rester inconnu : {cellules_60}'
-    assert '100.00' not in cellules_60, 'ne pas additionner les seules lignes saisies'
+    assert cellules_60[3] == '100.00', f'le compte non utilisé contribue à zéro : {cellules_60}'
     # Les familles complètes gardent leur sous-total chiffré.
     assert _cellules_pdf_apres(r.data, 'Sous-total 61xxxx', 5)[3] == '400.00'
-    # Et le total de section reste inconnu lui aussi.
-    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[3] == ''
+    assert _cellules_pdf_apres(r.data, 'TOTAL CHARGES', 5)[3] == '1500.00'
 
 
 def test_export_pdf_actualise_sous_totaux_avec_ecart(app, db, admin_client):
@@ -2217,8 +2211,8 @@ def test_export_pdf_actualise_sous_totaux_avec_ecart(app, db, admin_client):
 
 @pytest.mark.parametrize('typ', ['initial', 'actualise'])
 @pytest.mark.parametrize('global_mode', [False, True])
-def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, global_mode):
-    """Le PDF reste exportable, mais sans résultat ni écart faussement exacts."""
+def test_export_pdf_resultat_selon_type_budget(db, admin_client, sample_users, typ, global_mode):
+    """Seul le PDF initial traite les absences comme zéro pour ses totaux."""
     sid = sample_users['secteur_id']
     for compte, valeur in [('641100', 100), ('641200', None), ('706100', 250)]:
         db.execute('''INSERT INTO budget_prev_saisies
@@ -2232,9 +2226,10 @@ def test_export_pdf_resultat_incomplet(db, admin_client, sample_users, typ, glob
     texte = _texte_pdf_budget(response.data)
     if typ == 'actualise':
         assert texte.count(b' : \\300 compl\\351ter') == 2
+        assert b'150.00' not in texte
     else:
-        assert _cellules_pdf_apres(response.data, 'TOTAL CHARGES', 5)[3] == ''
-    assert b'150.00' not in texte
+        assert _cellules_pdf_apres(response.data, 'TOTAL CHARGES', 5)[3] == '100.00'
+        assert b'150.00' in texte
 
     _post_budget(admin_client, '/api/budget-previsionnel/save-line', json={
         'type_budget': typ, 'annee': 2026, 'secteur_id': sid,
