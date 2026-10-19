@@ -105,10 +105,13 @@ Pour le **PDF du budget initial**, les cinq colonnes chiffrées sont désormais 
 pour 2027, le réalisé est celui de 2025 et les deux budgets précédents ceux de
 2026. Les budgets reprennent uniquement les montants définitifs enregistrés,
 jamais les propositions temporaires. Un compte présent seulement dans un budget
-N-1 reste visible dans le PDF. Les valeurs absentes restent **vides**, y compris
-les cumuls incomplets ; un zéro enregistré apparaît comme **0.00**. La différence
-n'est calculée que si les deux initiaux sont connus. Le résultat de l'initial N
-reste vide si une ligne de cette colonne n'est pas renseignée.
+N-1 reste visible dans le PDF. Les valeurs absentes sont remplacées par **0.00**
+pour cette édition : un compte utilisé les années précédentes mais plus utilisé
+dans l'exercice ne masque ni les sous-totaux, ni les totaux, ni le résultat.
+En global, ce remplacement s'applique avant l'addition des secteurs pour
+conserver tous les montants renseignés. La différence soustrait les deux
+initiaux ainsi présentés. La validation du budget reste gérée dans l'application ;
+aucun zéro n'est enregistré en base par l'export.
 
 Cette présentation concerne seulement les PDF de l'initial, global et par
 secteur. L'écran, les saisies et calculs, ainsi que les PDF de l'actualisé
@@ -119,12 +122,12 @@ Les sous-totaux ne sont pas libellés par un intitulé comptable : le plan
 comptable du centre ne contient pas nécessairement les comptes à deux chiffres,
 et aucun libellé n'est inventé.
 
-Un montant manquant rend le total de sa catégorie, le total des charges ou des
-produits concerné et le résultat inconnus. L'écran et le PDF de l'actualisé
-indiquent **À compléter**, le PDF de l'initial laisse la cellule vide. Les totaux
-entièrement renseignés restent visibles ; un zéro saisi compte comme une valeur
-connue. Une section sans aucun compte conserve son total à zéro. Aucun écart
-n'est calculé à partir d'un montant inconnu.
+À l'écran et dans le PDF de l'actualisé, un montant manquant rend toujours
+le cumul concerné inconnu (**À compléter**) et empêche le calcul de l'écart
+correspondant. Les totaux entièrement renseignés restent visibles ; un zéro saisi
+compte comme une valeur connue. Dans le PDF de l'initial, les totaux additionnent
+les montants imprimés, absences remplacées par zéro comprises. Une section sans
+aucun compte conserve son total à zéro.
 
 ## Effacer tous les montants
 
