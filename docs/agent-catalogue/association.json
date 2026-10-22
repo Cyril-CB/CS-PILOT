@@ -822,11 +822,13 @@
         "Déposer description, référence facultative, quantité, prix facultatif et urgence peut_attendre/normal/urgent.",
         "Afficher les demandes regroupées en cours, commandées et annulées.",
         "Suivre et traiter les demandes par site avec un responsable des fournitures distinct pour chaque site ; conserver la file globale historique.",
-        "Accès directs et recherche « Commandes [site] », rattachements multisites et contrôle du site à chaque dépôt et traitement."
+        "Accès directs et recherche « Commandes [site] », rattachements multisites et contrôle du site à chaque dépôt et traitement.",
+        "Modifier avant commande une demande de fournitures : auteur ou gestionnaire actuel ; description, référence, quantité, prix et urgence uniquement, avec contrôle de version."
       ],
       "entry_points": [
         "commandes_salaries_bp.commandes_salaries",
-        "commandes_salaries_bp.modifier_statut_commande"
+        "commandes_salaries_bp.modifier_statut_commande",
+        "commandes_salaries_bp.modifier_demande"
       ],
       "implementation": {
         "route_files": [
@@ -838,7 +840,8 @@
           "schema_sites_approvisionnement.py"
         ],
         "templates": [
-          "templates/commandes_salaries.html"
+          "templates/commandes_salaries.html",
+          "templates/commande_modifier.html"
         ],
         "tables": [
           "commandes_salaries",
@@ -863,7 +866,8 @@
           "Délégation de mission lue en base à chaque contrôle ; session active.",
           "Quantité entière entre 1 et 9999, 1 si vide ; prix facultatif à deux décimales maximum.",
           "Sites actifs pour les nouvelles demandes et les traitements. Après création du premier site, aucun nouveau dépôt global.",
-          "Compte, site et mission relus sous verrou de transaction avant les mutations."
+          "Compte, site et mission relus sous verrou de transaction avant les mutations.",
+          "Modification réservée aux demandes en_cours sur site actif (ou ancien global), par l'auteur ou un gestionnaire autorisé ; droits relus dans la transaction."
         ],
         "sources": [
           "blueprints/commandes_salaries.py",
@@ -878,7 +882,8 @@
         "Une nouvelle demande est attribuée à session.user_id, datée du jour et créée en_cours.",
         "Le changement de statut conserve traite_par, date_traitement et updated_at.",
         "Aucune affectation automatique des anciennes fournitures ; site NULL désigne Global / historique.",
-        "Les profils, secteurs analytiques et lieux de contrats ne sont pas modifiés."
+        "Les profils, secteurs analytiques et lieux de contrats ne sont pas modifiés.",
+        "Une modification conserve l'auteur, la date et le site d'origine ; aucune modification possible après passage en commandee ou annulee."
       ],
       "extension_points": [
         "Réutiliser le suivi centralisé et la délégation pour améliorer la collecte des besoins d’achat.",

@@ -7,6 +7,15 @@ libre, référence, quantité, prix facultatif et urgence. Il propose désormais
 file par site, par exemple « Commandes Cyprian » et « Commandes Les Brosses ».
 Chaque site peut avoir son propre responsable des fournitures.
 
+**Correction d'une demande avant commande :** dans la liste des fournitures, le
+bouton « Modifier » apparaît pour l'auteur de la demande ou le responsable actuel
+des commandes du site (également direction/comptabilité dans leur périmètre).
+Il permet de corriger la description, la référence, la quantité, le prix et
+l'urgence, sans changer le demandeur, le site ni la date de dépôt. Il disparaît
+lorsque la demande est commandée ou annulée. Un site archivé interdit les
+modifications. Une ancienne version du formulaire ne peut pas écraser une
+modification plus récente. Aucune commande fournisseur n'est passée par ce bouton.
+
 **Produits d’entretien** est un autre module : catalogue de produits, quantités
 par lieu demandeur, regroupement des besoins, suivi de commande et avis de
 réception. Le responsable des commandes d’entretien peut être différent du

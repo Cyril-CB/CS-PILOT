@@ -69,6 +69,18 @@ def peut_traiter_fourniture(conn, user_id, site_id):
             else gere_site(conn, user_id, 'fournitures', site_id))
 
 
+def peut_modifier_fourniture(conn, user_id, commande):
+    """Auteur ou gestionnaire actuel, uniquement avant commande sur un site actif."""
+    if not compte_interne(conn, user_id) or commande['groupe'] != 'en_cours':
+        return False
+    if commande['site_id'] is not None:
+        site = conn.execute('SELECT actif FROM sites WHERE id = ?', (commande['site_id'],)).fetchone()
+        if not site or not site['actif']:
+            return False
+    return (commande['user_id'] == user_id
+            or peut_traiter_fourniture(conn, user_id, commande['site_id']))
+
+
 def lieux_entretien(conn, user_id, actifs=True):
     if not compte_interne(conn, user_id):
         return []

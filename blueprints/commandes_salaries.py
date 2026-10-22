@@ -9,7 +9,8 @@ from flask import Blueprint, abort, flash, redirect, render_template, request, s
 from database import get_db
 from sessions_securite import verifier_action
 from sites_acces import (entier_id, est_administrateur, fournitures_globales,
-                         peut_creer_fourniture, peut_traiter_fourniture, sites_fournitures)
+                         peut_creer_fourniture, peut_modifier_fourniture,
+                         peut_traiter_fourniture, sites_fournitures)
 from utils import login_required
 
 commandes_salaries_bp = Blueprint('commandes_salaries_bp', __name__)
@@ -187,6 +188,7 @@ def commandes_salaries():
             item['demandeur'] = f"{commande['prenom']} {commande['nom']}"
             item['prix_affiche'] = _format_prix(commande['prix'])
             item['peut_traiter'] = peut_traiter_fourniture(conn, uid, commande['site_id'])
+            item['peut_modifier'] = peut_modifier_fourniture(conn, uid, commande)
             commandes_data.append(item)
         peut_suivre = any(c['peut_traiter'] for c in commandes_data) or fournitures_globales(conn, uid)
         # Les onglets incluent l'historique personnel d'un site archivé.
@@ -212,12 +214,72 @@ def commandes_salaries():
         urgences_config=URGENCES,
         aujourd_hui=date.today().isoformat(),
         peut_suivre=peut_suivre,
-        nombre_colonnes_table=10 if peut_suivre else 8,
+        nombre_colonnes_table=11 if peut_suivre else 9,
         sites=sites, sites_visibles=sites_visibles, filtre=filtre,
         sites_configures=sites_configures,
         titre_site=sites_visibles.get(int(filtre)) if filtre.isascii() and filtre.isdigit() else None,
         site_selectionne=int(filtre) if filtre.isascii() and filtre.isdigit() else (sites[0]['id'] if len(sites) == 1 else None),
     )
+
+
+
+@commandes_salaries_bp.route('/commandes-salaries/<int:commande_id>/modifier', methods=['GET', 'POST'])
+@login_required
+def modifier_demande(commande_id):
+    """Édition d'une demande non commandée, avec contrôle d'accès sous transaction."""
+    if not _peut_acceder():
+        abort(403)
+
+    if request.method == 'POST':
+        description = (request.form.get('description') or '').strip()
+        reference = (request.form.get('reference') or '').strip()
+        urgence = request.form.get('urgence', 'normal')
+        try:
+            quantite = _parse_quantite(request.form.get('quantite'))
+            prix = _parse_prix(request.form.get('prix'))
+        except ValueError:
+            flash('La quantité ou le prix saisi est invalide.', 'error')
+            return redirect(url_for('commandes_salaries_bp.modifier_demande', commande_id=commande_id), code=303)
+        if not description:
+            flash('La description de la demande est obligatoire.', 'error')
+            return redirect(url_for('commandes_salaries_bp.modifier_demande', commande_id=commande_id), code=303)
+        if urgence not in URGENCES_MAP:
+            flash("Le niveau d'urgence sélectionné est invalide.", 'error')
+            return redirect(url_for('commandes_salaries_bp.modifier_demande', commande_id=commande_id), code=303)
+
+    conn = get_db()
+    try:
+        if request.method == 'POST':
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                return refus
+        commande = conn.execute('SELECT * FROM commandes_salaries WHERE id = ?', (commande_id,)).fetchone()
+        if commande is None:
+            abort(404)
+        if not peut_modifier_fourniture(conn, session['user_id'], commande):
+            abort(403)
+
+        if request.method == 'POST':
+            # Un formulaire resté ouvert ne doit pas écraser une commande modifiée.
+            if (request.form.get('updated_at') or '') != (commande['updated_at'] or ''):
+                flash('Cette demande a changé entre-temps. Vérifiez ses informations avant de recommencer.', 'warning')
+                return redirect(url_for('commandes_salaries_bp.modifier_demande', commande_id=commande_id), code=303)
+            conn.execute("""
+                UPDATE commandes_salaries
+                SET description = ?, reference = ?, quantite = ?, prix = ?, urgence = ?,
+                    updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now')
+                WHERE id = ? AND groupe = 'en_cours'
+            """, (description, reference or None, quantite, prix, urgence, commande_id))
+            conn.commit()
+            flash('La demande de fournitures a été modifiée.', 'success')
+            destination = (commande['site_id'] if commande['site_id'] is not None else 'global')
+            return redirect(url_for('commandes_salaries_bp.commandes_salaries', site_id=destination), code=303)
+
+        return render_template('commande_modifier.html',
+                               commande=dict(commande), urgences_config=URGENCES)
+    finally:
+        conn.close()
 
 
 @commandes_salaries_bp.route('/commandes-salaries/<int:commande_id>/statut', methods=['POST'])
