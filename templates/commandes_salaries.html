@@ -163,6 +163,7 @@
                             {% else %}
                             <th class="sv-col-status">État</th>
                             {% endif %}
+                            <th class="sv-col-status">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -223,6 +224,11 @@
                                 </span>
                             </td>
                             {% endif %}
+                            <td class="sv-col-status">
+                                {% if commande.peut_modifier %}
+                                <a class="btn btn-secondary btn-sm" href="{{ url_for('commandes_salaries_bp.modifier_demande', commande_id=commande.id) }}">Modifier</a>
+                                {% else %}—{% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
 

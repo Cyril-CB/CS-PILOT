@@ -596,3 +596,111 @@ def test_ancien_formulaire_lieu_refuse(app, resp_client, db, organisation):
     assert db.execute('SELECT COUNT(*) FROM entretien_demandes').fetchone()[0] == 0
     besoin(resp_client, org, lieu_revision='2')
     assert db.execute('SELECT lieu_nom FROM entretien_demandes').fetchone()[0] == 'Gribouille renommée'
+
+
+
+def _creer_fourniture(db, auteur, site_id=None, *, groupe='en_cours'):
+    return db.execute('''INSERT INTO commandes_salaries
+        (user_id, date_demande, description, reference, quantite, prix, urgence, groupe, site_id)
+        VALUES (?, '2026-10-20', 'Cahier initial', 'REF1', 2, 12.50, 'normal', ?, ?)''',
+        (auteur, groupe, site_id)).lastrowid
+
+
+def _edition_fourniture(client, db, commande_id, **champs):
+    demande = db.execute('SELECT updated_at FROM commandes_salaries WHERE id=?', (commande_id,)).fetchone()
+    donnees = dict(updated_at=demande['updated_at'], description='Cahier corrigé',
+                   reference='REF2', quantite='4', prix='19,99', urgence='urgent')
+    donnees.update(champs)
+    return client.post(f'/commandes-salaries/{commande_id}/modifier', data=donnees)
+
+
+def test_auteur_peut_modifier_tous_les_champs_avant_commande(app, auth_client, db, organisation):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    html = auth_client.get('/commandes-salaries').get_data(as_text=True)
+    assert f'/commandes-salaries/{did}/modifier' in html
+    page = auth_client.get(f'/commandes-salaries/{did}/modifier')
+    assert page.status_code == 200
+    assert 'Cahier initial' in page.get_data(as_text=True)
+    assert _edition_fourniture(auth_client, db, did).status_code == 303
+    row = db.execute('SELECT * FROM commandes_salaries WHERE id=?', (did,)).fetchone()
+    assert (row['description'], row['reference'], row['quantite'], row['prix'], row['urgence']) == (
+        'Cahier corrigé', 'REF2', 4, 19.99, 'urgent')
+    assert row['site_id'] == organisation['s1']
+    assert row['user_id'] == organisation['salarie']
+    assert row['date_demande'] == '2026-10-20'
+
+
+def test_responsable_fournitures_peut_modifier_demande_autrui(app, db, organisation):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    manager = acteur(app, 'four1')
+    assert manager.get(f'/commandes-salaries/{did}/modifier').status_code == 200
+    assert _edition_fourniture(manager, db, did).status_code == 303
+    assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier corrigé'
+
+
+def test_fourniture_edition_refuse_autres_sites_et_profils(app, db, organisation, prestataire_client, client):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    autre = acteur(app, 'four2')
+    assert autre.get(f'/commandes-salaries/{did}/modifier').status_code == 403
+    assert _edition_fourniture(autre, db, did, description='Intrusion').status_code == 403
+    assert prestataire_client.get(f'/commandes-salaries/{did}/modifier').status_code == 403
+    assert client.get(f'/commandes-salaries/{did}/modifier').status_code == 302
+    assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier initial'
+
+
+def test_fourniture_edition_verrouillee_apres_commande_ou_annulation(app, db, organisation, auth_client):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    manager = acteur(app, 'four1')
+    assert manager.post(f'/commandes-salaries/{did}/statut', data={'groupe': 'commandee'}).status_code in (302, 303)
+    assert auth_client.get(f'/commandes-salaries/{did}/modifier').status_code == 403
+    assert _edition_fourniture(manager, db, did).status_code == 403
+    db.execute("UPDATE commandes_salaries SET groupe='annulee' WHERE id=?", (did,))
+    db.commit()
+    assert _edition_fourniture(auth_client, db, did).status_code == 403
+
+
+@pytest.mark.parametrize('champ,valeur', [
+    ('description', ' '), ('quantite', '0'), ('quantite', '10000'),
+    ('quantite', '1.5'), ('prix', '12,34,5'), ('urgence', 'secret')
+])
+def test_edition_champs_invalides_ne_modifie_rien(auth_client, db, organisation, champ, valeur):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    assert _edition_fourniture(auth_client, db, did, **{champ: valeur}).status_code == 303
+    row = db.execute('SELECT description,reference,quantite,prix,urgence FROM commandes_salaries WHERE id=?', (did,)).fetchone()
+    assert tuple(row) == ('Cahier initial','REF1',2,12.5,'normal')
+
+
+def test_edition_perimee_et_site_archive_refuses(app, auth_client, db, organisation):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    ancien = db.execute('SELECT updated_at FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0]
+    db.execute("UPDATE commandes_salaries SET reference='Nouvelle', updated_at='2099-01-01 00:00:00' WHERE id=?", (did,))
+    db.commit()
+    assert _edition_fourniture(auth_client, db, did, updated_at=ancien).status_code == 303
+    assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier initial'
+    db.execute('UPDATE sites SET actif=0 WHERE id=?', (organisation['s1'],))
+    db.commit()
+    assert auth_client.get(f'/commandes-salaries/{did}/modifier').status_code == 403
+    assert _edition_fourniture(auth_client, db, did).status_code == 403
+
+
+def test_retrait_mission_bloque_edition_pour_ancien_responsable(app, db, organisation):
+    did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
+    db.commit()
+    manager = acteur(app, 'four1')
+    assert manager.get(f'/commandes-salaries/{did}/modifier').status_code == 200
+    db.execute("DELETE FROM sites_responsables_modules WHERE site_id=? AND module='fournitures'", (organisation['s1'],))
+    db.commit()
+    assert _edition_fourniture(manager, db, did).status_code == 403
+
+
+def test_auteur_historique_global_peut_modifier_sans_nouveau_depot(auth_client, db, organisation):
+    did = _creer_fourniture(db, organisation['salarie'])
+    db.commit()
+    assert _edition_fourniture(auth_client, db, did).status_code == 303
+    assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier corrigé'

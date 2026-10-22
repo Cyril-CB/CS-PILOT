@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Modifier une demande de fournitures - CS-PILOT{% endblock %}
+
+{% block content %}
+<div class="sv-page">
+    <div class="sv-header">
+        <div>
+            <h1>Modifier une demande de fournitures</h1>
+            <p class="subtitle">La modification reste possible tant que la demande n'est pas commandée.</p>
+        </div>
+    </div>
+    <section class="appro-card">
+        <p><strong>Demande du {{ commande.date_demande[8:10] }}/{{ commande.date_demande[5:7] }}/{{ commande.date_demande[:4] }}</strong></p>
+        <p class="commandes-help">Le demandeur, la date et le site d'origine ne peuvent pas être changés.</p>
+        <form method="post" action="{{ url_for('commandes_salaries_bp.modifier_demande', commande_id=commande.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="updated_at" value="{{ commande.updated_at or '' }}">
+            <div class="commandes-edition-grid">
+                <div class="form-group form-group-full">
+                    <label for="description">Description de la demande *</label>
+                    <input type="text" id="description" name="description" required value="{{ commande.description }}">
+                </div>
+                <div class="form-group">
+                    <label for="quantite">Quantité *</label>
+                    <input type="number" id="quantite" name="quantite" min="1" max="9999" step="1" required value="{{ commande.quantite }}">
+                </div>
+                <div class="form-group">
+                    <label for="reference">Référence</label>
+                    <input type="text" id="reference" name="reference" value="{{ commande.reference or '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="prix">Prix (€)</label>
+                    <input type="text" id="prix" name="prix" inputmode="decimal" value="{{ commande.prix if commande.prix is not none else '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="urgence">Niveau d'urgence</label>
+                    <select id="urgence" name="urgence">
+                        {% for urgence in urgences_config %}
+                        <option value="{{ urgence.key }}" {% if commande.urgence == urgence.key %}selected{% endif %}>{{ urgence.label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Enregistrer les modifications</button>
+                <a class="btn btn-secondary" href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}">Annuler</a>
+            </div>
+        </form>
+    </section>
+</div>
+<style>
+.commandes-edition-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
+.commandes-edition-grid .form-group-full { grid-column:1/-1; }
+.commandes-edition-grid input, .commandes-edition-grid select { max-width:100%; }
+</style>
+{% endblock %}
