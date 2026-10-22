@@ -640,14 +640,14 @@ def test_responsable_fournitures_peut_modifier_demande_autrui(app, db, organisat
     assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier corrigé'
 
 
-def test_fourniture_edition_refuse_autres_sites_et_profils(app, db, organisation, prestataire_client, client):
+def test_fourniture_edition_refuse_autres_sites_et_profils(app, db, organisation, prestataire_client):
     did = _creer_fourniture(db, organisation['salarie'], organisation['s1'])
     db.commit()
     autre = acteur(app, 'four2')
     assert autre.get(f'/commandes-salaries/{did}/modifier').status_code == 403
     assert _edition_fourniture(autre, db, did, description='Intrusion').status_code == 403
     assert prestataire_client.get(f'/commandes-salaries/{did}/modifier').status_code == 403
-    assert client.get(f'/commandes-salaries/{did}/modifier').status_code == 302
+    assert app.test_client().get(f'/commandes-salaries/{did}/modifier').status_code == 302
     assert db.execute('SELECT description FROM commandes_salaries WHERE id=?', (did,)).fetchone()[0] == 'Cahier initial'
 
 
