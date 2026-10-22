@@ -841,7 +841,7 @@
         ],
         "templates": [
           "templates/commandes_salaries.html",
-        "templates/commande_modifier.html"
+          "templates/commande_modifier.html"
         ],
         "tables": [
           "commandes_salaries",
