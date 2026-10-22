@@ -840,7 +840,8 @@
           "schema_sites_approvisionnement.py"
         ],
         "templates": [
-          "templates/commandes_salaries.html"
+          "templates/commandes_salaries.html",
+        "templates/commande_modifier.html"
         ],
         "tables": [
           "commandes_salaries",
