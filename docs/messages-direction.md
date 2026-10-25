@@ -33,6 +33,8 @@ matériellement archivés à l'ouverture de la gestion, sans ajouter de planific
 Les archives conservent titre, contenu intégral, auteur, date de publication,
 date de validité et date d'archivage. Déplier **Lire le message archivé** pour
 retrouver le texte complet. Le texte est échappé, sans HTML interprété.
+Dans la gestion, le titre du message actif revient à la ligne même sans espaces
+ou avec un long paramètre d'URL, sans élargir la page sur ordinateur ou téléphone.
 
 ## Affichage et lecture personnelle
 
@@ -97,3 +99,6 @@ compte rendu vont dans `/tmp/cspilot-direction-browser-results` (modifiable avec
 `CSPILOT_BROWSER_OUTPUT`). Le parcours vérifie ordinateur 1440 px/mobile 390 px,
 états vide/actif/archivé, auteur, recherche, publication/remplacement/retrait,
 lecture individuelle, persistance après rechargement, focus et erreurs serveur.
+Il couvre aussi les titres sans espaces à la limite de 150 caractères et les
+URL à long paramètre, en comparant la largeur du document à celle du viewport
+configuré (et pas seulement à `innerWidth`, qui peut s'élargir sur mobile).

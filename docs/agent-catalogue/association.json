@@ -1142,6 +1142,7 @@
         "La publication est conservée même en cas d’échec email.",
         "Un enregistrement refusé par le serveur conserve la bannière, réactive le bouton et affiche l’erreur dans la modale : aucune lecture n’est supposée acquise côté navigateur.",
         "La publication et l’archivage du précédent sont atomiques ; un index unique empêche plusieurs messages direction actifs.",
+        "Dans la gestion, le titre du message actif revient à la ligne sans élargir la page, y compris sans espaces ou avec un long paramètre d’URL, sur ordinateur et mobile.",
         "Aucune modification des messages, archives ou lectures du CSE. Le client ne choisit ni l’auteur ni le lecteur."
       ],
       "extension_points": [

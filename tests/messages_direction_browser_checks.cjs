@@ -23,6 +23,8 @@ fs.mkdirSync(out, {recursive:true});
     }
     async function fits(p) {
         assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+        // Sur mobile, innerWidth peut lui-même s'élargir avec le débordement.
+        assert.ok(await p.evaluate(() => document.documentElement.scrollWidth) <= p.viewportSize().width + 1);
         checks++;
     }
     try {
@@ -121,6 +123,30 @@ fs.mkdirSync(out, {recursive:true});
         assert.ok(await mp.getByText("Aucun message n'est actuellement affiché aux salariés.").isVisible());
         await fits(mp);
         await mp.screenshot({path:path.join(out,'direction-vide-mobile.png'),fullPage:true,animations:'disabled'});
+
+        // Régression P2 : un titre accepté ne doit pas élargir la page, même
+        // sans espace ou avec un long paramètre d'URL. Préparation via l'API
+        // authentifiée pour isoler le rendu, CSRF actif et sans notification.
+        for (const [cas,titre] of [
+            ['sans-espaces','A'.repeat(150)],
+            ['url','https://exemple.test/?reference='+'a1b2c3d4e5f6'.repeat(9)],
+        ]) {
+            await page.goto(base + '/direction/messages');
+            const csrf = await page.locator('meta[name="csrf-token"]').getAttribute('content');
+            const publication = await context.request.post(base + '/direction/messages/creer', {
+                form:{titre,contenu:'Message court synthétique pour vérifier le titre.',date_validite:'2999-12-31'},
+                headers:{'X-CSRFToken':csrf},
+            });
+            assert.equal(publication.ok(),true);
+            for (const [ecran,p] of [['ordinateur',page],['mobile',mp]]) {
+                await p.goto(base + '/direction/messages');
+                const heading = p.locator('.direction-messages-page .section h3');
+                assert.equal(await heading.innerText(),titre);
+                await fits(p);
+                assert.ok(await heading.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+                await p.screenshot({path:path.join(out,`direction-titre-${cas}-${ecran}.png`),fullPage:true,animations:'disabled'});
+            }
+        }
         assert.deepEqual(errors,[]);
         console.log(JSON.stringify({status:'passed',checks,javascriptErrors:errors,screenshots:fs.readdirSync(out)},null,2));
     } finally {await browser.close();}

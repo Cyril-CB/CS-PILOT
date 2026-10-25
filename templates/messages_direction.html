@@ -20,7 +20,7 @@
         {% if message_actif %}
         <div style="border:1px solid var(--gray-200);border-left:4px solid var(--primary);border-radius:var(--radius-md);padding:1rem 1.25rem;background:var(--white);">
             {% if message_actif.titre %}
-            <h3 style="margin:0 0 0.5rem;">{{ message_actif.titre }}</h3>
+            <h3 style="margin:0 0 0.5rem;overflow-wrap:anywhere;">{{ message_actif.titre }}</h3>
             {% endif %}
             <p style="white-space:pre-wrap;word-break:break-word;line-height:1.6;margin:0 0 0.75rem;color:var(--gray-700);">{{ message_actif.contenu }}</p>
             <p style="font-size:0.8rem;color:var(--gray-500);margin:0 0 0.75rem;">
