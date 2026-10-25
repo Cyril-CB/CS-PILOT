@@ -3958,6 +3958,19 @@ a.btn-icon:-webkit-any-link {
         border-bottom: none;
     }
 
+    /* Une archive contient plusieurs blocs de texte : les empiler plutôt
+       que de les comprimer en colonnes dans la cellule flexible mobile. */
+    .direction-messages-page .data-table-cards td {
+        display: block;
+        text-align: left;
+        overflow-wrap: anywhere;
+    }
+
+    .direction-messages-page .data-table-cards td::before {
+        display: block;
+        margin-bottom: 0.25rem;
+    }
+
     /* Footers hidden in card mode because totals are already shown outside each mobile card view. */
     .data-table-cards tfoot {
         display: none;

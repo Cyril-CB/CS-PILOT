@@ -18,7 +18,8 @@
         "Palette commune aux pages de navigation et aux résultats métier : accents, pluriels, proximité orthographique, expressions précises, classement et déduplication sans fusionner les homonymes.",
         "Solution de repli « Voir tout l'espace » systématiquement en dernier.",
         "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés.",
-        "Proposer une amélioration après une recherche vaine ou des résultats insatisfaisants, dans la palette et la recherche classique ; reprise explicite de la recherche vers un formulaire authentifié."
+        "Proposer une amélioration après une recherche vaine ou des résultats insatisfaisants, dans la palette et la recherche classique ; reprise explicite de la recherche vers un formulaire authentifié.",
+        "Pour direction/comptabilité, retrouver les messages de la direction par message(s), info salarié, infos salariés, note(s) de service, communication interne et synonymes. Un alias exact explicite prime sur un libellé homonyme ; les dossiers salariés restent proposés en alternative."
       ],
       "entry_points": [
         "recherche_bp.api_search",
@@ -94,7 +95,8 @@
         "administration.secteurs",
         "interface.aide_contextuelle",
         "interface.navigation",
-        "interface.propositions_amelioration"
+        "interface.propositions_amelioration",
+        "association.messages_direction"
       ],
       "limitations": [
         "La résolution d'entités dépend des données de l'installation ; une absence de résultat n'établit pas une absence fonctionnelle."
@@ -115,7 +117,8 @@
         "Activation par centre et préférence personnelle ; identité et fonction affichées dans le shell.",
         "Navigation classique conservée sur téléphone selon détection User-Agent.",
         "Bandeaux d'information contextuels sur factures, écritures, subventions, validation des fiches et dossiers/contrats : compteurs, état et lien d'action pertinents pour la page.",
-        "Accès aux commandes de fournitures de chaque site autorisé et au module entretien pour ses acteurs ; recherche par nom de site."
+        "Accès aux commandes de fournitures de chaque site autorisé et au module entretien pour ses acteurs ; recherche par nom de site.",
+        "Messages de la direction accessibles dans RH & Paie aux profils directeur/comptable uniquement, comme dans le menu classique."
       ],
       "entry_points": [
         "accueil_bp.api_basculer"
@@ -186,7 +189,8 @@
         "interface.mon_espace",
         "interface.recherche",
         "association.produits_entretien",
-        "administration.sites_physiques"
+        "administration.sites_physiques",
+        "association.messages_direction"
       ],
       "limitations": [
         "Les bandeaux sont définis uniquement pour les endpoints présents dans flux_infos.CONSTRUCTEURS ; une erreur de lecture produit un flux vide pour préserver la page."

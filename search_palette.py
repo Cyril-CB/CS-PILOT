@@ -146,10 +146,13 @@ def _citee(mots_requete, expression):
 def _score_page(query_norm, query_tokens, groupe, page):
     label = normaliser(page.get('label'))
     expressions = [normaliser(e) for e in page.get('expressions', [])]
+    # Un alias exact déclaré explicitement porte l'intention métier, même
+    # s'il coïncide avec un ancien libellé (« infos salariés » : communication).
+    # La page portant ce libellé reste proposée juste après.
+    if query_norm in expressions:
+        return 335
     if query_norm == label:
         return 330
-    if query_norm in expressions:
-        return 325
     if query_tokens == _tokens(label):
         return 315
 

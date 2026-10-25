@@ -120,6 +120,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0077', 'Budget initial annuel détaillé'),
     ('0078', 'Gel annuel et suivi des écarts'),
     ('0079', 'Sites physiques et produits d’entretien'),
+    ('0080', 'Messages de la direction aux salariés'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2160,6 +2161,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_budget_suivi(conn)
     from schema_sites_approvisionnement import creer_schema as creer_schema_sites_approvisionnement
     creer_schema_sites_approvisionnement(conn)
+    from schema_messages_direction import creer_schema as creer_schema_messages_direction
+    creer_schema_messages_direction(conn)
 
 
 def preparer_demarrage():

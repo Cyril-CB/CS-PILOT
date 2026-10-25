@@ -112,6 +112,7 @@ TABLES_REQUISES = {
     '0079': ('sites', 'sites_utilisateurs', 'sites_responsables_modules',
              'entretien_lieux', 'entretien_produits', 'entretien_demandes',
              'entretien_lignes', 'entretien_notifications'),
+    '0080': ('messages_direction', 'messages_direction_lectures'),
 }
 
 

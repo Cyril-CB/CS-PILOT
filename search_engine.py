@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 from flask import current_app, url_for
 
 from utils import NOMS_MOIS
+from navigation import EXPRESSIONS_MESSAGES_DIRECTION
 
 
 # ── Normalisation (minuscules + sans accents) ──
@@ -437,6 +438,9 @@ def _analyser_recherche(conn, query, profil, today, user_id=None):
         return _aide()
 
     norm = _normaliser(q)
+    if (profil in ('directeur', 'comptable')
+            and norm in {_normaliser(e) for e in EXPRESSIONS_MESSAGES_DIRECTION}):
+        return _redirect(url_for('messages_direction_bp.messages'), 'Messages de la direction')
     tokens = norm.split()
     mois, annee, annee_explicite, reste = _extraire_periode(tokens, today)
     annee_eff = annee if annee is not None else today.year
