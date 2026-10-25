@@ -1059,6 +1059,108 @@
       ]
     },
     {
+      "id": "association.messages_direction",
+      "title": "Messages de la direction aux salariés",
+      "purpose": "Diffuser des notes de service et informations internes, distinctes des communications CSE.",
+      "example_requests": [
+        "message",
+        "messages",
+        "info salarié",
+        "infos salariés",
+        "note de service",
+        "communication interne"
+      ],
+      "capabilities": [
+        "Publier titre facultatif, contenu obligatoire et date de validité.",
+        "Afficher le message actif via le contexte global de l’application aux utilisateurs internes ; consulter les archives dans l’espace direction/comptabilité.",
+        "Masquer durablement la bannière pour l’utilisateur connecté uniquement s’il confirme « J’ai lu et ne souhaite plus voir le message » dans la modale ; sans cette confirmation le message continue de s’afficher, et la visibilité des autres utilisateurs est inchangée.",
+        "Archiver manuellement un message ou automatiquement les messages expirés à l’ouverture des pages de gestion.",
+        "Notifier la publication par email si demandé, avec audience personnel actif hors prestataires et consentement individuel.",
+        "Identifier l’auteur connecté de chaque publication, y compris dans les archives consultables en entier.",
+        "Accéder au module par RH & Paie dans le menu classique, la carte et la barre intelligente (alias exact prioritaire sur le libellé Infos salariés)."
+      ],
+      "entry_points": [
+        "messages_direction_bp.messages",
+        "messages_direction_bp.creer_message",
+        "messages_direction_bp.archiver_message",
+        "messages_direction_bp.lire_message"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/messages_direction.py"
+        ],
+        "service_files": [
+          "email_service.py",
+          "app.py",
+          "schema_messages_direction.py",
+          "navigation.py",
+          "search_engine.py",
+          "search_palette.py",
+          "resilience.py"
+        ],
+        "templates": [
+          "templates/messages_direction.html",
+          "templates/_message_direction_modal.html",
+          "templates/base.html"
+        ],
+        "tables": [
+          "messages_direction",
+          "messages_direction_lectures",
+          "users"
+        ],
+        "tests": [
+          "tests/test_messages_direction.py",
+          "tests/messages_direction_browser_checks.cjs",
+          "tests/messages_direction_browser_server.py"
+        ],
+        "docs": [
+          "docs/messages-direction.md",
+          "README.md"
+        ]
+      },
+      "access": {
+        "summary": "Gestion, publication et archives réservées aux profils directeur et comptable, indépendamment du rôle CSE. Lecture de la publication active et confirmation personnelle pour les salariés internes actifs ; prestataires exclus.",
+        "scope": "Un message direction actif pour tout le personnel interne. Les lectures sont individuelles et séparées du CSE.",
+        "conditions": [
+          "Date valide au format YYYY-MM-DD, aujourd’hui ou future ; dernier jour inclus.",
+          "Contenu obligatoire de 20 000 caractères maximum, titre facultatif de 150 caractères maximum.",
+          "Email optionnel, configuration et consentement individuel requis."
+        ],
+        "sources": [
+          "blueprints/messages_direction.py",
+          "app.py",
+          "utils.py",
+          "sessions_securite.py",
+          "navigation.py"
+        ]
+      },
+      "invariants": [
+        "Publier archive tous les précédents messages actifs avant insertion du nouveau.",
+        "get_message_actif exclut une date expirée même si l’archivage matériel n’a pas encore eu lieu.",
+        "Seule la confirmation explicite enregistre une lecture ; ouvrir puis fermer la modale, par la croix, Échap ou le bouton Fermer, laisse le message affiché. Une lecture ne masque que le message concerné pour l’utilisateur connecté ; un nouveau message est non lu indépendamment.",
+        "Pendant l’ouverture de la modale, le focus reste dans le dialogue, y compris lorsqu’un autre composant tente de le déplacer sans touche Tab.",
+        "La publication est conservée même en cas d’échec email.",
+        "Un enregistrement refusé par le serveur conserve la bannière, réactive le bouton et affiche l’erreur dans la modale : aucune lecture n’est supposée acquise côté navigateur.",
+        "La publication et l’archivage du précédent sont atomiques ; un index unique empêche plusieurs messages direction actifs.",
+        "Dans la gestion, le titre du message actif revient à la ligne sans élargir la page, y compris sans espaces ou avec un long paramètre d’URL, sur ordinateur et mobile.",
+        "Aucune modification des messages, archives ou lectures du CSE. Le client ne choisit ni l’auteur ni le lecteur."
+      ],
+      "extension_points": [
+        "Réutiliser le schéma partagé pour les installations neuves et la migration 0080 ; ne pas réutiliser les tables CSE."
+      ],
+      "related_features": [
+        "association.cse_messages",
+        "administration.configuration_email",
+        "interface.navigation",
+        "interface.recherche"
+      ],
+      "limitations": [
+        "Un seul message de la direction actif à la fois, en plus du message CSE éventuel.",
+        "Les archives restent réservées aux gestionnaires ; pas d’accusé de réception collectif ni de suivi nominatif des lecteurs.",
+        "L’expiration masque immédiatement le message ; l’archivage matériel se fait à l’ouverture de la gestion, sans tâche planifiée."
+      ]
+    },
+    {
       "id": "association.cse_budget",
       "title": "Trésorerie et bilan annuel CSE",
       "purpose": "Tenir les entrées et sorties banque/caisse du CSE et produire leur bilan annuel imprimable.",

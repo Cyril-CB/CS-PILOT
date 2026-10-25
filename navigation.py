@@ -59,6 +59,19 @@ def _page(endpoint, label, profils=TOUS_PROFILS, condition=None, labels=None,
     }
 
 
+# Vocabulaire partagé par la palette et le moteur de recherche classique.
+EXPRESSIONS_MESSAGES_DIRECTION = (
+    'message', 'messages', 'info salarié', 'infos salariés',
+    'information salarié', 'informations salariés', 'note de service',
+    'notes de service', 'message direction', 'messages direction',
+    'message de la direction', 'messages de la direction',
+    'communication interne', 'communications internes', 'communiqué',
+    'communiqué direction', 'annonce direction', 'annonce aux salariés',
+    'information au personnel', 'informations au personnel',
+    'informer les salariés', 'prévenir les salariés', 'note interne',
+)
+
+
 # ── Zones thématiques : le cercle intérieur ────────────────────────────────
 # `mots` alimente la recherche locale de la barre intelligente (sans accents,
 # la comparaison étant faite sur une forme normalisée).
@@ -180,6 +193,11 @@ ZONES = [
         'description': 'Dossiers salariés, contrats, absences, variables et préparation de la paie.',
         'mots': 'rh paie salarie contrat absence maladie solde conge statistique alisfa pesee poste assistant variable prepa embauche',
         'pages': [
+            _page('messages_direction_bp.messages', 'Messages de la direction',
+                  profils=('directeur', 'comptable'),
+                  resume='Publier une note de service, informer le personnel et consulter les archives.',
+                  mots='message messages info infos information salarie personnel note service direction communication interne annonce communique publier informer prevenir',
+                  expressions=EXPRESSIONS_MESSAGES_DIRECTION),
             _page('infos_salaries_bp.infos_salaries', 'Infos salariés',
                   profils=('directeur', 'comptable', 'responsable'),
                   mots='salarie personnel employe dossier fiche coordonnee document contrat'),

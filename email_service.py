@@ -550,6 +550,57 @@ def notifier_publication_cse(destinataires, titre, contenu, date_validite=None, 
     return envoyer_email_multiple(destinataires, sujet, contenu_html)
 
 
+def notifier_publication_direction(destinataires, titre, contenu, date_validite=None, auteur_nom=''):
+    """Diffuse par e-mail une nouvelle publication de la direction au personnel.
+
+    Le meme message est envoye a tous les destinataires (la salutation reste
+    personnalisee). Le contenu saisi est du texte brut : il est echappe et ses
+    retours a la ligne sont convertis en <br>.
+
+    Args:
+        destinataires: liste de tuples (email, prenom)
+        titre: titre de la publication (facultatif)
+        contenu: corps du message (texte brut)
+        date_validite: date de fin de validite 'YYYY-MM-DD' (facultatif)
+        auteur_nom: nom de l'auteur de la publication (facultatif)
+
+    Returns:
+        (nb_succes: int, nb_echecs: int, erreurs: list)
+    """
+    _e = html_module.escape
+    titre_html = ''
+    if titre:
+        titre_html = (f'<p style="font-size:15px;font-weight:700;color:#111827;'
+                      f'margin:0 0 8px;">{_e(titre)}</p>')
+    corps_html = _e(contenu or '').replace('\n', '<br>')
+
+    meta_parts = []
+    if date_validite:
+        try:
+            j, m, a = date_validite[8:10], date_validite[5:7], date_validite[0:4]
+            meta_parts.append(f"Valable jusqu'au {j}/{m}/{a}")
+        except (IndexError, TypeError):
+            pass
+    if auteur_nom:
+        meta_parts.append(f"Publié par {_e(auteur_nom)}")
+    meta_html = ''
+    if meta_parts:
+        meta_html = (f'<p style="font-size:12px;color:#9ca3af;margin:16px 0 0;">'
+                     f'{" · ".join(meta_parts)}</p>')
+
+    contenu_html = f"""
+    <h3 style="color:#667eea;margin:0 0 12px;font-size:16px;">📢 Nouveau message de la direction</h3>
+    <div style="border-left:4px solid #667eea;background:#f9fafb;padding:12px 16px;border-radius:4px;">
+        {titre_html}
+        <div style="color:#374151;font-size:14px;line-height:1.7;">{corps_html}</div>
+    </div>
+    {meta_html}
+    <p style="margin-top:16px;">Ce message est également affiché sur votre tableau de bord CS-PILOT.</p>
+    """
+    sujet = f"Message de la direction : {titre}" if titre else "Nouveau message de la direction"
+    return envoyer_email_multiple(destinataires, sujet, contenu_html)
+
+
 def notifier_relance_fiche(email, prenom, mois, annee, salarie_nom, user_id, etape, historique=False):
     """Un rappel décrit la qualité attendue et renvoie au contenu à consulter."""
     from fiches_circuit import LIBELLES_ETAPES

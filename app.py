@@ -347,6 +347,7 @@ from blueprints.commandes_salaries import commandes_salaries_bp
 from blueprints.sites import sites_bp
 from blueprints.entretien import entretien_bp
 from blueprints.cse import cse_bp
+from blueprints.messages_direction import messages_direction_bp
 from blueprints.planificateur import planificateur_bp
 from blueprints.contrats import contrats_bp
 from blueprints.recherche import recherche_bp
@@ -412,6 +413,7 @@ app.register_blueprint(commandes_salaries_bp)
 app.register_blueprint(sites_bp)
 app.register_blueprint(entretien_bp)
 app.register_blueprint(cse_bp)
+app.register_blueprint(messages_direction_bp)
 app.register_blueprint(planificateur_bp)
 app.register_blueprint(contrats_bp)
 app.register_blueprint(recherche_bp)
@@ -631,6 +633,19 @@ def inject_cse_context():
     finally:
         if conn:
             conn.close()
+
+
+@app.context_processor
+def inject_messages_direction_context():
+    """Message de la direction non lu, réservé au personnel interne connecté."""
+    from blueprints.messages_direction import get_message_actif, PROFILS_LECTURE
+    if 'user_id' not in session or session.get('profil') not in PROFILS_LECTURE:
+        return {'direction_message_actif': None}
+    conn = get_db()
+    try:
+        return {'direction_message_actif': get_message_actif(conn, session['user_id'])}
+    finally:
+        conn.close()
 
 
 @app.context_processor

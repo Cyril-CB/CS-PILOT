@@ -83,6 +83,7 @@
                     <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prépa Paie</a>
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
                     <a href="{{ url_for('cse_bp.cse_accueil') }}">🧑‍⚖️ CSE</a>
+                    <a href="{{ url_for('messages_direction_bp.messages') }}">📢 Messages de la direction</a>
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
@@ -208,6 +209,7 @@
                     <a href="{{ url_for('prepa_paie_bp.prepa_paie') }}">📋 Prépa Paie</a>
                     <a href="{{ url_for('planning_enfance_bp.planning_enfance') }}">🕐 Temps annualisé</a>
                     <a href="{{ url_for('cse_bp.cse_accueil') }}">🧑‍⚖️ CSE</a>
+                    <a href="{{ url_for('messages_direction_bp.messages') }}">📢 Messages de la direction</a>
                 </div>
             </div>
             <a href="{{ url_for('commandes_salaries_bp.commandes_salaries') }}" class="sidebar-link">🛒 Commandes salariés</a>
@@ -435,6 +437,14 @@
                 <span class="cse-banner-cta">Lire&nbsp;›</span>
             </button>
             {% endif %}
+            {% if direction_message_actif and request.endpoint in cse_dashboard_endpoints %}
+            <button type="button" class="cse-banner direction-banner" onclick="directionOpenMessage(this)"
+                    aria-haspopup="dialog" aria-controls="directionMessageModal">
+                <span class="cse-banner-icon">📢</span>
+                <span class="cse-banner-text">Message de la direction à lire{% if direction_message_actif.titre %} — {{ direction_message_actif.titre }}{% endif %}</span>
+                <span class="cse-banner-cta">Lire&nbsp;›</span>
+            </button>
+            {% endif %}
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -613,6 +623,8 @@
         });
     </script>
     {% endif %}
+
+    {% include "_message_direction_modal.html" %}
 
     {% if session.user_id and chatbot_enabled %}
     {# ── Chatbot contextuel flottant ── #}

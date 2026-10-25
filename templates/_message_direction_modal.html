@@ -1,0 +1,126 @@
+    {% if direction_message_actif and request.endpoint in cse_dashboard_endpoints %}
+    {# ── Modale message de la direction ── #}
+    <div id="directionMessageModal" class="modal-overlay cse-message-modal" style="display:none;"
+         role="dialog" aria-modal="true" aria-labelledby="directionMessageTitle"
+         onclick="if(event.target===this)directionCloseMessage()">
+        <div class="modal-content" tabindex="-1">
+            <div class="modal-header">
+                <h3 id="directionMessageTitle">📢 Message de la direction</h3>
+                <button class="modal-close" type="button" onclick="directionCloseMessage()" aria-label="Fermer">&times;</button>
+            </div>
+            <div style="padding:0 1.5rem 1.5rem;">
+                {% if direction_message_actif.titre %}
+                <h4 style="margin:0 0 .75rem;color:var(--gray-900);font-size:1.05rem;overflow-wrap:anywhere;">{{ direction_message_actif.titre }}</h4>
+                {% endif %}
+                <p style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;color:var(--gray-700);margin:0 0 1rem;">{{ direction_message_actif.contenu }}</p>
+                <p style="font-size:.8rem;color:var(--gray-500);margin:0;">
+                    {% if direction_message_actif.auteur_prenom %}Publié par {{ direction_message_actif.auteur_prenom }} {{ direction_message_actif.auteur_nom }} · {% endif %}
+                    Valable jusqu'au {{ direction_message_actif.date_validite[8:10] }}/{{ direction_message_actif.date_validite[5:7] }}/{{ direction_message_actif.date_validite[0:4] }}
+                </p>
+                <p id="directionLectureErreur" class="alert alert-error" role="alert" hidden>
+                    Enregistrement impossible pour le moment : le message restera affiché.
+                    Vous pouvez réessayer.
+                </p>
+                <div class="actions" style="margin-top:1.25rem;">
+                    <button type="button" class="btn btn-primary" onclick="directionMarquerLu(this)"
+                            data-read-url="{{ url_for('messages_direction_bp.lire_message', message_id=direction_message_actif.id) }}">
+                        J'ai lu et ne souhaite plus voir le message
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="directionCloseMessage()">Fermer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        var directionMessageTrigger = null;
+        function directionFocusContenu(){
+            var contenu=document.querySelector('.main-content');
+            if(!contenu)return;
+            contenu.setAttribute('tabindex','-1');
+            contenu.focus();
+            contenu.addEventListener('blur',function(){contenu.removeAttribute('tabindex');},{once:true});
+        }
+        function directionOpenMessage(trigger){
+            var m=document.getElementById('directionMessageModal');
+            if(!m)return;
+            directionMessageTrigger=trigger||null;
+            var erreur=document.getElementById('directionLectureErreur');
+            if(erreur)erreur.hidden=true;
+            m.style.display='flex';
+            var close=m.querySelector('.modal-close');if(close)close.focus();
+        }
+        // Seul ce bouton masque durablement le message : fermer la modale sans
+        // l'utiliser laisse la bannière en place au prochain affichage.
+        function directionMarquerLu(bouton){
+            var readUrl=bouton&&bouton.getAttribute('data-read-url');
+            if(!readUrl)return;
+            var erreur=document.getElementById('directionLectureErreur');
+            if(erreur)erreur.hidden=true;
+            bouton.disabled=true;
+            fetch(readUrl,{method:'POST',headers:{'Accept':'application/json'}})
+                .then(function(response){
+                    if(!response.ok)throw new Error('lecture non enregistree');
+                    return response.json();
+                })
+                .then(function(resultat){
+                    if(!resultat||resultat.ok!==true)throw new Error('lecture non confirmee');
+                    var trigger=directionMessageTrigger;
+                    if(trigger){
+                        trigger.hidden=true;
+                        trigger.setAttribute('aria-hidden','true');
+                    }
+                    directionCloseMessage();
+                })
+                .catch(function(){
+                    bouton.disabled=false;
+                    if(erreur)erreur.hidden=false;
+                });
+        }
+        function directionCloseMessage(){
+            var m=document.getElementById('directionMessageModal');
+            if(!m||m.style.display!=='flex')return;
+            m.style.display='none';
+            var trigger=directionMessageTrigger;
+            directionMessageTrigger=null;
+            if(trigger&&!trigger.hidden)trigger.focus();else directionFocusContenu();
+        }
+        function directionRetenirFocus(e,m){
+            var focusables=Array.prototype.slice.call(m.querySelectorAll(
+                'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+            ));
+            var premier=focusables[0];
+            var dernier=focusables[focusables.length-1];
+            if(!premier){
+                e.preventDefault();
+                var contenu=m.querySelector('.modal-content');if(contenu)contenu.focus();
+                return;
+            }
+            var horsModale=!m.contains(document.activeElement);
+            if(e.shiftKey&&(document.activeElement===premier||horsModale)){
+                e.preventDefault();
+                dernier.focus();
+            }else if(!e.shiftKey&&(document.activeElement===dernier||horsModale)){
+                e.preventDefault();
+                premier.focus();
+            }
+        }
+        document.addEventListener('focusin',function(e){
+            var m=document.getElementById('directionMessageModal');
+            if(!m||m.style.display!=='flex'||m.contains(e.target))return;
+            // Le chatbot peut déplacer le focus à la souris, sans événement Tab.
+            var cible=m.querySelector('.modal-close')||m.querySelector('.modal-content');
+            if(cible)cible.focus();
+        });
+        document.addEventListener('keydown',function(e){
+            var m=document.getElementById('directionMessageModal');
+            if(!m||m.style.display!=='flex')return;
+            if(e.key==='Tab'){
+                directionRetenirFocus(e,m);
+            }else if(e.key==='Escape'){
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                directionCloseMessage();
+            }
+        });
+    </script>
+    {% endif %}

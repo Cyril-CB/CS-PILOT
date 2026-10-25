@@ -126,6 +126,17 @@ classique depuis « Mon espace ».
 - Bandeau "Message du CSE a lire" en haut du tableau de bord (ouverture dans une fenetre, compatible mobile) ; le bandeau ne disparaît que si le salarié confirme « J'ai lu et ne souhaite plus voir le message », et ce choix est individuel
 - Tant que cette fenêtre est ouverte, le focus reste dans le dialogue, même si le chatbot tente de le déplacer ; la navigation habituelle reprend à sa fermeture.
 
+### Messages de la direction
+
+- Direction et comptabilité : **RH & Paie → Messages de la direction**.
+- Notes de service avec titre facultatif, auteur connecté et date limite incluse.
+- Un seul message direction actif ; remplacement, expiration et retrait conservent les archives.
+- Bandeau sur les accueils du personnel interne, distinct du CSE ; confirmation de lecture personnelle et persistante.
+- Notification e-mail optionnelle respectant les préférences de chaque salarié.
+- Barre intelligente : `message`, `messages`, `info salarié`, `infos salariés`,
+  `note de service`, `communication interne`, `note interne`, etc.
+- [Droits, fonctionnement, migration 0080 et vérifications](docs/messages-direction.md).
+
 ### Tableau de bord direction
 - Vue d'ensemble effectifs, absences, validations et anomalies
 - Demandes de recuperation en attente et top conges cumules
