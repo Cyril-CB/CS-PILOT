@@ -429,7 +429,7 @@
         "Consulter les vingt dernières absences ou filtrer par salarié ; afficher les chevauchements historiques.",
         "Supprimer une absence avec retrait/restauration contrôlés des projections et restitution des compteurs ; télécharger son justificatif.",
         "Identifier les motifs exigeant un justificatif pour les alertes avant paie via MOTIFS_AVEC_JUSTIFICATIF.",
-        "La saisie de CP/CC peut imputer le férié désigné comme journée de solidarité ; aperçu par motif, report au calendrier et restitution à l’annulation restent alignés. Les autres motifs continuent à exclure les fériés."
+        "La saisie de CP/CC peut imputer le férié désigné comme journée de solidarité ; aperçu par motif, report au calendrier et restitution à l’annulation restent alignés. Les autres motifs continuent à exclure les fériés : une maladie englobante préexistante ne bloque pas le changement de solidarité, sans modifier l’absence, ses reports ni les soldes."
       ],
       "entry_points": [
         "absences_bp.absences",

@@ -277,6 +277,127 @@ def test_deplacement_refuse_si_nouvelle_date_utilisee(admin_client, db, sample_u
     assert db.execute('SELECT solidarite FROM jours_feries WHERE id=?',(premier,)).fetchone()[0]==1
 
 
+def _etat_absences_et_compteurs(db):
+    # Les tables sont une liste fermée ; comparer aussi les reports et demandes.
+    tables = ('absences', 'heures_reelles', 'presence_forfait_jour',
+              'rh_projections', 'demandes_conges', 'demandes_recup')
+    etat = {table: [tuple(r) for r in db.execute(f'SELECT * FROM {table} ORDER BY rowid')]
+            for table in tables}
+    etat['compteurs'] = [tuple(r) for r in db.execute(
+        'SELECT id,cp_a_prendre,cp_pris,cc_solde FROM users ORDER BY id')]
+    return etat
+
+
+@pytest.mark.parametrize('profil', ['directeur', 'comptable'])
+@pytest.mark.parametrize('cible', ['salarie_id', 'directeur_id'])
+@pytest.mark.parametrize('debut,fin', [('2026-11-09', '2026-11-13'),
+                                      ('2026-11-11', '2026-11-13'),
+                                      ('2026-11-09', '2026-11-11')])
+def test_maladie_existante_ne_bloque_pas_designation(client, db, sample_users,
+        sample_planning, profil, cible, debut, fin):
+    premier = _ferie(db)
+    second = _ferie(db, '2026-12-25')
+    _login(client, profil)
+    response = client.post('/absences', data={
+        'user_id': sample_users[cible], 'motif': 'Arrêt maladie',
+        'date_debut': debut, 'date_fin': fin}, follow_redirects=True)
+    assert 'enregistrée avec succès' in response.get_data(as_text=True)
+    assert not db.execute("SELECT 1 FROM heures_reelles WHERE date='2026-11-11'").fetchone()
+    assert not db.execute("SELECT 1 FROM presence_forfait_jour WHERE date='2026-11-11'").fetchone()
+    avant = _etat_absences_et_compteurs(db)
+    assert avant['absences'] and avant['rh_projections']
+
+    # Désignation initiale, retrait et remplacement : jamais de recalcul maladie.
+    for fid, message, attendu in ((premier, 'désignée', premier),
+                                 (premier, 'retirée', None),
+                                 (premier, 'désignée', premier),
+                                 (second, 'désignée', second),
+                                 (premier, 'désignée', premier)):
+        response = _designer(client, fid)
+        assert response.status_code == 200
+        assert message in response.get_data(as_text=True)
+        assert [r['id'] for r in db.execute('SELECT id FROM jours_feries WHERE solidarite=1')] == (
+            [attendu] if attendu is not None else [])
+        assert _etat_absences_et_compteurs(db) == avant
+        if attendu:
+            assert 'Retirer la solidarité' in client.get('/gestion_jours_feries').get_data(as_text=True)
+
+
+@pytest.mark.parametrize('motif', ['Forfait jour', 'Congé parental', 'Jour enfant malade',
+    'Accident du travail', 'Evènement familial', 'Sans solde', 'Mi-temps thérapeutique', 'Autre'])
+def test_autre_motif_sans_exception_ferie_ne_bloque_pas(admin_client, db, sample_users, motif):
+    fid = _ferie(db)
+    response = admin_client.post('/absences', data={'user_id': sample_users['salarie_id'],
+        'motif': motif, 'date_debut': '2026-11-09', 'date_fin': '2026-11-13'}, follow_redirects=True)
+    assert 'enregistrée avec succès' in response.get_data(as_text=True)
+    avant = _etat_absences_et_compteurs(db)
+    assert 'désignée' in _designer(admin_client, fid).get_data(as_text=True)
+    assert _etat_absences_et_compteurs(db) == avant
+
+
+@pytest.mark.parametrize('motif', ['Congé payé', 'Congé conventionnel'])
+def test_conge_existant_reste_bloquant_meme_avec_maladie(admin_client, db, sample_users, motif):
+    fid = _ferie(db)
+    for cible, type_absence in (('salarie_id', 'Arrêt maladie'), ('responsable_id', motif)):
+        response = admin_client.post('/absences', data={'user_id': sample_users[cible],
+            'motif': type_absence, 'date_debut': '2026-11-09', 'date_fin': '2026-11-13'}, follow_redirects=True)
+        assert 'enregistrée avec succès' in response.get_data(as_text=True)
+    avant = _etat_absences_et_compteurs(db)
+    assert 'aucun décompte existant' in _designer(admin_client, fid).get_data(as_text=True)
+    assert db.execute('SELECT solidarite FROM jours_feries').fetchone()[0] == 0
+    assert _etat_absences_et_compteurs(db) == avant
+
+
+@pytest.mark.parametrize('origine', ['Congé payé', 'Congé conventionnel', 'recup'])
+@pytest.mark.parametrize('statut', ['en_attente_direction', 'validee', 'refusee'])
+def test_statut_demande_existante_preserve(admin_client, db, sample_users, origine, statut):
+    fid = _ferie(db)
+    if origine == 'recup':
+        db.execute('''INSERT INTO demandes_recup(user_id,date_debut,date_fin,nb_jours,nb_heures,statut)
+            VALUES(?,'2026-11-09','2026-11-13',4,28,?)''', (sample_users['salarie_id'], statut))
+    else:
+        db.execute('''INSERT INTO demandes_conges(user_id,type_conge,date_debut,date_fin,nb_jours,statut)
+            VALUES(?,?,'2026-11-09','2026-11-13',4,?)''', (sample_users['salarie_id'], origine, statut))
+    db.commit()
+    avant = _etat_absences_et_compteurs(db)
+    response = _designer(admin_client, fid).get_data(as_text=True)
+    assert ('désignée' if statut == 'refusee' else 'aucun décompte existant') in response
+    assert db.execute('SELECT solidarite FROM jours_feries').fetchone()[0] == (statut == 'refusee')
+    assert _etat_absences_et_compteurs(db) == avant
+
+
+@pytest.mark.parametrize('saisie', ['recup_journee', 'recup_partielle', 'maladie_forfait'])
+def test_saisie_explicite_sur_ferie_reste_bloquante(admin_client, db, sample_users, saisie):
+    fid = _ferie(db)
+    if saisie == 'maladie_forfait':
+        db.execute("""INSERT INTO presence_forfait_jour(user_id,date,type_journee)
+            VALUES(?,'2026-11-11','maladie')""", (sample_users['directeur_id'],))
+        message = 'Une saisie forfait jours existe'
+    else:
+        db.execute("""INSERT INTO heures_reelles(user_id,date,type_saisie)
+            VALUES(?,'2026-11-11',?)""", (sample_users['salarie_id'], saisie))
+        message = 'Une récupération figure déjà'
+    db.commit()
+    avant = _etat_absences_et_compteurs(db)
+    assert message in _designer(admin_client, fid).get_data(as_text=True)
+    assert db.execute('SELECT solidarite FROM jours_feries').fetchone()[0] == 0
+    assert _etat_absences_et_compteurs(db) == avant
+
+
+def test_suppression_ferie_maladie_reste_protegee(admin_client, db, sample_users):
+    fid = _ferie(db)
+    _designer(admin_client, fid)
+    response = admin_client.post('/absences', data={'user_id': sample_users['salarie_id'],
+        'motif': 'Arrêt maladie', 'date_debut': '2026-11-09', 'date_fin': '2026-11-13'}, follow_redirects=True)
+    assert 'enregistrée avec succès' in response.get_data(as_text=True)
+    avant = _etat_absences_et_compteurs(db)
+    response = admin_client.post('/gestion_jours_feries', data={
+        'action': 'supprimer', 'ferie_id': fid}, follow_redirects=True)
+    assert 'aucun décompte existant' in response.get_data(as_text=True)
+    assert db.execute('SELECT solidarite FROM jours_feries WHERE id=?', (fid,)).fetchone()[0] == 1
+    assert _etat_absences_et_compteurs(db) == avant
+
+
 def test_session_revoquee_ne_peut_designer(admin_client, db, sample_users):
     fid=_ferie(db)
     db.execute('UPDATE users SET actif=0 WHERE id=?',(sample_users['directeur_id'],));db.commit()

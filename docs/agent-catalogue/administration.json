@@ -333,7 +333,8 @@
         "Une période ajoutée ne peut avoir sa fin avant son début.",
         "Les doublons de date fériée sont refusés par la contrainte d’unicité.",
         "La réconciliation des jours fériés conserve les saisies effectives du forfait jour avec horaires ou commentaire.",
-        "La reconfiguration ou suppression d’une solidarité déjà couverte par une demande/absence ou une saisie concernée est refusée : aucun décompte historique recalculé silencieusement.",
+        "La désignation, le retrait ou le remplacement reste refusé pour une absence CP/CC, une demande non refusée ou une saisie concernée sur l’ancienne ou nouvelle date ; une absence hors CP/CC englobante (notamment maladie) ne bloque pas et reste inchangée, sans recalcul ni CP/CC automatique.",
+        "Supprimer le férié désigné lui-même reste refusé pour toute absence englobante, même maladie : contrairement au seul changement de solidarité, cette suppression affecterait tous les motifs.",
         "Aucune désignation automatique du 15 août ni report automatique lorsqu’il tombe le week-end ; les autres jours fériés et le quota de repos forfait sont inchangés."
       ],
       "extension_points": [
