@@ -276,12 +276,14 @@
       "example_requests": [
         "ajouter les vacances scolaires",
         "déclarer un jour férié",
-        "corriger les périodes de vacances"
+        "corriger les périodes de vacances",
+        "désigner la journée de solidarité"
       ],
       "capabilities": [
         "Ajout et suppression des périodes de vacances scolaires avec dates de début et de fin ; affichage de la durée inclusive.",
         "Ajout et suppression des jours fériés ; affichage des dates à partir de l’année courante avec jour de semaine.",
-        "Lors de l’ajout d’un jour férié, suppression des journées forfait jour préremplies comme travaillées sur cette date lorsqu’elles ne contiennent ni horaire ni commentaire."
+        "Lors de l’ajout d’un jour férié, suppression des journées forfait jour préremplies comme travaillées sur cette date lorsqu’elles ne contiennent ni horaire ni commentaire.",
+        "Désigner ou retirer un férié du lundi au vendredi comme journée de solidarité, au maximum un par année, avec remplacement explicite ; congés CP/CC autorisés, récupération interdite."
       ],
       "entry_points": [
         "admin_bp.gestion_vacances",
@@ -293,7 +295,10 @@
         ],
         "service_files": [
           "utils.py",
-          "database.py"
+          "database.py",
+          "solidarite.py",
+          "schema_solidarite.py",
+          "migrations/0081_journee_solidarite.py"
         ],
         "templates": [
           "templates/gestion_vacances.html",
@@ -307,9 +312,12 @@
         "tests": [
           "tests/test_auth.py",
           "tests/test_administration_acces.py",
-          "tests/test_forfait_jour.py"
+          "tests/test_forfait_jour.py",
+          "tests/test_solidarite.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/journee-solidarite.md"
+        ]
       },
       "access": {
         "summary": "Consultation et mutations réservées aux profils directeur et comptable.",
@@ -324,7 +332,9 @@
       "invariants": [
         "Une période ajoutée ne peut avoir sa fin avant son début.",
         "Les doublons de date fériée sont refusés par la contrainte d’unicité.",
-        "La réconciliation des jours fériés conserve les saisies effectives du forfait jour avec horaires ou commentaire."
+        "La réconciliation des jours fériés conserve les saisies effectives du forfait jour avec horaires ou commentaire.",
+        "La reconfiguration ou suppression d’une solidarité déjà couverte par une demande/absence ou une saisie concernée est refusée : aucun décompte historique recalculé silencieusement.",
+        "Aucune désignation automatique du 15 août ni report automatique lorsqu’il tombe le week-end ; les autres jours fériés et le quota de repos forfait sont inchangés."
       ],
       "extension_points": [
         "Réutiliser utils.get_type_periode et les tables de calendrier pour toute distinction scolaire/vacances.",

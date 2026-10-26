@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash
 from datetime import datetime
 from sessions_securite import verifier_action
 from database import get_db
+from solidarite import designer_solidarite, verifier_date_solidarite_libre
 from blueprints.delegations import (
     MISSIONS, MISSIONS_MAP, save_delegation,
     get_salle_recurrence_user_ids, save_salle_recurrence_delegations,
@@ -641,55 +642,61 @@ def gestion_jours_feries():
     
     if request.method == 'POST':
         action = request.form.get('action')
-        
-        if action == 'ajouter':
-            date = request.form.get('date')
-            libelle = request.form.get('libelle')
-            
-            if not date or not libelle:
-                flash('Date et libellé obligatoires', 'error')
-                return redirect(url_for('admin_bp.gestion_jours_feries'))
-            
-            annee = int(date[:4])
-            
-            conn = get_db()
-            try:
-                conn.execute('''
-                    INSERT INTO jours_feries (annee, date, libelle)
-                    VALUES (?, ?, ?)
-                ''', (annee, date, libelle))
-                conn.commit()
-                flash(f'Jour férié ajouté : {libelle}', 'success')
-            except sqlite3.IntegrityError:
-                flash('Ce jour férié existe déjà', 'error')
+        conn = get_db()
+        try:
+            conn.execute('BEGIN IMMEDIATE')
+            refus = verifier_action(conn)
+            if refus is not None:
+                return refus
+            if session.get('profil') not in ('directeur', 'comptable'):
+                flash('Accès non autorisé', 'error')
+                return redirect(url_for('dashboard_bp.dashboard'))
+            if action == 'ajouter':
+                date_brute = request.form.get('date', '')
+                libelle = request.form.get('libelle', '').strip()
+                try:
+                    date_obj = datetime.strptime(date_brute, '%Y-%m-%d')
+                except ValueError:
+                    raise ValueError('Date invalide.') from None
+                if not libelle:
+                    raise ValueError('Date et libellé obligatoires.')
+                date_iso = date_obj.date().isoformat()
+                conn.execute('INSERT INTO jours_feries (annee, date, libelle) VALUES (?, ?, ?)',
+                             (date_obj.year, date_iso, libelle))
+                # Préserver les saisies réelles du forfait ; seul le préremplissage
+                # sans horaire ni commentaire est réconcilié à l'ajout d'un férié.
+                conn.execute("""DELETE FROM presence_forfait_jour WHERE date = ?
+                    AND type_journee = 'travaille' AND (commentaire IS NULL OR commentaire = '')
+                    AND matin_debut IS NULL AND matin_fin IS NULL
+                    AND aprem_debut IS NULL AND aprem_fin IS NULL""", (date_iso,))
+                message = f'Jour férié ajouté : {libelle}'
+            elif action == 'solidarite':
+                actif = designer_solidarite(conn, request.form.get('ferie_id', type=int))
+                message = ('Journée de solidarité désignée : congé payé ou conventionnel, sans récupération.'
+                           if actif else 'Désignation de solidarité retirée.')
+            elif action == 'supprimer':
+                ferie_id = request.form.get('ferie_id', type=int)
+                ferie = conn.execute('SELECT * FROM jours_feries WHERE id = ?', (ferie_id,)).fetchone()
+                if not ferie:
+                    raise ValueError('Jour férié introuvable.')
+                if ferie['solidarite']:
+                    verifier_date_solidarite_libre(conn, ferie['date'])
+                conn.execute('DELETE FROM jours_feries WHERE id = ?', (ferie_id,))
+                message = 'Jour férié supprimé'
             else:
-                # Réconcilier le calendrier forfait jour : un jour férié n'est
-                # pas « travaillé ». Si l'année avait été pré-remplie avant la
-                # déclaration de ce férié, on retire les journées « travaillé »
-                # générées par défaut sur cette date (sans valeur réelle), tout
-                # en préservant toute saisie effective (horaires ou commentaire).
-                conn.execute('''
-                    DELETE FROM presence_forfait_jour
-                    WHERE date = ?
-                      AND type_journee = 'travaille'
-                      AND (commentaire IS NULL OR commentaire = '')
-                      AND matin_debut IS NULL AND matin_fin IS NULL
-                      AND aprem_debut IS NULL AND aprem_fin IS NULL
-                ''', (date,))
-                conn.commit()
-            finally:
-                conn.close()
-        
-        elif action == 'supprimer':
-            ferie_id = request.form.get('ferie_id', type=int)
-            conn = get_db()
-            conn.execute('DELETE FROM jours_feries WHERE id = ?', (ferie_id,))
+                raise ValueError('Action invalide.')
             conn.commit()
+            flash(message, 'success')
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash('Ce jour férié existe déjà ou une solidarité est déjà désignée pour cette année.', 'error')
+        except ValueError as exc:
+            conn.rollback()
+            flash(str(exc), 'error')
+        finally:
             conn.close()
-            flash('Jour férié supprimé', 'success')
-        
         return redirect(url_for('admin_bp.gestion_jours_feries'))
-    
+
     # GET : afficher la liste
     conn = get_db()
     annee_actuelle = datetime.now().year

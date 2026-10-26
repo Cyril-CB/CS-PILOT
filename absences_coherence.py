@@ -139,6 +139,9 @@ def retirer_projection(conn, absence_id, uid, debut, fin):
                 restaurations.append({'date': jour, 'absence_id': r['id'], 'calendrier': table})
             elif table == 'heures_reelles':
                 conn.execute('DELETE FROM heures_reelles WHERE user_id=? AND date=?', (uid, jour))
+            elif conn.execute('SELECT 1 FROM jours_feries WHERE date=? AND solidarite=1', (jour,)).fetchone():
+                # Avant le CP/CC, ce férié n'était pas prérempli en travaillé.
+                conn.execute('DELETE FROM presence_forfait_jour WHERE user_id=? AND date=?', (uid, jour))
             else:
                 conn.execute('''UPDATE presence_forfait_jour SET type_journee='travaille', commentaire=NULL,
                     matin_debut=NULL,matin_fin=NULL,aprem_debut=NULL,aprem_fin=NULL WHERE user_id=? AND date=?''', (uid, jour))

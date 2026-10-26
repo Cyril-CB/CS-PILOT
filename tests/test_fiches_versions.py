@@ -455,7 +455,8 @@ def test_routes_indirectes_preservent_fiche_et_pieces(
     assert {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file() and p.suffix == '.pdf'} == fichiers_avant
 
 
-def test_migration_historique_idempotente(app, db, sample_users, fiche_complete, monkeypatch):
+@pytest.mark.parametrize('avant_solidarite', [False, True])
+def test_migration_historique_idempotente(app, db, sample_users, fiche_complete, monkeypatch, avant_solidarite):
     """Ancien schéma réel, signatures préservées, aucune précision inventée."""
     import importlib
     import sqlite3
@@ -472,6 +473,12 @@ def test_migration_historique_idempotente(app, db, sample_users, fiche_complete,
         for table in ('fiches_versions', 'fiches_evenements', 'fiches_a_recalculer'):
             old.execute(f'DROP TABLE {table}')
         old.execute("DELETE FROM schema_migrations WHERE version='0065'")
+        if avant_solidarite:
+            # Une base réellement antérieure à 0081 n'a pas encore ce champ.
+            old.execute('DROP INDEX idx_solidarite_annee')
+            old.execute('ALTER TABLE jours_feries DROP COLUMN solidarite')
+            old.execute("DELETE FROM schema_migrations WHERE version='0081'")
+        old.execute("INSERT INTO jours_feries(annee,date,libelle) VALUES(2026,'2026-08-14','Férié de reprise')")
         old.execute("INSERT INTO validations (user_id,annee,mois,validation_responsable,date_responsable,bloque) "
                     "VALUES (?,2026,8,'Ancienne responsable','2026-09-01 08:00:00',0)", (uid,))
         old.execute("INSERT INTO validations (user_id,annee,mois,validation_responsable,validation_directeur,bloque) "
@@ -505,6 +512,23 @@ def test_migration_historique_idempotente(app, db, sample_users, fiche_complete,
         assert ouverte['version_responsable_id'] is None
         assert fermee['bloque'] and fermee['validation_directeur'] == 'Ancienne direction'
         assert fermee['version_courante_id'] and fermee['version_directeur_id'] is None
+        import json
+        contenu_repris = json.loads(old.execute(
+            'SELECT contenu FROM fiches_versions WHERE id=?', (ouverte['version_courante_id'],),
+        ).fetchone()[0])
+        assert contenu_repris['jours_feries'] == {'2026-08-14': 'Férié de reprise'}
+        if avant_solidarite:
+            assert 'solidarite' not in {r[1] for r in old.execute('PRAGMA table_info(jours_feries)')}
+            upgrade_81 = importlib.import_module('migrations.0081_journee_solidarite').upgrade
+            upgrade_81(old)
+            old.commit()
+            assert old.execute('SELECT solidarite FROM jours_feries').fetchone()[0] == 0
+            # 0081 ne doit altérer ni l'instantané reconstruit ni les signatures.
+            upgrade(old)
+            old.commit()
+            assert [tuple(r) for r in old.execute('SELECT * FROM fiches_versions ORDER BY id')] == premieres_versions
+            assert [tuple(r) for r in old.execute('SELECT * FROM fiches_evenements ORDER BY id')] == premiers_evenements
+            assert [tuple(r) for r in old.execute('SELECT * FROM heures_reelles ORDER BY id')] == anciennes_heures
     finally:
         old.close()
     signer(client_role(app, sample_users, 'directeur'), uid)

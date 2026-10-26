@@ -165,11 +165,11 @@ def calendrier_forfait_jour():
     
     # Récupérer les jours fériés du mois
     jours_feries = conn.execute('''
-        SELECT date, libelle FROM jours_feries
+        SELECT date, libelle, solidarite FROM jours_feries
         WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
     ''', (str(annee), f'{mois:02d}')).fetchall()
     
-    jours_feries_dict = {f['date']: f['libelle'] for f in jours_feries}
+    jours_feries_dict = {f['date']: f['libelle'] + (' — Journée de solidarité' if f['solidarite'] else '') for f in jours_feries}
     
     conn.close()
     

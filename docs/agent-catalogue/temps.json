@@ -113,7 +113,8 @@
           "app_options.py",
           "fiches_db.py",
           "fiches_versions.py",
-          "absences_coherence.py"
+          "absences_coherence.py",
+          "solidarite.py"
         ],
         "templates": [
           "templates/saisie_heures.html"
@@ -134,11 +135,13 @@
           "tests/test_pause_remuneree.py",
           "tests/test_creneau_soir.py",
           "tests/test_coherence_rh.py",
-          "tests/test_fiches_versions.py"
+          "tests/test_fiches_versions.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md",
-          "docs/coherence-rh.md"
+          "docs/coherence-rh.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -161,7 +164,8 @@
         "Une projection d’absence ou récupération encore active ne peut pas être remplacée par une saisie manuelle : vérification avant commit et rollback intégral.",
         "La pause rémunérée ne compte que si les créneaux matin/après-midi complets délimitent une pause positive ; elle n’est pas conservée pour déclaration conforme ou récupération complète.",
         "Désactiver l’option déclaration conforme préserve une ancienne déclaration lors d’une édition sans nouveaux horaires.",
-        "Écriture des heures, anomalies et historique dans une seule transaction contrôlée."
+        "Écriture des heures, anomalies et historique dans une seule transaction contrôlée.",
+        "La saisie directe d’une journée de récupération est refusée sur le férié désigné comme journée de solidarité ; un CP/CC doit passer par le circuit des congés ou absences."
       ],
       "extension_points": [
         "Réutiliser calculer_heures_reelles_jour et duree_pause_meridienne au lieu de sommer seulement deux créneaux.",
@@ -485,7 +489,8 @@
           "tests/test_coherence_rh_versions.py"
         ],
         "docs": [
-          "docs/fiches-mensuelles.md"
+          "docs/fiches-mensuelles.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -504,7 +509,8 @@
         "Ne jamais utiliser connexion brute, autocommit ou COMMIT SQL direct pour une écriture métier ; un seul conn.commit() après les écritures liées.",
         "La nouvelle version d’une fiche ouverte conserve les anciens événements mais invalide les accords courants.",
         "Une correction antérieure peut modifier les soldes de plusieurs mois verrouillés ; le refus annule aussi demandes, compteurs et historique.",
-        "Les états anciens sont conservés sans inventer une preuve des valeurs au jour des signatures historiques."
+        "Les états anciens sont conservés sans inventer une preuve des valeurs au jour des signatures historiques.",
+        "La reconstruction historique de 0065 fonctionne avant 0081 : une colonne solidarite absente équivaut à aucun férié désigné, sans modifier le schéma pendant la lecture ni réécrire les migrations livrées."
       ],
       "extension_points": [
         "Toute nouvelle table alimentant calculer_contenu doit rejoindre les triggers de fiches_versions.py et TABLES_CONTENU de fiches_db.py, avec preuve de rollback.",
@@ -624,7 +630,8 @@
         "Affichage des soldes CP/CC et avertissement d’anticipation sans rejet automatique, affiché seulement une fois la demande enregistrée ; pour la direction au forfait jours, soldes CP, CC et repos forfait issus de presence_forfait_jour via calculer_stats_forfait_jour (année en cours, indiquée sur le formulaire) et alerte calculée par _projection_conge sous le verrou d’écriture de la demande : un quota par année civile pour une demande à cheval sur deux années, jours déjà comptés dans le même compteur non imputés une seconde fois, type Forfait jour comparé au solde de repos forfait et libellé du quota dépassé propre au type.",
         "Statut initial en attente responsable, ou directement direction pour le profil responsable.",
         "Les demandes du directeur sont auto-validées, créent une absence et se reportent immédiatement au calendrier forfait.",
-        "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures."
+        "Suivi personnel, suppression des seules demandes encore en attente et PDF avec type, dates, nombre de jours, motif, statut, nom du valideur et espaces de signatures.",
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
       ],
       "entry_points": [
         "recup_bp.demande_conge",
@@ -641,7 +648,8 @@
           "absences_coherence.py",
           "sessions_securite.py",
           "email_service.py",
-          "blueprints/absences.py"
+          "blueprints/absences.py",
+          "solidarite.py"
         ],
         "templates": [
           "templates/demande_conge.html",
@@ -660,10 +668,12 @@
           "tests/test_demandes_conges.py",
           "tests/test_demande_conge_direction.py",
           "tests/test_profil_valideur_conges.py",
-          "tests/test_coherence_rh.py"
+          "tests/test_coherence_rh.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
-          "docs/coherence-rh.md"
+          "docs/coherence-rh.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -683,8 +693,8 @@
         "La demande directeur et ses reports sont une opération atomique ; un conflit annule l’ensemble.",
         "Une demande validée/refusée reste conservée ; la suppression personnelle ne permet pas de rétablir les compteurs après validation.",
         "Le PDF distingue le libellé Comptable ou Direction selon profil_validation_direction ; il ne constitue pas une signature électronique du Comité de présidence.",
-        "Le décompte de jours ouvrés exclut les week-ends et les jours fériés configurés.",
-        "L’alerte de la direction impute exactement les jours que le report marquera (lundi à vendredi hors fériés, type remplacé par INSERT OR REPLACE) ; l’aperçu de Mon espace reproduit ce calcul et doit évoluer avec lui."
+        "Le décompte des congés exclut les week-ends et fériés, sauf la solidarité désignée imputable en CP/CC.",
+        "L’alerte de la direction impute exactement les jours que le report marquera (lundi à vendredi hors fériés sauf solidarité CP/CC, type remplacé par INSERT OR REPLACE) ; l’aperçu de Mon espace reproduit ce calcul et doit évoluer avec lui."
       ],
       "extension_points": [
         "Étendre TYPES_CONGE et les règles de report/compteurs existantes ensemble si un nouveau type de congé est décidé, y compris LIBELLES_QUOTA_FORFAIT et MOTIF_VERS_TYPE_FORFAIT."
@@ -716,7 +726,8 @@
         "Congé approuvé : création d’absence, report calendrier horaire ou forfait et actualisation des compteurs via les helpers Absences.",
         "Récupération approuvée : création des journées ou des horaires restants, conservation de la provenance et journal d’application.",
         "Historique global des décisions validées/refusées, statistiques et heures supplémentaires payées déduites du compteur.",
-        "Notifications de décision seulement après commit réussi, selon configuration et autorisation email du salarié."
+        "Notifications de décision seulement après commit réussi, selon configuration et autorisation email du salarié.",
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
       ],
       "entry_points": [
         "recup_bp.validation_demandes_recup",
@@ -733,7 +744,8 @@
           "sessions_securite.py",
           "utils.py",
           "email_service.py",
-          "blueprints/absences.py"
+          "blueprints/absences.py",
+          "solidarite.py"
         ],
         "templates": [
           "templates/validation_demandes_recup.html",
@@ -758,11 +770,13 @@
           "tests/test_recup_partielle.py",
           "tests/test_coherence_rh.py",
           "tests/test_coherence_rh_versions.py",
-          "tests/test_perimetres_sessions.py"
+          "tests/test_perimetres_sessions.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
-          "docs/fiches-mensuelles.md"
+          "docs/fiches-mensuelles.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -782,7 +796,8 @@
         "Décision, calendrier, compteurs, origine et journal sont atomiques ; aucun succès final si le report échoue.",
         "UPDATE conditionné par l’état et verrou transactionnel empêchent la double application concurrente.",
         "Conflit d’absence/récupération, planning absent ou fiche verrouillée laissent la demande dans son état antérieur ; un intervalle de plusieurs mois est entièrement refusé si nécessaire.",
-        "Le circuit des demandes n’est pas le circuit des fiches : direction/comptable peuvent finaliser une demande sans accord responsable préalable."
+        "Le circuit des demandes n’est pas le circuit des fiches : direction/comptable peuvent finaliser une demande sans accord responsable préalable.",
+        "Une récupération complète ou partielle couvrant la solidarité est refusée avant validation et report ; aucun effet partiel."
       ],
       "extension_points": [
         "Réutiliser _creer_absence_depuis_conge, _reporter_recup_partielle et verifier_disponibilite pour prolonger les effets métier existants.",
@@ -811,7 +826,8 @@
         "Contrôle des chevauchements d’absences et récupérations déjà appliquées sur un intervalle normalisé.",
         "Origine structurée par calendrier, salarié et date : absence_id OU demande_recup_id et contenu exact reporté.",
         "Vérification avant commit des journées modifiées dans heures_reelles ou presence_forfait_jour.",
-        "Suppression ciblée d’une projection et restauration d’une unique absence historique restante ; signalement limité à 100 paires de chevauchements historiques."
+        "Suppression ciblée d’une projection et restauration d’une unique absence historique restante ; signalement limité à 100 paires de chevauchements historiques.",
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
       ],
       "entry_points": [],
       "implementation": {
@@ -820,7 +836,8 @@
           "absences_coherence.py",
           "fiches_db.py",
           "database.py",
-          "blueprints/absences.py"
+          "blueprints/absences.py",
+          "solidarite.py"
         ],
         "templates": [],
         "tables": [
@@ -836,10 +853,12 @@
         "tests": [
           "tests/test_coherence_rh.py",
           "tests/test_coherence_rh_versions.py",
-          "tests/test_coherence_rh_migration.py"
+          "tests/test_coherence_rh_migration.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
-          "docs/coherence-rh.md"
+          "docs/coherence-rh.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -888,7 +907,8 @@
         "Saisir le type de journée, commentaire et horaires facultatifs matin/après-midi, y compris dans le futur.",
         "Afficher statistiques annuelles et soldes travail/CP/CC/repos forfait.",
         "Rapport PDF mensuel détaillant types, commentaires, totaux, heures facultatives renseignées et espaces de signature directeur/Comité de présidence.",
-        "Les congés et absences transmis par les circuits RH alimentent également ce calendrier."
+        "Les congés et absences transmis par les circuits RH alimentent également ce calendrier.",
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
       ],
       "entry_points": [
         "forfait_bp.dashboard_forfait_jour",
@@ -902,7 +922,8 @@
         "service_files": [
           "utils.py",
           "absences_coherence.py",
-          "fiches_db.py"
+          "fiches_db.py",
+          "solidarite.py"
         ],
         "templates": [
           "templates/dashboard_forfait_jour.html",
@@ -918,11 +939,13 @@
           "tests/test_forfait_jour.py",
           "tests/test_absences_forfait_jour.py",
           "tests/test_demande_conge_direction.py",
-          "tests/test_coherence_rh.py"
+          "tests/test_coherence_rh.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
-          "docs/investigation-forfait-jours-direction-2026.md"
+          "docs/investigation-forfait-jours-direction-2026.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {

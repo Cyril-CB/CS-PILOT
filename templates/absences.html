@@ -62,7 +62,7 @@
                     <div class="jours-ouvres-display" id="joursOuvresDisplay">
                         <span id="joursOuvresValue">-</span> jour(s) ouvré(s)
                     </div>
-                    <p class="help-text">Calculé automatiquement (weekends et jours fériés déduits)</p>
+                    <p class="help-text">Calculé automatiquement (hors week-ends et fériés, sauf solidarité en CP/CC)</p>
                 </div>
             </div>
 
@@ -123,6 +123,7 @@
     <!-- Liste des absences -->
     {% if absences_list %}
     <div class="section">
+        <div class="table-responsive">
         <table class="data-table absences-table">
             <thead>
                 <tr>
@@ -169,6 +170,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </div>
     {% else %}
     <div class="no-data" style="margin-top: 1rem;">
@@ -196,7 +198,7 @@ function calculerJoursOuvres() {
     }
 
     // Appel API pour calculer en tenant compte des jours feries
-    fetch('{{ url_for("absences_bp.api_jours_ouvres") }}?date_debut=' + dateDebut + '&date_fin=' + dateFin)
+    fetch('{{ url_for("absences_bp.api_jours_ouvres") }}?date_debut=' + dateDebut + '&date_fin=' + dateFin + '&motif=' + encodeURIComponent(document.getElementById('motif').value))
         .then(function(response) { return response.json(); })
         .then(function(data) {
             display.textContent = data.jours_ouvres;
@@ -209,6 +211,7 @@ function calculerJoursOuvres() {
 
 document.getElementById('date_debut').addEventListener('change', calculerJoursOuvres);
 document.getElementById('date_fin').addEventListener('change', calculerJoursOuvres);
+document.getElementById('motif').addEventListener('change', calculerJoursOuvres);
 
 // Affichage des compteurs conges
 function chargerCompteursConges() {

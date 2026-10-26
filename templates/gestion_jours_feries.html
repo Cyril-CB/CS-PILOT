@@ -3,16 +3,22 @@
 {% block title %}Gestion des jours fériés{% endblock %}
 
 {% block content %}
+<style>
+.feries-ajout { display: grid; grid-template-columns: 1fr 2fr auto; gap: 1rem; align-items: end; }
+.feries-table { overflow-x: auto; }
+.feries-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+@media (max-width: 600px) { .feries-ajout { grid-template-columns: 1fr; } }
+</style>
 <div class="form-container">
     <h1>Gestion des jours fériés</h1>
-    <p class="subtitle">Configuration annuelle des jours fériés pour le calcul du forfait jour</p>
+    <p class="subtitle">Configuration annuelle des jours fériés et de la journée de solidarité</p>
     
     <div class="section">
         <h2>Ajouter un jour férié</h2>
         <form method="POST" action="{{ url_for('admin_bp.gestion_jours_feries') }}">
             <input type="hidden" name="action" value="ajouter">
             
-            <div style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 1rem; align-items: end;">
+            <div class="feries-ajout">
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="date">Date *</label>
                     <input type="date" id="date" name="date" required>
@@ -32,7 +38,7 @@
     <div class="section">
         <h2>Jours fériés configurés</h2>
         
-        <table class="data-table">
+        <div class="feries-table"><table class="data-table">
             <thead>
                 <tr>
                     <th>Année</th>
@@ -48,21 +54,29 @@
                     <td><strong>{{ f.annee }}</strong></td>
                     <td>{{ f.date }}</td>
                     <td>{{ f.jour_semaine }}</td>
-                    <td>{{ f.libelle }}</td>
-                    <td>
+                    <td>{{ f.libelle }}{% if f.solidarite %}<br><strong>Journée de solidarité</strong>{% endif %}</td>
+                    <td><div class="feries-actions">
+                        {% if f.jour_semaine not in ['Samedi', 'Dimanche'] %}
+                        <form method="POST" action="{{ url_for('admin_bp.gestion_jours_feries') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="solidarite">
+                            <input type="hidden" name="ferie_id" value="{{ f.id }}">
+                            <button type="submit" class="btn btn-secondary btn-sm">{{ 'Retirer la solidarité' if f.solidarite else 'Désigner comme solidarité' }}</button>
+                        </form>
+                        {% endif %}
                         <form method="POST" action="{{ url_for('admin_bp.gestion_jours_feries') }}" style="display: inline;">
                             <input type="hidden" name="action" value="supprimer">
                             <input type="hidden" name="ferie_id" value="{{ f.id }}">
                             <button type="submit" class="btn-icon" style="color: var(--danger);" 
-                                    onclick="return confirm('Supprimer ce jour férié ?')">
+                                    aria-label="Supprimer le jour férié {{ f.date }}" onclick="return confirm('Supprimer ce jour férié ?')">
                                 🗑️
                             </button>
                         </form>
-                    </td>
+                    </div></td>
                 </tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
     </div>
     {% else %}
     <div class="no-data">
@@ -71,23 +85,16 @@
     {% endif %}
     
     <div class="help-box">
-        <h4>Jours fériés français 2026</h4>
-        <ul>
-            <li>1er janvier - Jour de l'an (mercredi)</li>
-            <li>21 avril - Lundi de Pâques</li>
-            <li>1er mai - Fête du Travail (vendredi)</li>
-            <li>8 mai - Victoire 1945 (vendredi)</li>
-            <li>29 mai - Ascension (vendredi)</li>
-            <li>9 juin - Lundi de Pentecôte</li>
-            <li>14 juillet - Fête nationale (mardi)</li>
-            <li>15 août - Assomption (samedi)</li>
-            <li>1er novembre - Toussaint (dimanche)</li>
-            <li>11 novembre - Armistice 1918 (mercredi)</li>
-            <li>25 décembre - Noël (vendredi)</li>
-        </ul>
-        <p><strong>Note :</strong> Seuls les jours fériés tombant du lundi au vendredi sont comptabilisés dans le forfait jour.</p>
+        <h4>Journée de solidarité</h4>
+        <p>Désignez au maximum un férié du lundi au vendredi par année.
+           Le 15 août n'est pas sélectionné automatiquement : vous pouvez choisir un autre férié selon l'année.</p>
+        <p>Ce jour compte pour un <strong>congé payé</strong> ou un <strong>congé conventionnel</strong>,
+           y compris dans une période de congés plus longue. Il ne peut pas être pris en récupération.</p>
+        <p>Désignez-le avant les demandes et absences concernées. Une date déjà utilisée ne peut pas être
+           modifiée sans corriger ces demandes ou absences ; aucun compteur existant n'est recalculé automatiquement.</p>
+        <p>Les autres jours fériés et le quota de repos forfait restent inchangés.</p>
     </div>
-    
+
     <div class="actions">
         <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">← Retour</a>
     </div>

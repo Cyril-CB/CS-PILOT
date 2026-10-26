@@ -16,6 +16,7 @@ Application web de gestion RH, comptable et operationnelle, conçue pour les str
 - Saisie des heures reelles et heures supplementaires
 - Calcul automatique du solde de recuperation
 - Calendrier des jours feries et vacances scolaires
+- [Journée de solidarité annuelle](docs/journee-solidarite.md) : férié désigné pour un congé payé ou conventionnel, sans récupération
 - Vue calendrier mensuelle
 
 ### Circuit de validation
