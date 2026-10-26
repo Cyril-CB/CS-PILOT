@@ -680,7 +680,7 @@ def gestion_jours_feries():
                 if not ferie:
                     raise ValueError('Jour férié introuvable.')
                 if ferie['solidarite']:
-                    verifier_date_solidarite_libre(conn, ferie['date'])
+                    verifier_date_solidarite_libre(conn, ferie['date'], suppression_ferie=True)
                 conn.execute('DELETE FROM jours_feries WHERE id = ?', (ferie_id,))
                 message = 'Jour férié supprimé'
             else:

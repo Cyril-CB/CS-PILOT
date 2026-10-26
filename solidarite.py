@@ -38,13 +38,20 @@ def verifier_recuperation(conn, debut, fin):
         raise ConflitAbsence(MESSAGE_RECUP)
 
 
-def verifier_date_solidarite_libre(conn, jour):
+def verifier_date_solidarite_libre(conn, jour, *, suppression_ferie=False):
     # Une reconfiguration ne doit pas rendre caducs des nombres de jours
     # déjà enregistrés ni une récupération active. Aucun recalcul silencieux.
     for table in ('absences', 'demandes_conges', 'demandes_recup'):
         condition = " AND statut != 'refusee'" if table != 'absences' else ''
+        parametres = (jour, jour)
+        if table == 'absences' and not suppression_ferie:
+            # Seuls les CP/CC incluent la solidarité dans leur décompte.
+            # Une maladie englobante garde les mêmes jours et reports.
+            # Supprimer le férié, en revanche, affecterait tous les motifs.
+            condition = ' AND motif IN (?, ?)'
+            parametres += CONGES_SOLIDARITE
         if conn.execute(f'SELECT 1 FROM {table} WHERE date_debut <= ? AND date_fin >= ?{condition} LIMIT 1',
-                        (jour, jour)).fetchone():
+                        parametres).fetchone():
             raise ValueError('Une absence ou une demande couvre cette date. Corrigez-la avant de changer la journée de solidarité ; aucun décompte existant n’a été modifié.')
     if conn.execute("SELECT 1 FROM heures_reelles WHERE date = ? AND type_saisie IN ('recup_journee', 'recup_partielle') LIMIT 1", (jour,)).fetchone():
         raise ValueError('Une récupération figure déjà à cette date. Corrigez-la avant de désigner la journée de solidarité.')

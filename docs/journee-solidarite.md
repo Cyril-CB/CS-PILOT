@@ -11,11 +11,19 @@ Le 15 août n'est jamais désigné ni reporté automatiquement. S'il tombe le
 week-end, choisissez le férié de remplacement retenu pour cette année. Les
 autres fériés, le calendrier général et le quota de repos forfait ne changent pas.
 
-Définir cette date **avant** les demandes/absences concernées. Une demande ou
-absence couvrant l'ancienne ou la nouvelle date, une récupération saisie ou une
-saisie forfait explicite empêche la reconfiguration. Corriger les éléments
-signalés d'abord ; aucune demande, absence ou compteur n'est recalculé en masse.
-La suppression du férié désigné est protégée de la même façon.
+Définir cette date **avant** les demandes/absences de congés concernées. Une
+absence CP/CC ou une demande non refusée couvrant l'ancienne ou la nouvelle
+date, une récupération saisie ou une saisie forfait explicite empêche la
+reconfiguration. Corriger les éléments signalés d'abord ; aucune demande,
+absence ou compteur n'est recalculé en masse.
+
+Un **arrêt maladie englobant le férié** n'empêche pas sa désignation, son retrait
+ou son remplacement comme solidarité : comme les autres absences hors CP/CC,
+il continue à exclure ce férié. L'arrêt, ses jours, ses reports et les compteurs
+restent inchangés ; aucun CP/CC n'est posé automatiquement. Une saisie forfait
+explicite à cette date reste protégée. La suppression du **jour férié lui-même**
+lorsqu'il est désigné reste refusée pour toute absence englobante, même maladie,
+car elle modifierait le calendrier de tous les motifs.
 
 ## Poser le congé
 
@@ -72,7 +80,11 @@ nouvelle catégorie de fichier ou dépendance n'est ajoutée.
 
 `tests/test_solidarite.py` couvre configuration/droits/week-ends, compteur CP/CC,
 validation/idempotence/annulation, saisie manuelle, forfait, période englobante,
-refus des récupérations, conservation des dates utilisées et migration.
+refus des récupérations, conservation des dates utilisées et migration. Les
+arrêts maladie préexistants sont testés avant désignation puis retrait et
+remplacement, pour direction/comptabilité et salarié horaire/forfait, avec
+comparaison des absences, reports, demandes et soldes. Les CP/CC et demandes
+actives restent bloquants, même en présence d'un arrêt maladie d'un autre salarié.
 Les tests HTTP utilisent les bases temporaires des fixtures ; ils ne prouvent
 ni une mise à niveau ni un déploiement sur l'installation de production.
 
