@@ -489,7 +489,8 @@
           "tests/test_coherence_rh_versions.py"
         ],
         "docs": [
-          "docs/fiches-mensuelles.md"
+          "docs/fiches-mensuelles.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
@@ -508,7 +509,8 @@
         "Ne jamais utiliser connexion brute, autocommit ou COMMIT SQL direct pour une écriture métier ; un seul conn.commit() après les écritures liées.",
         "La nouvelle version d’une fiche ouverte conserve les anciens événements mais invalide les accords courants.",
         "Une correction antérieure peut modifier les soldes de plusieurs mois verrouillés ; le refus annule aussi demandes, compteurs et historique.",
-        "Les états anciens sont conservés sans inventer une preuve des valeurs au jour des signatures historiques."
+        "Les états anciens sont conservés sans inventer une preuve des valeurs au jour des signatures historiques.",
+        "La reconstruction historique de 0065 fonctionne avant 0081 : une colonne solidarite absente équivaut à aucun férié désigné, sans modifier le schéma pendant la lecture ni réécrire les migrations livrées."
       ],
       "extension_points": [
         "Toute nouvelle table alimentant calculer_contenu doit rejoindre les triggers de fiches_versions.py et TABLES_CONTENU de fiches_db.py, avec preuve de rollback.",

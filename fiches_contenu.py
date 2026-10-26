@@ -43,11 +43,18 @@ def calculer_contenu(conn, user_id, mois, annee, aujourdhui=date.max):
     for h in heures_rows:
         heures_reelles[h['date']] = dict(h)
 
+    # La migration 0065 reconstruit les fiches avec ce calcul avant que
+    # 0081 n'ajoute solidarite. Le champ absent équivaut alors à aucun choix,
+    # sans modifier le schéma ni les migrations historiques.
     jours_feries_rows = conn.execute('''
-        SELECT date, libelle, solidarite FROM jours_feries
+        SELECT * FROM jours_feries
         WHERE date >= ? AND date <= ?
     ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-    jours_feries = {f['date']: f['libelle'] + (' — Journée de solidarité' if f['solidarite'] else '') for f in jours_feries_rows}
+    jours_feries = {}
+    for row in jours_feries_rows:
+        ferie = dict(row)
+        jours_feries[ferie['date']] = ferie['libelle'] + (
+            ' — Journée de solidarité' if ferie.get('solidarite', 0) else '')
 
     # Périodes d'emploi : hors contrat, une journée n'est ni due ni à saisir.
     # Le planning théorique ne peut pas en tenir lieu — il n'a pas de fin de

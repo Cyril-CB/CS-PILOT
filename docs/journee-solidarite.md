@@ -57,6 +57,12 @@ sur l'année désignée. Schéma partagé entre installation neuve et migration,
 idempotent. Aucune date présélectionnée, reprise de congés ou transformation
 de compteur. Les lignes et colonnes préexistantes sont préservées.
 
+Le calcul partagé des fiches reste compatible avec un schéma sans la colonne
+`solidarite` : lors de la reprise historique par 0065, son absence signifie
+qu'aucun férié n'est désigné. La migration 0081 peut ensuite s'appliquer sans
+modifier les versions, événements, signatures ni heures reconstruits. Les
+migrations historiques restent inchangées.
+
 Le retour arrière refuse une désignation encore active ; sans désignation,
 il retire l'index et conserve la colonne additive afin de ne pas reconstruire
 la table. La sauvegarde couvre la table `jours_feries` existante ; aucune
@@ -74,10 +80,14 @@ ni une mise à niveau ni un déploiement sur l'installation de production.
 
 - Test de régression initial : demande CP sur un férié désigné refusée avant
   correctif, puis acceptée après ; 46 nouveaux cas dans `test_solidarite.py`.
-- Suite complète : **2 884 cas distincts réussis**, quatre lots de 721 cas
-  répartis par fichiers de tests et pondérés par leur nombre de cas, sans échec, erreur ou test
+- Suite complète après correction du P2 de reprise historique : **2 885 cas
+  distincts réussis**, quatre lots (722, 721, 721 et 721 cas) répartis par
+  fichiers de tests et pondérés par leur nombre de cas, sans échec, erreur ou test
   ignoré. L'union exacte des cas JUnit a été comparée à la collecte pytest.
-- Contrôle ciblé RH/forfait/saisie : 148 cas réussis ; après l'ajustement mobile
+- Reprise historique sans colonne `solidarite`, versions/signatures/heures
+  préservées et application ultérieure de 0081 : 106 tests ciblés réussis ;
+  régression reproduite en échec avant correctif, migrations livrées inchangées.
+- Contrôle ciblé RH/forfait/saisie initial : 148 cas réussis ; après l'ajustement mobile
   du tableau des absences, 126 cas de congés, absences et interface réussis.
 - Catalogue : 101 fonctionnalités, six domaines et 67 blueprints couverts.
 - Chromium isolé : 1 440 et 390 px, habillages flux et téléphone classique ;
