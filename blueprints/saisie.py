@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import datetime, timedelta
 import json
 from database import get_db
+from solidarite import verifier_recuperation
 from utils import (login_required, get_user_info, calculer_heures,
                     calculer_heures_reelles_jour, slot_horaire,
                     get_heures_theoriques_jour, get_type_periode, get_planning_valide_a_date,
@@ -192,6 +193,9 @@ def saisie_heures():
             pause_remuneree_val = 1 if request.form.get('pause_remuneree') == '1' else 0
         
         try:
+            conn.execute('BEGIN IMMEDIATE')
+            if type_saisie == 'recup_journee':
+                verifier_recuperation(conn, date, date)
             action = 'modification' if anciennes_donnees else 'creation'
             
             anciennes_valeurs = None
@@ -335,6 +339,7 @@ def saisie_heures():
             conn.commit()
             flash('Heures enregistrées avec succès', 'success')
         except Exception as e:
+            conn.rollback()
             flash(f'Erreur: {str(e)}', 'error')
         finally:
             conn.close()

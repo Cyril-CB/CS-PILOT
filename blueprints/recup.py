@@ -5,6 +5,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from datetime import date, datetime, timedelta
 from fiches_versions import FicheVerrouillee
 from database import get_db
+from solidarite import jours_absence, verifier_recuperation
 from absences_coherence import ConflitAbsence, verifier_disponibilite, memoriser_projection
 from blueprints.absences import MOTIF_VERS_TYPE_FORFAIT
 from sessions_securite import verifier_action
@@ -196,6 +197,8 @@ def _creer_demande_recup_partielle(motif_demande):
         statut_initial = 'en_attente_responsable'
 
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        verifier_recuperation(conn, date_jour, date_jour)
         conn.execute('''
             INSERT INTO demandes_recup
             (user_id, date_debut, date_fin, nb_jours, nb_heures,
@@ -316,6 +319,8 @@ def demande_recup():
         
         # Créer la demande
         try:
+            conn.execute('BEGIN IMMEDIATE')
+            verifier_recuperation(conn, date_debut, date_fin)
             conn.execute('''
                 INSERT INTO demandes_recup
                 (user_id, date_debut, date_fin, nb_jours, nb_heures, motif_demande, statut)
@@ -510,6 +515,8 @@ def validation_demandes_recup():
                             )
 
             elif action == 'valider':
+                if demande_type == 'recup':
+                    verifier_recuperation(conn, demande['date_debut'], demande['date_fin'])
                 # Valider selon le profil
                 if session.get('profil') == 'responsable':
                     # Responsable valide → passe à en_attente_direction (seulement si en_attente_responsable)
@@ -868,7 +875,7 @@ def _projection_conge(conn, user_id, profil, type_conge, date_debut, date_fin, n
     """Soldes après la demande, tels que l'alerte de dépassement les annonce.
 
     Direction (forfait jours) : un quota par année civile. Chaque année reçoit
-    les jours que le report marquera (lundi à vendredi hors fériés), moins ceux
+    les jours que le report marquera (solidarité incluse pour CP/CC), moins ceux
     déjà comptés dans le même compteur ; une année sans jour imputé n'est pas
     retournée. Autres profils : un seul solde (colonnes users) diminué de
     nb_jours. Le navigateur reproduit ce calcul dans l'aperçu de Mon espace.
@@ -880,18 +887,12 @@ def _projection_conge(conn, user_id, profil, type_conge, date_debut, date_fin, n
         solde = _soldes_conges(conn, user_id, profil, None).get(type_conge, 0)
         return [{'annee': None, 'jours': nb_jours, 'solde_apres': solde - nb_jours}]
 
-    feries = {ligne['date'] for ligne in conn.execute(
-        'SELECT date FROM jours_feries WHERE date BETWEEN ? AND ?',
-        (date_debut, date_fin),
-    ).fetchall()}
     deja = _jours_deja_comptes(conn, user_id, date_debut, date_fin)[type_conge]
     jours_par_annee = {}
-    jour, fin = date.fromisoformat(date_debut), date.fromisoformat(date_fin)
-    while jour <= fin:
-        jour_iso = jour.isoformat()
-        if jour.weekday() < 5 and jour_iso not in feries and jour_iso not in deja:
-            jours_par_annee[jour.year] = jours_par_annee.get(jour.year, 0) + 1
-        jour += timedelta(days=1)
+    for jour_iso in jours_absence(conn, date_debut, date_fin, type_conge):
+        if jour_iso not in deja:
+            annee = int(jour_iso[:4])
+            jours_par_annee[annee] = jours_par_annee.get(annee, 0) + 1
 
     projections = []
     for annee in sorted(jours_par_annee):
@@ -966,12 +967,6 @@ def demande_conge():
         except ValueError:
             flash('Dates invalides.', 'error')
             return redirect(url_for('recup_bp.demande_conge'))
-        nb_jours = calculer_jours_ouvres(date_debut, date_fin)
-
-        if nb_jours <= 0:
-            flash('Période invalide', 'error')
-            return redirect(url_for('recup_bp.demande_conge'))
-
         conn = get_db()
 
         try:
@@ -981,6 +976,9 @@ def demande_conge():
                 return refus
             if type_conge not in _types_conge_pour(session.get('profil')):
                 raise ConflitAbsence('Type de congé non autorisé avec vos droits actuels.')
+            nb_jours = len(jours_absence(conn, date_debut, date_fin, type_conge))
+            if nb_jours <= 0:
+                raise ConflitAbsence('Période invalide : aucun jour de congé à décompter.')
             # Relire le rôle sous le verrou, notamment avant l'auto-validation.
             profil = session.get('profil')
             # Alertes calculées sous le verrou (une demande concurrente déjà

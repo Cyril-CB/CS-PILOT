@@ -176,12 +176,16 @@ def mon_espace():
 
         # Jours fériés de l'année précédente à la suivante : le décompte
         # affiché avant l'envoi doit donner le même résultat que
-        # `utils.calculer_jours_ouvres`, qui les exclut côté serveur. Hors de
+        # `solidarite.jours_absence`, avec son exception CP/CC. Hors de
         # ces années, l'aperçu renvoie au calcul fait à l'envoi.
         annee = aujourd_hui().year
         annees_apercu = (annee - 1, annee, annee + 1)
         feries = [r['date'] for r in conn.execute(
             'SELECT date FROM jours_feries WHERE annee IN (?, ?, ?)',
+            annees_apercu).fetchall()]
+
+        solidarites = [r['date'] for r in conn.execute(
+            'SELECT date FROM jours_feries WHERE solidarite = 1 AND annee IN (?, ?, ?)',
             annees_apercu).fetchall()]
 
         # Direction : un quota par année civile et des jours déjà comptés au
@@ -298,6 +302,7 @@ def mon_espace():
         types_demande=types,
         solde_recup=round(solde_recup, 1),
         feries=feries,
+        solidarites=solidarites,
         projection=projection,
         aujourdhui=aujourd_hui().isoformat(),
     )

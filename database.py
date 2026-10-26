@@ -121,6 +121,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0078', 'Gel annuel et suivi des écarts'),
     ('0079', 'Sites physiques et produits d’entretien'),
     ('0080', 'Messages de la direction aux salariés'),
+    ('0081', 'Journée de solidarité annuelle'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2163,6 +2164,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_sites_approvisionnement(conn)
     from schema_messages_direction import creer_schema as creer_schema_messages_direction
     creer_schema_messages_direction(conn)
+    from schema_solidarite import creer_schema as creer_schema_solidarite
+    creer_schema_solidarite(conn)
 
 
 def preparer_demarrage():

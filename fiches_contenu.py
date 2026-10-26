@@ -44,10 +44,10 @@ def calculer_contenu(conn, user_id, mois, annee, aujourdhui=date.max):
         heures_reelles[h['date']] = dict(h)
 
     jours_feries_rows = conn.execute('''
-        SELECT date, libelle FROM jours_feries
+        SELECT date, libelle, solidarite FROM jours_feries
         WHERE date >= ? AND date <= ?
     ''', (premier_jour.strftime('%Y-%m-%d'), dernier_jour.strftime('%Y-%m-%d'))).fetchall()
-    jours_feries = {f['date']: f['libelle'] for f in jours_feries_rows}
+    jours_feries = {f['date']: f['libelle'] + (' — Journée de solidarité' if f['solidarite'] else '') for f in jours_feries_rows}
 
     # Périodes d'emploi : hors contrat, une journée n'est ni due ni à saisir.
     # Le planning théorique ne peut pas en tenir lieu — il n'a pas de fin de

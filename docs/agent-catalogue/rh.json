@@ -428,7 +428,8 @@
         "Reporter les jours sur heures_reelles ou sur presence_forfait_jour pour la direction.",
         "Consulter les vingt dernières absences ou filtrer par salarié ; afficher les chevauchements historiques.",
         "Supprimer une absence avec retrait/restauration contrôlés des projections et restitution des compteurs ; télécharger son justificatif.",
-        "Identifier les motifs exigeant un justificatif pour les alertes avant paie via MOTIFS_AVEC_JUSTIFICATIF."
+        "Identifier les motifs exigeant un justificatif pour les alertes avant paie via MOTIFS_AVEC_JUSTIFICATIF.",
+        "La saisie de CP/CC peut imputer le férié désigné comme journée de solidarité ; aperçu par motif, report au calendrier et restitution à l’annulation restent alignés. Les autres motifs continuent à exclure les fériés."
       ],
       "entry_points": [
         "absences_bp.absences",
@@ -448,7 +449,8 @@
           "fiches_versions.py",
           "sessions_securite.py",
           "document_files.py",
-          "blueprints/forfait.py"
+          "blueprints/forfait.py",
+          "solidarite.py"
         ],
         "templates": [
           "templates/absences.html"
@@ -470,11 +472,13 @@
           "tests/test_coherence_rh_versions.py",
           "tests/test_coherence_rh_migration.py",
           "tests/test_absences_forfait_jour.py",
-          "tests/test_prestataire_paie.py"
+          "tests/test_prestataire_paie.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
-          "docs/fiches-mensuelles.md"
+          "docs/fiches-mensuelles.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {

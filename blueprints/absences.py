@@ -11,6 +11,7 @@ from database import get_db, DATA_DIR
 from sessions_securite import verifier_action
 from absences_coherence import (verifier_disponibilite, memoriser_projection,
                                retirer_projection, conflits_historiques)
+from solidarite import jours_absence
 from document_files import nettoyer_document
 from utils import (login_required, get_user_info, get_heures_theoriques_jour,
                    get_type_periode, get_planning_valide_a_date, maintenant)
@@ -172,7 +173,7 @@ def _actualiser_compteurs_conges(conn, user_id, motif, jours_ouvres, ajout=True)
 def _reporter_absence_sur_forfait_jour(conn, absence_id, user_id, date_debut_str, date_fin_str, motif):
     """Reporte une absence sur le calendrier forfait jours (direction).
 
-    Chaque jour ouvre non ferie de la periode prend le type de journee
+    Chaque jour imputable (solidarité incluse pour CP/CC) prend le type de journée
     correspondant a l'absence (maladie, conge_paye…). L'absence PRIME : elle
     remplace le type du jour meme s'il avait ete saisi a la main, et efface les
     horaires eventuels. Le decompte (jours travailles, soldes CP / maladie) se
@@ -192,18 +193,14 @@ def _reporter_absence_sur_forfait_jour(conn, absence_id, user_id, date_debut_str
     date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
     date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
 
-    feries_rows = conn.execute('''
-        SELECT date FROM jours_feries
-        WHERE date >= ? AND date <= ?
-    ''', (date_debut_str, date_fin_str)).fetchall()
-    jours_feries = {row['date'] for row in feries_rows}
+    jours_imputables = set(jours_absence(conn, date_debut_str, date_fin_str, motif))
 
     commentaire = f"Absence #{absence_id} - {motif}"
     jour_actuel = date_debut
     while jour_actuel <= date_fin:
         date_str = jour_actuel.strftime('%Y-%m-%d')
-        # Uniquement jours ouvres et non feries (comme pour les salaries).
-        if jour_actuel.weekday() < 5 and date_str not in jours_feries:
+        # Même liste que le décompte, solidarité CP/CC comprise.
+        if date_str in jours_imputables:
             # INSERT OR REPLACE : l'absence prime et efface horaires/commentaire.
             conn.execute('''
                 INSERT OR REPLACE INTO presence_forfait_jour
@@ -228,20 +225,15 @@ def _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut_str, 
     date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d')
     date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d')
 
-    # Recuperer les jours feries
-    feries_rows = conn.execute('''
-        SELECT date FROM jours_feries
-        WHERE date >= ? AND date <= ?
-    ''', (date_debut_str, date_fin_str)).fetchall()
-    jours_feries = {row['date'] for row in feries_rows}
+    jours_imputables = set(jours_absence(conn, date_debut_str, date_fin_str, motif))
 
     jour_actuel = date_debut
     while jour_actuel <= date_fin:
         date_str = jour_actuel.strftime('%Y-%m-%d')
         jour_semaine = jour_actuel.weekday()
 
-        # Uniquement jours ouvres et non feries
-        if jour_semaine < 5 and date_str not in jours_feries:
+        # Même liste que le décompte, solidarité CP/CC comprise.
+        if date_str in jours_imputables:
             commentaire = f"Absence #{absence_id} - {motif}"
 
             # Inserer ou remplacer dans heures_reelles avec declaration_conforme
@@ -353,7 +345,7 @@ def absences():
             if not conn.execute("SELECT 1 FROM users WHERE id=? AND actif=1 AND profil!='prestataire'", (user_id,)).fetchone():
                 raise ValueError('Salarié introuvable ou inactif.')
             verifier_disponibilite(conn, user_id, date_debut, date_fin)
-            jours_ouvres = _calculer_jours_ouvres_sans_feries(date_debut, date_fin, conn=conn)
+            jours_ouvres = len(jours_absence(conn, date_debut, date_fin, motif))
             if not jours_ouvres:
                 raise ValueError('Aucun jour ouvré dans la période sélectionnée.')
             cursor = conn.execute('''
@@ -567,7 +559,11 @@ def api_jours_ouvres():
         return {'jours_ouvres': 0}
 
     try:
-        jours = _calculer_jours_ouvres_sans_feries(date_debut, date_fin)
+        conn = get_db()
+        try:
+            jours = len(jours_absence(conn, date_debut, date_fin, request.args.get('motif', '')))
+        finally:
+            conn.close()
         return {'jours_ouvres': jours}
     except Exception:
         return {'jours_ouvres': 0}

@@ -131,10 +131,11 @@
     // imputés une seconde fois. Autres profils : un seul solde par type.
     var PROJ = {{ projection|tojson }};
 
-    // Les jours fériés sont exclus, comme le fait utils.calculer_jours_ouvres
-    // côté serveur : sans cela le solde projeté annoncerait un jour de trop.
+    // Même exception CP/CC que solidarite.jours_absence côté serveur ;
+    // les autres fériés restent exclus de l’aperçu.
     // Ils ne sont connus que pour les années PROJ.annees.
     var FERIES = {{ feries|tojson }};
+    var SOLIDARITES = {{ solidarites|tojson }};
 
     function iso(d) {
         return d.getFullYear() + '-' +
@@ -143,7 +144,7 @@
     }
 
     function decompte(a, b, type) {
-        var r = {n: 0, deja: 0, annees: [], parAnnee: {}, horsApercu: false};
+        var r = {n: 0, deja: 0, annees: [], parAnnee: {}, horsApercu: false, solidarite: false};
         if (!a || !b) return r;
         var d1 = new Date(a + 'T12:00'), d2 = new Date(b + 'T12:00');
         if (isNaN(d1) || isNaN(d2) || d2 < d1) return r;
@@ -155,7 +156,11 @@
         var deja = PROJ.deja[type] || [];
         for (var d = new Date(d1); d <= d2; d.setDate(d.getDate() + 1)) {
             var j = d.getDay(), jour = iso(d), an = String(d.getFullYear());
-            if (j === 0 || j === 6 || FERIES.indexOf(jour) !== -1) continue;
+            var solidarite = SOLIDARITES.indexOf(jour) !== -1;
+            if (solidarite) r.solidarite = true;
+            var congeSolidarite = mode === 'conge' &&
+                (type === 'Congé payé' || type === 'Congé conventionnel');
+            if (j === 0 || j === 6 || (FERIES.indexOf(jour) !== -1 && !(solidarite && congeSolidarite))) continue;
             r.n++;
             if (r.annees.indexOf(an) === -1) r.annees.push(an);
             if (deja.indexOf(jour) !== -1) { r.deja++; continue; }
@@ -180,6 +185,10 @@
     function majCalcul() {
         var type = champType.value;
         var r = decompte(du.value, au.value, type);
+        if (r.solidarite && mode === 'recup') {
+            calcul.textContent = 'La journée de solidarité ne peut pas être prise en récupération. Choisissez un congé payé ou conventionnel et séparez les périodes.';
+            return;
+        }
         if (r.horsApercu) {
             calcul.textContent = 'Période hors ' + PROJ.annees[0] + '–' +
                 PROJ.annees[PROJ.annees.length - 1] + ' : jours et solde calculés à l’envoi.';
@@ -203,6 +212,7 @@
             var solde = soldeProjete(r, type);
             if (solde) texte += ' · solde projeté ' + solde;
         }
+        if (r.solidarite && mode === 'conge') texte += ' · journée de solidarité incluse pour les CP/CC';
         calcul.textContent = texte;
     }
 

@@ -333,7 +333,8 @@
         "Lecture des vingt dernières demandes de chaque type, puis affichage des douze plus récentes après fusion : statut, période et motif de refus.",
         "Dépôt utilisant les types de congés autorisés au profil ; récupération non proposée à la direction au forfait jours.",
         "Aperçu avant envoi : jours ouvrés hors fériés et solde projeté, pour des dates comprises entre l’année précédente et l’année suivante (au-delà, calcul renvoyé à l’envoi) ; pour la direction, un solde par année civile, sans réimputer les jours déjà comptés au calendrier forfait, selon le même calcul que l’alerte de recup._projection_conge (données fournies par donnees_projection_forfait).",
-        "Accès au choix personnel de navigation depuis le shell."
+        "Accès au choix personnel de navigation depuis le shell.",
+        "L’aperçu inclut la solidarité annuelle pour CP/CC et signale son interdiction en récupération ; le serveur demeure la source du décompte et du refus."
       ],
       "entry_points": [
         "accueil_bp.mon_espace"
@@ -360,10 +361,12 @@
         ],
         "tests": [
           "tests/test_interface_flux.py",
-          "tests/test_demande_conge_direction.py"
+          "tests/test_demande_conge_direction.py",
+          "tests/test_solidarite.py"
         ],
         "docs": [
-          "docs/interface-sans-menu.md"
+          "docs/interface-sans-menu.md",
+          "docs/journee-solidarite.md"
         ]
       },
       "access": {
