@@ -1161,7 +1161,10 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
 
 
 def _confirmations_historiques(conn, profil, user_id):
-    fiches = fiches_historiques_a_confirmer(conn, None if profil in ('directeur', 'comptable') else user_id)
+    from fiches_absences import salarie_absent_a_date
+    fiches = [f for f in fiches_historiques_a_confirmer(
+        conn, None if profil in ('directeur', 'comptable') else user_id)
+        if not salarie_absent_a_date(conn, f['user_id'], aujourd_hui())]
     if not fiches:
         return []
     return [{'id': 'confirmations-historiques', 'categorie': 'historique', 'type': 'lien',
@@ -1173,6 +1176,9 @@ def _confirmations_historiques(conn, profil, user_id):
 
 def _ma_fiche_a_valider(conn, profil, user_id, today):
     if profil not in ('responsable', 'comptable'):
+        return []
+    from fiches_absences import salarie_absent_a_date
+    if salarie_absent_a_date(conn, user_id, today):
         return []
     mois = today.month - 1 or 12
     annee = today.year if today.month > 1 else today.year - 1
