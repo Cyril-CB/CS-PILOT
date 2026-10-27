@@ -110,6 +110,16 @@ def accueil():
 
     conn = get_db()
     try:
+        # Au premier accès à l'accueil après la fin du mois, synchroniser
+        # les clôtures pour absence complète avant le calcul des rappels.
+        from fiches_absences import cloturer_mois_absences_completes
+        if profil in ('directeur', 'comptable'):
+            mois_prec = today.month - 1 or 12
+            annee_prec = today.year if today.month > 1 else today.year - 1
+            conn.execute('BEGIN IMMEDIATE')
+            cloturer_mois_absences_completes(conn, mois_prec, annee_prec,
+                                             aujourdhui=today.date())
+            conn.commit()
         actions = _fil_du_profil(conn, profil, user_id, secteur_id)
         horizon = construire_horizon(conn, profil, user_id, secteur_id)
     finally:
