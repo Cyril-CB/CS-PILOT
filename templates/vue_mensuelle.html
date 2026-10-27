@@ -113,7 +113,7 @@
         {% if validation and validation.bloque %}
         <div class="month-mobile-alert month-mobile-alert-success">
             <strong>Fiche verrouillée</strong>
-            <span>Cette fiche est validée et n’est plus modifiable.</span>
+            <span>{% if validation.circuit_version == 3 %}Clôturée automatiquement après un mois entièrement couvert par des absences validées. Aucune signature n'a été attribuée aux acteurs.{% else %}Cette fiche est validée et n’est plus modifiable.{% endif %}</span>
         </div>
         {% endif %}
 
@@ -330,7 +330,11 @@
         {% if validation and validation.bloque %}
         <div class="help-box" style="background: #d4edda; border-left-color: #28a745; margin-bottom: 1rem;">
             <h4>🔒 Fiche verrouillée</h4>
+            {% if validation.circuit_version == 3 %}
+            <p>Clôture administrative automatique : toutes les journées travaillées du mois étaient couvertes par des absences validées. Aucune signature fictive et aucune confirmation de paiement. <strong>Aucune modification n'est possible.</strong></p>
+            {% else %}
             <p>Cette fiche a été validée par le responsable et le directeur. <strong>Aucune modification n'est possible.</strong></p>
+            {% endif %}
             <p>Si vous devez apporter des corrections, contactez votre directeur.</p>
         </div>
         {% endif %}
