@@ -236,7 +236,11 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     etapes = {}
     actionnables = {}
     selection = []
+    from fiches_absences import salarie_absent_a_date
     for salarie in salaries:
+        # Ne pas afficher une carte de relance pour un salarié absent aujourd'hui.
+        if salarie_absent_a_date(conn, salarie['id'], today):
+            continue
         v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
                          (salarie['id'], mois, annee)).fetchone()
         plan, _ = planifier_signature(conn, user_id, profil, salarie['id'], v)
@@ -1076,12 +1080,15 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     fiches = conn.execute(f'''
         SELECT COUNT(*) AS nb FROM users u
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+          AND NOT EXISTS (SELECT 1 FROM absences a
+                          WHERE a.user_id=u.id AND a.date_debut<=? AND a.date_fin>=?
+                            AND a.motif != 'Mi-temps thérapeutique')
           AND NOT EXISTS (
               SELECT 1 FROM validations v
               WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
                 AND ({traite})
           )
-    ''', (mois_prec, annee_prec) + params_traite).fetchone()
+    ''', (today.isoformat(), today.isoformat(), mois_prec, annee_prec) + params_traite).fetchone()
     if fiches['nb'] > 0 and peut_relancer:
         actions.append({
             'id': f"relance-{annee_prec}-{mois_prec:02d}",
