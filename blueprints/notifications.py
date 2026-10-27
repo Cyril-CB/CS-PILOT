@@ -196,6 +196,7 @@ def relancer_fiche_historique():
         flash('Accès non autorisé', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
     from fiches_circuit import historique_a_confirmer
+    from fiches_absences import salarie_absent_a_date
     from email_service import peut_envoyer_email, notifier_relance_fiche
     uid = request.form.get('user_id', type=int)
     mois, annee = request.form.get('mois', type=int), request.form.get('annee', type=int)
@@ -205,6 +206,8 @@ def relancer_fiche_historique():
         sal = conn.execute('SELECT * FROM users WHERE id=? AND actif=1', (uid,)).fetchone()
         if not sal or not historique_a_confirmer(conn, v):
             flash('Aucune confirmation historique à relancer pour cette fiche.', 'info')
+        elif salarie_absent_a_date(conn, uid, maintenant().date()):
+            flash('Relance suspendue : le salarié est actuellement absent.', 'info')
         else:
             peut, email = peut_envoyer_email(uid)
             if not peut or not is_email_configured():
