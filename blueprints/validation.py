@@ -253,6 +253,10 @@ def vue_ensemble_validation():
     conn = get_db()
 
     try:
+        from fiches_absences import cloturer_mois_absences_completes
+        conn.execute('BEGIN IMMEDIATE')
+        cloturer_mois_absences_completes(conn, mois, annee, aujourdhui=now.date())
+        conn.commit()
         # Récupérer les utilisateurs selon le profil connecté
         if profil == 'responsable' and not acces_delegation:
             responsable_secteur = conn.execute('SELECT secteur_id FROM users WHERE id = ?', (session['user_id'],)).fetchone()
