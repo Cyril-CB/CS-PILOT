@@ -1,4 +1,6 @@
-{% if validation and validation.circuit_version == 1 and validation.bloque %}
+{% if validation and validation.circuit_version == 3 and validation.bloque %}
+<p class="help-text"><strong>Clôture automatique — absence complète.</strong> Le mois est terminé et les absences enregistrées couvrent tous les jours normalement travaillés. Aucune signature personnelle ou hiérarchique n'est simulée.</p>
+{% elif validation and validation.circuit_version == 1 and validation.bloque %}
 <p class="help-text"><strong>Circuit historique : Responsable → Direction.</strong>
 Le verrouillage initial reste acquis ; la validation salarié n'était pas obligatoire.</p>
 {% if confirmation_historique %}
@@ -43,7 +45,8 @@ Les signatures antérieures ont été conservées ; leur contenu exact d'origine
        'reprise_historique': 'Reprise du contenu historique',
        'approbations_obsoletes': 'Approbations devenues obsolètes après modification',
        'confirmation_historique': 'Validation salarié a posteriori du contenu verrouillé',
-       'bascule_circuit': 'Circuit applicable enregistré à la migration'} %}
+       'bascule_circuit': 'Circuit applicable enregistré à la migration',
+       'cloture_absence_complete': 'Clôture automatique — absence complète'} %}
     {% for evt in evenements_fiche %}
         <li>{{ evt.date_evenement[:19]|replace('T', ' ') }} —
             {{ libelles.get(evt.evenement, evt.evenement) }}
