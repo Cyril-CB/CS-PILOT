@@ -110,7 +110,9 @@
                     <!-- Statut global -->
                     <td>
                         {% if v and v.bloque %}
-                        <span class="badge badge-success">🔒 Verrouillé</span>
+                        {% if v.circuit_version == 3 %}
+                        <span class="badge badge-success">🔒 Clôturée — absence complète</span>
+                        {% else %}<span class="badge badge-success">🔒 Verrouillé</span>{% endif %}
                         {% else %}
                         <span class="badge">{{ item.etape_libelle }}</span>
                         {% endif %}
@@ -151,6 +153,7 @@
         <h4>📖 Légende des statuts</h4>
         <ul>
             <li><strong>Verrouillé</strong> : circuit terminé, contenu figé.</li>
+            <li><strong>Clôturée — absence complète</strong> : clôture administrative automatique après la fin du mois, sans signature imputée au salarié, au responsable ni à la direction.</li>
             <li><strong>En attente salarié</strong> : son approbation de la version courante est obligatoire.</li>
             <li><strong>En attente responsable</strong> : le salarié a approuvé la version courante.</li>
             <li><strong>En attente direction</strong> : salarié et responsable ont approuvé la version courante.</li>
