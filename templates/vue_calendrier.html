@@ -91,7 +91,7 @@
         {% if validation and validation.bloque %}
         <div class="calendar-mobile-alert calendar-mobile-alert-success">
             <strong>Fiche verrouillée</strong>
-            <span>Cette fiche est validée et n’est plus modifiable.</span>
+            <span>{% if validation.circuit_version == 3 %}Clôture automatique du mois pour absence complète, sans signatures attribuées aux personnes.{% else %}Cette fiche est validée et n’est plus modifiable.{% endif %}</span>
         </div>
         {% endif %}
 
