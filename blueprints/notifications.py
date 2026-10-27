@@ -136,12 +136,20 @@ def _relances_fiches(responsable_id=None):
     if not is_email_configured():
         return jsonify({'error': 'Service email non configuré'}), 400
     from fiches_circuit import destinataires_etape
+    from fiches_absences import (cloturer_mois_absences_completes,
+                                salarie_absent_a_date)
     from email_service import peut_envoyer_email, notifier_relance_fiche
     conn = get_db()
     envoyes, echecs, sans_destinataire = 0, 0, 0
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        cloturer_mois_absences_completes(conn, mois, annee, aujourdhui=maintenant().date())
+        conn.commit()  # Un échec SMTP ne doit pas annuler les clôtures acquises.
         salaries = conn.execute("SELECT id, prenom, nom FROM users WHERE actif=1 AND profil NOT IN ('directeur','prestataire')").fetchall()
         for sal in salaries:
+            # Pas de relance au sujet d'une personne actuellement absente.
+            if salarie_absent_a_date(conn, sal['id'], maintenant().date()):
+                continue
             v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
                              (sal['id'], mois, annee)).fetchone()
             etape, acteurs = destinataires_etape(conn, sal['id'], v)
