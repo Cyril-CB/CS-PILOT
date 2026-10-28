@@ -150,7 +150,9 @@ def test_pdf_cloture_absence_complete_ne_simule_pas_des_signatures(
     assert response.headers['Content-Type'] == 'application/pdf'
     contenu = _texte_pdf(response.data)
     assert 'administrative automatique' in contenu
-    assert 'Aucune signature' in contenu
+    # ReportLab peut répartir un paragraphe sur plusieurs objets Tj.
+    from tests.test_export_pdf_mensuel import _cellules
+    assert 'Aucune signature' in ' '.join(_cellules(contenu))
     assert 'Signature Salari' not in contenu
     assert 'Circuit : Salari' not in contenu
 
