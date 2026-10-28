@@ -18,7 +18,9 @@
 <div style="display:flex;gap:4px;margin:16px 0 0;border-bottom:2px solid var(--gray-200,#e7ddd1);">
     <button class="alsh-tab active" id="tab-dashboard" onclick="switchTab('dashboard')">📊 Tableau de bord</button>
     <button class="alsh-tab" id="tab-noe" onclick="switchTab('noe')">✏️ Saisie NOÉ</button>
+    {% if alsh_peut_configurer %}
     <button class="alsh-tab" id="tab-config" onclick="switchTab('config')">⚙️ Configuration</button>
+    {% endif %}
 </div>
 
 {# ─────────────── TABLEAU DE BORD ─────────────── #}
@@ -28,9 +30,13 @@
     </div>
     <div id="dashboardContent" style="display:none;">
         <div id="logistiqueAlert" style="display:none;margin-top:12px;padding:12px 14px;border-radius:8px;background:#fff4e5;border:1px solid #f5c78a;color:#8a5a00;">
+            {% if alsh_peut_configurer %}
             ⚠️ Taux de logistique global absent ou à 0&nbsp;%, configurez-le sur
             <a href="/bilan-secteurs#logistiqueCalc" style="font-weight:600;">cette page</a>
             (en bas).
+            {% else %}
+            ⚠️ Taux de logistique global absent ou à 0&nbsp;% : demandez à la comptabilité de le renseigner.
+            {% endif %}
         </div>
 
         {# Résumé global #}
@@ -53,14 +59,18 @@
                     <div>
                         <h4 style="margin:0 0 4px;">Répartition type des quotients (%)</h4>
                         <p style="margin:0;color:var(--text-muted);font-size:0.9em;">
+                            {% if alsh_peut_configurer %}
                             Ajustez la part d'enfants par tranche de quotient familial pour affiner les tarifs proposés.
+                            {% else %}
+                            Répartition définie par la comptabilité, consultable sans modification.
+                            {% endif %}
                         </p>
                     </div>
                     <small id="repartitionQuotientsTotal" style="color:var(--text-muted);"></small>
                 </div>
                 <div id="repartitionQuotientsGrid" class="alsh-repartition-grid"></div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-wrap:wrap;">
+            <div class="alsh-grid" style="display:grid;gap:24px;flex-wrap:wrap;">
                 <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
                     <h4 style="margin:0 0 12px;">Vacances</h4>
                     <div id="tarifOptimalVacances"></div>
@@ -75,7 +85,7 @@
         {# Graphiques #}
         <div style="margin-top:32px;">
             <h3>📈 Graphiques</h3>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;flex-wrap:wrap;">
+            <div class="alsh-grid" style="display:grid;gap:24px;flex-wrap:wrap;">
                 <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
                     <h4 style="margin:0 0 12px;">Charges vs Produits par période</h4>
                     <canvas id="chartChargesProduits" height="260"></canvas>
@@ -85,7 +95,7 @@
                     <canvas id="chartTauxCouverture" height="260"></canvas>
                 </div>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px;flex-wrap:wrap;">
+            <div class="alsh-grid" style="display:grid;gap:24px;margin-top:16px;flex-wrap:wrap;">
                 <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
                     <h4 style="margin:0 0 12px;">Heures de présence par période</h4>
                     <canvas id="chartHeures" height="260"></canvas>
@@ -118,8 +128,9 @@
 </div>
 
 {# ─────────────── CONFIGURATION ─────────────── #}
+{% if alsh_peut_configurer %}
 <div id="pane-config" class="alsh-pane" style="display:none;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px;flex-wrap:wrap;">
+    <div class="alsh-grid" style="display:grid;gap:24px;margin-top:16px;flex-wrap:wrap;">
 
         {# Tranches d'âge #}
         <div style="background:var(--bg-card,#fff);border-radius:12px;padding:20px;box-shadow:var(--shadow);">
@@ -167,7 +178,14 @@
     </div>
 </div>
 
+{% endif %}
+
 <style>
+.alsh-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.alsh-grid > * { min-width: 0; }
+@media (max-width: 800px) {
+    .alsh-grid { grid-template-columns: minmax(0, 1fr); }
+}
 .alsh-tab {
     padding: 10px 20px;
     border: none;
@@ -310,6 +328,7 @@
 // ── État global ────────────────────────────────────────────────────────────────
 let _config = { tranches: [], periodes: [] };
 let _codesData = {};      // { "pid_tid": {code1, code2, code3} }
+const ALSH_PEUT_CONFIGURER = {{ alsh_peut_configurer|tojson }};
 let _noeData = {};        // { "pid_tid": {heures, enfants} }
 let _tableauData = null;
 let _codesDisponibles = [];
@@ -353,6 +372,7 @@ function onAnneeChange() {
 }
 
 function switchTab(name) {
+    if (name === 'config' && !ALSH_PEUT_CONFIGURER) return;
     document.querySelectorAll('.alsh-tab').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.alsh-pane').forEach(p => p.style.display = 'none');
     document.getElementById('tab-' + name).classList.add('active');
@@ -364,7 +384,7 @@ async function loadTabData(tab) {
     await loadConfig();
     if (tab === 'dashboard') await loadDashboard();
     else if (tab === 'noe') await loadNoe();
-    else if (tab === 'config') await loadCodesConfig();
+    else if (tab === 'config' && ALSH_PEUT_CONFIGURER) await loadCodesConfig();
 }
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -372,7 +392,7 @@ async function loadConfig() {
     const res = await fetch('/api/alsh/config');
     _config = await res.json();
     applyRepartitionQuotients(_config.tarif_repartition_quotients);
-    renderConfigLists();
+    if (ALSH_PEUT_CONFIGURER) renderConfigLists();
 }
 
 function renderConfigLists() {
@@ -828,7 +848,7 @@ function initRepartitionQuotientsInputs() {
     grid.innerHTML = TARIF_QUOTIENT_TRANCHES.map(t => `
         <div class="alsh-repartition-item">
             <label for="${t.id}">${t.label}</label>
-            <input id="${t.id}" class="form-control" type="number" min="0" step="0.1" value="${t.defaultPct}">
+            <input id="${t.id}" class="form-control" type="number" min="0" step="0.1" value="${t.defaultPct}" ${ALSH_PEUT_CONFIGURER ? '' : 'disabled'}>
         </div>
     `).join('');
 
@@ -1106,8 +1126,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === this) fermerModalCharges();
     });
     document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') fermerModalCharges();
-    });
+        if (e.key === 'Escape' && document.getElementById('modalChargesOverlay').classList.contains('open')) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            fermerModalCharges();
+        }
+    }, true);
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────────

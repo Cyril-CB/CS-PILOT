@@ -18,6 +18,7 @@ from flask import has_request_context, request, session, url_for
 
 import navigation
 from utils import delete_setting, get_setting, save_setting
+from alsh_acces import droits_alsh
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,7 @@ def _drapeaux(profil, user_id):
         'generation_contrats_responsable_autorise': True,
         'budget_previsionnel_responsable_autorise': True,
         'can_access_entretien': False,
+        'can_access_alsh': False,
         'sites_fournitures': [],
     }
 
@@ -189,6 +191,7 @@ def _drapeaux(profil, user_id):
         from database import get_db
         from sites_acces import a_acces_entretien, sites_fournitures
         with closing(get_db()) as conn:
+            drapeaux['can_access_alsh'] = droits_alsh(conn, user_id)['consulter']
             drapeaux['can_access_entretien'] = a_acces_entretien(conn, user_id)
             drapeaux['sites_fournitures'] = [dict(s) for s in sites_fournitures(conn, user_id)]
     except Exception:

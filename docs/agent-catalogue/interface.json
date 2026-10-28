@@ -10,7 +10,8 @@
         "heures d'un salarié en septembre",
         "budget prévisionnel d'un secteur",
         "facture par numéro",
-        "SIRET asso"
+        "SIRET asso",
+        "analyse alsh"
       ],
       "capabilities": [
         "API métier renvoyant redirect, choices ou none ; résolution des salariés, secteurs et synonymes, fournisseurs et alias, actions analytiques, subventions et numéros de facture.",
@@ -19,7 +20,8 @@
         "Solution de repli « Voir tout l'espace » systématiquement en dernier.",
         "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés.",
         "Proposer une amélioration après une recherche vaine ou des résultats insatisfaisants, dans la palette et la recherche classique ; reprise explicite de la recherche vers un formulaire authentifié.",
-        "Pour direction/comptabilité, retrouver les messages de la direction par message(s), info salarié, infos salariés, note(s) de service, communication interne et synonymes. Un alias exact explicite prime sur un libellé homonyme ; les dossiers salariés restent proposés en alternative."
+        "Pour direction/comptabilité, retrouver les messages de la direction par message(s), info salarié, infos salariés, note(s) de service, communication interne et synonymes. Un alias exact explicite prime sur un libellé homonyme ; les dossiers salariés restent proposés en alternative.",
+        "Analyse ALSH accessible au responsable rattaché au secteur Enfance, dans le menu classique, la carte et la barre intelligente ; autres secteurs exclus. Lecture et saisie NOÉ seulement, configuration masquée et refusée côté serveur."
       ],
       "entry_points": [
         "recherche_bp.api_search",
@@ -35,7 +37,8 @@
           "navigation.py",
           "interface_flux.py",
           "static/js/flux.js",
-          "static/js/propositions.js"
+          "static/js/propositions.js",
+          "alsh_acces.py"
         ],
         "templates": [
           "templates/_dashboard_search.html",
@@ -56,11 +59,13 @@
           "tests/test_search_dictionnaire.py",
           "tests/test_search_palette.py",
           "tests/test_perimetres_sessions.py",
-          "tests/test_propositions.py"
+          "tests/test_propositions.py",
+          "tests/test_alsh_acces.py"
         ],
         "docs": [
           "docs/interface-sans-menu.md",
-          "docs/sessions-et-perimetres.md"
+          "docs/sessions-et-perimetres.md",
+          "docs/analyse-alsh-acces.md"
         ]
       },
       "access": {
@@ -96,7 +101,8 @@
         "interface.aide_contextuelle",
         "interface.navigation",
         "interface.propositions_amelioration",
-        "association.messages_direction"
+        "association.messages_direction",
+        "association.alsh_analyse"
       ],
       "limitations": [
         "La résolution d'entités dépend des données de l'installation ; une absence de résultat n'établit pas une absence fonctionnelle."
@@ -118,7 +124,8 @@
         "Navigation classique conservée sur téléphone selon détection User-Agent.",
         "Bandeaux d'information contextuels sur factures, écritures, subventions, validation des fiches et dossiers/contrats : compteurs, état et lien d'action pertinents pour la page.",
         "Accès aux commandes de fournitures de chaque site autorisé et au module entretien pour ses acteurs ; recherche par nom de site.",
-        "Messages de la direction accessibles dans RH & Paie aux profils directeur/comptable uniquement, comme dans le menu classique."
+        "Messages de la direction accessibles dans RH & Paie aux profils directeur/comptable uniquement, comme dans le menu classique.",
+        "Analyse ALSH accessible au responsable rattaché au secteur Enfance, dans le menu classique, la carte et la barre intelligente ; autres secteurs exclus. Lecture et saisie NOÉ seulement, configuration masquée et refusée côté serveur."
       ],
       "entry_points": [
         "accueil_bp.api_basculer"
@@ -132,7 +139,8 @@
           "interface_flux.py",
           "app_options.py",
           "static/js/flux.js",
-          "flux_infos.py"
+          "flux_infos.py",
+          "alsh_acces.py"
         ],
         "templates": [
           "templates/base.html",
@@ -144,15 +152,18 @@
           "users",
           "delegations_missions",
           "delegations_benevoles",
-          "cse_membres"
+          "cse_membres",
+          "secteurs"
         ],
         "tests": [
           "tests/test_interface_flux.py",
           "tests/test_options.py",
-          "tests/test_mobile_responsive_pages.py"
+          "tests/test_mobile_responsive_pages.py",
+          "tests/test_alsh_acces.py"
         ],
         "docs": [
-          "docs/interface-sans-menu.md"
+          "docs/interface-sans-menu.md",
+          "docs/analyse-alsh-acces.md"
         ]
       },
       "access": {
@@ -190,7 +201,8 @@
         "interface.recherche",
         "association.produits_entretien",
         "administration.sites_physiques",
-        "association.messages_direction"
+        "association.messages_direction",
+        "association.alsh_analyse"
       ],
       "limitations": [
         "Les bandeaux sont définis uniquement pour les endpoints présents dans flux_infos.CONSTRUCTEURS ; une erreur de lecture produit un flux vide pour préserver la page."

@@ -179,7 +179,7 @@ classique depuis « Mon espace ».
 ### Outils specifiques
 - Produits d’entretien : catalogue, besoins par lieu, regroupement des commandes et notification interne à la réception ; récupération organisée hors application.
 - Sites physiques : files de fournitures et responsables distincts par site, séparés des produits d’entretien. [Configuration, droits et migration](docs/sites-approvisionnement.md).
-- ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques)
+- ALSH : pilotage des Accueils de Loisirs sans Hebergement (tableau de bord croisant donnees comptables et pedagogiques). Le responsable du secteur **Enfance** accède à la consultation et à la saisie NOÉ, sans modification analytique ; la configuration reste réservée aux gestionnaires direction/comptabilité. [Droits et vérifications](docs/analyse-alsh-acces.md).
 - Pesee ALISFA (avec integration IA)
 - Assistant RH (avec integration IA)
 - Planning enfance

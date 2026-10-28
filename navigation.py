@@ -344,6 +344,11 @@ ZONES = [
             _page('alsh_bp.analyse_alsh', 'Analyse ALSH',
                   profils=('directeur', 'comptable'),
                   mots='alsh accueil loisirs centre enfance frequentation caf analyse'),
+            _page('alsh_bp.analyse_alsh', 'Analyse ALSH',
+                  profils=('responsable',), condition='can_access_alsh',
+                  resume='Consulter l’analyse ALSH et saisir la fréquentation NOÉ.',
+                  mots='alsh accueil loisirs centre enfance frequentation caf analyse noe',
+                  expressions=('analyse alsh', 'saisie noé', 'saisie noe')),
         ],
     },
     {

@@ -652,7 +652,8 @@
         "Saisir heures de présence et nombre d’enfants par cellule ; relire ces données enregistrées.",
         "Produire tableau, totaux et graphiques : charges, produits, résultat, coût/heure, coût/enfant, reste à charge/enfant, couverture.",
         "Appliquer aux charges le taux logistique global de l’année et signaler son absence ou sa valeur nulle.",
-        "Afficher le détail agrégé des charges par compte/libellé/code/mois ; API de comparaison N/N−1/N−2 quand les années sont disponibles."
+        "Afficher le détail agrégé des charges par compte/libellé/code/mois ; API de comparaison N/N−1/N−2 quand les années sont disponibles.",
+        "Responsable Enfance : consulter les indicateurs et saisir les données NOÉ depuis le menu classique ou la barre intelligente, sans modifier tranches, périodes, codes ou répartition globale des quotients."
       ],
       "entry_points": [
         "alsh_bp.analyse_alsh",
@@ -675,7 +676,9 @@
           "blueprints/alsh.py"
         ],
         "service_files": [
-          "utils.py"
+          "utils.py",
+          "alsh_acces.py",
+          "sessions_securite.py"
         ],
         "templates": [
           "templates/alsh.html"
@@ -690,27 +693,37 @@
           "bilan_taux_logistique",
           "periodes_vacances",
           "budget_ps_simulations",
-          "app_settings"
+          "app_settings",
+          "users",
+          "secteurs"
         ],
         "tests": [
-          "tests/test_alsh.py"
+          "tests/test_alsh.py",
+          "tests/test_alsh_acces.py",
+          "tests/alsh_acces_browser_server.py",
+          "tests/alsh_acces_browser_checks.cjs"
         ],
         "docs": [
-          "README.md"
+          "README.md",
+          "docs/analyse-alsh-acces.md"
         ]
       },
       "access": {
-        "summary": "Lecture et écritures réservées aux profils directeur/comptable par _peut_acceder, sous login_required.",
-        "scope": "Analyse associative globale, par année/période/tranche ; aucune restriction par équipe/secteur.",
+        "summary": "Direction/comptabilité : gestion inchangée. Responsable rattaché au secteur nommé Enfance : consultation et saisie NOÉ uniquement ; autres profils/secteurs refusés. Droits recalculés dans alsh_acces.droits_alsh depuis le compte actif courant.",
+        "scope": "Analyse ALSH globale par année/période/tranche. Pour le responsable Enfance, détail des charges limité aux codes associés aux périodes/tranches actives de l’année ; aucune liste générale des codes FEC ni gestion analytique.",
         "conditions": [
           "Données comptables déjà importées dans bilan_fec_donnees ; données de fréquentation saisies dans alsh_saisie_noe.",
-          "Pour le filtrage vacances : correspondance du nom avec periodes_vacances ; taux logistique annuel lu dans bilan_taux_logistique."
+          "Pour le filtrage vacances : correspondance du nom avec periodes_vacances ; taux logistique annuel lu dans bilan_taux_logistique.",
+          "Secteur Enfance identifié par son nom exact, casse et espaces de bord ignorés ; le type accueil_loisirs ne suffit pas. Saisie NOÉ recontrôlée sous BEGIN IMMEDIATE, sans droit de configuration."
         ],
         "sources": [
           "blueprints/alsh.py",
           "utils.py",
           "blueprints/auth.py",
-          "sessions_securite.py"
+          "sessions_securite.py",
+          "alsh_acces.py",
+          "interface_flux.py",
+          "navigation.py"
         ]
       },
       "invariants": [
@@ -719,7 +732,9 @@
         "Vacances reconnues : filtrage des charges par mois couverts ; produits partagés par code et tranche répartis au prorata des durées de vacances, à parts égales si une durée manque.",
         "Mercredis et périodes personnalisées : montants annuels des codes, sans filtrage de mois.",
         "Refuser la suppression d’une tranche utilisée dans codes, NOÉ ou cellules enregistrées de budget_ps_simulations ; période utilisée dans codes/NOÉ non supprimable.",
-        "Ratios renvoyés à None lorsque leur dénominateur est nul."
+        "Ratios renvoyés à None lorsque leur dénominateur est nul.",
+        "L’autorisation de la page ne donne pas de droit sur les API de configuration ; les contrôles serveur restent distincts de l’affichage.",
+        "Saisie NOÉ : heures finies et non négatives, nombre d’enfants non négatif, période et tranche actives existantes."
       ],
       "extension_points": [
         "Réutiliser _build_tableau et _build_periode_info pour les futurs indicateurs ou exports.",
@@ -760,7 +775,8 @@
           "blueprints/alsh.py"
         ],
         "service_files": [
-          "utils.py"
+          "utils.py",
+          "alsh_acces.py"
         ],
         "templates": [
           "templates/alsh.html"
@@ -773,12 +789,15 @@
           "bilan_taux_logistique"
         ],
         "tests": [
-          "tests/test_alsh.py"
+          "tests/test_alsh.py",
+          "tests/test_alsh_acces.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/analyse-alsh-acces.md"
+        ]
       },
       "access": {
-        "summary": "Même page et mêmes droits que l’analyse ALSH ; écriture de la répartition réservée directeur/comptable par _peut_acceder.",
+        "summary": "Consultation du tarif depuis Analyse ALSH pour direction/comptabilité et responsable Enfance. Répartition globale des quotients modifiable uniquement par les gestionnaires existants directeur/comptable ; champs désactivés pour le responsable.",
         "scope": "Répartition globale de l’association, commune aux années ; résultats calculés à partir de l’année affichée.",
         "conditions": [
           "Données enfants positives et coefficient pondéré valide pour afficher un tarif.",
