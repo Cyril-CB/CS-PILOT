@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 
 from fiches_absences import (cloturer_mois_absences_completes,
                             salarie_absent_a_date)
-from tests.test_fiches_versions import client_role
+from tests.test_fiches_versions import client_role, fiche_complete
 
 
 MOIS, ANNEE = 8, 2026
