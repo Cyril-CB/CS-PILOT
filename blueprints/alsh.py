@@ -13,21 +13,26 @@ Fonctionnalites :
   (evite le double-comptage quand le meme code analytique est utilise pour
   plusieurs periodes de vacances)
 - Comparaison N/N-1/N-2 si les donnees sont disponibles
-- Accessible aux profils directeur et comptable
+- Gestion : directeur/comptable ; consultation et NOÉ : responsable Enfance
 """
 import json
+import math
 import sqlite3
+from contextlib import closing
 from datetime import datetime, date as _date
 from flask import (Blueprint, render_template, request, session,
                    flash, redirect, url_for, jsonify)
 from database import get_db
 from utils import login_required, get_setting, save_setting
+from alsh_acces import droits_alsh
+from sessions_securite import verifier_action
 
 alsh_bp = Blueprint('alsh_bp', __name__)
 
 
-def _peut_acceder():
-    return session.get('profil') in ('directeur', 'comptable')
+def _peut_acceder(droit='configurer'):
+    with closing(get_db()) as conn:
+        return droits_alsh(conn, session.get('user_id'))[droit]
 
 
 # ── Correspondance periodes vacances (par mots-cles) ─────────────────────────
@@ -241,7 +246,7 @@ def _build_periode_info(conn, periodes, annee):
 @login_required
 def analyse_alsh():
     """Affiche le module Analyse ALSH."""
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         flash('Accès non autorisé.', 'error')
         return redirect(url_for('dashboard_bp.dashboard'))
 
@@ -274,7 +279,7 @@ def analyse_alsh():
 @login_required
 def api_alsh_config():
     """Retourne la config globale : tranches d'age et periodes."""
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     conn = get_db()
@@ -524,7 +529,7 @@ def api_alsh_save_codes():
 @login_required
 def api_alsh_get_noe():
     """Retourne les donnees NOE pour une annee."""
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     annee = request.args.get('annee', type=int)
@@ -547,10 +552,12 @@ def api_alsh_get_noe():
 @login_required
 def api_alsh_save_noe():
     """Sauvegarde une saisie NOE pour une cellule (annee, periode, tranche)."""
-    if not _peut_acceder():
+    if not _peut_acceder('saisir_noe'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     data = request.json or {}
+    if not isinstance(data, dict):
+        return jsonify({'error': 'Un objet JSON est requis.'}), 400
     annee = data.get('annee')
     periode_id = data.get('periode_id')
     tranche_age_id = data.get('tranche_age_id')
@@ -558,14 +565,30 @@ def api_alsh_save_noe():
     try:
         heures = float(data.get('heures_presence') or 0)
         enfants = int(data.get('nb_enfants') or 0)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, OverflowError):
         return jsonify({'error': 'Valeurs numériques invalides.'}), 400
+
+    if not math.isfinite(heures) or heures < 0 or enfants < 0:
+        return jsonify({'error': 'Les heures et le nombre d’enfants doivent être positifs ou nuls.'}), 400
 
     if not all([annee, periode_id, tranche_age_id]):
         return jsonify({'error': 'Paramètres incomplets.'}), 400
+    if any(type(value) is not int or value <= 0 for value in (annee, periode_id, tranche_age_id)):
+        return jsonify({'error': 'Année, période et tranche d’âge invalides.'}), 400
 
     conn = get_db()
     try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus:
+            return refus
+        if not droits_alsh(conn, session.get('user_id'))['saisir_noe']:
+            return jsonify({'error': 'Accès non autorisé'}), 403
+        if (not conn.execute('SELECT 1 FROM alsh_periodes WHERE id=? AND active=1',
+                             (periode_id,)).fetchone()
+                or not conn.execute('SELECT 1 FROM alsh_tranches_age WHERE id=? AND active=1',
+                                    (tranche_age_id,)).fetchone()):
+            return jsonify({'error': 'Période ou tranche d’âge indisponible.'}), 400
         conn.execute('''
             INSERT INTO alsh_saisie_noe
                 (annee, periode_id, tranche_age_id, heures_presence, nb_enfants, updated_at)
@@ -825,7 +848,7 @@ def _build_tableau(conn, annee):
 @login_required
 def api_alsh_tableau():
     """Retourne les donnees du tableau de bord pour une annee."""
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     annee = request.args.get('annee', type=int)
@@ -844,7 +867,7 @@ def api_alsh_tableau():
 @login_required
 def api_alsh_comparaison():
     """Retourne les donnees comparatives N / N-1 / N-2."""
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     annee = request.args.get('annee', type=int)
@@ -921,7 +944,7 @@ def api_alsh_charges_detail():
     Retourne les lignes agrégées par (compte_num, libelle, code_analytique, mois)
     ordonnées par mois puis compte, avec le montant total et le nb de lignes.
     """
-    if not _peut_acceder():
+    if not _peut_acceder('consulter'):
         return jsonify({'error': 'Accès non autorisé'}), 403
 
     annee = request.args.get('annee', type=int)
@@ -946,6 +969,17 @@ def api_alsh_charges_detail():
     conn = get_db()
     try:
         ph = ','.join('?' * len(codes))
+        if not droits_alsh(conn, session.get('user_id'))['configurer']:
+            mappings = conn.execute('''
+                SELECT c.code1, c.code2, c.code3
+                FROM alsh_config_codes c
+                JOIN alsh_periodes p ON p.id = c.periode_id AND p.active = 1
+                JOIN alsh_tranches_age t ON t.id = c.tranche_age_id AND t.active = 1
+                WHERE c.annee = ?
+            ''', (annee,)).fetchall()
+            autorises = {str(code).strip() for row in mappings for code in row if code}
+            if not set(codes).issubset(autorises):
+                return jsonify({'error': 'Accès non autorisé à ces codes analytiques.'}), 403
         params_base = [annee] + codes
 
         if mois_filter:

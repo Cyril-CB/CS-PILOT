@@ -22,6 +22,7 @@ from flask import current_app, url_for
 
 from utils import NOMS_MOIS
 from navigation import EXPRESSIONS_MESSAGES_DIRECTION
+from alsh_acces import droits_alsh
 
 
 # ── Normalisation (minuscules + sans accents) ──
@@ -438,6 +439,10 @@ def _analyser_recherche(conn, query, profil, today, user_id=None):
         return _aide()
 
     norm = _normaliser(q)
+    if norm in ('alsh', 'analyse alsh', 'saisie noe'):
+        if profil in ('directeur', 'comptable') or droits_alsh(conn, user_id)['consulter']:
+            return _redirect(url_for('alsh_bp.analyse_alsh'), 'Analyse ALSH')
+        return _aide("Aucun résultat accessible dans votre espace.")
     if (profil in ('directeur', 'comptable')
             and norm in {_normaliser(e) for e in EXPRESSIONS_MESSAGES_DIRECTION}):
         return _redirect(url_for('messages_direction_bp.messages'), 'Messages de la direction')

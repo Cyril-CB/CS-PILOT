@@ -33,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import logging
 from logging.handlers import RotatingFileHandler
 import app_version
+from alsh_acces import droits_alsh
 from database import init_db, get_db, DATA_DIR
 from blueprints.delegations import (
     MISSION_SUIVI_VALIDATIONS_RELANCES, user_peut_gerer_benevoles,
@@ -584,6 +585,20 @@ def inject_pending_counts():
     finally:
         if conn:
             conn.close()
+
+
+@app.context_processor
+def inject_alsh_context():
+    """Même droit métier pour le menu classique et la page ALSH."""
+    if not session.get('user_id'):
+        return {'can_access_alsh': False, 'alsh_peut_configurer': False}
+    conn = get_db()
+    try:
+        droits = droits_alsh(conn, session['user_id'])
+        return {'can_access_alsh': droits['consulter'],
+                'alsh_peut_configurer': droits['configurer']}
+    finally:
+        conn.close()
 
 
 @app.context_processor
