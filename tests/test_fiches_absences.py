@@ -133,3 +133,42 @@ def test_suspend_reprise_relances_pendant_absence(
     envois.clear()
     assert direction.post('/api/email/relance_validation', json=data).status_code == 200
     assert any(a[-2] == uid for a in envois)
+
+
+def test_pdf_cloture_absence_complete_ne_simule_pas_des_signatures(
+        app, db, sample_users, sample_contrat, sample_planning):
+    from tests.test_export_pdf_mensuel import _texte_pdf
+    uid = sample_users['salarie_id']
+    _absence_mois(db, uid)
+    assert cloturer_mois_absences_completes(db, MOIS, ANNEE, date(2026, 9, 1)) == 1
+    db.commit()
+    direction = client_role(app, sample_users, 'directeur')
+    response = direction.get(
+        f'/export_pdf_mensuel?user_id={uid}&mois={MOIS}&annee={ANNEE}'
+    )
+    assert response.status_code == 200
+    assert response.headers['Content-Type'] == 'application/pdf'
+    contenu = _texte_pdf(response.data)
+    assert 'administrative automatique' in contenu
+    assert 'Aucune signature' in contenu
+    assert 'Signature Salari' not in contenu
+    assert 'Circuit : Salari' not in contenu
+
+
+def test_pdf_circuit_ordinaire_conserve_zones_de_signature(
+        app, db, sample_users, fiche_complete):
+    from tests.test_export_pdf_mensuel import _texte_pdf
+    from tests.test_fiches_versions import signer
+    uid = sample_users['salarie_id']
+    for role in ('salarie', 'responsable', 'directeur'):
+        response = signer(client_role(app, sample_users, role), uid)
+        assert response.status_code == 302
+    direction = client_role(app, sample_users, 'directeur')
+    response = direction.get(
+        f'/export_pdf_mensuel?user_id={uid}&mois={MOIS}&annee={ANNEE}'
+    )
+    assert response.status_code == 200
+    contenu = _texte_pdf(response.data)
+    assert 'Signature Salari' in contenu
+    assert 'Circuit : Salari' in contenu
+    assert 'administrative automatique' not in contenu
