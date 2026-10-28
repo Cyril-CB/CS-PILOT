@@ -676,7 +676,7 @@
     {
       "id": "administration.relances_fiches",
       "title": "Relances des acteurs attendus pour les fiches mensuelles",
-      "purpose": "Inviter par email l’acteur qui doit agir sur une fiche mensuelle ou confirmer une fiche historique.",
+      "purpose": "Relancer par email l’acteur attendu sur une fiche mensuelle ou une confirmation historique, sauf lorsque le salarié concerné est actuellement absent.",
       "example_requests": [
         "relancer les fiches non signées",
         "relancer un responsable pour le mois dernier",
@@ -686,7 +686,9 @@
         "Relance d’un mois terminé pour les salariés actifs hors direction/prestataire en utilisant destinataires_etape du circuit de fiches.",
         "Relance ciblée d’un responsable, uniquement lorsque l’étape attendue est responsable.",
         "Résultat JSON avec envois réussis, échecs et fiches sans acteur applicable.",
-        "Invitation individuelle à confirmer une fiche historique, depuis le parcours des fiches historiques."
+        "Invitation individuelle à confirmer une fiche historique, depuis le parcours des fiches historiques.",
+        "Suspension de toutes les relances concernant un salarié si une absence enregistrée couvre le jour d’envoi ; reprise à la fin de l’absence, sans effacer les validations. Le mi-temps thérapeutique n'est pas assimilé à une absence complète.",
+        "Avant les relances du mois demandé, clôture idempotente des fiches totalement absentes si le mois est terminé et les critères administratifs sont remplis ; les fiches clôturées ne sont pas relancées."
       ],
       "entry_points": [
         "notifications_bp.relance_validation",
@@ -701,18 +703,22 @@
           "fiches_circuit.py",
           "email_service.py",
           "blueprints/delegations.py",
-          "utils.py"
+          "utils.py",
+          "fiches_absences.py"
         ],
         "templates": [],
         "tables": [
           "users",
           "validations",
           "delegations_missions",
-          "app_settings"
+          "app_settings",
+          "absences",
+          "heures_reelles"
         ],
         "tests": [
           "tests/test_circuit_fiches.py",
-          "tests/test_perimetres_sessions.py"
+          "tests/test_perimetres_sessions.py",
+          "tests/test_fiches_absences.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md"
@@ -725,20 +731,24 @@
           "Mois terminé, mois 1 à 12, année valide pour relances courantes.",
           "Service SMTP configuré et activé.",
           "Destinataire ayant un email et satisfaisant peut_envoyer_email.",
-          "Pour l’historique : salarié actif et historique_a_confirmer vrai."
+          "Pour l’historique : salarié actif et historique_a_confirmer vrai.",
+          "L’absence enregistrée qui couvre la date d’envoi suspend aussi les relances historiques ; les messages concernant ce salarié reprennent à son retour."
         ],
         "sources": [
           "blueprints/notifications.py",
           "blueprints/delegations.py",
           "email_service.py",
-          "fiches_circuit.py"
+          "fiches_circuit.py",
+          "fiches_absences.py"
         ]
       },
       "invariants": [
         "Ne relancer que l’acteur de l’étape courante ; les fiches terminées sont ignorées.",
         "L’absence de responsable_id dans la relance ciblée est refusée ; elle ne doit pas déclencher un lot global.",
         "Les anciens verrous ne sont pas rouverts par une relance.",
-        "Les erreurs SMTP sont comptées et peuvent produire un HTTP 500 après des envois déjà réussis."
+        "Les erreurs SMTP sont comptées et peuvent produire un HTTP 500 après des envois déjà réussis.",
+        "Ne jamais envoyer une relance pour une fiche clôturée administrativement (circuit 3), ni pour un salarié dont une absence complète couvre la date courante.",
+        "La synchronisation des clôtures précède le lot SMTP, et est validée indépendamment du succès des envois."
       ],
       "extension_points": [
         "Réutiliser destinataires_etape plutôt que recalculer le circuit par lecture de signatures isolées.",
