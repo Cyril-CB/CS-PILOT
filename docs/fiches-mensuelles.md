@@ -31,6 +31,10 @@ Les relances et cartes de rappel sont suspendues tant qu'une absence enregistré
 consultables et les rappels ordinaires reprennent lorsque l'absence ne couvre
 plus le jour. La suspension n'efface aucune validation ni aucun historique.
 
+L'export PDF de la fiche verrouillée respecte lui aussi ce statut : pour un
+circuit administratif 3, il affiche l'absence complète et l'absence de
+signatures, **sans tableau de signatures vides**, et ne certifie pas le paiement.
+
 Une signature approuve le contenu précis de la fiche affichée. Si ce contenu
 change avant le verrouillage, les anciennes approbations restent dans
 l'historique mais une nouvelle signature est nécessaire. Une fiche verrouillée
