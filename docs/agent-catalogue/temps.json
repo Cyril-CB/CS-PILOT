@@ -196,7 +196,8 @@
         "Affichage du théorique, du réel, des pauses, des absences, jours fériés, repos et périodes hors contrat.",
         "Totaux mensuels, solde antérieur, heures supplémentaires payées dans le mois et solde cumulé.",
         "Indication des journées attendues non déclarées, de l’absence de contrat, du prochain rôle de signature et de l’historique des événements.",
-        "Une fiche verrouillée est lue depuis son instantané conservé."
+        "Une fiche verrouillée est lue depuis son instantané conservé.",
+        "Affichage explicite du statut clôturée automatiquement pour absence complète, distinct de la signature ordinaire, en tableau, calendrier et historique."
       ],
       "entry_points": [
         "validation_bp.vue_mensuelle",
@@ -211,11 +212,13 @@
           "fiches_versions.py",
           "fiches_circuit.py",
           "utils.py",
-          "app_options.py"
+          "app_options.py",
+          "fiches_absences.py"
         ],
         "templates": [
           "templates/vue_mensuelle.html",
-          "templates/vue_calendrier.html"
+          "templates/vue_calendrier.html",
+          "templates/_fiche_signatures.html"
         ],
         "tables": [
           "users",
@@ -235,7 +238,8 @@
           "tests/test_validation.py",
           "tests/test_fiches_versions.py",
           "tests/test_equipe_responsable.py",
-          "tests/test_pause_remuneree.py"
+          "tests/test_pause_remuneree.py",
+          "tests/test_fiches_absences.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md"
@@ -277,20 +281,23 @@
     {
       "id": "temps.validation_fiches",
       "title": "Circuit ordonné de signatures, clôture et réouverture",
-      "purpose": "Obtenir les accords salarié, responsable puis direction sur une même version de fiche et verrouiller son contenu.",
+      "purpose": "Faire signer et verrouiller les fiches par le circuit salarié → responsable → direction, ou clôturer administrativement un mois intégralement absent après son terme.",
       "example_requests": [
         "Valider ma fiche du mois dernier",
         "Signer les heures de mon équipe",
         "Qui doit encore signer ?",
         "Déverrouiller une fiche pour correction",
-        "Confirmer mes anciennes fiches"
+        "Confirmer mes anciennes fiches",
+        "Clôturer le mois dernier quand toutes les journées étaient couvertes par une absence validée"
       ],
       "capabilities": [
-        "Signature salarié puis responsable puis direction ; verrouillage après les trois références à la même version.",
+        "Pour une fiche ordinaire (circuit 2), signature salarié puis responsable puis direction ; verrouillage après les trois accords sur la même version.",
         "Un responsable signant sa propre fiche enregistre deux accords distincts salarié/responsable ; un directeur responsable applicable peut signer responsable/direction après accord salarié.",
         "Vue d’ensemble des validations avec étape attendue, navigation mensuelle et accès aux actions de relance selon droits.",
         "Réouverture direction avec motif, conservation des preuves précédentes et retrait des approbations actives.",
-        "Liste distincte des anciennes fiches verrouillées et confirmation personnelle a posteriori de leur instantané, sans modifier la clôture historique."
+        "Liste distincte des anciennes fiches verrouillées et confirmation personnelle a posteriori de leur instantané, sans modifier la clôture historique.",
+        "Exception administrative (circuit 3) : après fin du mois, clôture idempotente sans aucune signature simulée si toutes les journées normalement travaillées sous contrat sont couvertes par des absences enregistrées et projetées, sans saisie manuelle ni heure travaillée. Exclut le mi-temps thérapeutique, une fiche déjà engagée ou réouverte ; la clôture ne prouve pas le paiement.",
+        "Synchronisation au prochain accès à l’accueil direction/comptable (mois précédent), au suivi des validations (mois demandé) ou avant une relance ; aucune tâche à minuit."
       ],
       "entry_points": [
         "validation_bp.valider_mois",
@@ -309,12 +316,15 @@
           "fiches_contenu.py",
           "fiches_db.py",
           "sessions_securite.py",
-          "access_log.py"
+          "access_log.py",
+          "fiches_absences.py"
         ],
         "templates": [
           "templates/vue_ensemble_validation.html",
           "templates/fiches_historiques.html",
-          "templates/vue_mensuelle.html"
+          "templates/vue_mensuelle.html",
+          "templates/_fiche_signatures.html",
+          "templates/vue_calendrier.html"
         ],
         "tables": [
           "users",
@@ -323,13 +333,16 @@
           "fiches_versions",
           "fiches_evenements",
           "historique_modifications",
-          "journal_actions"
+          "journal_actions",
+          "absences",
+          "heures_reelles"
         ],
         "tests": [
           "tests/test_circuit_fiches.py",
           "tests/test_validation.py",
           "tests/test_fiches_versions.py",
-          "tests/test_perimetres_sessions.py"
+          "tests/test_perimetres_sessions.py",
+          "tests/test_fiches_absences.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md"
@@ -341,22 +354,25 @@
         "conditions": [
           "Mois terminé et aucune journée attendue non déclarée.",
           "Empreinte de la fiche affichée obligatoire et encore courante.",
-          "Un responsable applicable doit exister ; aucune suppléance automatique."
+          "Un responsable applicable doit exister ; aucune suppléance automatique.",
+          "Pour le circuit 3 : mois intégralement terminé, contrat et planning avec au moins une journée normalement travaillée ; couverture complète par absences enregistrées, sans déclaration manuelle ou heure travaillée."
         ],
         "sources": [
           "blueprints/validation.py",
           "fiches_circuit.py",
           "blueprints/delegations.py",
           "sessions_securite.py",
-          "utils.py"
+          "utils.py",
+          "fiches_absences.py"
         ]
       },
       "invariants": [
         "BEGIN IMMEDIATE englobe contrôle de session, droits, contenu, accord et verrouillage.",
         "Une signature sur page ancienne est refusée ; un changement de contenu avant verrouillage remet le circuit à l’accord salarié courant.",
-        "Les trois accords doivent viser la même version ; la direction ne peut pas auto-clôturer sa propre fiche horaire.",
+        "Dans le circuit ordinaire (2), les trois accords doivent viser la même version ; la direction ne peut pas auto-clôturer sa propre fiche horaire.",
         "Réouverture motivée : les trois approbations du circuit 2 doivent être recueillies de nouveau.",
-        "Confirmation historique liée à la version et son empreinte, unique et datée réellement ; elle ne remplit pas rétroactivement validation_salarie et ne satisfait pas une étape après réouverture."
+        "Confirmation historique liée à la version et son empreinte, unique et datée réellement ; elle ne remplit pas rétroactivement validation_salarie et ne satisfait pas une étape après réouverture.",
+        "Le circuit administratif 3 n’inscrit aucune approbation nominative ; il fige un instantané, un événement explicite et refuse une clôture répétée ou postérieure à une réouverture."
       ],
       "extension_points": [
         "Réutiliser roles_applicables, planifier_signature, etape_courante et destinataires_etape pour tout nouveau tableau de bord ou action.",
@@ -372,19 +388,21 @@
         "temps.fiches_mensuelles",
         "temps.versions_fiches"
       ],
-      "limitations": []
+      "limitations": [
+        "La clôture est déclenchée au prochain accès prévu après la fin du mois, pas automatiquement à minuit."
+      ]
     },
     {
       "id": "temps.export_fiche_pdf",
       "title": "Export PDF d’une fiche mensuelle verrouillée",
-      "purpose": "Télécharger le contenu clôturé d’une fiche de temps avec ses soldes et signatures.",
+      "purpose": "Télécharger le contenu figé d’une fiche verrouillée, avec ses soldes et, selon le circuit, des signatures ou une mention de clôture administrative.",
       "example_requests": [
         "Télécharger la fiche d’heures signée",
         "PDF des heures de Cyril en août"
       ],
       "capabilities": [
-        "PDF paysage avec détail quotidien, totaux, soldes, heures payées déduites et signatures.",
-        "Mention du circuit historique ou ordonné et, si présente, de la confirmation salarié a posteriori.",
+        "PDF paysage avec détail quotidien, totaux, soldes et heures payées déduites ; les signatures sont imprimées uniquement pour les circuits de signature.",
+        "Mention du circuit historique ou ordonné et, si présente, de la confirmation salarié a posteriori ; pour le circuit 3, mention de la clôture automatique pour absence complète, sans aucune zone de signature, ni attestation de paiement.",
         "Signalement explicite des fiches anciennes dont le contenu exact au moment des signatures initiales n’est pas vérifiable."
       ],
       "entry_points": [
@@ -411,7 +429,8 @@
           "tests/test_exports_acces.py",
           "tests/test_fiches_versions.py",
           "tests/test_circuit_fiches.py",
-          "tests/test_pause_remuneree.py"
+          "tests/test_pause_remuneree.py",
+          "tests/test_fiches_absences.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md"
@@ -430,7 +449,8 @@
       },
       "invariants": [
         "Le PDF reproduit l’instantané conservé, y compris identité et soldes ; pas de second calcul à partir des données actuelles.",
-        "Lecture des droits, validation et instantané dans une transaction cohérente."
+        "Lecture des droits, validation et instantané dans une transaction cohérente.",
+        "Une clôture administrative (circuit 3) ne doit jamais être présentée comme trois signatures, ni afficher des cases de signature vides."
       ],
       "extension_points": [
         "Étendre ce générateur pour une variante de présentation de fiche clôturée en conservant lire_contenu comme source."

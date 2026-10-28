@@ -236,7 +236,11 @@ def _fiches_a_valider(conn, profil, user_id, secteur_id, today):
     etapes = {}
     actionnables = {}
     selection = []
+    from fiches_absences import salarie_absent_a_date
     for salarie in salaries:
+        # Ne pas afficher une carte de relance pour un salarié absent aujourd'hui.
+        if salarie_absent_a_date(conn, salarie['id'], today):
+            continue
         v = conn.execute('SELECT * FROM validations WHERE user_id=? AND mois=? AND annee=?',
                          (salarie['id'], mois, annee)).fetchone()
         plan, _ = planifier_signature(conn, user_id, profil, salarie['id'], v)
@@ -1076,12 +1080,15 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
     fiches = conn.execute(f'''
         SELECT COUNT(*) AS nb FROM users u
         WHERE u.actif = 1 AND u.profil NOT IN ('directeur', 'prestataire')
+          AND NOT EXISTS (SELECT 1 FROM absences a
+                          WHERE a.user_id=u.id AND a.date_debut<=? AND a.date_fin>=?
+                            AND a.motif != 'Mi-temps thérapeutique')
           AND NOT EXISTS (
               SELECT 1 FROM validations v
               WHERE v.user_id = u.id AND v.mois = ? AND v.annee = ?
                 AND ({traite})
           )
-    ''', (mois_prec, annee_prec) + params_traite).fetchone()
+    ''', (today.isoformat(), today.isoformat(), mois_prec, annee_prec) + params_traite).fetchone()
     if fiches['nb'] > 0 and peut_relancer:
         actions.append({
             'id': f"relance-{annee_prec}-{mois_prec:02d}",
@@ -1154,7 +1161,10 @@ def _actions_etendues(conn, profil, user_id, today, seuils, surcharges):
 
 
 def _confirmations_historiques(conn, profil, user_id):
-    fiches = fiches_historiques_a_confirmer(conn, None if profil in ('directeur', 'comptable') else user_id)
+    from fiches_absences import salarie_absent_a_date
+    fiches = [f for f in fiches_historiques_a_confirmer(
+        conn, None if profil in ('directeur', 'comptable') else user_id)
+        if not salarie_absent_a_date(conn, f['user_id'], aujourd_hui())]
     if not fiches:
         return []
     return [{'id': 'confirmations-historiques', 'categorie': 'historique', 'type': 'lien',
@@ -1166,6 +1176,9 @@ def _confirmations_historiques(conn, profil, user_id):
 
 def _ma_fiche_a_valider(conn, profil, user_id, today):
     if profil not in ('responsable', 'comptable'):
+        return []
+    from fiches_absences import salarie_absent_a_date
+    if salarie_absent_a_date(conn, user_id, today):
         return []
     mois = today.month - 1 or 12
     annee = today.year if today.month > 1 else today.year - 1

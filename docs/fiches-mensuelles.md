@@ -1,5 +1,40 @@
 # Fiches mensuelles : signatures et réouverture
 
+## Clôture automatique pour absence complète
+
+Une fiche peut être **clôturée administrativement sans signatures** lorsque le
+mois est entièrement écoulé, que le salarié a un contrat et un planning avec au
+moins une journée normalement travaillée, et que **toutes** ces journées sont
+couvertes par des absences enregistrées et projetées sur le calendrier.
+Les congés définitivement validés génèrent ces absences ; une simple demande en
+attente ne suffit pas. Une journée travaillée ou déclarée manuellement, même
+conforme au planning, exclut toute clôture automatique. Un mi-temps
+thérapeutique ne constitue pas une absence complète.
+
+Le système crée une version figée, un événement
+`cloture_absence_complete` et une validation verrouillée de
+`circuit_version=3`. **Aucune signature fictive** de salarié, responsable ou
+direction n'est inscrite. La clôture ne prouve pas le versement du salaire.
+La direction peut réouvrir avec motif comme pour les autres fiches ; cette
+fiche ne sera **jamais automatiquement reclôturée** après sa réouverture.
+Une validation, même partielle, déjà engagée est conservée et interdit
+la clôture automatique.
+
+La synchronisation idempotente a lieu lorsque la direction ou la comptabilité
+ouvre l'accueil (pour le mois précédent), dans la vue d'ensemble des validations
+(pour le mois affiché), ou avant les relances manuelles. Il n'y a **pas de
+processus planifié à minuit** : un mois devient éligible le premier jour du
+mois suivant, puis est traité au prochain de ces accès.
+
+Les relances et cartes de rappel sont suspendues tant qu'une absence enregistrée
+(non mi-temps thérapeutique) couvre **la date du jour**. Les fiches restent
+consultables et les rappels ordinaires reprennent lorsque l'absence ne couvre
+plus le jour. La suspension n'efface aucune validation ni aucun historique.
+
+L'export PDF de la fiche verrouillée respecte lui aussi ce statut : pour un
+circuit administratif 3, il affiche l'absence complète et l'absence de
+signatures, **sans tableau de signatures vides**, et ne certifie pas le paiement.
+
 Une signature approuve le contenu précis de la fiche affichée. Si ce contenu
 change avant le verrouillage, les anciennes approbations restent dans
 l'historique mais une nouvelle signature est nécessaire. Une fiche verrouillée

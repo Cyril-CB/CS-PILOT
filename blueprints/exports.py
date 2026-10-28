@@ -235,30 +235,42 @@ def export_pdf_mensuel():
     bas_page.append(Paragraph(soldes_text, normal_style))
     bas_page.append(Spacer(1, 0.4*cm))
     
-    # Zones de signatures (hauteur réduite)
-    sig_data = [
-        ['Signature Salarié', 'Signature Responsable', 'Signature Directeur'],
-        [f"{validation['validation_salarie'] or ''}\n{validation['date_salarie'] or ''}", 
-         f"{validation['validation_responsable'] or ''}\n{validation['date_responsable'] or ''}",
-         f"{validation['validation_directeur'] or ''}\n{validation['date_directeur'] or ''}"]
-    ]
-    
-    sig_table = Table(sig_data, colWidths=[8*cm, 8*cm, 8*cm], rowHeights=[0.8*cm, 2.5*cm])
-    sig_table.setStyle(TableStyle([
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 10),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
-        ('VALIGN', (0, 1), (-1, 1), 'TOP'),
-        ('BOX', (0, 0), (-1, -1), 2, colors.black),
-        ('INNERGRID', (0, 0), (-1, -1), 1, colors.black)
-    ]))
-    
-    bas_page.append(sig_table)
-    if validation['circuit_version'] == 1:
-        bas_page.append(Paragraph('Circuit historique : Responsable → Direction. Verrouillage initial conservé.', normal_style))
+    # La clôture administrative est une exception au circuit de signatures.
+    # Ne pas imprimer trois cases vides qui laisseraient croire à des accords
+    # manquants ou à une validation ordinaire.
+    if validation['circuit_version'] == 3:
+        bas_page.append(Paragraph(
+            "<b>Clôture administrative automatique - absence complète.</b> "
+            "Le mois est terminé et les journées normalement travaillées "
+            "étaient couvertes par des absences enregistrées et validées. "
+            "Aucune signature du salarié, du responsable ou de la direction "
+            "n'a été apposée. Cette clôture ne certifie pas le paiement.",
+            normal_style,
+        ))
     else:
-        bas_page.append(Paragraph('Circuit : Salarié → Responsable → Direction.', normal_style))
+        sig_data = [
+            ['Signature Salarié', 'Signature Responsable', 'Signature Directeur'],
+            [f"{validation['validation_salarie'] or ''}\n{validation['date_salarie'] or ''}", 
+             f"{validation['validation_responsable'] or ''}\n{validation['date_responsable'] or ''}",
+             f"{validation['validation_directeur'] or ''}\n{validation['date_directeur'] or ''}"]
+        ]
+        
+        sig_table = Table(sig_data, colWidths=[8*cm, 8*cm, 8*cm], rowHeights=[0.8*cm, 2.5*cm])
+        sig_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 10),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
+            ('VALIGN', (0, 1), (-1, 1), 'TOP'),
+            ('BOX', (0, 0), (-1, -1), 2, colors.black),
+            ('INNERGRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        bas_page.append(sig_table)
+        if validation['circuit_version'] == 1:
+            bas_page.append(Paragraph('Circuit historique : Responsable → Direction. Verrouillage initial conservé.', normal_style))
+        else:
+            bas_page.append(Paragraph('Circuit : Salarié → Responsable → Direction.', normal_style))
     if confirmation:
         from html import escape
         bas_page.append(Paragraph(
