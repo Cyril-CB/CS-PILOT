@@ -564,7 +564,8 @@
         "Estimation des heures à récupérer depuis le planning daté ; pour une récupération partielle, calcul de l’intersection avec les créneaux de travail et des horaires restants.",
         "Affichage du solde net des heures payées ; avertissement de solde négatif sans blocage automatique.",
         "Liste personnelle des demandes et des heures supplémentaires payées marquées déduites du compteur.",
-        "Suppression par le demandeur tant que la demande reste en attente responsable ou direction."
+        "Suppression par le demandeur tant que la demande reste en attente responsable ou direction.",
+        "Annulation datée des récupérations validées par comptabilité/direction, totale ou limitée aux jours choisis ; remplacement par arrêt maladie ou accident du travail uniquement sur les jours couverts, sans réactivation automatique après retrait de l’arrêt."
       ],
       "entry_points": [
         "recup_bp.demande_recup",
@@ -577,7 +578,8 @@
         ],
         "service_files": [
           "utils.py",
-          "email_service.py"
+          "email_service.py",
+          "recuperations_annulation.py"
         ],
         "templates": [
           "templates/demande_recup.html",
@@ -590,15 +592,18 @@
           "planning_theorique",
           "alternance_reference",
           "periodes_vacances",
-          "variables_paie"
+          "variables_paie",
+          "recup_annulations"
         ],
         "tests": [
           "tests/test_recup_partielle.py",
           "tests/test_creneau_soir.py",
-          "tests/test_coherence_rh.py"
+          "tests/test_coherence_rh.py",
+          "tests/test_annulation_recup.py"
         ],
         "docs": [
-          "docs/coherence-rh.md"
+          "docs/coherence-rh.md",
+          "docs/annulation-recuperations.md"
         ]
       },
       "access": {
@@ -617,7 +622,8 @@
       "invariants": [
         "Conserver les trois créneaux de travail lors du calcul des heures restantes.",
         "Une demande ne modifie pas encore le calendrier : le report intervient seulement lors de la décision finale réussie.",
-        "Le solde global déduit uniquement les variables de paie portant hs_deduites_compteur=1."
+        "Le solde global déduit uniquement les variables de paie portant hs_deduites_compteur=1.",
+        "Suppression des seules projections identifiées, journal des dates/auteur/motif, compteur recalculé sans saisie de travail fictive ; aucun écrasement d’une origine ambiguë ni modification d’un mois verrouillé."
       ],
       "extension_points": [
         "Réutiliser calculer_recup_partielle pour une évolution des créneaux et calculer_solde_recup pour le compteur personnel.",
@@ -747,11 +753,13 @@
         "Récupération approuvée : création des journées ou des horaires restants, conservation de la provenance et journal d’application.",
         "Historique global des décisions validées/refusées, statistiques et heures supplémentaires payées déduites du compteur.",
         "Notifications de décision seulement après commit réussi, selon configuration et autorisation email du salarié.",
-        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait.",
+        "Annulation datée des récupérations validées par comptabilité/direction, totale ou limitée aux jours choisis ; remplacement par arrêt maladie ou accident du travail uniquement sur les jours couverts, sans réactivation automatique après retrait de l’arrêt."
       ],
       "entry_points": [
         "recup_bp.validation_demandes_recup",
-        "recup_bp.historique_demandes_recup"
+        "recup_bp.historique_demandes_recup",
+        "recup_bp.annuler_recup"
       ],
       "implementation": {
         "route_files": [
@@ -765,7 +773,8 @@
           "utils.py",
           "email_service.py",
           "blueprints/absences.py",
-          "solidarite.py"
+          "solidarite.py",
+          "recuperations_annulation.py"
         ],
         "templates": [
           "templates/validation_demandes_recup.html",
@@ -783,7 +792,8 @@
           "validations",
           "rh_projections",
           "historique_modifications",
-          "variables_paie"
+          "variables_paie",
+          "recup_annulations"
         ],
         "tests": [
           "tests/test_demandes_conges.py",
@@ -791,12 +801,14 @@
           "tests/test_coherence_rh.py",
           "tests/test_coherence_rh_versions.py",
           "tests/test_perimetres_sessions.py",
-          "tests/test_solidarite.py"
+          "tests/test_solidarite.py",
+          "tests/test_annulation_recup.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
           "docs/fiches-mensuelles.md",
-          "docs/journee-solidarite.md"
+          "docs/journee-solidarite.md",
+          "docs/annulation-recuperations.md"
         ]
       },
       "access": {
@@ -817,7 +829,8 @@
         "UPDATE conditionné par l’état et verrou transactionnel empêchent la double application concurrente.",
         "Conflit d’absence/récupération, planning absent ou fiche verrouillée laissent la demande dans son état antérieur ; un intervalle de plusieurs mois est entièrement refusé si nécessaire.",
         "Le circuit des demandes n’est pas le circuit des fiches : direction/comptable peuvent finaliser une demande sans accord responsable préalable.",
-        "Une récupération complète ou partielle couvrant la solidarité est refusée avant validation et report ; aucun effet partiel."
+        "Une récupération complète ou partielle couvrant la solidarité est refusée avant validation et report ; aucun effet partiel.",
+        "Suppression des seules projections identifiées, journal des dates/auteur/motif, compteur recalculé sans saisie de travail fictive ; aucun écrasement d’une origine ambiguë ni modification d’un mois verrouillé."
       ],
       "extension_points": [
         "Réutiliser _creer_absence_depuis_conge, _reporter_recup_partielle et verifier_disponibilite pour prolonger les effets métier existants.",
@@ -847,7 +860,8 @@
         "Origine structurée par calendrier, salarié et date : absence_id OU demande_recup_id et contenu exact reporté.",
         "Vérification avant commit des journées modifiées dans heures_reelles ou presence_forfait_jour.",
         "Suppression ciblée d’une projection et restauration d’une unique absence historique restante ; signalement limité à 100 paires de chevauchements historiques.",
-        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait."
+        "La solidarité annuelle désignée dans les jours fériés est imputable en CP ou CC ; même liste de dates pour le décompte, le report et les projections de solde, sans modifier le quota de repos forfait.",
+        "Annulation datée des récupérations validées par comptabilité/direction, totale ou limitée aux jours choisis ; remplacement par arrêt maladie ou accident du travail uniquement sur les jours couverts, sans réactivation automatique après retrait de l’arrêt."
       ],
       "entry_points": [],
       "implementation": {
@@ -857,7 +871,8 @@
           "fiches_db.py",
           "database.py",
           "blueprints/absences.py",
-          "solidarite.py"
+          "solidarite.py",
+          "recuperations_annulation.py"
         ],
         "templates": [],
         "tables": [
@@ -868,17 +883,20 @@
           "presence_forfait_jour",
           "rh_projections",
           "rh_projections_a_verifier",
-          "jours_feries"
+          "jours_feries",
+          "recup_annulations"
         ],
         "tests": [
           "tests/test_coherence_rh.py",
           "tests/test_coherence_rh_versions.py",
           "tests/test_coherence_rh_migration.py",
-          "tests/test_solidarite.py"
+          "tests/test_solidarite.py",
+          "tests/test_annulation_recup.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
-          "docs/journee-solidarite.md"
+          "docs/journee-solidarite.md",
+          "docs/annulation-recuperations.md"
         ]
       },
       "access": {
@@ -894,7 +912,8 @@
         "Chaque projection a exactement une origine ; aucune fusion implicite de fractions de journée.",
         "Les commentaires historiques sont comparés entièrement : Absence #1 ne doit pas correspondre à Absence #10.",
         "Une projection possédée par une autre absence est conservée ; plusieurs sources restantes ambiguës entraînent un refus explicite.",
-        "Ne jamais committer à l’intérieur des helpers de report ou retrait : les écritures de l’appelant doivent rester atomiques."
+        "Ne jamais committer à l’intérieur des helpers de report ou retrait : les écritures de l’appelant doivent rester atomiques.",
+        "Suppression des seules projections identifiées, journal des dates/auteur/motif, compteur recalculé sans saisie de travail fictive ; aucun écrasement d’une origine ambiguë ni modification d’un mois verrouillé."
       ],
       "extension_points": [
         "Réutiliser memoriser_projection et verifier_disponibilite pour toute nouvelle opération qui produit des journées depuis une décision métier.",

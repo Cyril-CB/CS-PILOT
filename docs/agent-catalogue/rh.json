@@ -429,7 +429,8 @@
         "Consulter les vingt dernières absences ou filtrer par salarié ; afficher les chevauchements historiques.",
         "Supprimer une absence avec retrait/restauration contrôlés des projections et restitution des compteurs ; télécharger son justificatif.",
         "Identifier les motifs exigeant un justificatif pour les alertes avant paie via MOTIFS_AVEC_JUSTIFICATIF.",
-        "La saisie de CP/CC peut imputer le férié désigné comme journée de solidarité ; aperçu par motif, report au calendrier et restitution à l’annulation restent alignés. Les autres motifs continuent à exclure les fériés : une maladie englobante préexistante ne bloque pas le changement de solidarité, sans modifier l’absence, ses reports ni les soldes."
+        "La saisie de CP/CC peut imputer le férié désigné comme journée de solidarité ; aperçu par motif, report au calendrier et restitution à l’annulation restent alignés. Les autres motifs continuent à exclure les fériés : une maladie englobante préexistante ne bloque pas le changement de solidarité, sans modifier l’absence, ses reports ni les soldes.",
+        "L’arrêt maladie et l’accident du travail annulent et remplacent uniquement les jours de récupération validée couverts ; les jours restants sont conservés et les heures libérées par le calendrier, avec trace dans recup_annulations."
       ],
       "entry_points": [
         "absences_bp.absences",
@@ -450,7 +451,8 @@
           "sessions_securite.py",
           "document_files.py",
           "blueprints/forfait.py",
-          "solidarite.py"
+          "solidarite.py",
+          "recuperations_annulation.py"
         ],
         "templates": [
           "templates/absences.html"
@@ -465,7 +467,8 @@
           "demandes_conges",
           "rh_projections",
           "rh_projections_a_verifier",
-          "prepa_paie_statut"
+          "prepa_paie_statut",
+          "recup_annulations"
         ],
         "tests": [
           "tests/test_coherence_rh.py",
@@ -473,12 +476,14 @@
           "tests/test_coherence_rh_migration.py",
           "tests/test_absences_forfait_jour.py",
           "tests/test_prestataire_paie.py",
-          "tests/test_solidarite.py"
+          "tests/test_solidarite.py",
+          "tests/test_annulation_recup.py"
         ],
         "docs": [
           "docs/coherence-rh.md",
           "docs/fiches-mensuelles.md",
-          "docs/journee-solidarite.md"
+          "docs/journee-solidarite.md",
+          "docs/annulation-recuperations.md"
         ]
       },
       "access": {

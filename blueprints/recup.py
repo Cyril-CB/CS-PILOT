@@ -399,6 +399,8 @@ def mes_demandes_recup():
         ''', (session['user_id'],)).fetchall()
     ]
 
+    from recuperations_annulation import enrichir_annulations
+    demandes = enrichir_annulations(conn,demandes)
     conn.close()
 
     return render_template('mes_demandes_recup.html', demandes=demandes,
@@ -433,6 +435,39 @@ def supprimer_demande_recup():
         conn.close()
 
     return redirect(url_for('recup_bp.mes_demandes_recup'))
+
+
+@recup_bp.route('/recuperations/<int:demande_id>/annuler', methods=['POST'])
+@login_required
+def annuler_recup(demande_id):
+    if session.get('profil') not in ('comptable','directeur'):
+        flash('Accès non autorisé.', 'error')
+        return redirect(url_for('dashboard_bp.dashboard'))
+    conn = get_db()
+    try:
+        conn.execute('BEGIN IMMEDIATE')
+        refus = verifier_action(conn)
+        if refus is not None:
+            return refus
+        if session.get('profil') not in ('comptable','directeur'):
+            raise ConflitAbsence('Accès non autorisé.')
+        demande = conn.execute('SELECT * FROM demandes_recup WHERE id=?',(demande_id,)).fetchone()
+        if not demande:
+            raise ConflitAbsence('Récupération introuvable.')
+        from recuperations_annulation import annuler_recuperation
+        jours = annuler_recuperation(conn,demande,
+            request.form.get('date_debut') or demande['date_debut'],
+            request.form.get('date_fin') or demande['date_fin'],
+            session['user_id'],request.form.get('motif',''))
+        conn.commit()
+        flash(f'{len(jours)} jour(s) de récupération annulé(s). Les heures de travail peuvent être saisies.' if jours
+              else 'Ces jours de récupération sont déjà annulés.', 'success' if jours else 'info')
+    except (ConflitAbsence,FicheVerrouillee) as exc:
+        conn.rollback()
+        flash(str(exc),'error')
+    finally:
+        conn.close()
+    return redirect(url_for('recup_bp.historique_demandes_recup'))
 
 
 @recup_bp.route('/validation_demandes_recup', methods=['GET', 'POST'])
@@ -743,7 +778,7 @@ def historique_demandes_recup():
         JOIN users u ON d.user_id = u.id
         LEFT JOIN secteurs s ON u.secteur_id = s.id
         LEFT JOIN users r ON d.refuse_par = r.id
-        WHERE d.statut IN ('validee', 'refusee')
+        WHERE d.statut IN ('validee', 'refusee', 'annulee')
         ORDER BY d.date_demande DESC
     ''').fetchall()
 
@@ -761,7 +796,8 @@ def historique_demandes_recup():
         ORDER BY d.date_demande DESC
     ''').fetchall()
 
-    demandes = list(demandes_recup) + list(demandes_conges)
+    from recuperations_annulation import enrichir_annulations
+    demandes = enrichir_annulations(conn,demandes_recup) + list(demandes_conges)
     demandes.sort(key=lambda d: d['date_demande'], reverse=True)
 
     # Statistiques
@@ -769,8 +805,8 @@ def historique_demandes_recup():
         'total': len(demandes),
         'validees': sum(1 for d in demandes if d['statut'] == 'validee'),
         'refusees': sum(1 for d in demandes if d['statut'] == 'refusee'),
-        'total_jours_valides': sum(d['nb_jours'] for d in demandes if d['statut'] == 'validee'),
-        'total_heures_valides': sum(_safe_nb_heures(d) for d in demandes if d['statut'] == 'validee')
+        'total_jours_valides': sum(d.get('jours_maintenus',d['nb_jours']) if isinstance(d,dict) else d['nb_jours'] for d in demandes if d['statut'] == 'validee'),
+        'total_heures_valides': sum(d.get('heures_maintenues',_safe_nb_heures(d)) if isinstance(d,dict) else _safe_nb_heures(d) for d in demandes if d['statut'] == 'validee')
     }
 
     # Heures supp payées (variables de paie, déduites du compteur de récup) :

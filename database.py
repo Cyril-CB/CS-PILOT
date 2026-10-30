@@ -122,6 +122,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0079', 'Sites physiques et produits d’entretien'),
     ('0080', 'Messages de la direction aux salariés'),
     ('0081', 'Journée de solidarité annuelle'),
+    ('0082', 'Annulations datées des récupérations validées'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2140,6 +2141,8 @@ def _initialiser_schema(conn, neuve):
     from absences_coherence import creer_schema as creer_schema_absences
     from prepa_paie_donnees import creer_schema as creer_schema_paie
     creer_schema_absences(conn)
+    from recuperations_annulation import creer_schema as creer_schema_annulations
+    creer_schema_annulations(conn)
     creer_schema_paie(conn)
     from exports_comptables import creer_schema as creer_schema_exports
     creer_schema_exports(conn)

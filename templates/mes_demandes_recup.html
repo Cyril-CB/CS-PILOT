@@ -54,6 +54,8 @@
                         <span class="badge" style="background: #dbeafe; color: #1e40af;">En attente direction</span>
                         {% elif d.statut == 'validee' %}
                         <span class="badge badge-success">Validée</span>
+                        {% elif d.statut == 'annulee' %}
+                        <span class="badge badge-danger">Annulée</span>
                         {% elif d.statut == 'refusee' %}
                         <span class="badge badge-danger">Refusée</span>
                         {% endif %}
@@ -69,7 +71,7 @@
                         {% if d.validation_direction %}
                         <div style="color: var(--success); margin-top: 0.25rem;">✓ {{ d.validation_direction }}</div>
                         <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_direction[:10] if d.date_validation_direction else '' }}</div>
-                        {% elif d.statut not in ['en_attente_responsable', 'refusee'] %}
+                        {% elif d.statut not in ['en_attente_responsable', 'refusee', 'annulee'] %}
                         <div style="color: var(--gray-400); margin-top: 0.25rem;">⏳ Direction</div>
                         {% endif %}
                         
@@ -79,7 +81,12 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td data-label="Motif">{{ d.motif_demande or '-' }}</td>
+                    <td data-label="Motif">{{ d.motif_demande or '-' }}
+                        {% if d.annulations %}
+                        <p><strong>{{ 'Annulation partielle' if d.statut == 'validee' else 'Annulation' }}</strong> : {{ '%.2f'|format(d.heures_annulees) }} h</p>
+                        <ul>{% for a in d.annulations %}<li>{{ a.date }} : {{ a.motif }} — {{ a.auteur_nom }}, {{ a.date_annulation }}</li>{% endfor %}</ul>
+                        {% endif %}
+                    </td>
                     <td data-label="Actions">
                         {% if d.statut in ['en_attente_responsable', 'en_attente_direction'] %}
                         <form method="POST" action="{{ url_for('recup_bp.supprimer_demande_recup') }}" style="display: inline;"

@@ -20,6 +20,7 @@
     <!-- Formulaire de saisie -->
     <div class="section absences-form-section">
         <h2>Nouvelle absence</h2>
+        <p class="help-text">Un arrêt maladie ou un accident du travail remplace les récupérations validées uniquement sur les jours concernés. Le reste est conservé et les annulations sont tracées. Un mois verrouillé doit d’abord être réouvert par la direction.</p>
         <form method="POST" action="{{ url_for('absences_bp.absences') }}" enctype="multipart/form-data" id="absenceForm">
             <div class="absences-form-grid">
                 <div class="form-group">

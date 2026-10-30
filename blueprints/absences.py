@@ -344,6 +344,17 @@ def absences():
                 return redirect(url_for('dashboard_bp.dashboard'))
             if not conn.execute("SELECT 1 FROM users WHERE id=? AND actif=1 AND profil!='prestataire'", (user_id,)).fetchone():
                 raise ValueError('Salarié introuvable ou inactif.')
+            remplacements = []
+            if motif in ('Arrêt maladie', 'Accident du travail'):
+                from recuperations_annulation import annuler_recuperation
+                recups = conn.execute('''SELECT * FROM demandes_recup WHERE user_id=?
+                    AND statut='validee' AND date_debut<=? AND date_fin>=?''',
+                    (user_id,date_fin,date_debut)).fetchall()
+                for recup in recups:
+                    jours = annuler_recuperation(conn,recup,
+                        max(date_debut,recup['date_debut']),min(date_fin,recup['date_fin']),
+                        session['user_id'],f'Remplacée par {motif} du {date_debut} au {date_fin}')
+                    remplacements.extend((recup['id'],jour) for jour in jours)
             verifier_disponibilite(conn, user_id, date_debut, date_fin)
             jours_ouvres = len(jours_absence(conn, date_debut, date_fin, motif))
             if not jours_ouvres:
@@ -357,6 +368,9 @@ def absences():
                   jours_ouvres, justificatif_path, justificatif_nom, session['user_id']))
 
             absence_id = cursor.lastrowid
+            for demande_id, jour in remplacements:
+                conn.execute('UPDATE recup_annulations SET absence_id=? WHERE demande_recup_id=? AND date=?',
+                             (absence_id,demande_id,jour))
 
             # Reporter sur le calendrier
             _reporter_absence_sur_calendrier(conn, absence_id, user_id, date_debut, date_fin, motif)
