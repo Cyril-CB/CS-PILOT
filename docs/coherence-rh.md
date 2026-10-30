@@ -26,7 +26,7 @@ son report remplace lui aussi l'unique ligne de la journée.
 Les nouvelles absences concurrentes sont donc **refusées avec un conflit
 explicite**. Cela vaut pour CP/CP, CP/maladie, maladie/maladie, congé
 conventionnel/autre, les intervalles partiellement communs, les périodes sur
-plusieurs mois, les congés approuvés et les récupérations déjà reportées.
+plusieurs mois, les congés approuvés et les récupérations déjà reportées, sauf le remplacement explicite d’une récupération par arrêt maladie/accident du travail décrit dans [Annulation des récupérations](annulation-recuperations.md).
 Deux créneaux de récupération distincts sur le même jour ne sont pas fusionnés
 implicitement. Les contrôles des nouvelles décisions relisent les droits,
 l'état et les sources sous `BEGIN IMMEDIATE`.
@@ -58,7 +58,7 @@ ou le cumul de fractions de journée nécessiteraient une décision métier et u
 modèle capable de représenter ces fractions. Les options sont : conserver le
 refus explicite actuel, ajouter un remplacement explicite avec restitution des
 compteurs, ou modéliser des créneaux cumulables. Cette PR ne choisit aucune
-priorité implicite et ne procède à aucun remplacement automatique.
+priorité implicite entre absences. Le remplacement d’une récupération par arrêt et son annulation motivée sont désormais pris en charge, uniquement sur les jours concernés ; voir [le parcours dédié](annulation-recuperations.md).
 
 ## Préparation de paie
 
@@ -158,7 +158,6 @@ HTTP et les rendus HTML/Excel font l'objet de vérifications distinctes.
 Les anciennes récupérations déjà affichées « validées » dont un report aurait
 été perdu ne sont pas rejouées automatiquement : une reprise supposerait de
 connaître les modifications ultérieures et le volume réellement appliqué.
-Les arbitrages d'anciens chevauchements, annulations de récupérations déjà
-validées, fractions d'absence et corrections directes de fichiers par un
+Les arbitrages d'anciens chevauchements ambigus, fractions d'absence et corrections directes de fichiers par un
 opérateur restent des interventions à examiner séparément. Les exports
 comptables, sauvegardes et autres constats de l'audit ne sont pas modifiés.

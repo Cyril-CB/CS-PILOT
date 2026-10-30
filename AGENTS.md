@@ -84,6 +84,11 @@ Avant d'ouvrir ou de mettre à jour une pull request, l'agent vérifie que :
 - toute modification visuelle a été contrôlée sur ordinateur et mobile ;
 - la pull request liste exactement les commandes exécutées et leurs résultats ;
 - les échecs, tests ignorés et prérequis absents sont clairement signalés ;
+- aucun échec connu n'est laissé sans correction : corrigez aussi les échecs
+  préexistants ou extérieurs à la demande initiale avant livraison, sans affaiblir
+  les tests ni masquer un échec par un test ignoré ; si un obstacle nécessite
+  réellement une information ou une autorité indisponible, signalez précisément
+  ce blocage sans présenter le travail comme terminé ;
 - aucune donnée réelle, aucun secret ni aucun artefact local n'a été ajouté.
 
 ## 1. Comprendre le produit

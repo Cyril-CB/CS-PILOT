@@ -5,7 +5,7 @@
 {% block content %}
 <div class="historique">
     <h1>Historique des demandes</h1>
-    <p class="subtitle">Toutes les demandes de récupérations et congés validées et refusées</p>
+    <p class="subtitle">Demandes validées, refusées et récupérations annulées</p>
     
     <div class="actions" style="margin-bottom: 2rem; margin-top: 0;">
         <a href="{{ url_for('recup_bp.validation_demandes_recup') }}" class="btn btn-primary">Demandes en attente</a>
@@ -46,7 +46,7 @@
     </div>
     
     <div class="section">
-        <table class="data-table">
+        <div class="table-responsive"><table class="data-table">
             <thead>
                 <tr>
                     <th>Type</th>
@@ -100,6 +100,8 @@
                     <td>
                         {% if d.statut == 'validee' %}
                         <span class="badge badge-success">Validée</span>
+                        {% elif d.statut == 'annulee' %}
+                        <span class="badge badge-danger">Annulée</span>
                         {% elif d.statut == 'refusee' %}
                         <span class="badge badge-danger">Refusée</span>
                         {% endif %}
@@ -126,6 +128,32 @@
                         {% endif %}
                     </td>
                     <td>
+                        {% if d.demande_type == 'recup' %}
+                            {% if d.annulations %}
+                            <p><strong>{{ 'Annulation partielle' if d.statut == 'validee' else 'Récupération annulée' }}</strong><br>
+                                {{ '%.2f'|format(d.heures_annulees) }} h retirées de la récupération initiale.</p>
+                            <ul>{% for a in d.annulations %}
+                                <li>{{ a.date }} : {{ a.motif }} — {{ a.auteur_nom }}, {{ a.date_annulation }}
+                                {% if a.absence_id %}(absence n°{{ a.absence_id }}){% endif %}</li>
+                            {% endfor %}</ul>
+                            {% endif %}
+                            {% if d.statut == 'validee' %}
+                            <details>
+                                <summary class="btn btn-secondary btn-sm">Annuler une récupération</summary>
+                                <form method="POST" action="{{ url_for('recup_bp.annuler_recup', demande_id=d.id) }}"
+                                      onsubmit="return confirm('Annuler les jours de récupération sélectionnés ? Aucune heure travaillée ne sera saisie automatiquement.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <div class="form-group"><label for="annulation-debut-{{ d.id }}">Du</label>
+                                    <input id="annulation-debut-{{ d.id }}" type="date" name="date_debut" value="{{ d.date_debut }}" min="{{ d.date_debut }}" max="{{ d.date_fin }}" required></div>
+                                    <div class="form-group"><label for="annulation-fin-{{ d.id }}">Au</label>
+                                    <input id="annulation-fin-{{ d.id }}" type="date" name="date_fin" value="{{ d.date_fin }}" min="{{ d.date_debut }}" max="{{ d.date_fin }}" required></div>
+                                    <div class="form-group"><label for="annulation-motif-{{ d.id }}">Motif de l’annulation</label>
+                                    <textarea id="annulation-motif-{{ d.id }}" name="motif" maxlength="1000" required></textarea></div>
+                                    <button type="submit" class="btn btn-primary btn-sm">Confirmer l’annulation</button>
+                                </form>
+                            </details>
+                            {% endif %}
+                        {% endif %}
                         {% if d.motif_demande %}
                         <div><strong>Motif demande :</strong><br>{{ d.motif_demande }}</div>
                         {% endif %}
@@ -141,7 +169,7 @@
                 </tr>
                 {% endfor %}
             </tbody>
-        </table>
+        </table></div>
     </div>
     {% else %}
     <div class="no-data">

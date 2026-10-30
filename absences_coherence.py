@@ -91,10 +91,14 @@ def verifier_disponibilite(conn, uid, debut, fin):
     if absence:
         raise ConflitAbsence(f"Conflit avec l'absence n°{absence['id']} ({absence['motif']}, du {absence['date_debut']} au {absence['date_fin']}). Corrigez d'abord l'absence existante ; aucun remplacement automatique n'est effectué.")
     # Inclut les récupérations historiques, même sans provenance structurée.
-    recup = conn.execute('''SELECT id FROM demandes_recup WHERE user_id=?
-        AND statut='validee' AND date_debut<=? AND date_fin>=? LIMIT 1''', (uid, fin, debut)).fetchone()
-    if recup:
-        raise ConflitAbsence("Une récupération validée couvre déjà cette période. Aucun cumul ni remplacement automatique n'est possible.")
+    recups = conn.execute('''SELECT * FROM demandes_recup WHERE user_id=?
+        AND statut='validee' AND date_debut<=? AND date_fin>=?''', (uid, fin, debut)).fetchall()
+    from recuperations_annulation import jours_recuperation
+    for recup in recups:
+        annules = {r[0] for r in conn.execute(
+            'SELECT date FROM recup_annulations WHERE demande_recup_id=?', (recup['id'],))}
+        if any(debut <= jour <= fin and jour not in annules for jour in jours_recuperation(recup)):
+            raise ConflitAbsence("Une récupération validée couvre déjà cette période. Annulez les jours concernés ou saisissez un arrêt maladie pour les remplacer.")
     ligne = conn.execute('''SELECT 1 FROM heures_reelles WHERE user_id=? AND date BETWEEN ? AND ?
         AND type_saisie IN ('recup_journee','recup_partielle') LIMIT 1''', (uid, debut, fin)).fetchone()
     if ligne:

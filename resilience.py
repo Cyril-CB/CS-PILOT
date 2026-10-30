@@ -114,6 +114,7 @@ TABLES_REQUISES = {
              'entretien_lignes', 'entretien_notifications'),
     '0080': ('messages_direction', 'messages_direction_lectures'),
     '0081': ('jours_feries',),
+    '0082': ('recup_annulations',),
 }
 
 
