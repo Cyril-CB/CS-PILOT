@@ -60,7 +60,7 @@
                         <span class="badge badge-danger">Refusée</span>
                         {% endif %}
                     </td>
-                    <td data-label="Validations" style="font-size: 0.85rem;">
+                    <td data-label="Validations" style="font-size: 0.85rem;"><div style="min-width: 0; flex: 1; overflow-wrap: anywhere;">
                         {% if d.validation_responsable %}
                         <div style="color: var(--success);">✓ {{ d.validation_responsable }}</div>
                         <div style="color: var(--gray-500); font-size: 0.8rem;">{{ d.date_validation_responsable[:10] if d.date_validation_responsable else '' }}</div>
@@ -80,13 +80,13 @@
                             <strong>Refus :</strong> {{ d.motif_refus }}
                         </div>
                         {% endif %}
-                    </td>
-                    <td data-label="Motif">{{ d.motif_demande or '-' }}
+                    </div></td>
+                    <td data-label="Motif"><div style="min-width: 0; flex: 1; overflow-wrap: anywhere;">{{ d.motif_demande or '-' }}
                         {% if d.annulations %}
                         <p><strong>{{ 'Annulation partielle' if d.statut == 'validee' else 'Annulation' }}</strong> : {{ '%.2f'|format(d.heures_annulees) }} h</p>
                         <ul>{% for a in d.annulations %}<li>{{ a.date }} : {{ a.motif }} — {{ a.auteur_nom }}, {{ a.date_annulation }}</li>{% endfor %}</ul>
                         {% endif %}
-                    </td>
+                    </div></td>
                     <td data-label="Actions">
                         {% if d.statut in ['en_attente_responsable', 'en_attente_direction'] %}
                         <form method="POST" action="{{ url_for('recup_bp.supprimer_demande_recup') }}" style="display: inline;"
