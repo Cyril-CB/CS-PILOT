@@ -117,6 +117,24 @@
         .pe-tab { padding: 8px 10px; font-size: 12px; }
         .pe-config-grid { grid-template-columns: 1fr 1fr; }
     }
+
+    /* Export PDF via la boîte d'impression du navigateur : imprime le contenu
+       du simulateur actuellement calculé, même avec modifications non sauvegardées. */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body * { visibility: hidden !important; }
+      .pe-container, .pe-container * { visibility: visible !important; }
+      .pe-container { position: absolute !important; inset: 0 auto auto 0 !important;
+          width: 100% !important; max-width: none !important; padding:0 !important; }
+      .pe-selector, .pe-tabs, .pe-btn-save, .pe-btn-print { display: none !important; }
+      #peMain { display: block !important; }
+      .pe-tab-panel { display: block !important; }
+      .pe-tab-content { border: none !important; padding: 0 !important; }
+      .pe-card { break-inside: avoid; box-shadow: none !important; }
+      .pe-tab-panel + .pe-tab-panel { break-before: page; }
+      input, select { border: none !important; background: transparent !important; }
+      .pe-container { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
 </style>
 
 <div class="pe-container">
@@ -149,6 +167,7 @@
         </div>
         <button class="pe-btn-load" onclick="peLoad()">Charger</button>
         <button class="pe-btn-save" id="peBtnSave" onclick="peSave()" style="display:none;">💾 Sauvegarder</button>
+        <button type="button" class="pe-btn-load pe-btn-print" id="peBtnPrint" style="display:none;" onclick="if(PE.userId) { peRecalc(); window.print(); }">🖨 Imprimer / enregistrer en PDF</button>
         <span id="peSaveStatus" style="font-size:12px;color:var(--success);font-weight:600;display:none;">✓ Sauvegardé</span>
     </div>
 
