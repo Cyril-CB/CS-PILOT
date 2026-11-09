@@ -28,19 +28,21 @@ def test_responsable_active_et_renseigne_un_lieu(resp_client, db, sample_users, 
     assert 'Angle 9' in html
 
 
-def test_salarie_voit_lieu_sans_pouvoir_modifier(auth_client, resp_client, sample_users, sample_contrat):
+def test_salarie_voit_lieu_sans_pouvoir_modifier(app, resp_client, sample_users, sample_contrat):
     uid = sample_users['salarie_id']
-    resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '1'})
-    resp_client.post('/mon_equipe/lieux',
+    assert resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '1'}).status_code == 302
+    assert resp_client.post('/mon_equipe/lieux',
                      data={'action': 'affectation', 'user_id': uid, 'jour': '1',
-                           'demi_jour': 'aprem', 'lieu': 'MSCB'})
+                           'demi_jour': 'aprem', 'lieu': 'MSCB'}).status_code == 302
+    auth_client = app.test_client()
+    _login(auth_client, 'salarie_test', 'sal123')
     html = auth_client.get('/mon_equipe').get_data(as_text=True)
     assert 'MSCB' in html
     assert 'Activer les lieux' not in html
     assert auth_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '0'}).status_code == 403
 
 
-def test_non_membre_et_champ_invalide_refuses(resp_client, db, sample_users):
+def test_non_membre_et_champ_invalide_refuses(resp_client, db, sample_users, sample_contrat):
     from werkzeug.security import generate_password_hash
     cur = db.execute("INSERT INTO secteurs(nom) VALUES('Autre secteur')")
     sid = cur.lastrowid
@@ -57,11 +59,13 @@ def test_non_membre_et_champ_invalide_refuses(resp_client, db, sample_users):
         'demi_jour': 'matin', 'lieu': 'X'}).status_code == 400
 
 
-def test_desactivation_masque_sans_effacer(resp_client, auth_client, db, sample_users, sample_contrat):
+def test_desactivation_masque_sans_effacer(app, resp_client, db, sample_users, sample_contrat):
     uid = sample_users['salarie_id']
-    resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '1'})
-    resp_client.post('/mon_equipe/lieux', data={'action': 'affectation',
-        'user_id': uid, 'jour': '0', 'demi_jour': 'matin', 'lieu': 'Angle 9'})
-    resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '0'})
+    assert resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '1'}).status_code == 302
+    assert resp_client.post('/mon_equipe/lieux', data={'action': 'affectation',
+        'user_id': uid, 'jour': '0', 'demi_jour': 'matin', 'lieu': 'Angle 9'}).status_code == 302
+    assert resp_client.post('/mon_equipe/lieux', data={'action': 'activation', 'actif': '0'}).status_code == 302
+    auth_client = app.test_client()
+    _login(auth_client, 'salarie_test', 'sal123')
     assert 'Angle 9' not in auth_client.get('/mon_equipe').get_data(as_text=True)
     assert db.execute('SELECT COUNT(*) AS n FROM equipe_lieux_affectations').fetchone()['n'] == 1
