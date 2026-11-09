@@ -12,12 +12,14 @@
       <summary style="cursor:pointer;">📍 Lieux d'intervention — option facultative</summary>
       <p>Répartition habituelle, sans incidence sur les horaires ni les vues individuelles.</p>
       <form method="post" action="{{ url_for('mon_equipe_bp.gerer_lieux') }}" style="margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="activation">
         <input type="hidden" name="actif" value="{{ '0' if lieux_actifs else '1' }}">
         <button class="btn btn-secondary btn-sm" type="submit">{{ 'Désactiver' if lieux_actifs else 'Activer' }} les lieux</button>
       </form>
       {% if lieux_actifs %}
       <form method="post" action="{{ url_for('mon_equipe_bp.gerer_lieux') }}" style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="action" value="affectation">
         <label>Salarié <select name="user_id">{% for m in grille %}{% if m.id != session.user_id %}<option value="{{ m.id }}">{{ m.nom }} {{ m.prenom }}</option>{% endif %}{% endfor %}</select></label>
         <label>Jour <select name="jour">{% for j in jours_header %}<option value="{{ loop.index0 }}">{{ j.nom }}</option>{% endfor %}</select></label>
