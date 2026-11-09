@@ -87,6 +87,56 @@ def _redirect_planning(user_id_cible):
 
 
 
+def _selectionner_plannings_en_vigueur(conn, uid, date_str):
+    """Versions réellement applicables par période à la date de l'export.
+
+    Une période peut avoir été remplacée par un horaire fixe tandis que
+    l'autre conserve une alternance. Les versions alternées antérieures
+    à un nouveau fixe sont exclues, même si l'alternance subsiste ailleurs.
+    """
+    semaine_courante = get_semaine_alternance(uid, date_str, conn=conn)
+    actifs = []
+    for periode in ('periode_scolaire', 'vacances'):
+        rows = conn.execute("""
+            SELECT * FROM planning_theorique
+            WHERE user_id=? AND type_periode=? AND date_debut_validite<=?
+            ORDER BY date_debut_validite DESC, id DESC
+        """, (uid, periode, date_str)).fetchall()
+        if not rows:
+            continue
+        fixes = [r for r in rows if (r['type_alternance'] or 'fixe') == 'fixe']
+        alternes = [r for r in rows if r['type_alternance'] in ('semaine_1', 'semaine_2')]
+        dernier_fixe = fixes[0] if fixes else None
+        # Le planning fixe le plus récent remplace les deux semaines
+        # alternées pour *cette* période seulement.
+        dernier_alterne = alternes[0] if alternes else None
+        if not dernier_alterne or semaine_courante == 'fixe' or (
+            dernier_fixe and
+            (dernier_fixe['date_debut_validite'], dernier_fixe['id']) >=
+            (dernier_alterne['date_debut_validite'], dernier_alterne['id'])
+        ):
+            if dernier_fixe:
+                actifs.append(dict(dernier_fixe))
+            continue
+
+        # Une alternance redevenue active après un fixe peut comporter
+        # une seule semaine explicitement redéfinie : conserver le repli
+        # sur le fixe antérieur pour la semaine manquante.
+        borne = (dernier_fixe['date_debut_validite'], dernier_fixe['id']) if dernier_fixe else None
+        ids = set()
+        for semaine in ('semaine_1', 'semaine_2'):
+            row = next((r for r in alternes
+                        if r['type_alternance'] == semaine and
+                        (borne is None or
+                         (r['date_debut_validite'], r['id']) > borne)), None)
+            if row is None:
+                row = dernier_fixe
+            if row and row['id'] not in ids:
+                actifs.append(dict(row))
+                ids.add(row['id'])
+    return actifs
+
+
 @planning_bp.route('/planning_theorique/pdf')
 @login_required
 def exporter_plannings_actifs_pdf():
@@ -105,36 +155,7 @@ def exporter_plannings_actifs_pdf():
             return ('Salarie introuvable', 404)
         aujourdhui = datetime.now().date()
         date_str = aujourdhui.isoformat()
-        # Alternance en cours : les deux semaines sont actives, mais ne pas
-        # charger un planning dont la validite ne demarre que dans le futur.
-        semaine_courante = get_semaine_alternance(uid, date_str, conn=conn)
-        types = ('periode_scolaire', 'vacances')
-        alternances = ('fixe',) if semaine_courante == 'fixe' else ('semaine_1','semaine_2')
-        actifs = []
-        for periode in types:
-            for alternance in alternances:
-                if alternance == 'fixe':
-                    row = conn.execute("""
-                        SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
-                        AND (type_alternance IS NULL OR type_alternance='fixe')
-                        AND date_debut_validite<=?
-                        ORDER BY date_debut_validite DESC,id DESC LIMIT 1
-                    """, (uid,periode,date_str)).fetchone()
-                else:
-                    row = conn.execute("""
-                        SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
-                        AND type_alternance=? AND date_debut_validite<=?
-                        ORDER BY date_debut_validite DESC,id DESC LIMIT 1
-                    """, (uid,periode,alternance,date_str)).fetchone()
-                    if not row:
-                        row = conn.execute("""
-                            SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
-                            AND (type_alternance IS NULL OR type_alternance='fixe')
-                            AND date_debut_validite<=?
-                            ORDER BY date_debut_validite DESC,id DESC LIMIT 1
-                        """, (uid,periode,date_str)).fetchone()
-                if row and row['id'] not in {p['id'] for p in actifs}:
-                    actifs.append(dict(row))
+        actifs = _selectionner_plannings_en_vigueur(conn, uid, date_str)
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30,
                                 leftMargin=30, topMargin=30, bottomMargin=30)
