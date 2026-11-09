@@ -373,7 +373,9 @@ function computeAll() {
 
 // ── Chargement données ──
 async function peLoad() {
-    const uid = document.getElementById('peSelectUser').value;
+    const selectUser = document.getElementById('peSelectUser');
+    const uid = selectUser.value;
+    const libelleSalarie = selectUser.selectedOptions[0]?.textContent.trim() || '';
     const annee = parseInt(document.getElementById('peSelectAnnee').value);
     if(!uid) { alert('Veuillez sélectionner un salarié.'); return; }
 
@@ -420,7 +422,7 @@ async function peLoad() {
         document.getElementById('peBtnSave').style.display = 'inline-block';
         document.getElementById('peBtnPrint').style.display = 'inline-block';
         document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
-        document.getElementById('pePrintIdentity').textContent = document.getElementById('peSelectUser').selectedOptions[0].textContent.trim() + ' — ' + annee;
+        document.getElementById('pePrintIdentity').textContent = libelleSalarie + ' — ' + annee;
 
         renderAll();
     } catch(e) {
