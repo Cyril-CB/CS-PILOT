@@ -127,6 +127,7 @@
       .pe-container { position: absolute !important; inset: 0 auto auto 0 !important;
           width: 100% !important; max-width: none !important; padding:0 !important; }
       .pe-selector, .pe-tabs, .pe-btn-save, .pe-btn-print { display: none !important; }
+      .pe-print-ident { display:block !important; text-align:center; margin:5mm 0; font-weight:700; }
       #peMain { display: block !important; }
       .pe-tab-panel { display: block !important; }
       .pe-tab-content { border: none !important; padding: 0 !important; }
@@ -142,6 +143,7 @@
         <div class="pe-label">Module Enfance</div>
         <h2>Simulateur Planning Annualisé</h2>
         <div class="pe-sub" id="peSubtitle">Année civile</div>
+        <div class="pe-print-ident" id="pePrintIdentity" style="display:none;"></div>
     </div>
 
     <!-- Sélection salarié / année -->
@@ -418,6 +420,7 @@ async function peLoad() {
         document.getElementById('peBtnSave').style.display = 'inline-block';
         document.getElementById('peBtnPrint').style.display = 'inline-block';
         document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
+        document.getElementById('pePrintIdentity').textContent = document.getElementById('peSelectUser').selectedOptions[0].textContent.trim() + ' — ' + annee;
 
         renderAll();
     } catch(e) {
