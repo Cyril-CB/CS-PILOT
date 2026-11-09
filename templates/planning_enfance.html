@@ -169,7 +169,7 @@
         </div>
         <button class="pe-btn-load" onclick="peLoad()">Charger</button>
         <button class="pe-btn-save" id="peBtnSave" onclick="peSave()" style="display:none;">💾 Sauvegarder</button>
-        <button type="button" class="pe-btn-load pe-btn-print" id="peBtnPrint" style="display:none;" onclick="if(PE.userId) { peRecalc(); window.print(); }">🖨 Imprimer / enregistrer en PDF</button>
+        <button type="button" class="pe-btn-load pe-btn-print" id="peBtnPrint" style="display:none;" onclick="if(PE.userId && !peLoading && !this.disabled) { peRecalc(); window.print(); }">🖨 Imprimer / enregistrer en PDF</button>
         <span id="peSaveStatus" style="font-size:12px;color:var(--success);font-weight:600;display:none;">✓ Sauvegardé</span>
     </div>
 
@@ -372,12 +372,21 @@ function computeAll() {
 }
 
 // ── Chargement données ──
+let peLoading = false;
+
 async function peLoad() {
+    if (peLoading) return;
     const selectUser = document.getElementById('peSelectUser');
     const uid = selectUser.value;
     const libelleSalarie = selectUser.selectedOptions[0]?.textContent.trim() || '';
     const annee = parseInt(document.getElementById('peSelectAnnee').value);
     if(!uid) { alert('Veuillez sélectionner un salarié.'); return; }
+
+    peLoading = true;
+    const boutonImprimer = document.getElementById('peBtnPrint');
+    boutonImprimer.disabled = true;
+    const boutonCharger = document.querySelector('.pe-btn-load:not(.pe-btn-print)');
+    if (boutonCharger) boutonCharger.disabled = true;
 
     PE.userId = parseInt(uid);
     PE.annee = annee;
@@ -421,13 +430,24 @@ async function peLoad() {
         document.getElementById('peMain').style.display = 'block';
         document.getElementById('peBtnSave').style.display = 'inline-block';
         document.getElementById('peBtnPrint').style.display = 'inline-block';
+        boutonImprimer.disabled = false;
         document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
         document.getElementById('pePrintIdentity').textContent = libelleSalarie + ' — ' + annee;
 
         renderAll();
     } catch(e) {
         console.error(e);
+        // Aucune impression ni sauvegarde d'un état partiellement chargé.
+        boutonImprimer.disabled = true;
+        document.getElementById('peBtnSave').style.display = 'none';
+        document.getElementById('peMain').style.display = 'none';
+        PE.userId = null;
+        PE.analyse = null;
+        PE.calc = null;
         alert('Erreur lors du chargement des données.');
+    } finally {
+        peLoading = false;
+        if (boutonCharger) boutonCharger.disabled = false;
     }
 }
 
