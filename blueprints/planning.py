@@ -209,6 +209,17 @@ def planning_theorique():
         ORDER BY type_alternance, type_periode, date_debut_validite DESC
     ''', (user_id_cible,)).fetchall()
 
+    # Pour l'impression : seulement la dernière version déjà en vigueur de
+    # chaque combinaison période/alternance (ni futur ni ancien historique).
+    aujourd_hui = datetime.now().strftime('%Y-%m-%d')
+    plannings_impression_ids = set()
+    combinaisons = set()
+    for p in plannings:
+        cle = (p['type_periode'], p['type_alternance'])
+        if p['date_debut_validite'] <= aujourd_hui and cle not in combinaisons:
+            combinaisons.add(cle)
+            plannings_impression_ids.add(p['id'])
+
     # Récupérer les dates de référence alternance
     references = conn.execute('''
         SELECT * FROM alternance_reference
@@ -232,6 +243,7 @@ def planning_theorique():
 
     return render_template('planning_theorique.html',
                          plannings=plannings,
+                         plannings_impression_ids=plannings_impression_ids,
                          references=references,
                          semaine_actuelle=semaine_actuelle,
                          date_actuelle=datetime.now().strftime('%Y-%m-%d'),
