@@ -117,6 +117,25 @@
         .pe-tab { padding: 8px 10px; font-size: 12px; }
         .pe-config-grid { grid-template-columns: 1fr 1fr; }
     }
+
+    /* Export PDF via la boîte d'impression du navigateur : imprime le contenu
+       du simulateur actuellement calculé, même avec modifications non sauvegardées. */
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body * { visibility: hidden !important; }
+      .pe-container, .pe-container * { visibility: visible !important; }
+      .pe-container { position: absolute !important; inset: 0 auto auto 0 !important;
+          width: 100% !important; max-width: none !important; padding:0 !important; }
+      .pe-selector, .pe-tabs, .pe-btn-save, .pe-btn-print { display: none !important; }
+      .pe-print-ident { display:block !important; text-align:center; margin:5mm 0; font-weight:700; }
+      #peMain { display: block !important; }
+      .pe-tab-panel { display: block !important; }
+      .pe-tab-content { border: none !important; padding: 0 !important; }
+      .pe-card { break-inside: avoid; box-shadow: none !important; }
+      .pe-tab-panel + .pe-tab-panel { break-before: page; }
+      input, select { border: none !important; background: transparent !important; }
+      .pe-container { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
 </style>
 
 <div class="pe-container">
@@ -124,6 +143,7 @@
         <div class="pe-label">Module Enfance</div>
         <h2>Simulateur Planning Annualisé</h2>
         <div class="pe-sub" id="peSubtitle">Année civile</div>
+        <div class="pe-print-ident" id="pePrintIdentity" style="display:none;"></div>
     </div>
 
     <!-- Sélection salarié / année -->
@@ -149,6 +169,7 @@
         </div>
         <button class="pe-btn-load" onclick="peLoad()">Charger</button>
         <button class="pe-btn-save" id="peBtnSave" onclick="peSave()" style="display:none;">💾 Sauvegarder</button>
+        <button type="button" class="pe-btn-load pe-btn-print" id="peBtnPrint" style="display:none;" onclick="if(PE.userId && !peLoading && !this.disabled) { peRecalc(); window.print(); }">🖨 Imprimer / enregistrer en PDF</button>
         <span id="peSaveStatus" style="font-size:12px;color:var(--success);font-weight:600;display:none;">✓ Sauvegardé</span>
     </div>
 
@@ -351,10 +372,21 @@ function computeAll() {
 }
 
 // ── Chargement données ──
+let peLoading = false;
+
 async function peLoad() {
-    const uid = document.getElementById('peSelectUser').value;
+    if (peLoading) return;
+    const selectUser = document.getElementById('peSelectUser');
+    const uid = selectUser.value;
+    const libelleSalarie = selectUser.selectedOptions[0]?.textContent.trim() || '';
     const annee = parseInt(document.getElementById('peSelectAnnee').value);
     if(!uid) { alert('Veuillez sélectionner un salarié.'); return; }
+
+    peLoading = true;
+    const boutonImprimer = document.getElementById('peBtnPrint');
+    boutonImprimer.disabled = true;
+    const boutonCharger = document.querySelector('.pe-btn-load:not(.pe-btn-print)');
+    if (boutonCharger) boutonCharger.disabled = true;
 
     PE.userId = parseInt(uid);
     PE.annee = annee;
@@ -397,12 +429,25 @@ async function peLoad() {
 
         document.getElementById('peMain').style.display = 'block';
         document.getElementById('peBtnSave').style.display = 'inline-block';
+        document.getElementById('peBtnPrint').style.display = 'inline-block';
+        boutonImprimer.disabled = false;
         document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
+        document.getElementById('pePrintIdentity').textContent = libelleSalarie + ' — ' + annee;
 
         renderAll();
     } catch(e) {
         console.error(e);
+        // Aucune impression ni sauvegarde d'un état partiellement chargé.
+        boutonImprimer.disabled = true;
+        document.getElementById('peBtnSave').style.display = 'none';
+        document.getElementById('peMain').style.display = 'none';
+        PE.userId = null;
+        PE.analyse = null;
+        PE.calc = null;
         alert('Erreur lors du chargement des données.');
+    } finally {
+        peLoading = false;
+        if (boutonCharger) boutonCharger.disabled = false;
     }
 }
 

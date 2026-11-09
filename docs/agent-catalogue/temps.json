@@ -17,11 +17,13 @@
         "Définir jusqu’à trois créneaux matin, après-midi et soir pour chacun des jours lundi à vendredi, avec total hebdomadaire calculé.",
         "Choisir un planning fixe ou une alternance semaine_1/semaine_2 avec lundi de référence et consulter la semaine actuelle.",
         "Consulter tout l’historique et supprimer un planning saisi par erreur.",
-        "La sélection à une date utilise le planning applicable le plus récent ; repli sur planning fixe si alternance absente et sur période scolaire si aucun planning vacances."
+        "La sélection à une date utilise le planning applicable le plus récent ; repli sur planning fixe si alternance absente et sur période scolaire si aucun planning vacances.",
+        "Télécharger en PDF les plannings théoriques en vigueur à la date d'impression, en excluant les versions futures et remplacées et en respectant séparément le mode fixe/alterné de chaque période."
       ],
       "entry_points": [
         "planning_bp.planning_theorique",
-        "planning_bp.supprimer_planning"
+        "planning_bp.supprimer_planning",
+        "planning_bp.exporter_plannings_actifs_pdf"
       ],
       "implementation": {
         "route_files": [
@@ -48,7 +50,8 @@
           "tests/test_planning.py",
           "tests/test_equipe_responsable.py",
           "tests/test_creneau_soir.py",
-          "tests/test_fiches_versions.py"
+          "tests/test_fiches_versions.py",
+          "tests/test_export_plannings_actifs_pdf.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md"
@@ -66,7 +69,8 @@
       "invariants": [
         "Un planning créé est une nouvelle ligne historisée, pas une réécriture silencieuse des horaires passés.",
         "Une référence d’alternance doit être un lundi ; la suppression du dernier planning alterné retire les références d’alternance du salarié.",
-        "Une date rétroactive peut modifier les calculs de fiches et de soldes ; ConnexionFiches refuse toute modification du contenu d’une fiche verrouillée et rend obsolètes les accords ouverts affectés."
+        "Une date rétroactive peut modifier les calculs de fiches et de soldes ; ConnexionFiches refuse toute modification du contenu d’une fiche verrouillée et rend obsolètes les accords ouverts affectés.",
+        "L'export PDF est accessible uniquement pour le salarié courant ou un salarié autorisé par le contrôle de périmètre des plannings ; il ne modifie aucune donnée."
       ],
       "extension_points": [
         "Réutiliser get_planning_valide_a_date et get_heures_theoriques_jour pour toute nouvelle simulation portant sur les horaires de référence.",
@@ -1268,7 +1272,8 @@
         "Chargement des vacances et fériés déjà configurés dans l’application.",
         "Analyse civile annuelle avec jours ouvrés et semaines équivalentes, volumes par activité et journée, écart à la cible et heures restant à répartir.",
         "Alertes calculées côté navigateur sur journées longues, volumes hebdomadaires, accompagnement scolaire tardif et équilibre annuel.",
-        "Sauvegarde/rechargement du JSON d’hypothèses avec auteur et date de mise à jour."
+        "Sauvegarde/rechargement du JSON d’hypothèses avec auteur et date de mise à jour.",
+        "Imprimer la simulation chargée et actuellement calculée, ou l'enregistrer en PDF par la boîte d'impression du navigateur, y compris avant sauvegarde des hypothèses ; le PDF identifie le salarié et l'année."
       ],
       "entry_points": [
         "planning_enfance_bp.planning_enfance",
@@ -1314,7 +1319,8 @@
       "invariants": [
         "Les résultats sont calculés dans analyzeYear/computeAll du template ; le serveur persiste les hypothèses et ne certifie pas le calcul.",
         "Cible actuelle : heures hebdomadaires × 52, moins CP valorisés à heures hebdomadaires/5 et heures des fériés selon planning.",
-        "Les CP réduisent proportionnellement les heures hors vacances ; accompagnement scolaire exclu en juillet/août ; semaines équivalentes calculées en jours/5."
+        "Les CP réduisent proportionnellement les heures hors vacances ; accompagnement scolaire exclu en juillet/août ; semaines équivalentes calculées en jours/5.",
+        "L'impression de la simulation repose sur le rendu navigateur des calculs courants ; elle ne sauvegarde pas et ne certifie pas les hypothèses."
       ],
       "extension_points": [
         "Étendre la configuration annuelle existante pour un nouveau besoin de simulation enfance.",
