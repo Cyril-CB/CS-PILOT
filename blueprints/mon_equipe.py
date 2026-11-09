@@ -571,6 +571,29 @@ def mon_equipe():
     peut_voir_presences_horaires = session.get('profil') in ['responsable', 'comptable']
     masquer_motifs_absence = _doit_masquer_motifs_absence()
 
+    # Option locale au secteur, totalement indépendante du planning théorique.
+    lieux_actifs = False
+    lieux_affectations = {}
+    if secteur_id is not None:
+        row_lieux = conn.execute(
+            'SELECT actif FROM equipe_lieux_options WHERE secteur_id = ?', (secteur_id,)
+        ).fetchone()
+        lieux_actifs = bool(row_lieux['actif']) if row_lieux else False
+        if lieux_actifs:
+            ids = [m['id'] for m in membres]
+            if ids:
+                placeholders = ','.join('?' for _ in ids)
+                for aff in conn.execute(
+                    f'''SELECT user_id, jour, moment, lieu FROM equipe_lieux_affectations
+                        WHERE secteur_id = ? AND user_id IN ({placeholders})''',
+                    (secteur_id, *ids)
+                ).fetchall():
+                    lieux_affectations[(aff['user_id'], aff['jour'], aff['moment'])] = aff['lieu']
+            for ligne in grille:
+                for i, jour in enumerate(ligne['jours']):
+                    jour['lieu_matin'] = lieux_affectations.get((ligne['id'], i, 'matin'), '')
+                    jour['lieu_aprem'] = lieux_affectations.get((ligne['id'], i, 'aprem'), '')
+
     # Presences par tranche horaire
     if peut_voir_presences_horaires and is_creche:
         presences_horaires = _calculer_presences_creche(grille)
@@ -637,6 +660,9 @@ def mon_equipe():
                             masquer_motifs_absence=masquer_motifs_absence,
                             libelle_absence_masquee=LIBELLE_ABSENCE_MASQUEE,
                             secteur_id=secteur_id,
+                            lieux_actifs=lieux_actifs,
+                            lieux_affectations={f'{uid}:{jour}:{moment}': lieu for (uid, jour, moment), lieu in lieux_affectations.items()},
+                            peut_gerer_lieux=session.get('profil') == 'responsable' and secteur_id is not None,
                             today=today)
 
 
@@ -695,3 +721,54 @@ def api_save_frequentation():
     except Exception as e:
         conn.close()
         return jsonify({'error': str(e)}), 500
+
+
+@mon_equipe_bp.route('/api/mon_equipe/lieux', methods=['POST'])
+@login_required
+def api_lieux_intervention():
+    """Activation et saisie réservées au responsable de son secteur."""
+    if session.get('profil') != 'responsable':
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    conn = get_db()
+    try:
+        user = conn.execute('SELECT secteur_id FROM users WHERE id = ? AND actif = 1',
+                            (session['user_id'],)).fetchone()
+        if not user or user['secteur_id'] is None:
+            return jsonify({'error': 'Secteur non défini'}), 403
+        secteur_id = user['secteur_id']
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict) or type(data.get('actif')) is not bool:
+            return jsonify({'error': 'Activation invalide'}), 400
+        actif = data['actif']
+        affectations = data.get('affectations', [])
+        if not isinstance(affectations, list) or len(affectations) > 500:
+            return jsonify({'error': 'Liste d affectations invalide'}), 400
+        membres = {m['id'] for m in _get_equipe(conn, session['user_id'])}
+        valides = {}
+        for a in affectations:
+            if not isinstance(a, dict) or type(a.get('user_id')) is not int or type(a.get('jour')) is not int:
+                return jsonify({'error': 'Affectation invalide'}), 400
+            uid, jour, moment = a['user_id'], a['jour'], a.get('moment')
+            lieu = a.get('lieu')
+            if uid not in membres or jour not in range(5) or moment not in ('matin', 'aprem') or not isinstance(lieu, str) or len(lieu.strip()) > 100:
+                return jsonify({'error': 'Affectation hors équipe ou invalide'}), 400
+            valides[(uid, jour, moment)] = lieu.strip()
+        conn.execute('''INSERT INTO equipe_lieux_options(secteur_id, actif, modifie_par)
+            VALUES (?, ?, ?) ON CONFLICT(secteur_id) DO UPDATE SET
+            actif=excluded.actif, modifie_par=excluded.modifie_par,
+            updated_at=CURRENT_TIMESTAMP''', (secteur_id, int(actif), session['user_id']))
+        # L'activation seule ne supprime jamais les données habituelles.
+        if actif:
+            for (uid, jour, moment), lieu in valides.items():
+                if lieu:
+                    conn.execute('''INSERT INTO equipe_lieux_affectations(secteur_id,user_id,jour,moment,lieu)
+                        VALUES(?,?,?,?,?) ON CONFLICT(secteur_id,user_id,jour,moment)
+                        DO UPDATE SET lieu=excluded.lieu''', (secteur_id,uid,jour,moment,lieu))
+                else:
+                    conn.execute('''DELETE FROM equipe_lieux_affectations
+                        WHERE secteur_id=? AND user_id=? AND jour=? AND moment=?''',
+                        (secteur_id,uid,jour,moment))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
