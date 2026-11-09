@@ -51,6 +51,11 @@
     </div>
     {% endif %}
     
+    <div style="margin:0.75rem 0 1.25rem;">
+        <a class="btn btn-secondary" href="{{ url_for('planning_bp.exporter_plannings_actifs_pdf', user_id=user_id_cible) }}">📄 Télécharger le PDF des plannings en vigueur</a>
+        <p class="help-text">Seules les versions en vigueur aujourd'hui sont imprimées, sans historique ni plannings futurs.</p>
+    </div>
+
     {% if plannings %}
     <div class="section">
         <h2>Historique des plannings</h2>
