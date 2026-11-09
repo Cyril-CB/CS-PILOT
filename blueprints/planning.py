@@ -1,8 +1,14 @@
 """
 Blueprint planning_bp.
 """
-from flask import Blueprint, render_template, request, redirect, url_for, session, flash
-from datetime import datetime
+from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file
+from datetime import datetime, timedelta
+from io import BytesIO
+from xml.sax.saxutils import escape
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from database import get_db
 from utils import login_required, calculer_heures, get_semaine_alternance, est_dans_equipe_responsable
 
@@ -78,6 +84,97 @@ def _redirect_planning(user_id_cible):
     if user_id_cible and user_id_cible != session['user_id']:
         return redirect(url_for('planning_bp.planning_theorique', user_id=user_id_cible))
     return redirect(url_for('planning_bp.planning_theorique'))
+
+
+
+@planning_bp.route('/planning_theorique/pdf')
+@login_required
+def exporter_plannings_actifs_pdf():
+    """PDF des seuls plannings en vigueur a la date d'impression.
+
+    Les versions futures et les versions historiques sont exclues.
+    L'alternance en cours conserve ses deux semaines lorsque configuree.
+    """
+    uid = request.args.get('user_id', default=session['user_id'], type=int)
+    conn = get_db()
+    try:
+        if not _salarie_accessible(conn, uid):
+            return ('Acces refuse', 403)
+        user = conn.execute('SELECT nom, prenom FROM users WHERE id=?', (uid,)).fetchone()
+        if not user:
+            return ('Salarie introuvable', 404)
+        aujourdhui = datetime.now().date()
+        date_str = aujourdhui.isoformat()
+        # Alternance en cours : les deux semaines sont actives, mais ne pas
+        # charger un planning dont la validite ne demarre que dans le futur.
+        semaine_courante = get_semaine_alternance(uid, date_str, conn=conn)
+        types = ('periode_scolaire', 'vacances')
+        alternances = ('fixe',) if semaine_courante == 'fixe' else ('semaine_1','semaine_2')
+        actifs = []
+        for periode in types:
+            for alternance in alternances:
+                if alternance == 'fixe':
+                    row = conn.execute("""
+                        SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
+                        AND (type_alternance IS NULL OR type_alternance='fixe')
+                        AND date_debut_validite<=?
+                        ORDER BY date_debut_validite DESC,id DESC LIMIT 1
+                    """, (uid,periode,date_str)).fetchone()
+                else:
+                    row = conn.execute("""
+                        SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
+                        AND type_alternance=? AND date_debut_validite<=?
+                        ORDER BY date_debut_validite DESC,id DESC LIMIT 1
+                    """, (uid,periode,alternance,date_str)).fetchone()
+                    if not row:
+                        row = conn.execute("""
+                            SELECT * FROM planning_theorique WHERE user_id=? AND type_periode=?
+                            AND (type_alternance IS NULL OR type_alternance='fixe')
+                            AND date_debut_validite<=?
+                            ORDER BY date_debut_validite DESC,id DESC LIMIT 1
+                        """, (uid,periode,date_str)).fetchone()
+                if row and row['id'] not in {p['id'] for p in actifs}:
+                    actifs.append(dict(row))
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), rightMargin=30,
+                                leftMargin=30, topMargin=30, bottomMargin=30)
+        styles = getSampleStyleSheet()
+        elements = [
+            Paragraph('Plannings theoriques en vigueur', styles['Title']),
+            Paragraph(escape(f"{user['prenom']} {user['nom']} - situation au {aujourdhui.strftime('%d/%m/%Y')}"), styles['Normal']),
+            Spacer(1, 12)
+        ]
+        jours = [('lundi','Lundi'),('mardi','Mardi'),('mercredi','Mercredi'),
+                 ('jeudi','Jeudi'),('vendredi','Vendredi')]
+        for p in actifs:
+            libelle = 'Periode scolaire' if p['type_periode']=='periode_scolaire' else 'Vacances'
+            alternance = p['type_alternance'] or 'fixe'
+            elements.append(Paragraph(escape(f"{libelle} - {alternance} (depuis le {p['date_debut_validite']})"), styles['Heading2']))
+            lignes = [['Jour','Matin','Apres-midi','Troisieme creneau']]
+            for day,label in jours:
+                slots = []
+                for prefix in ('matin','aprem','soir'):
+                    deb = p[f'{day}_{prefix}_debut'] or ''
+                    fin = p[f'{day}_{prefix}_fin'] or ''
+                    slots.append(f"{deb} - {fin}" if deb or fin else '-')
+                lignes.append([label,*slots])
+            tableau = Table(lignes, colWidths=[125,190,190,190],repeatRows=1)
+            tableau.setStyle(TableStyle([
+                ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e8eef5')),
+                ('GRID',(0,0),(-1,-1),0.3,colors.HexColor('#cbd5e1')),
+                ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+                ('BOTTOMPADDING',(0,0),(-1,-1),8),
+                ('TOPPADDING',(0,0),(-1,-1),8)
+            ]))
+            elements.extend([tableau,Spacer(1,16)])
+        if not actifs:
+            elements.append(Paragraph('Aucun planning actuellement en vigueur.', styles['Normal']))
+        doc.build(elements)
+        buffer.seek(0)
+        return send_file(buffer, mimetype='application/pdf', as_attachment=True,
+                         download_name=f'plannings_actifs_{uid}_{date_str}.pdf')
+    finally:
+        conn.close()
 
 
 @planning_bp.route('/planning_theorique', methods=['GET', 'POST'])
