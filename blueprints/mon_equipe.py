@@ -529,6 +529,62 @@ def _construire_grille(conn, membres, lundi):
     return grille
 
 
+def _enrichir_lieux(conn, grille):
+    ids = [r['id'] for r in grille]
+    if not ids:
+        return
+    placeholders = ','.join('?' for _ in ids)
+    rows = conn.execute(f"""SELECT a.user_id,a.jour,a.demi_jour,a.lieu
+       FROM lieux_equipe_affectations a
+       JOIN lieux_equipe_options o ON o.responsable_id=a.responsable_id
+       WHERE o.actif=1 AND a.user_id IN ({placeholders})""", ids).fetchall()
+    d = {(r['user_id'],r['jour'],r['demi_jour']):r['lieu'] for r in rows}
+    for row in grille:
+        for i,jour in enumerate(row['jours']):
+            jour['lieu_matin'] = d.get((row['id'],i,'matin'))
+            jour['lieu_aprem'] = d.get((row['id'],i,'aprem'))
+
+
+@mon_equipe_bp.route('/mon_equipe/lieux', methods=['POST'])
+@login_required
+def gerer_lieux():
+    if session.get('profil') != 'responsable':
+        return jsonify({'error': 'Acces refuse'}), 403
+    from utils import est_dans_equipe_responsable
+    rid = session['user_id']
+    conn = get_db()
+    try:
+        if request.form.get('action') == 'activation':
+            enabled = int(request.form.get('actif') == '1')
+            conn.execute("""INSERT INTO lieux_equipe_options(responsable_id,actif)
+                VALUES(?,?) ON CONFLICT(responsable_id) DO UPDATE SET actif=excluded.actif""",
+                (rid,enabled))
+        elif request.form.get('action') == 'affectation':
+            enabled = conn.execute("SELECT 1 FROM lieux_equipe_options WHERE responsable_id=? AND actif=1", (rid,)).fetchone()
+            uid = request.form.get('user_id', type=int)
+            day = request.form.get('jour', type=int)
+            half = request.form.get('demi_jour')
+            place = request.form.get('lieu','').strip()
+            valid_user = uid is not None and conn.execute("SELECT 1 FROM users WHERE id=? AND actif=1 AND profil != 'prestataire'",(uid,)).fetchone()
+            if not enabled or not valid_user or not est_dans_equipe_responsable(conn,rid,uid):
+                return jsonify({'error':'Collaborateur non autorise ou option inactive'}),403
+            if day not in range(5) or half not in ('matin','aprem') or len(place)>100:
+                return jsonify({'error':'Champs invalides'}),400
+            if place:
+                conn.execute("""INSERT INTO lieux_equipe_affectations(responsable_id,user_id,jour,demi_jour,lieu)
+                    VALUES(?,?,?,?,?) ON CONFLICT(responsable_id,user_id,jour,demi_jour)
+                    DO UPDATE SET lieu=excluded.lieu""",(rid,uid,day,half,place))
+            else:
+                conn.execute("""DELETE FROM lieux_equipe_affectations WHERE
+                    responsable_id=? AND user_id=? AND jour=? AND demi_jour=?""",(rid,uid,day,half))
+        else:
+            return jsonify({'error':'Action invalide'}),400
+        conn.commit()
+    finally:
+        conn.close()
+    return redirect(url_for('mon_equipe_bp.mon_equipe'))
+
+
 @mon_equipe_bp.route('/mon_equipe')
 @login_required
 def mon_equipe():
@@ -554,6 +610,8 @@ def mon_equipe():
     conn = get_db()
     membres = _get_equipe(conn, session['user_id'])
     grille = _construire_grille(conn, membres, lundi)
+    _enrichir_lieux(conn, grille)
+    lieux_actifs = bool(conn.execute('SELECT 1 FROM lieux_equipe_options WHERE responsable_id=? AND actif=1', (session['user_id'],)).fetchone()) if session.get('profil') == 'responsable' else False
 
     # Nom et type du secteur
     user_row = conn.execute('''
