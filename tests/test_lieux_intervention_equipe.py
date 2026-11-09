@@ -69,3 +69,24 @@ def test_desactivation_masque_sans_effacer(app, resp_client, db, sample_users, s
     _login(auth_client, 'salarie_test', 'sal123')
     assert 'Angle 9' not in auth_client.get('/mon_equipe').get_data(as_text=True)
     assert db.execute('SELECT COUNT(*) AS n FROM equipe_lieux_affectations').fetchone()['n'] == 1
+
+
+def test_suppression_secteur_nettoie_les_lieux(admin_client, db, sample_users):
+    """Même sans FK activées, les deux tables restent sans orphelins."""
+    cur = db.execute("INSERT INTO secteurs(nom) VALUES ('Secteur à supprimer')")
+    ancien_secteur = cur.lastrowid
+    db.execute("""INSERT INTO equipe_lieux_options(secteur_id,actif,modifie_par)
+        VALUES(?,1,?)""", (ancien_secteur, sample_users['responsable_id']))
+    db.execute("""INSERT INTO equipe_lieux_affectations(secteur_id,user_id,jour,moment,lieu)
+        VALUES(?,?,0,'matin','Ancien lieu')""",
+        (ancien_secteur, sample_users['salarie_id']))
+    db.commit()
+    response = admin_client.post('/gestion_secteurs',
+        data={'action': 'supprimer', 'secteur_id': ancien_secteur},
+        follow_redirects=True)
+    assert response.status_code == 200
+    assert db.execute("SELECT 1 FROM secteurs WHERE id=?", (ancien_secteur,)).fetchone() is None
+    for table in ('equipe_lieux_options', 'equipe_lieux_affectations'):
+        assert db.execute(f"SELECT 1 FROM {table} WHERE secteur_id=?",
+                          (ancien_secteur,)).fetchone() is None
+    assert db.execute('PRAGMA foreign_key_check').fetchall() == []
