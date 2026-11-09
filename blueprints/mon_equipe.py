@@ -529,56 +529,56 @@ def _construire_grille(conn, membres, lundi):
     return grille
 
 
-def _enrichir_lieux(conn, grille):
-    ids = [r['id'] for r in grille]
-    if not ids:
-        return
-    placeholders = ','.join('?' for _ in ids)
-    rows = conn.execute(f"""SELECT a.user_id,a.jour,a.demi_jour,a.lieu
-       FROM lieux_equipe_affectations a
-       JOIN lieux_equipe_options o ON o.responsable_id=a.responsable_id
-       WHERE o.actif=1 AND a.user_id IN ({placeholders})""", ids).fetchall()
-    d = {(r['user_id'],r['jour'],r['demi_jour']):r['lieu'] for r in rows}
-    for row in grille:
-        for i,jour in enumerate(row['jours']):
-            jour['lieu_matin'] = d.get((row['id'],i,'matin'))
-            jour['lieu_aprem'] = d.get((row['id'],i,'aprem'))
-
-
 @mon_equipe_bp.route('/mon_equipe/lieux', methods=['POST'])
 @login_required
 def gerer_lieux():
+    """Formulaire simple, même stockage sectoriel que l'API JSON."""
     if session.get('profil') != 'responsable':
-        return jsonify({'error': 'Acces refuse'}), 403
-    from utils import est_dans_equipe_responsable
-    rid = session['user_id']
+        return jsonify({'error': 'Accès refusé'}), 403
     conn = get_db()
     try:
-        if request.form.get('action') == 'activation':
-            enabled = int(request.form.get('actif') == '1')
-            conn.execute("""INSERT INTO lieux_equipe_options(responsable_id,actif)
-                VALUES(?,?) ON CONFLICT(responsable_id) DO UPDATE SET actif=excluded.actif""",
-                (rid,enabled))
-        elif request.form.get('action') == 'affectation':
-            enabled = conn.execute("SELECT 1 FROM lieux_equipe_options WHERE responsable_id=? AND actif=1", (rid,)).fetchone()
+        current = conn.execute(
+            'SELECT secteur_id FROM users WHERE id=? AND actif=1',
+            (session['user_id'],)
+        ).fetchone()
+        if not current or current['secteur_id'] is None:
+            return jsonify({'error': 'Secteur introuvable'}), 403
+        sid = current['secteur_id']
+        action = request.form.get('action')
+        if action == 'activation':
+            actif = int(request.form.get('actif') == '1')
+            conn.execute("""INSERT INTO equipe_lieux_options(secteur_id,actif,modifie_par)
+                VALUES(?,?,?) ON CONFLICT(secteur_id) DO UPDATE SET
+                actif=excluded.actif,modifie_par=excluded.modifie_par,
+                updated_at=CURRENT_TIMESTAMP""", (sid,actif,session['user_id']))
+        elif action == 'affectation':
+            option = conn.execute(
+                'SELECT actif FROM equipe_lieux_options WHERE secteur_id=?',
+                (sid,)
+            ).fetchone()
+            if not option or not option['actif']:
+                return jsonify({'error': 'Option inactive'}), 403
             uid = request.form.get('user_id', type=int)
             day = request.form.get('jour', type=int)
-            half = request.form.get('demi_jour')
-            place = request.form.get('lieu','').strip()
-            valid_user = uid is not None and conn.execute("SELECT 1 FROM users WHERE id=? AND actif=1 AND profil != 'prestataire'",(uid,)).fetchone()
-            if not enabled or not valid_user or not est_dans_equipe_responsable(conn,rid,uid):
-                return jsonify({'error':'Collaborateur non autorise ou option inactive'}),403
-            if day not in range(5) or half not in ('matin','aprem') or len(place)>100:
-                return jsonify({'error':'Champs invalides'}),400
-            if place:
-                conn.execute("""INSERT INTO lieux_equipe_affectations(responsable_id,user_id,jour,demi_jour,lieu)
-                    VALUES(?,?,?,?,?) ON CONFLICT(responsable_id,user_id,jour,demi_jour)
-                    DO UPDATE SET lieu=excluded.lieu""",(rid,uid,day,half,place))
+            moment = request.form.get('demi_jour')
+            lieu = request.form.get('lieu', '').strip()
+            membres = {m['id'] for m in _get_equipe(conn, session['user_id'])}
+            if uid not in membres:
+                return jsonify({'error': 'Collaborateur hors équipe'}), 403
+            if day not in range(5) or moment not in ('matin','aprem') or len(lieu) > 100:
+                return jsonify({'error': 'Affectation invalide'}), 400
+            if lieu:
+                conn.execute("""INSERT INTO equipe_lieux_affectations
+                    (secteur_id,user_id,jour,moment,lieu) VALUES(?,?,?,?,?)
+                    ON CONFLICT(secteur_id,user_id,jour,moment)
+                    DO UPDATE SET lieu=excluded.lieu""",
+                    (sid,uid,day,moment,lieu))
             else:
-                conn.execute("""DELETE FROM lieux_equipe_affectations WHERE
-                    responsable_id=? AND user_id=? AND jour=? AND demi_jour=?""",(rid,uid,day,half))
+                conn.execute("""DELETE FROM equipe_lieux_affectations WHERE
+                    secteur_id=? AND user_id=? AND jour=? AND moment=?""",
+                    (sid,uid,day,moment))
         else:
-            return jsonify({'error':'Action invalide'}),400
+            return jsonify({'error': 'Action invalide'}), 400
         conn.commit()
     finally:
         conn.close()
@@ -610,8 +610,6 @@ def mon_equipe():
     conn = get_db()
     membres = _get_equipe(conn, session['user_id'])
     grille = _construire_grille(conn, membres, lundi)
-    _enrichir_lieux(conn, grille)
-    lieux_actifs = bool(conn.execute('SELECT 1 FROM lieux_equipe_options WHERE responsable_id=? AND actif=1', (session['user_id'],)).fetchone()) if session.get('profil') == 'responsable' else False
 
     # Nom et type du secteur
     user_row = conn.execute('''
