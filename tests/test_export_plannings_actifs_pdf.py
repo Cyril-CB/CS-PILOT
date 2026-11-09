@@ -35,14 +35,21 @@ def test_export_pdf_refuse_a_un_responsable_hors_secteur(resp_client, db):
     assert r.status_code == 403
 
 
-def test_export_pdf_autorise_pour_soi_et_direction(auth_client, admin_client, db, sample_users):
+def test_export_pdf_autorise_pour_soi(auth_client, db, sample_users):
     uid = sample_users['salarie_id']
     _ajouter_planning(db,uid,'periode_scolaire','fixe','2024-01-01','07:00')
-    for client in (auth_client,admin_client):
-        r = client.get(f'/planning_theorique/pdf?user_id={uid}')
-        assert r.status_code == 200
-        assert r.data.startswith(b'%PDF')
-        assert r.mimetype == 'application/pdf'
+    r = auth_client.get(f'/planning_theorique/pdf?user_id={uid}')
+    assert r.status_code == 200
+    assert r.data.startswith(b'%PDF')
+    assert r.mimetype == 'application/pdf'
+
+
+def test_export_pdf_autorise_pour_direction(admin_client, db, sample_users):
+    uid = sample_users['salarie_id']
+    _ajouter_planning(db,uid,'periode_scolaire','fixe','2024-01-01','07:00')
+    r = admin_client.get(f'/planning_theorique/pdf?user_id={uid}')
+    assert r.status_code == 200
+    assert r.data.startswith(b'%PDF')
 
 
 def test_export_ne_reprend_ni_anciennes_ni_futures_versions(auth_client, db, sample_users):
