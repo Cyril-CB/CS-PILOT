@@ -123,6 +123,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0080', 'Messages de la direction aux salariés'),
     ('0081', 'Journée de solidarité annuelle'),
     ('0082', 'Annulations datées des récupérations validées'),
+    ('0083', 'Lieux d intervention dans Mon equipe'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -898,6 +899,10 @@ def _initialiser_schema(conn, neuve):
             UNIQUE(secteur_id, tranche)
         )
     ''')
+
+    # ===== Lieux d'intervention habituels (migration 0083) =====
+    from schema_equipe_lieux import creer_schema as creer_schema_equipe_lieux
+    creer_schema_equipe_lieux(conn)
 
     # ===== Tables subventions (migration 0016) =====
     cursor.execute('''

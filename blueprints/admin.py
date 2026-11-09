@@ -491,6 +491,12 @@ def gestion_secteurs():
                         (secteur_id,)).rowcount
                     conn.execute('DELETE FROM stagiaires_annonces_lectures WHERE secteur_id = ?',
                                  (secteur_id,))
+                    # La suppression d'un secteur doit aussi retirer ses lieux
+                    # habituels : foreign_keys n'est pas active sur ces connexions.
+                    conn.execute('DELETE FROM equipe_lieux_affectations WHERE secteur_id = ?',
+                                 (secteur_id,))
+                    conn.execute('DELETE FROM equipe_lieux_options WHERE secteur_id = ?',
+                                 (secteur_id,))
                     conn.execute('DELETE FROM secteurs WHERE id = ?', (secteur_id,))
                     conn.commit()
                     message = 'Secteur supprimé avec succès'

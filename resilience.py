@@ -115,6 +115,7 @@ TABLES_REQUISES = {
     '0080': ('messages_direction', 'messages_direction_lectures'),
     '0081': ('jours_feries',),
     '0082': ('recup_annulations',),
+    '0083': ('equipe_lieux_options', 'equipe_lieux_affectations'),
 }
 
 

@@ -7,6 +7,30 @@
     <h1>Mon equipe{% if secteur_nom %} <span style="font-weight: 400; font-size: 0.75em; color: var(--gray-500);">- {{ secteur_nom }}</span>{% endif %}</h1>
     <p class="subtitle">Planning hebdomadaire de l'equipe</p>
 
+    {% if session.profil == 'responsable' %}
+    <details style="margin:1rem 0;padding:0.75rem;border:1px solid var(--gray-200);border-radius:10px;">
+      <summary style="cursor:pointer;">📍 Lieux d'intervention — option facultative</summary>
+      <p>Répartition habituelle, sans incidence sur les horaires ni les vues individuelles.</p>
+      <form method="post" action="{{ url_for('mon_equipe_bp.gerer_lieux') }}" style="margin-bottom:1rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="activation">
+        <input type="hidden" name="actif" value="{{ '0' if lieux_actifs else '1' }}">
+        <button class="btn btn-secondary btn-sm" type="submit">{{ 'Désactiver' if lieux_actifs else 'Activer' }} les lieux</button>
+      </form>
+      {% if lieux_actifs %}
+      <form method="post" action="{{ url_for('mon_equipe_bp.gerer_lieux') }}" style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:end;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="action" value="affectation">
+        <label>Salarié <select name="user_id">{% for m in grille %}{% if m.id != session.user_id %}<option value="{{ m.id }}">{{ m.nom }} {{ m.prenom }}</option>{% endif %}{% endfor %}</select></label>
+        <label>Jour <select name="jour">{% for j in jours_header %}<option value="{{ loop.index0 }}">{{ j.nom }}</option>{% endfor %}</select></label>
+        <label>Période <select name="demi_jour"><option value="matin">Matin</option><option value="aprem">Après-midi</option></select></label>
+        <label>Lieu <input type="text" name="lieu" maxlength="100" placeholder="Ex. Angle 9"></label>
+        <button type="submit" class="btn btn-primary btn-sm">Enregistrer</button>
+      </form>
+      <small>Lieu vide + Enregistrer pour effacer. Les lieux restent identiques chaque semaine.</small>
+      {% endif %}
+    </details>
+    {% endif %}
     <!-- Navigation semaine -->
     <div class="week-nav">
         {% if semaine_offset > 0 %}
@@ -100,6 +124,9 @@
                 </div>
                 {% endif %}
 
+                 {% if jour.lieu_matin or jour.lieu_aprem %}
+                 <div style="font-size:0.72rem;margin-top:4px;overflow-wrap:anywhere;" title="Lieu habituel indicatif">📍 {% if jour.lieu_matin %}Matin : {{ jour.lieu_matin }}{% endif %}{% if jour.lieu_matin and jour.lieu_aprem %}<br>{% endif %}{% if jour.lieu_aprem %}Après-midi : {{ jour.lieu_aprem }}{% endif %}</div>
+                 {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -162,6 +189,9 @@
                         <span class="card-label">-</span>
                     </div>
                     {% endif %}
+                 {% if jour.lieu_matin or jour.lieu_aprem %}
+                 <div style="font-size:0.72rem;margin-top:4px;overflow-wrap:anywhere;" title="Lieu habituel indicatif">📍 {% if jour.lieu_matin %}Matin : {{ jour.lieu_matin }}{% endif %}{% if jour.lieu_matin and jour.lieu_aprem %}<br>{% endif %}{% if jour.lieu_aprem %}Après-midi : {{ jour.lieu_aprem }}{% endif %}</div>
+                 {% endif %}
                 </div>
                 {% endfor %}
             </div>

@@ -1038,10 +1038,13 @@
         "Grille lundi-vendredi : heures réelles, conforme, planning théorique de repli, absences, récupérations et fériés.",
         "Membres du secteur, rattachés directs et responsables externes supervisant ce secteur, avec contrat en cours.",
         "Comptage des présences par tranches horaires pour responsable/comptable ; variante crèche avec taux d’encadrement.",
-        "Masquage facultatif des motifs d’absence pour les salariés dans le rendu."
+        "Masquage facultatif des motifs d’absence pour les salariés dans le rendu.",
+        "Option facultative par secteur activable par le responsable : affectations habituelles par collaborateur, jour et demi-journée, consultables dans Mon équipe sur ordinateur et mobile, sans modification du planning théorique."
       ],
       "entry_points": [
-        "mon_equipe_bp.mon_equipe"
+        "mon_equipe_bp.mon_equipe",
+        "mon_equipe_bp.gerer_lieux",
+        "mon_equipe_bp.api_lieux_intervention"
       ],
       "implementation": {
         "route_files": [
@@ -1049,7 +1052,8 @@
         ],
         "service_files": [
           "utils.py",
-          "app_options.py"
+          "app_options.py",
+          "schema_equipe_lieux.py"
         ],
         "templates": [
           "templates/mon_equipe.html"
@@ -1063,19 +1067,23 @@
           "planning_theorique",
           "alternance_reference",
           "jours_feries",
-          "frequentation_creche"
+          "frequentation_creche",
+          "equipe_lieux_options",
+          "equipe_lieux_affectations"
         ],
         "tests": [
           "tests/test_equipe_responsable.py",
-          "tests/test_options.py"
+          "tests/test_options.py",
+          "tests/test_lieux_intervention_equipe.py"
         ],
         "docs": []
       },
       "access": {
-        "summary": "Connexion requise. Page accessible aux profils salarie, responsable et comptable ; directeur et prestataire refusés. L’équipe est déduite du compte connecté, sans sélection libre d’un autre secteur. Les tableaux de présence horaire sont réservés à responsable/comptable.",
+        "summary": "Connexion requise. Page accessible aux profils salarie, responsable et comptable ; directeur et prestataire refusés. L’équipe est déduite du compte connecté, sans sélection libre d’un autre secteur. Les tableaux de présence horaire sont réservés à responsable/comptable. Seul un responsable actif peut activer et modifier les lieux de son propre secteur ; tout membre visible dans Mon équipe consulte les affectations activées selon les droits de la vue.",
         "scope": "Secteur personnel, rattachés directs et responsables associés ; membres actifs ayant un contrat à la date actuelle.",
         "conditions": [
-          "Option mon_equipe_masquer_motifs_absence_salaries pour le masquage du rendu salarié."
+          "Option mon_equipe_masquer_motifs_absence_salaries pour le masquage du rendu salarié.",
+          "Option equipe_lieux_options.actif par secteur, désactivée en l'absence d'enregistrement."
         ],
         "sources": [
           "blueprints/mon_equipe.py",
@@ -1086,7 +1094,8 @@
       "invariants": [
         "Priorité de présentation : férié puis absence, puis ligne réelle, puis planning théorique en repli.",
         "Une personne n’est comptée qu’une fois par tranche lorsqu’un de ses créneaux la chevauche.",
-        "Ne pas transformer les horaires théoriques de repli en confirmation d’une présence réelle."
+        "Ne pas transformer les horaires théoriques de repli en confirmation d’une présence réelle.",
+        "Les lieux sont indicatifs, configurés indépendamment des heures et des plannings théoriques, et aucune modification de la saisie horaire n'est effectuée."
       ],
       "extension_points": [
         "Réutiliser _get_equipe et _construire_grille pour étendre cette vue d’équipe en conservant les contrôles de confidentialité."
