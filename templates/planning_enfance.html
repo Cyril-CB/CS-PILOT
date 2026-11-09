@@ -117,6 +117,23 @@
         .pe-tab { padding: 8px 10px; font-size: 12px; }
         .pe-config-grid { grid-template-columns: 1fr 1fr; }
     }
+.pe-print-only { display: none; }
+@media print {
+    @page { size: A4 landscape; margin: 12mm; }
+    body { background: white !important; }
+    body * { visibility: hidden !important; }
+    .pe-container, .pe-container * { visibility: visible !important; }
+    .pe-container { position: absolute; top: 0; left: 0; width: 100% !important; max-width: none; }
+    .pe-selector, .pe-tabs, .pe-btn-save, #peBtnPrint, #peSaveStatus { display: none !important; }
+    .pe-print-only { display: block !important; margin: 0 0 12px; font-size: 12px; }
+    .pe-tab-panel { display: block !important; page-break-before: always; }
+    #peTabConfig { display: none !important; }
+    #peTabVacances { page-break-before: auto; }
+    .pe-card, .pe-table tr { break-inside: avoid; }
+    .pe-tab-content, .pe-card, .pe-scard { box-shadow: none !important; }
+    .pe-table { width: 100%; }
+    .pe-table th, .pe-table td { font-size: 9px !important; padding: 4px !important; }
+}
 </style>
 
 <div class="pe-container">
@@ -148,12 +165,14 @@
             </select>
         </div>
         <button class="pe-btn-load" onclick="peLoad()">Charger</button>
+        <button type="button" class="pe-btn-load" id="peBtnPrint" onclick="pePrint()" style="display:none;">🖨️ Imprimer / PDF</button>
         <button class="pe-btn-save" id="peBtnSave" onclick="peSave()" style="display:none;">💾 Sauvegarder</button>
         <span id="peSaveStatus" style="font-size:12px;color:var(--success);font-weight:600;display:none;">✓ Sauvegardé</span>
     </div>
 
     <!-- Conteneur principal (masqué tant qu'aucun salarié sélectionné) -->
     <div id="peMain" style="display:none;">
+        <p id="pePrintWho" class="pe-print-only"></p>
 
         <!-- Summary cards -->
         <div class="pe-summary" id="peSummary"></div>
@@ -397,6 +416,7 @@ async function peLoad() {
 
         document.getElementById('peMain').style.display = 'block';
         document.getElementById('peBtnSave').style.display = 'inline-block';
+        document.getElementById('peBtnPrint').style.display = 'inline-block';
         document.getElementById('peSubtitle').textContent = `Année civile ${annee}`;
 
         renderAll();
@@ -961,6 +981,15 @@ function renderBilan() {
     </div>`;
 
     document.getElementById('peTabBilan').innerHTML = html;
+}
+
+// Impression de la simulation visible (sans sauvegarde ni modification du calcul).
+function pePrint() {
+    if (!PE.userId || !PE.calc) return;
+    const select = document.getElementById('peSelectUser');
+    const nom = select.options[select.selectedIndex]?.textContent.trim() || '';
+    document.getElementById('pePrintWho').textContent = nom + ' — Année ' + PE.annee + ' — Simulation en cours (non contractuelle)';
+    window.print(); // L'imprimante du navigateur permet aussi « Enregistrer au format PDF ».
 }
 
 // ── Init au chargement ──
