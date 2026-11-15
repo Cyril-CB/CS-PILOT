@@ -340,7 +340,6 @@ from blueprints.rh_statistiques import rh_statistiques_bp
 from blueprints.presence_effectif import presence_effectif_bp
 from blueprints.dashboard_responsable import dashboard_responsable_bp
 from blueprints.dashboard_comptable import dashboard_comptable_bp
-from blueprints.chatbot import chatbot_bp
 from blueprints.compte_resultat import compte_resultat_bp
 from blueprints.indicateurs_financiers import indicateurs_financiers_bp
 from blueprints.import_bi import import_bi_bp
@@ -406,7 +405,6 @@ app.register_blueprint(alsh_bp)
 app.register_blueprint(mise_a_jour_bp)
 app.register_blueprint(rh_statistiques_bp)
 app.register_blueprint(presence_effectif_bp)
-app.register_blueprint(chatbot_bp)
 app.register_blueprint(compte_resultat_bp)
 app.register_blueprint(indicateurs_financiers_bp)
 app.register_blueprint(import_bi_bp)
@@ -513,7 +511,6 @@ def inject_pending_counts():
     if 'user_id' not in session:
         return {
             'pending_count': 0,
-            'chatbot_enabled': False,
             'can_access_vue_ensemble_validation': False,
         }
 
@@ -552,13 +549,6 @@ def inject_pending_counts():
         else:
             count = 0
 
-        chatbot_on = False
-        try:
-            from utils import get_setting as _gs
-            chatbot_on = _gs('chatbot_model') is not None
-        except Exception:
-            pass
-
         delegation_validation = False
         try:
             row = conn.execute(
@@ -573,13 +563,11 @@ def inject_pending_counts():
 
         return {
             'pending_count': count,
-            'chatbot_enabled': chatbot_on,
             'can_access_vue_ensemble_validation': can_access_vue_ensemble_validation,
         }
     except Exception:
         return {
             'pending_count': 0,
-            'chatbot_enabled': False,
             'can_access_vue_ensemble_validation': False,
         }
     finally:

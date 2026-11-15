@@ -125,7 +125,7 @@ classique depuis « Mon espace ».
   - Budget simplifie : soldes de depart banque / caisse (avec date), entrees et sorties (date, montant, commentaire)
   - Bilan annuel imprimable reprenant l'ensemble des mouvements de l'annee selectionnee
 - Bandeau "Message du CSE a lire" en haut du tableau de bord (ouverture dans une fenetre, compatible mobile) ; le bandeau ne disparaît que si le salarié confirme « J'ai lu et ne souhaite plus voir le message », et ce choix est individuel
-- Tant que cette fenêtre est ouverte, le focus reste dans le dialogue, même si le chatbot tente de le déplacer ; la navigation habituelle reprend à sa fermeture.
+- Tant que cette fenêtre est ouverte, le focus reste dans le dialogue, même si un script tente de le déplacer ; la navigation habituelle reprend à sa fermeture.
 
 ### Messages de la direction
 
@@ -411,3 +411,10 @@ Les directeurs et comptables peuvent vérifier puis installer les nouveautés de
 **Mise à jour**. Le lancement supervisé prend en charge sauvegarde complète,
 dépendances, migrations, redémarrage et contrôle de disponibilité. Voir le
 [parcours de mise à jour et son activation](docs/mises-a-jour.md).
+
+### Fournisseurs IA
+
+Le catalogue des modèles et les paramètres d’appel sont documentés dans
+[Configuration des modèles IA](docs/modeles-ia.md). L’assistant flottant de
+questions sur les pages est retiré ; l’assistant RH et la pesée ALISFA restent
+accessibles dans leurs modules.

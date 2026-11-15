@@ -212,7 +212,7 @@
       "Entité ou période nouvelle : examiner résolveurs et intentions dans search_engine.py, puis les filtres de droits ; ne pas construire une URL arbitraire depuis le texte utilisateur.",
       "Capacité ajoutée : prévoir entrée accessible et vocabulaire précis si pertinent ; une API interne ou un service CLI n'impose pas une nouvelle page.",
       "Tester demandes naturelles et ambiguïtés par profil ; garder une distinction entre résultat vide, accès refusé, option désactivée et donnée absente.",
-      "Ne pas utiliser les prompts PAGE_CONTEXTS du chatbot comme catalogue de vérité : ils sont des textes d'aide pouvant différer du comportement effectif."
+      "Le catalogue fonctionnel ne remplace pas les contrôles des routes et des services."
     ]
   },
   "cross_cutting_sources": [

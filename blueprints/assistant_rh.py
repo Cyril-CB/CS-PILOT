@@ -64,7 +64,7 @@ def api_chat():
 
     data = request.get_json()
     messages = data.get('messages', [])
-    model = data.get('model', 'gpt-4o')
+    model = data.get('model', 'gpt-5.4')
 
     if not messages:
         return jsonify({'error': 'Aucun message'}), 400
