@@ -1,6 +1,7 @@
 """Agent personnel : droits réels, outils bornés et effacement effectif."""
 import importlib.util
 import json
+from datetime import date, timedelta
 from pathlib import Path
 import sqlite3
 import uuid
@@ -324,6 +325,59 @@ def test_outils_agenda_prive_et_pilotage_sans_recherche_metier(app, db, auth_cli
         assert 'Mon créneau personnel' in json.dumps(resultats, ensure_ascii=False)
         assert 'Réunion direction confidentielle' not in json.dumps(resultats, ensure_ascii=False)
         liberer(tour)
+
+
+def test_planificateur_rdv_hors_fenetre_ne_masquent_pas_les_taches(db, admin_client, sample_users, monkeypatch):
+    jour = date(2032, 6, 15)
+    monkeypatch.setattr('assistant_outils.aujourd_hui', lambda: jour)
+    # L'API crée aussi les blocs datés, mais laisse les rendez-vous à faire
+    # sans deadline : ils ne doivent pas consommer les huit places des tâches.
+    for decalage in [*range(-8, 0), *range(15, 23)]:
+        response = admin_client.post('/planificateur/api/tache', json={
+            'type': 'evenement', 'titre': f'Rendez-vous hors fenêtre {decalage}',
+            'date_fixe': (jour + timedelta(days=decalage)).isoformat(),
+            'heure_debut': '09:00', 'heure_fin': '10:00',
+        })
+        assert response.status_code == 200
+    attendues = {'Tâche sans échéance', 'Tâche en retard', 'Tâche dans quatorze jours'}
+    for titre, deadline, statut in [
+        ('Tâche sans échéance', None, 'a_faire'),
+        ('Tâche en retard', (jour - timedelta(days=1)).isoformat(), 'a_faire'),
+        ('Tâche dans quatorze jours', (jour + timedelta(days=14)).isoformat(), 'a_faire'),
+        ('Tâche plus lointaine', (jour + timedelta(days=15)).isoformat(), 'a_faire'),
+        ('Tâche terminée', None, 'fait'),
+    ]:
+        db.execute('''INSERT INTO planif_taches(user_id,type,titre,deadline,statut)
+            VALUES (?,'tache',?,?,?)''', (sample_users['directeur_id'], titre, deadline, statut))
+    db.commit()
+    with admin_client:
+        admin_client.get('/api/assistant/etat')
+        tour = reserver('Mon planificateur', 'gpt-5.5', str(uuid.uuid4()))
+        resultats, _ = consulter(tour, [{'nom': 'planificateur', 'arguments': {}}])
+        liberer(tour)
+    assert {e['titre'] for e in resultats[0]['elements']} == attendues
+
+
+@pytest.mark.parametrize('decalage', [0, 14])
+def test_planificateur_rdv_dans_fenetre_reste_date_et_unique(admin_client, monkeypatch, decalage):
+    jour = date(2032, 6, 15)
+    monkeypatch.setattr('assistant_outils.aujourd_hui', lambda: jour)
+    date_rdv = (jour + timedelta(days=decalage)).isoformat()
+    response = admin_client.post('/planificateur/api/tache', json={
+        'type': 'evenement', 'titre': 'Rendez-vous personnel', 'date_fixe': date_rdv,
+        'heure_debut': '10:00', 'heure_fin': '11:00',
+    })
+    assert response.status_code == 200
+    with admin_client:
+        admin_client.get('/api/assistant/etat')
+        tour = reserver('Mon planificateur', 'gpt-5.5', str(uuid.uuid4()))
+        resultats, sources = consulter(tour, [{'nom': 'planificateur', 'arguments': {}}])
+        liberer(tour)
+    elements = resultats[0]['elements']
+    assert len(elements) == 1
+    assert elements[0]['titre'] == 'Rendez-vous personnel'
+    assert elements[0]['detail'] == f'{date_rdv} · 10:00–11:00'
+    assert len(sources) == 1
 
 
 def test_priorites_reelles_ne_montrent_pas_une_autre_equipe(app, db, resp_client, sample_users):

@@ -25,7 +25,10 @@ Il n’y a pas de bascule automatique vers un autre fournisseur.
   recherche actuelle. Pour les salariés de Pilotage, recherche dans la carte de
   navigation autorisée uniquement ; aucune extension de la recherche métier.
 - **Priorités** : cartes du fil d’actions du profil et éléments de l’horizon.
-- **Planificateur** : blocs personnels sur quatorze jours et tâches à faire.
+- **Planificateur** : douze blocs personnels maximum, d’aujourd’hui à J+14 inclus.
+  Les rendez-vous remontent par leurs blocs datés et conservent leurs horaires.
+  Une liste distincte contient huit tâches à faire maximum, sans échéance ou
+  avec une échéance jusqu’à cette borne, y compris les tâches en retard.
 
 Les résultats sont bornés et datés. Un résultat vide ne prouve pas l’absence
 d’un dossier. Les liens de source proviennent du serveur. Le texte et le résumé

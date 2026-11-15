@@ -932,6 +932,7 @@
         "Page /assistant autonome, sans modification du menu ni de l’interface globale ; modèle choisi parmi ceux des fournisseurs déjà configurés.",
         "Accès direction, comptabilité, responsables et salariés dont le secteur est Pilotage (nom comparé après suppression des espaces extérieurs, sans distinction de casse). Prestataires externes exclus.",
         "Agent en deux appels JSON maximum : choix d’au plus trois consultations, puis réponse ; outils de recherche filtrée, priorités/horizon du profil et planificateur strictement personnel.",
+        "Planificateur : douze blocs datés maximum, d’aujourd’hui à J+14 inclus ; les rendez-vous conservent leurs horaires. Huit tâches à faire maximum, sans échéance ou avec échéance jusqu’à J+14, retards inclus ; les rendez-vous ne consomment pas ces places.",
         "Recherche métier seulement pour ses profils actuels ; les salariés du secteur Pilotage utilisent leur carte de navigation filtrée. Aucun accès métier supplémentaire accordé par le secteur.",
         "Sources et liens produits par le serveur, réponse affichée comme texte ; aucun HTML ni URL d’action fourni par le modèle n’est exécuté.",
         "Une conversation par utilisateur, vingt messages conservés et résumé de reprise borné ; expiration après trente jours sans mise à jour.",

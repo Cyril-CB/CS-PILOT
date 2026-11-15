@@ -93,7 +93,7 @@ def _planificateur(conn, user):
     resultat = [{'titre': r['titre'][:200], 'detail': f"{r['date']} · {r['heure_debut']}–{r['heure_fin']}",
                  'lien': url_for('planificateur_bp.planificateur')} for r in rows]
     taches = conn.execute('''SELECT titre,deadline FROM planif_taches WHERE user_id=?
-        AND statut='a_faire' AND (deadline IS NULL OR deadline='' OR deadline<=?)
+        AND type='tache' AND statut='a_faire' AND (deadline IS NULL OR deadline='' OR deadline<=?)
         ORDER BY COALESCE(deadline,'9999'),id LIMIT 8''', (user['id'], fin)).fetchall()
     resultat.extend({'titre': r['titre'][:200], 'detail': 'Tâche à faire · échéance : ' + (r['deadline'] or 'non fixée'),
                      'lien': url_for('planificateur_bp.planificateur')} for r in taches)
