@@ -306,6 +306,7 @@ from blueprints.planning_enfance import planning_enfance_bp
 from blueprints.pesee_alisfa import pesee_alisfa_bp
 from blueprints.api_keys import api_keys_bp
 from blueprints.assistant_rh import assistant_rh_bp
+from blueprints.assistant import assistant_bp
 from blueprints.backup import backup_bp
 from blueprints.administration import administration_bp
 from blueprints.securite import securite_bp
@@ -373,6 +374,7 @@ app.register_blueprint(planning_enfance_bp)
 app.register_blueprint(pesee_alisfa_bp)
 app.register_blueprint(api_keys_bp)
 app.register_blueprint(assistant_rh_bp)
+app.register_blueprint(assistant_bp)
 app.register_blueprint(backup_bp)
 app.register_blueprint(administration_bp)
 app.register_blueprint(securite_bp)

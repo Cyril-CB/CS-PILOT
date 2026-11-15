@@ -418,3 +418,11 @@ Le catalogue des modèles et les paramètres d’appel sont documentés dans
 [Configuration des modèles IA](docs/modeles-ia.md). L’assistant flottant de
 questions sur les pages est retiré ; l’assistant RH et la pesée ALISFA restent
 accessibles dans leurs modules.
+
+### Assistant personnel — première version
+
+La page directe `/assistant` propose un dialogue avec les modèles configurés,
+des consultations de CSPILOT et une petite mémoire personnelle. Elle est ouverte
+à la direction, la comptabilité, aux responsables et aux salariés du secteur
+Pilotage, dans leurs périmètres actuels. Les menus restent inchangés.
+[Accès, mémoire, limites et fonctionnement](docs/assistant-personnel.md).
