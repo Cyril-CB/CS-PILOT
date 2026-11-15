@@ -28,13 +28,14 @@
 
     <div class="flx-recherche">
         <div class="flx-recherche-boite">
-            <div class="flx-barre" id="flxBarre">
+            <form class="flx-barre" id="flxBarre" role="search" autocomplete="off" onsubmit="return false;">
                 <span class="flx-barre-icone">⌕</span>
-                <input type="text" id="flxChamp" autocomplete="off" spellcheck="false"
+                <input type="search" id="flxChamp" name="cspilot_navigation_query"
+                       autocomplete="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true"
                        aria-label="Rechercher ou naviguer"
                        placeholder="{% if nav_recherche_globale %}Que voulez-vous faire ? Tapez n'importe où…{% else %}Où voulez-vous aller ? Tapez n'importe où…{% endif %}">
                 <kbd class="flx-kbd">Ctrl K</kbd>
-            </div>
+            </form>
         </div>
     </div>
 

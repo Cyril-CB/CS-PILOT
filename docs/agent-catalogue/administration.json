@@ -526,7 +526,8 @@
         "Réglage global openai_reasoning_effort parmi low, medium, high et xhigh ; défaut medium.",
         "Helpers partagés pour résoudre fournisseur/modèle et adapter les paramètres des modèles de raisonnement OpenAI et des modèles Anthropic ; compatibilité avec anciens identifiants persistés.",
         "Catalogue OpenAI généraliste depuis GPT-5.4, sans mini ni Astra ; Claude Sonnet/Opus/Haiku 5.5, sans Fable ; Groq GPT-OSS 120B et Qwen 3.8 27B (préversion).",
-        "Paramètres de raisonnement Groq propres à chaque modèle ; extraction des blocs texte Anthropic après les éventuels blocs thinking."
+        "Paramètres de raisonnement Groq propres à chaque modèle ; extraction des blocs texte Anthropic après les éventuels blocs thinking.",
+        "Saisie des clés API masquée visuellement dans des champs texte distincts des mots de passe de connexion, avec un formulaire et des indications anti-autoremplissage propres à chaque fournisseur."
       ],
       "entry_points": [
         "api_keys_bp.gestion_cles_api",
@@ -551,7 +552,8 @@
         "tests": [
           "tests/test_administration_acces.py",
           "tests/test_ai_models.py",
-          "tests/test_chatbot.py"
+          "tests/test_chatbot.py",
+          "tests/test_autofill_ia.py"
         ],
         "docs": [
           "docs/modeles-ia.md"

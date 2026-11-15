@@ -32,3 +32,9 @@ Références officielles :
 - [Claude, catalogue et identifiants](https://platform.claude.com/docs/en/models/overview)
 - [Groq, modèles](https://console.groq.com/docs/models)
 - [Groq, paramètres de raisonnement](https://console.groq.com/docs/reasoning)
+
+Les clés API sont saisies dans des champs dédiés, masqués visuellement, sans
+champ de type mot de passe. Chaque fournisseur possède son propre formulaire
+avec autoremplissage désactivé. La recherche est identifiée comme une recherche
+et isolée : le navigateur ne doit pas la traiter comme un identifiant associé
+aux clés. La connexion conserve son formulaire habituel.
