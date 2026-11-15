@@ -24,6 +24,7 @@
 
     .ak-key-form { margin-top: 12px; }
     .ak-key-input { width: 100%; padding: 10px 14px; border: 2px solid var(--gray-200); border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace; box-sizing: border-box; }
+    .ak-secret-input { -webkit-text-security: disc; }
     .ak-key-input:focus { border-color: #7c3aed; outline: none; }
 
     .ak-btn { padding: 8px 20px; border: none; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: all 0.2s; }
@@ -87,28 +88,34 @@
                 <option value="{{ lvl }}" {{ 'selected' if reasoning_effort == lvl else '' }}>{{ lvl }}</option>
                 {% endfor %}
             </select>
-            <button class="ak-btn ak-btn-outline" id="akEffortSaveBtn" onclick="akSaveEffort()">Enregistrer</button>
+            <button type="button" class="ak-btn ak-btn-outline" id="akEffortSaveBtn" onclick="akSaveEffort()">Enregistrer</button>
             <span class="ak-success" id="akSuccessEffort" style="margin-top:0;"></span>
             <span class="ak-error" id="akErrorEffort" style="margin-top:0;"></span>
         </div>
         {% if providers_status.openai.has_key %}
         <div class="ak-btn-row">
-            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('openai')">Modifier la cle</button>
-            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('openai')">Supprimer</button>
+            <button type="button" class="ak-btn ak-btn-outline" onclick="akToggleEdit('openai')">Modifier la cle</button>
+            <button type="button" class="ak-btn ak-btn-danger" onclick="akDeleteKey('openai')">Supprimer</button>
         </div>
-        <div id="akEditBox_openai" style="display:none;" class="ak-key-form">
-            <input type="password" id="akInput_openai" class="ak-key-input" placeholder="sk-..." />
+        <form id="akEditBox_openai" style="display:none;" class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_openai" name="openai_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API openai"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="sk-..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% else %}
-        <div class="ak-key-form">
-            <input type="password" id="akInput_openai" class="ak-key-input" placeholder="sk-..." />
+        <form class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_openai" name="openai_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API openai"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="sk-..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_openai" onclick="akSaveKey('openai')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% endif %}
         <div class="ak-error" id="akError_openai"></div>
         <div class="ak-success" id="akSuccess_openai"></div>
@@ -131,22 +138,28 @@
         </div>
         {% if providers_status.groq.has_key %}
         <div class="ak-btn-row">
-            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('groq')">Modifier la cle</button>
-            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('groq')">Supprimer</button>
+            <button type="button" class="ak-btn ak-btn-outline" onclick="akToggleEdit('groq')">Modifier la cle</button>
+            <button type="button" class="ak-btn ak-btn-danger" onclick="akDeleteKey('groq')">Supprimer</button>
         </div>
-        <div id="akEditBox_groq" style="display:none;" class="ak-key-form">
-            <input type="password" id="akInput_groq" class="ak-key-input" placeholder="gsk_..." />
+        <form id="akEditBox_groq" style="display:none;" class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_groq" name="groq_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API groq"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="gsk_..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% else %}
-        <div class="ak-key-form">
-            <input type="password" id="akInput_groq" class="ak-key-input" placeholder="gsk_..." />
+        <form class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_groq" name="groq_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API groq"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="gsk_..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_groq" onclick="akSaveKey('groq')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% endif %}
         <div class="ak-error" id="akError_groq"></div>
         <div class="ak-success" id="akSuccess_groq"></div>
@@ -169,22 +182,28 @@
         </div>
         {% if providers_status.anthropic.has_key %}
         <div class="ak-btn-row">
-            <button class="ak-btn ak-btn-outline" onclick="akToggleEdit('anthropic')">Modifier la cle</button>
-            <button class="ak-btn ak-btn-danger" onclick="akDeleteKey('anthropic')">Supprimer</button>
+            <button type="button" class="ak-btn ak-btn-outline" onclick="akToggleEdit('anthropic')">Modifier la cle</button>
+            <button type="button" class="ak-btn ak-btn-danger" onclick="akDeleteKey('anthropic')">Supprimer</button>
         </div>
-        <div id="akEditBox_anthropic" style="display:none;" class="ak-key-form">
-            <input type="password" id="akInput_anthropic" class="ak-key-input" placeholder="sk-ant-..." />
+        <form id="akEditBox_anthropic" style="display:none;" class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_anthropic" name="anthropic_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API anthropic"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="sk-ant-..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% else %}
-        <div class="ak-key-form">
-            <input type="password" id="akInput_anthropic" class="ak-key-input" placeholder="sk-ant-..." />
+        <form class="ak-key-form" autocomplete="off" onsubmit="return false;">
+            <input type="text" id="akInput_anthropic" name="anthropic_api_token"
+                   class="ak-key-input ak-secret-input" aria-label="Clé API anthropic"
+                   autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="none"
+                   data-lpignore="true" data-1p-ignore="true" data-bwignore="true" placeholder="sk-ant-..." />
             <div class="ak-btn-row">
-                <button class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
+                <button type="button" class="ak-btn ak-btn-primary" id="akSaveBtn_anthropic" onclick="akSaveKey('anthropic')">Enregistrer et verifier</button>
             </div>
-        </div>
+        </form>
         {% endif %}
         <div class="ak-error" id="akError_anthropic"></div>
         <div class="ak-success" id="akSuccess_anthropic"></div>
@@ -196,7 +215,9 @@
 <script>
 function akToggleEdit(provider) {
     const box = document.getElementById('akEditBox_' + provider);
-    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    var opening = box.style.display === 'none';
+    box.style.display = opening ? 'block' : 'none';
+    if (opening) document.getElementById('akInput_' + provider).focus();
 }
 
 async function akSaveKey(provider) {

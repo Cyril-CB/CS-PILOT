@@ -21,7 +21,8 @@
         "Journalisation des recherches métier exécutées et des recherches sans résultat explicitement abandonnées ; masquage des noms/prénoms de salariés dans termes et libellés.",
         "Proposer une amélioration après une recherche vaine ou des résultats insatisfaisants, dans la palette et la recherche classique ; reprise explicite de la recherche vers un formulaire authentifié.",
         "Pour direction/comptabilité, retrouver les messages de la direction par message(s), info salarié, infos salariés, note(s) de service, communication interne et synonymes. Un alias exact explicite prime sur un libellé homonyme ; les dossiers salariés restent proposés en alternative.",
-        "Analyse ALSH accessible au responsable rattaché au secteur Enfance, dans le menu classique, la carte et la barre intelligente ; autres secteurs exclus. Lecture et saisie NOÉ seulement, configuration masquée et refusée côté serveur."
+        "Analyse ALSH accessible au responsable rattaché au secteur Enfance, dans le menu classique, la carte et la barre intelligente ; autres secteurs exclus. Lecture et saisie NOÉ seulement, configuration masquée et refusée côté serveur.",
+        "Champs de recherche de type search, nommés et isolés dans un formulaire de recherche avec autoremplissage désactivé pour éviter leur association aux secrets des fournisseurs IA."
       ],
       "entry_points": [
         "recherche_bp.api_search",
@@ -60,7 +61,8 @@
           "tests/test_search_palette.py",
           "tests/test_perimetres_sessions.py",
           "tests/test_propositions.py",
-          "tests/test_alsh_acces.py"
+          "tests/test_alsh_acces.py",
+          "tests/test_autofill_ia.py"
         ],
         "docs": [
           "docs/interface-sans-menu.md",

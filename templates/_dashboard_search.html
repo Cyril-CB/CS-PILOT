@@ -2,12 +2,13 @@
    Envoie la requête à /api/search (CSRF injecté automatiquement par base.html) et
    traite le verdict : redirect (navigation), choices (liste de choix), none (aide). #}
 <div class="ds-search">
-    <div class="ds-search-bar">
+    <form class="ds-search-bar" role="search" autocomplete="off" onsubmit="return false;">
         <span class="ds-search-icon">🔎</span>
-        <input type="text" id="dsSearchInput" autocomplete="off"
+        <input type="search" id="dsSearchInput" name="cspilot_dashboard_query" autocomplete="off"
+               data-lpignore="true" data-1p-ignore="true"
                placeholder="Rechercher : un fournisseur, « budget clas 2025 », « absence Marie », « facture 225678 »…">
         <button type="button" class="ds-search-btn" onclick="dsSearch()">Rechercher</button>
-    </div>
+    </form>
     {% if ds_exemples %}
     <div class="ds-search-exemples" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;">
         <span style="font-size:0.78rem;color:var(--gray-500);">Essayez :</span>
