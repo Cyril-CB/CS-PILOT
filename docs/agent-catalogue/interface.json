@@ -98,7 +98,6 @@
         "administration.journaux",
         "administration.options_centre",
         "administration.secteurs",
-        "interface.aide_contextuelle",
         "interface.navigation",
         "interface.propositions_amelioration",
         "association.messages_direction",
@@ -796,75 +795,6 @@
       "limitations": [
         "Aucun ordonnanceur externe : sans requête après l'heure cible, pas d'envoi à cette heure.",
         "La journée est marquée avant l'envoi ; la marque ne prouve pas une livraison réussie à chaque destinataire."
-      ]
-    },
-    {
-      "id": "interface.aide_contextuelle",
-      "title": "Chatbot d'aide contextuelle",
-      "purpose": "Répondre aux questions d'utilisation à partir du contexte descriptif de la page et du message de l'utilisateur.",
-      "example_requests": [
-        "comment utiliser cette page",
-        "aide sur une facture",
-        "choisir le modèle de l'assistant"
-      ],
-      "capabilities": [
-        "API message construisant un prompt système depuis PAGE_CONTEXTS et les dix derniers éléments d'historique fournis par le navigateur.",
-        "Fournisseurs OpenAI, Groq et Anthropic via le modèle configuré ; API de consultation de l'état d'activation.",
-        "Choix ou désactivation du modèle par le directeur, après vérification du fournisseur et de la clé configurée."
-      ],
-      "entry_points": [
-        "chatbot_bp.chatbot_message",
-        "chatbot_bp.chatbot_config",
-        "chatbot_bp.chatbot_set_model"
-      ],
-      "implementation": {
-        "route_files": [
-          "blueprints/chatbot.py"
-        ],
-        "service_files": [
-          "blueprints/api_keys.py",
-          "utils.py"
-        ],
-        "templates": [
-          "templates/base.html"
-        ],
-        "tables": [
-          "app_settings"
-        ],
-        "tests": [
-          "tests/test_chatbot.py",
-          "tests/test_ai_models.py"
-        ],
-        "docs": []
-      },
-      "access": {
-        "summary": "Message/config : login_required sans restriction de profil supplémentaire dans ces routes. Choix du modèle : directeur seulement.",
-        "scope": "Contexte descriptif de page et historique transmis dans la requête ; les routes n'effectuent pas une recherche de dossiers métier.",
-        "conditions": [
-          "Setting chatbot_model présent.",
-          "Clé configurée pour le fournisseur sélectionné."
-        ],
-        "sources": [
-          "blueprints/chatbot.py",
-          "blueprints/api_keys.py"
-        ]
-      },
-      "invariants": [
-        "Aide contextuelle IA distincte du moteur de recherche déterministe.",
-        "PAGE_CONTEXTS est un texte d'aide rédigé ; ne pas le traiter comme une preuve des droits ou du comportement réel.",
-        "Ne pas injecter dans les prompts de nouvelles données métier sans contrôler leur périmètre et leur nécessité."
-      ],
-      "extension_points": [
-        "Mettre à jour le contexte de la page si son parcours change et rester cohérent avec les routes réelles.",
-        "Réutiliser le dispatcher fournisseur existant si le besoin appartient à l'assistance utilisateur."
-      ],
-      "related_features": [
-        "administration.cles_api_ia",
-        "interface.recherche"
-      ],
-      "limitations": [
-        "Ces routes ne développent pas de modules, n'exécutent pas d'outils métier et ne consultent pas le dépôt.",
-        "L'historique de conversation est fourni par le client ; aucune mémoire persistante de besoins de développement n'est établie ici."
       ]
     },
     {

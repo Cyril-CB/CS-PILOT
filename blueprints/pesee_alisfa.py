@@ -250,8 +250,8 @@ def _get_api_key_for_model(model):
     return provider_id, api_key
 
 
-def call_openai(api_key, messages, model="gpt-4o"):
-    """Appel API OpenAI avec température 0 et seed fixe."""
+def call_openai(api_key, messages, model="gpt-5.4"):
+    """Appel API OpenAI avec paramètres adaptés au modèle."""
     from blueprints.api_keys import is_openai_reasoning_model, get_openai_reasoning_effort
     is_reasoning = is_openai_reasoning_model(model)
 
@@ -261,7 +261,7 @@ def call_openai(api_key, messages, model="gpt-4o"):
         "response_format": {"type": "json_object"},
         "max_completion_tokens": 8000,
     }
-    # Les modèles de raisonnement (o1/o3/o4, GPT-5) ne supportent ni temperature ni
+    # Les modèles de raisonnement (o1/o3/o4, GPT-5/6) ne supportent ni temperature ni
     # seed, mais acceptent reasoning_effort (low/medium/high/xhigh).
     if is_reasoning:
         payload["reasoning_effort"] = get_openai_reasoning_effort()
@@ -285,7 +285,7 @@ def call_openai(api_key, messages, model="gpt-4o"):
     return resp.json()['choices'][0]['message']['content']
 
 
-def call_groq(api_key, messages, model="llama-3.3-70b-versatile"):
+def call_groq(api_key, messages, model="openai/gpt-oss-120b"):
     """Appel API Groq (compatible OpenAI) avec température 0."""
     payload = {
         "model": model,
@@ -293,9 +293,11 @@ def call_groq(api_key, messages, model="llama-3.3-70b-versatile"):
         "temperature": 0,
         "seed": 42,
         "response_format": {"type": "json_object"},
-        "max_tokens": 8000,
+        "max_completion_tokens": 8000,
     }
 
+    from blueprints.api_keys import groq_reasoning_parameters
+    payload.update(groq_reasoning_parameters(model))
     resp = http_requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={
@@ -316,7 +318,7 @@ def call_groq(api_key, messages, model="llama-3.3-70b-versatile"):
     return resp.json()['choices'][0]['message']['content']
 
 
-def call_anthropic(api_key, messages, model="claude-sonnet-4-6"):
+def call_anthropic(api_key, messages, model="claude-sonnet-5-5"):
     """Appel API Anthropic Claude (température 0 quand le modèle l'accepte)."""
     from blueprints.api_keys import anthropic_supports_temperature
     # Séparer le system message des user messages
@@ -337,7 +339,7 @@ def call_anthropic(api_key, messages, model="claude-sonnet-4-6"):
         "max_tokens": 8000,
         "messages": user_messages,
     }
-    # Les modèles récents (Opus 4.7+, Fable) rejettent temperature avec une erreur 400
+    # Les modèles récents (Claude 5, Opus 4.7+) rejettent temperature avec une erreur 400
     if anthropic_supports_temperature(model):
         payload["temperature"] = 0
     if system_text.strip():
@@ -364,7 +366,8 @@ def call_anthropic(api_key, messages, model="claude-sonnet-4-6"):
         raise Exception(f"Erreur API Anthropic ({resp.status_code}): {error_detail}")
 
     result = resp.json()
-    return result['content'][0]['text']
+    from blueprints.api_keys import anthropic_response_text
+    return anthropic_response_text(result)
 
 
 def _extract_json_from_response(raw):
@@ -393,8 +396,10 @@ def _extract_json_from_response(raw):
     raise json.JSONDecodeError("Impossible d'extraire du JSON de la réponse", raw, 0)
 
 
-def call_ai(messages, model="gpt-4o"):
+def call_ai(messages, model="gpt-5.4"):
     """Dispatcher : appelle le bon fournisseur en fonction du modèle choisi."""
+    from blueprints.api_keys import resolve_model
+    model = resolve_model(model)
     provider_id, api_key = _get_api_key_for_model(model)
 
     if not provider_id:
@@ -630,7 +635,7 @@ def api_analyze():
     if session.get('profil') not in PROFILS_AUTORISES:
         return jsonify({'error': 'Accès non autorisé'}), 403
 
-    model = request.form.get('model', 'gpt-4o')
+    model = request.form.get('model', 'gpt-5.4')
 
     # Vérifier que le modèle a une clé configurée
     provider_id, api_key = _get_api_key_for_model(model)
@@ -833,7 +838,7 @@ def api_reanalyze():
     locked_criteria = data.get('locked_criteria', {})
     famille_metier = data.get('famille_metier', '')
     emploi_repere = data.get('emploi_repere', '')
-    model = data.get('model', 'gpt-4o')
+    model = data.get('model', 'gpt-5.4')
 
     provider_id, api_key = _get_api_key_for_model(model)
     if not api_key:

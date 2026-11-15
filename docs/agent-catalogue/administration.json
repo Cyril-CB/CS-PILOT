@@ -524,7 +524,9 @@
         "Test de la clé par un appel minimal au fournisseur avant son enregistrement chiffré ; suppression d’une clé.",
         "Liste des modèles disponibles filtrée selon les fournisseurs possédant une clé configurée.",
         "Réglage global openai_reasoning_effort parmi low, medium, high et xhigh ; défaut medium.",
-        "Helpers partagés pour résoudre fournisseur/modèle et adapter les paramètres des modèles de raisonnement OpenAI et des modèles Anthropic ; compatibilité avec anciens identifiants persistés."
+        "Helpers partagés pour résoudre fournisseur/modèle et adapter les paramètres des modèles de raisonnement OpenAI et des modèles Anthropic ; compatibilité avec anciens identifiants persistés.",
+        "Catalogue OpenAI généraliste depuis GPT-5.4, sans mini ni Astra ; Claude Sonnet/Opus/Haiku 5.5, sans Fable ; Groq GPT-OSS 120B et Qwen 3.8 27B (préversion).",
+        "Paramètres de raisonnement Groq propres à chaque modèle ; extraction des blocs texte Anthropic après les éventuels blocs thinking."
       ],
       "entry_points": [
         "api_keys_bp.gestion_cles_api",
@@ -547,9 +549,13 @@
           "app_settings"
         ],
         "tests": [
-          "tests/test_administration_acces.py"
+          "tests/test_administration_acces.py",
+          "tests/test_ai_models.py",
+          "tests/test_chatbot.py"
         ],
-        "docs": []
+        "docs": [
+          "docs/modeles-ia.md"
+        ]
       },
       "access": {
         "summary": "Page et toutes les API réservées aux profils directeur et comptable ; refus JSON 403 sur API. Les réponses d’état ne contiennent pas les clés en clair.",
@@ -577,12 +583,11 @@
         "administration.options_centre",
         "administration.resilience_hors_ligne",
         "finances.factures",
-        "interface.aide_contextuelle",
         "rh.assistant_rh"
       ],
       "limitations": [
-        "La liste de modèles est statique dans AI_PROVIDERS, pas découverte dynamiquement chez les fournisseurs.",
-        "La gestion du modèle du chatbot relève de ses routes propres ; cette page affiche son modèle enregistré."
+        "La liste de modèles est statique dans AI_PROVIDERS ; une clé enregistrée ne garantit ni l’accès à chaque modèle ni du quota disponible.",
+        "L’assistant contextuel global et ses routes ont été retirés ; les anciennes valeurs chatbot_model ne sont plus utilisées."
       ]
     },
     {

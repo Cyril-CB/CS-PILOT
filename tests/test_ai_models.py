@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import importlib.util
 import os
+import pytest
 
 from blueprints.api_keys import (
     AI_PROVIDERS, MODEL_TO_PROVIDER, get_provider_for_model,
@@ -57,8 +58,8 @@ class TestCatalogueModeles:
     def test_modeles_anthropic_a_jour(self):
         """Les identifiants Anthropic doivent être ceux des modèles actuels."""
         anthropic_ids = [m['id'] for m in AI_PROVIDERS['anthropic']['models']]
-        assert 'claude-sonnet-4-6' in anthropic_ids
-        assert 'claude-opus-4-8' in anthropic_ids
+        assert 'claude-sonnet-5-5' in anthropic_ids
+        assert 'claude-opus-5-5' in anthropic_ids
         # Les anciens identifiants ne doivent plus être proposés
         assert 'claude-sonnet-4-5-20250929' not in anthropic_ids
         assert 'claude-opus-4-6' not in anthropic_ids
@@ -188,7 +189,7 @@ class TestModelesDisponibles:
             save_setting('anthropic_api_key', 'sk-ant-test')
             models = get_available_models()
         ids = {m['id'] for m in models}
-        assert 'claude-sonnet-4-6' in ids
+        assert 'claude-sonnet-5-5' in ids
         assert all(m['provider'] == 'anthropic' for m in models)
 
 
@@ -196,7 +197,7 @@ class TestCompatibiliteAscendante:
     """Une valeur déjà persistée avec un ancien identifiant ne doit pas casser."""
 
     def test_anciens_identifiants_resolus(self):
-        # Retirés du catalogue mais encore résolus pour ne pas casser le chatbot
+        # Retirés du catalogue mais encore résolus pour accepter un formulaire métier déjà ouvert
         assert get_provider_for_model('claude-sonnet-4-5-20250929') == 'anthropic'
         assert get_provider_for_model('claude-opus-4-6') == 'anthropic'
         assert get_provider_for_model('claude-haiku-4-5-20251001') == 'anthropic'
@@ -227,3 +228,118 @@ class TestCompatibiliteAscendante:
             mig.upgrade(conn)
             conn.close()
             assert get_setting('chatbot_model') == 'claude-sonnet-4-6'
+
+
+class TestCatalogue20261115:
+    def test_exclusions_et_groq_exact(self):
+        ids = set(MODEL_TO_PROVIDER)
+        assert not any(x in m.lower() for m in ids for x in ('mini', 'nano', 'astra', 'fable'))
+        assert 'gpt-5.2' not in ids and 'gpt-4o' not in ids
+        assert {m['id'] for m in AI_PROVIDERS['groq']['models']} == {
+            'openai/gpt-oss-120b', 'qwen/qwen3.8-27b'}
+
+    @pytest.mark.parametrize('model', [m['id'] for m in AI_PROVIDERS['openai']['models']])
+    def test_payload_openai_tous_modeles(self, model):
+        with patch.object(pesee_alisfa.http_requests, 'post', return_value=_fake_openai_response()) as post:
+            pesee_alisfa.call_openai('cle-factice', [{'role': 'user', 'content': 'JSON'}], model)
+        payload = post.call_args.kwargs['json']
+        assert payload['model'] == model
+        assert payload['response_format'] == {'type': 'json_object'}
+        assert 'max_completion_tokens' in payload
+        assert payload['reasoning_effort'] == 'medium'
+        assert not {'temperature', 'seed', 'max_tokens'} & payload.keys()
+
+    @pytest.mark.parametrize('model', [m['id'] for m in AI_PROVIDERS['anthropic']['models']])
+    def test_payload_et_reponse_claude(self, model):
+        response = MagicMock(status_code=200, json=lambda: {'content': [
+            {'type': 'thinking', 'thinking': 'raisonnement'},
+            {'type': 'text', 'text': '{"ok":'}, {'type': 'text', 'text': 'true}'}]})
+        with patch.object(pesee_alisfa.http_requests, 'post', return_value=response) as post:
+            text = pesee_alisfa.call_anthropic('cle-factice', [
+                {'role': 'system', 'content': 'Contexte'}, {'role': 'user', 'content': 'JSON'}], model)
+        payload = post.call_args.kwargs['json']
+        assert text == '{"ok":true}'
+        assert payload['system'] == 'Contexte'
+        assert not {'temperature', 'top_p', 'top_k'} & payload.keys()
+        assert payload['messages'] == [{'role': 'user', 'content': 'JSON'}]
+
+    @pytest.mark.parametrize('model', ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'])
+    def test_payload_groq(self, model):
+        with patch.object(pesee_alisfa.http_requests, 'post', return_value=_fake_openai_response()) as post:
+            pesee_alisfa.call_groq('cle-factice', [{'role': 'user', 'content': 'JSON'}], model)
+        payload = post.call_args.kwargs['json']
+        assert payload['max_completion_tokens'] == 8000
+        assert 'max_tokens' not in payload
+        assert payload['reasoning_effort'] == 'medium'
+        if model.startswith('openai/'):
+            assert payload['include_reasoning'] is False
+            assert 'reasoning_format' not in payload
+        else:
+            assert payload['reasoning_format'] == 'hidden'
+            assert 'include_reasoning' not in payload
+
+    def test_reponse_claude_sans_texte_refusee(self):
+        from blueprints.api_keys import anthropic_response_text
+        with pytest.raises(ValueError, match='aucun texte'):
+            anthropic_response_text({'content': [{'type': 'thinking', 'thinking': '...'}]})
+
+    def test_dispatch_anciens_modeles_et_inconnus(self, app):
+        from blueprints.api_keys import MODEL_REPLACEMENTS, resolve_model
+        for old, new in MODEL_REPLACEMENTS.items():
+            assert new in MODEL_TO_PROVIDER
+            assert resolve_model(old) == new
+        with app.app_context(), patch('blueprints.pesee_alisfa.get_setting', return_value='factice'):
+            with patch.object(pesee_alisfa, 'call_groq', return_value='{}') as call:
+                pesee_alisfa.call_ai([], 'llama-3.3-70b-versatile')
+                assert call.call_args.args[2] == 'openai/gpt-oss-120b'
+            with pytest.raises(Exception, match='Modèle inconnu'):
+                pesee_alisfa.call_ai([], 'gpt-6-astra')
+
+    @pytest.mark.parametrize('provider,expected', [
+        ('openai', 'gpt-5.4'), ('groq', 'openai/gpt-oss-120b'), ('anthropic', 'claude-haiku-5-5')])
+    def test_verification_cle_modele_actuel(self, provider, expected):
+        from blueprints.api_keys import TEST_FUNCTIONS
+        with patch('blueprints.api_keys.http_requests.post', return_value=MagicMock(status_code=200)) as post:
+            assert TEST_FUNCTIONS[provider]('factice') == (True, None)
+        assert post.call_args.kwargs['json']['model'] == expected
+
+    @pytest.mark.parametrize('fixture,status', [('client', 302), ('auth_client', 403), ('resp_client', 403)])
+    def test_catalogue_acces_refuse(self, request, fixture, status):
+        response = request.getfixturevalue(fixture).get('/api/api_keys/status')
+        assert response.status_code == status
+
+    def test_catalogue_et_page_sans_exclusions(self, app, admin_client):
+        from utils import save_setting
+        with app.app_context():
+            for key in ['openai_api_key', 'anthropic_api_key', 'groq_api_key']:
+                save_setting(key, 'cle-factice')
+        response = admin_client.get('/api/api_keys/status')
+        assert response.status_code == 200
+        assert {m['id'] for m in response.json['models']} == set(MODEL_TO_PROVIDER)
+        assert 'cle-factice' not in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('model,provider', [
+    ('gpt-6.1-sol', 'openai'), ('claude-sonnet-5-5', 'anthropic'),
+    ('openai/gpt-oss-120b', 'groq'), ('qwen/qwen3.8-27b', 'groq')])
+def test_assistant_rh_modele_bien_route(app, admin_client, model, provider):
+    from utils import save_setting
+    with app.app_context():
+        save_setting(provider + '_api_key', 'cle-factice')
+    response = _fake_anthropic_response() if provider == 'anthropic' else _fake_openai_response()
+    with patch('blueprints.pesee_alisfa.http_requests.post', return_value=response) as post:
+        result = admin_client.post('/api/assistant_rh/chat', json={
+            'model': model, 'messages': [{'role': 'user', 'content': 'Question de test'}]})
+    assert result.status_code == 200 and result.json['success'] is True
+    assert post.call_args.kwargs['json']['model'] == model
+    domains = {'openai': 'api.openai.com', 'anthropic': 'api.anthropic.com', 'groq': 'api.groq.com'}
+    assert domains[provider] in post.call_args.args[0]
+
+
+@pytest.mark.parametrize('model', ['gpt-6-astra', 'claude-fable-5-2', 'modele-inconnu'])
+def test_modele_exclu_aucun_appel_externe(admin_client, model):
+    with patch('requests.post') as post:
+        result = admin_client.post('/api/assistant_rh/chat', json={
+            'model': model, 'messages': [{'role': 'user', 'content': 'Question'}]})
+    assert 'Modèle inconnu' in result.json['error']
+    post.assert_not_called()

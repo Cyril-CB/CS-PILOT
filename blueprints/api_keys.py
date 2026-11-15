@@ -19,10 +19,15 @@ AI_PROVIDERS = {
         'key_setting': 'openai_api_key',
         'key_prefix': 'sk-',
         'models': [
-            {'id': 'gpt-5.5', 'label': 'gpt-5.5 (recommande)'},
-            {'id': 'gpt-5.4', 'label': 'gpt-5.4'},
-            {'id': 'gpt-5.2', 'label': 'gpt-5.2'},
-            {'id': 'gpt-4.1-mini', 'label': 'gpt-4.1-mini (~gratuit)'},
+            {'id': 'gpt-5.5', 'label': 'GPT-5.5 (recommandé)'},
+            {'id': 'gpt-5.4', 'label': 'GPT-5.4'},
+            {'id': 'gpt-5.6-sol', 'label': 'GPT-5.6 Sol'},
+            {'id': 'gpt-5.6-terra', 'label': 'GPT-5.6 Terra'},
+            {'id': 'gpt-5.6-luna', 'label': 'GPT-5.6 Luna'},
+            {'id': 'gpt-6-sol', 'label': 'GPT-6 Sol'},
+            {'id': 'gpt-6.1-sol', 'label': 'GPT-6.1 Sol'},
+            {'id': 'gpt-6.1-terra', 'label': 'GPT-6.1 Terra'},
+            {'id': 'gpt-6-luna', 'label': 'GPT-6 Luna'},
         ],
     },
     'anthropic': {
@@ -30,9 +35,9 @@ AI_PROVIDERS = {
         'key_setting': 'anthropic_api_key',
         'key_prefix': 'sk-ant-',
         'models': [
-            {'id': 'claude-sonnet-4-6', 'label': 'claude-sonnet-4-6 (recommande)'},
-            {'id': 'claude-opus-4-8', 'label': 'claude-opus-4-8 (+ puissant)'},
-            {'id': 'claude-haiku-4-5', 'label': 'claude-haiku-4-5 (rapide)'},
+            {'id': 'claude-sonnet-5-5', 'label': 'Claude Sonnet 5.5 (recommandé)'},
+            {'id': 'claude-opus-5-5', 'label': 'Claude Opus 5.5'},
+            {'id': 'claude-haiku-5-5', 'label': 'Claude Haiku 5.5 (rapide)'},
         ],
     },
     'groq': {
@@ -40,8 +45,8 @@ AI_PROVIDERS = {
         'key_setting': 'groq_api_key',
         'key_prefix': 'gsk_',
         'models': [
-            {'id': 'meta-llama/llama-4-scout-17b-16e-instruct', 'label': 'llama-4-scout-17b-16e-instruct (gratuit)'},
-            {'id': 'llama-3.3-70b-versatile', 'label': 'llama-3.3-70b-versatile (gratuit)'},
+            {'id': 'openai/gpt-oss-120b', 'label': 'GPT-OSS 120B'},
+            {'id': 'qwen/qwen3.8-27b', 'label': 'Qwen 3.8 27B (préversion)'},
         ],
     },
 }
@@ -52,24 +57,35 @@ for provider_id, provider_info in AI_PROVIDERS.items():
     for model in provider_info['models']:
         MODEL_TO_PROVIDER[model['id']] = provider_id
 
-# Anciens identifiants Anthropic retirés du catalogue mais toujours valides côté
-# API : on continue de les résoudre pour qu'une valeur déjà persistée (ex.
-# chatbot_model) ne casse pas l'assistant tant que la migration 0041 n'a pas été
-# appliquée. La migration nettoie ces valeurs vers les identifiants à jour.
-LEGACY_MODEL_TO_PROVIDER = {
-    'claude-sonnet-4-5-20250929': 'anthropic',
-    'claude-opus-4-6': 'anthropic',
-    'claude-haiku-4-5-20251001': 'anthropic',
+# Compatibilité des anciennes sélections envoyées par un formulaire déjà ouvert.
+# Une ancienne sélection garde son fournisseur et passe à un modèle proposé.
+MODEL_REPLACEMENTS = {
+    'gpt-4o': 'gpt-5.4',
+    'gpt-4.1-mini': 'gpt-5.4',
+    'gpt-5.2': 'gpt-5.4',
+    'claude-sonnet-4-5-20250929': 'claude-sonnet-5-5',
+    'claude-sonnet-4-6': 'claude-sonnet-5-5',
+    'claude-opus-4-6': 'claude-opus-5-5',
+    'claude-opus-4-8': 'claude-opus-5-5',
+    'claude-haiku-4-5-20251001': 'claude-haiku-5-5',
+    'claude-haiku-4-5': 'claude-haiku-5-5',
+    'meta-llama/llama-4-scout-17b-16e-instruct': 'openai/gpt-oss-120b',
+    'llama-3.3-70b-versatile': 'openai/gpt-oss-120b',
 }
+
+
+def resolve_model(model_id):
+    """Modèle effectif pour une ancienne sélection, sans changer de fournisseur."""
+    return MODEL_REPLACEMENTS.get(model_id, model_id)
 
 
 def get_provider_for_model(model_id):
     """Retourne l'identifiant du fournisseur pour un modèle donné.
 
     Les anciens identifiants restent résolus (compatibilité ascendante) afin
-    qu'une valeur déjà enregistrée ne provoque pas « Modèle inconnu ».
+    qu'une ancienne sélection ne provoque pas « Modèle inconnu ».
     """
-    return MODEL_TO_PROVIDER.get(model_id) or LEGACY_MODEL_TO_PROVIDER.get(model_id)
+    return MODEL_TO_PROVIDER.get(resolve_model(model_id))
 
 
 # ── Compatibilité des paramètres selon le modèle ──
@@ -77,27 +93,46 @@ def get_provider_for_model(model_id):
 def anthropic_supports_temperature(model_id):
     """Indique si un modèle Anthropic accepte le paramètre `temperature`.
 
-    Les modèles récents (Opus 4.7+, Fable/Mythos) rejettent `temperature`
+    Les modèles récents (Claude 5, Opus 4.7+) rejettent `temperature`
     (ainsi que `top_p`/`top_k`) avec une erreur 400 : il ne faut alors pas
     l'inclure dans la requête.
     """
     return not str(model_id).startswith((
         'claude-opus-4-7', 'claude-opus-4-8', 'claude-fable', 'claude-mythos',
+        'claude-opus-5', 'claude-sonnet-5', 'claude-haiku-5',
     ))
 
 
 def is_openai_reasoning_model(model_id):
     """Indique si un modèle OpenAI est un modèle de raisonnement.
 
-    Les modèles o1/o3/o4 et la famille GPT-5 ne supportent pas les paramètres
+    Les modèles o1/o3/o4 et les familles GPT-5/6 ne supportent pas les paramètres
     `temperature` / `seed` personnalisés (température figée à 1) : les omettre
     évite une erreur 400. Ils acceptent en revanche `reasoning_effort`.
     """
-    return str(model_id).startswith(('o1', 'o3', 'o4', 'gpt-5'))
+    return str(model_id).startswith(('o1', 'o3', 'o4', 'gpt-5', 'gpt-6'))
+
+
+def groq_reasoning_parameters(model_id):
+    """Garder la réponse finale seule, y compris pour les sorties JSON."""
+    if model_id == 'openai/gpt-oss-120b':
+        return {'reasoning_effort': 'medium', 'include_reasoning': False}
+    if model_id == 'qwen/qwen3.8-27b':
+        return {'reasoning_effort': 'medium', 'reasoning_format': 'hidden'}
+    return {}
+
+
+def anthropic_response_text(result):
+    """Les blocs thinking peuvent précéder les blocs text dans Messages."""
+    text = ''.join(block.get('text', '') for block in result.get('content', [])
+                   if block.get('type', 'text') == 'text')
+    if not text.strip():
+        raise ValueError('Le fournisseur IA n’a renvoyé aucun texte exploitable.')
+    return text
 
 
 # Niveaux d'effort de raisonnement acceptés par les modèles OpenAI (o-series /
-# GPT-5). Plus l'effort est élevé, plus le modèle « réfléchit » (meilleure
+# GPT-5/6). Plus l'effort est élevé, plus le modèle « réfléchit » (meilleure
 # qualité, mais plus lent et plus coûteux en tokens).
 EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh']
 DEFAULT_EFFORT = 'medium'
@@ -147,7 +182,12 @@ def _test_openai_key(api_key):
     resp = http_requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "gpt-4.1-mini", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5},
+        json={
+            "model": "gpt-5.4",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_completion_tokens": 32,
+            "reasoning_effort": "low",
+        },
         timeout=15,
     )
     if resp.status_code == 401:
@@ -162,7 +202,13 @@ def _test_groq_key(api_key):
     resp = http_requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={"model": "llama-3.3-70b-versatile", "messages": [{"role": "user", "content": "test"}], "max_tokens": 5},
+        json={
+            "model": "openai/gpt-oss-120b",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_completion_tokens": 32,
+            "include_reasoning": False,
+            "reasoning_effort": "low",
+        },
         timeout=15,
     )
     if resp.status_code == 401:
@@ -182,7 +228,7 @@ def _test_anthropic_key(api_key):
             "anthropic-version": "2023-06-01",
         },
         json={
-            "model": "claude-haiku-4-5",
+            "model": "claude-haiku-5-5",
             "max_tokens": 5,
             "messages": [{"role": "user", "content": "test"}],
         },
@@ -220,13 +266,8 @@ def gestion_cles_api():
             'key_prefix': info['key_prefix'],
         }
 
-    chatbot_model = get_setting('chatbot_model')
-    available_models = get_available_models()
-
     return render_template('gestion_cles_api.html', providers=AI_PROVIDERS,
                            providers_status=providers_status,
-                           chatbot_model=chatbot_model,
-                           available_models=available_models,
                            reasoning_effort=get_openai_reasoning_effort(),
                            effort_levels=EFFORT_LEVELS)
 
