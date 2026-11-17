@@ -71,7 +71,8 @@ def valeur_presente(cle, valeur, preuve):
                      normaliser(f'{d.day}/{d.month}/{d.year}'),
                      normaliser(f'{d.day} {MOIS[d.month - 1]} {d.year}'),
                      normaliser(f'{d.day:02} {MOIS[d.month - 1]} {d.year}')]
-        return any(v in p for v in variantes)
+        # Exiger des termes complets : « 1 juin » ne valide pas « 21 juin ».
+        return any(re.search(rf'\b{re.escape(v)}\b', p) for v in variantes)
     if cle in ('montant_ttc', 'montant_demande', 'montant_accorde', 'temps_hebdo', 'nbr_jours'):
         try:
             n = nombre(valeur)

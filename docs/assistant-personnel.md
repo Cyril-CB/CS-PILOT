@@ -58,6 +58,8 @@ synthèse des informations et chiffres, cite les extraits utilisés pour les
 champs et relève les obligations : signature, bilan, justificatifs, solde, etc.
 Un champ non justifié par un extrait du PDF ou une précision explicite du
 commentaire est demandé à l’utilisateur avant création.
+Les dates sont comparées dans leur intégralité : un extrait citant le 21 juin
+ne valide pas une extraction au 1er juin.
 Le texte du document ne peut donner de droits ni autoriser des commandes.
 
 Les droits restent ceux des modules actuels :

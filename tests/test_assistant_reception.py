@@ -230,6 +230,76 @@ def test_champ_sans_preuve_demande_precision(db, admin_client, modele):
     assert r.status_code == 200 and r.json['statut'] == 'traite', r.json
 
 
+@pytest.mark.parametrize('valeur,preuve', [
+    ('2027-06-01', '1 juin 2027'),
+    ('2027-06-02', 'Le 2 juin 2027.'),
+    ('2027-06-12', 'Le 12 juin 2027 pour toucher le solde.'),
+    ('2027-06-21', 'Échéance : 21 juin 2027'),
+    ('2027-06-01', 'Bilan le 01 juin 2027.'),
+    ('2027-08-15', 'Au plus tard le 15 AOÛT 2027.'),
+    ('2027-06-01', 'Date : 2027-06-01.'),
+    ('2027-06-01', 'Date : 01/06/2027.'),
+    ('2027-06-02', 'Date : 2/6/2027.'),
+    ('2027-06-01', 'Le 1\u00a0juin\n2027.'),
+])
+def test_preuve_date_complete_acceptee(valeur, preuve):
+    assert analyse_ia.valeur_presente('date_echeance', valeur, preuve)
+
+
+@pytest.mark.parametrize('valeur,preuve', [
+    ('2027-06-01', 'Bilan à produire le 21 juin 2027'),
+    ('2027-06-02', 'Bilan à produire le 12 juin 2027'),
+    ('2027-06-01', 'Bilan à produire le 11 juin 2027'),
+    ('2027-01-01', 'Bilan à produire le 31 janvier 2027'),
+    ('2027-06-02', 'Bilan à produire le 22 juin 2027'),
+    ('2027-06-02', 'Bilan à produire le 12/6/2027'),
+    ('2027-06-01', 'Bilan à produire le 21/6/2027'),
+    ('2027-06-01', 'Date : 2027-06-012'),
+    ('2027-06-01', 'Date : 12027-06-01'),
+    ('2027-06-01', 'Bilan à produire le 1 juin 20270'),
+])
+def test_preuve_date_partielle_refusee(valeur, preuve):
+    assert not analyse_ia.valeur_presente('date_echeance', valeur, preuve)
+
+
+@pytest.mark.parametrize('typ,champ,table', [
+    ('facture', 'date_facture', 'factures'),
+    ('contrat', 'date_debut', 'contrats'),
+])
+def test_date_partielle_ne_declenche_pas_creation_et_demande_precision(
+        db, admin_client, modele, typ, champ, table):
+    a = proposition(typ)
+    a['champs'][champ] = '2027-06-01'
+    a['preuves'][champ] = 'Date à retenir : 21 juin 2027.'
+    modele[0]['analyse'] = a
+    d = depot(admin_client, contenu=pdf(TEXTE + '\nDate à retenir : 21 juin 2027.')).json
+    assert d['statut'] == 'precision', d
+    assert champ not in d['analyse']['champs']
+    assert champ in {q['champ'] for q in d['questions']}
+    assert db.execute(f'SELECT COUNT(*) FROM {table}').fetchone()[0] == 0
+    r = preciser(admin_client, d, {champ:'2027-06-21'})
+    assert r.status_code == 200 and r.json['statut'] == 'traite', r.json
+    assert db.execute(f'SELECT {champ} FROM {table}').fetchone()[0] == '2027-06-21'
+
+
+def test_echeance_partielle_non_creee_et_precision_manuelle_possible(db, admin_client, modele):
+    commentaire = 'Sans salarié assigné.'
+    a = proposition('notification')
+    a['instructions'].update(sans_salarie=True, preuve_instruction=commentaire)
+    a['etapes'] = [{'nom':'Bilan financier', 'date_echeance':'2027-06-02',
+                    'preuve':'Bilan à produire le 12 juin 2027.'}]
+    modele[0]['analyse'] = a
+    d = depot(admin_client, contenu=pdf(TEXTE + '\nBilan à produire le 12 juin 2027.'),
+              commentaire=commentaire).json
+    assert d['statut'] == 'precision' and d['analyse']['etapes'] == [], d
+    assert 'etapes' in {q['champ'] for q in d['questions']}
+    assert db.execute('SELECT COUNT(*) FROM subventions').fetchone()[0] == 0
+    assert db.execute('SELECT COUNT(*) FROM subventions_sous_elements').fetchone()[0] == 0
+    r = preciser(admin_client, d, {'etapes':[{'nom':'Bilan financier', 'date_echeance':'2027-06-12'}]})
+    assert r.status_code == 200 and r.json['statut'] == 'traite', r.json
+    assert db.execute('SELECT date_echeance FROM subventions_sous_elements').fetchone()[0] == '2027-06-12'
+
+
 @pytest.mark.parametrize('typ', ['convention', 'notification'])
 def test_nouvelle_subvention_bonne_annee_assignation_et_etapes(db, admin_client, modele, sample_users, typ):
     modele[0]['analyse'] = proposition(typ)
