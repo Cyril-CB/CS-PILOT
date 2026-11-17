@@ -19,7 +19,8 @@
         "Créer, modifier et supprimer les sous-étapes, avec assignation, échéance et statut non_commence/en_cours/fait/blocage.",
         "Filtrer par année d’action N−3 à N+2, année courante par défaut ; toutes permet de retrouver les dossiers hors plage ou sans année.",
         "Notifier par email un nouvel assigné au dossier ou à une étape lorsque l’envoi et le consentement le permettent.",
-        "Créer, renommer, colorer et supprimer les types ; endpoint distinct de création du référentiel subventions_analytiques."
+        "Créer, renommer, colorer et supprimer les types ; endpoint distinct de création du référentiel subventions_analytiques.",
+        "La réception de conventions/notifications peut créer une subvention sous _A classer, après résolution de l’année et des ambiguïtés, avec zéro à deux assignés et échéances justifiées ; les champs existants ne sont pas édités."
       ],
       "entry_points": [
         "subventions_bp.gestion_subventions",
@@ -40,7 +41,9 @@
         ],
         "service_files": [
           "email_service.py",
-          "utils.py"
+          "utils.py",
+          "assistant_documents_metier.py",
+          "assistant_reception.py"
         ],
         "templates": [
           "templates/subventions.html"
@@ -55,7 +58,8 @@
           "comptabilite_actions"
         ],
         "tests": [
-          "tests/test_subventions.py"
+          "tests/test_subventions.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "README.md"
@@ -111,7 +115,8 @@
       "capabilities": [
         "Téléverser et remplacer un justificatif PDF au niveau du dossier.",
         "Téléverser et remplacer un PDF par sous-étape ; nom normalisé comprenant année d’action, dossier, étape et identifiant de sous-étape.",
-        "Télécharger une pièce autorisée avec son nom enregistré."
+        "Télécharger une pièce autorisée avec son nom enregistré.",
+        "Depuis l’assistant, un principal vide reçoit la pièce ; un principal déjà présent est conservé et le nouveau PDF est joint à un sous-élément créé pour lui. Un PDF identique déjà rattaché est conservé sans nouvelle copie."
       ],
       "entry_points": [
         "subventions_bp.api_upload_se_document",
@@ -124,7 +129,9 @@
           "blueprints/subventions.py"
         ],
         "service_files": [
-          "database.py"
+          "database.py",
+          "assistant_documents_metier.py",
+          "assistant_pdf.py"
         ],
         "templates": [
           "templates/subventions.html"
@@ -134,7 +141,8 @@
           "subventions_sous_elements"
         ],
         "tests": [
-          "tests/test_subventions.py"
+          "tests/test_subventions.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "README.md"

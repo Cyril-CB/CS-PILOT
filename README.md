@@ -425,4 +425,8 @@ La page directe `/assistant` propose un dialogue avec les modèles configurés,
 des consultations de CSPILOT et une petite mémoire personnelle. Elle est ouverte
 à la direction, la comptabilité, aux responsables et aux salariés du secteur
 Pilotage, dans leurs périmètres actuels. Les menus restent inchangés.
+Le lot 4 ajoute une boîte de réception de PDF numériques originaux : commentaire
+facultatif, résumé, précisions et créations dans les circuits existants selon
+les droits du compte. Les scans sont exclus et les informations déjà présentes
+sont conservées. La réception reste uniquement sur la page assistant.
 [Accès, mémoire, limites et fonctionnement](docs/assistant-personnel.md).

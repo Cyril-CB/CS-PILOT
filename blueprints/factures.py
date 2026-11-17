@@ -24,6 +24,8 @@ from utils import login_required, get_setting
 from blueprints.pesee_alisfa import call_ai, _extract_json_from_response
 from blueprints.api_keys import get_available_models
 from email_service import is_email_configured, envoyer_email
+from factures_import import enregistrer_import
+from assistant_pdf import nettoyer_creations
 
 factures_bp = Blueprint('factures_bp', __name__)
 
@@ -135,6 +137,9 @@ def importer_facture():
             nb_err += 1
             continue
 
+        copies = []
+        conn = None
+        tmp_path = None
         try:
             # Sauvegarder temporairement pour extraction
             import tempfile
@@ -154,57 +159,25 @@ def importer_facture():
             # Appeler l'IA pour extraire les informations
             info = _extract_invoice_info(texte, model)
 
-            # Trouver ou créer le fournisseur
-            fournisseur_id = _match_or_create_fournisseur(info.get('fournisseur'))
-
-            # Générer le nom de fichier normalisé
-            date_facture = info.get('date_facture') or datetime.now().strftime('%Y-%m-%d')
-            nom_fournisseur = _sanitize_filename(info.get('fournisseur') or 'Inconnu')
-            num_facture = _sanitize_filename(info.get('numero_facture') or 'SANS-NUM')
-            nouveau_nom = f"{date_facture}_FACTURE_{nom_fournisseur}_{num_facture}.pdf"
-
-            # Gérer les doublons de nom
-            dest_path = os.path.join(FACTURES_DIR, nouveau_nom)
-            counter = 1
-            while os.path.exists(dest_path):
-                base = f"{date_facture}_FACTURE_{nom_fournisseur}_{num_facture}_{counter}.pdf"
-                dest_path = os.path.join(FACTURES_DIR, base)
-                nouveau_nom = base
-                counter += 1
-
-            # Déplacer le fichier
-            import shutil
-            shutil.move(tmp_path, dest_path)
-
-            # Enregistrer en BDD
             conn = get_db()
-            cursor = conn.execute(
-                '''INSERT INTO factures (fournisseur_id, numero_facture, date_facture, date_echeance,
-                   montant_ttc, description, fichier_path, fichier_nom, fichier_original, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (fournisseur_id, info.get('numero_facture'), date_facture,
-                 info.get('date_echeance'), info.get('montant_ttc'),
-                 info.get('description'), dest_path, nouveau_nom,
-                 fichier.filename, session['user_id'])
-            )
-            facture_id = cursor.lastrowid
-
-            user_nom = f"{session.get('prenom', '')} {session.get('nom', '')}"
-            _add_historique(conn, facture_id, 'Création',
-                           f'Facture importée par {user_nom} (fichier: {fichier.filename})')
+            conn.execute('BEGIN IMMEDIATE')
+            if verifier_action(conn) is not None or session.get('profil') not in PROFILS_GESTION:
+                raise ValueError('Droits modifiés : reconnectez-vous.')
+            enregistrer_import(conn, tmp_path, fichier.filename, info, session['user_id'], copies)
             conn.commit()
-            conn.close()
             nb_ok += 1
 
         except Exception as e:
+            if conn is not None:
+                conn.rollback()
+            nettoyer_creations(copies)
             nb_err += 1
-            flash(f'Erreur sur {fichier.filename}: {str(e)}', 'error')
-            # Nettoyer le fichier temporaire
-            try:
-                if 'tmp_path' in locals() and os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-            except Exception:
-                pass
+            flash(f'Erreur lors de l’import de {fichier.filename}. Vérifiez le PDF et réessayez.', 'error')
+        finally:
+            if conn is not None:
+                conn.close()
+            if tmp_path:
+                nettoyer_creations([tmp_path])
 
     if nb_ok:
         flash(f'{nb_ok} facture(s) importée(s) avec succès.', 'success')

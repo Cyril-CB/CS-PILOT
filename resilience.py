@@ -45,6 +45,7 @@ REFERENCES = (
     ('archives_export', 'fichier_path', 'exports'),
     ('propositions_pieces', 'fichier_path', 'documents'),
     ('identite_centre_documents', 'fichier_path', 'documents'),
+    ('assistant_documents', 'fichier_path', 'documents'),
 )
 # Catalogue exhaustif des tables persistantes, classées par migration d'ajout.
 # Le test de convergence le compare à init_db ET à chaque étape des migrations.
@@ -117,6 +118,7 @@ TABLES_REQUISES = {
     '0082': ('recup_annulations',),
     '0083': ('equipe_lieux_options', 'equipe_lieux_affectations'),
     '0084': ('assistant_etats', 'assistant_memoires'),
+    '0085': ('assistant_documents',),
 }
 
 
@@ -161,7 +163,8 @@ def _est_trace_digest(cle, valeur):
 def _contenus_assistant(conn):
     """Colonnes chiffrées facultatives dans les sauvegardes antérieures à 0084."""
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    for table, identifiant in (('assistant_etats', 'user_id'), ('assistant_memoires', 'id')):
+    for table, identifiant in (('assistant_etats', 'user_id'), ('assistant_memoires', 'id'),
+                              ('assistant_documents', 'id')):
         if table in tables:
             for row in conn.execute(f'SELECT {identifiant},contenu FROM {table}'):
                 yield table, identifiant, row[0], row[1]

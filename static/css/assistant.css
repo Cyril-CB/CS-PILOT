@@ -34,15 +34,33 @@
 #assistantPage .assistant-souvenir p { white-space: pre-wrap; overflow-wrap: anywhere; }
 #assistantPage .assistant-souvenir small { color: var(--gray-500); display: block; margin: 8px 0; }
 #assistantPage .btn { max-width: 100%; }
+#assistantPage .assistant-reception { margin-bottom: 24px; }
+#assistantPage .assistant-depot-grille { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+#assistantPage input { max-width: 100%; font: inherit; }
+#assistantPage input[type=file] { width: 100%; color: var(--gray-700); font-size: 0.85rem; }
+#assistantPage input[type=file]::file-selector-button { padding: 10px 12px; margin-right: 8px; border: 0; border-radius: var(--radius-sm); background: var(--gray-200); color: var(--gray-700); font: inherit; font-weight: 600; cursor: pointer; }
+#assistantPage input[type=file]::file-selector-button:hover { background: var(--gray-300); }
+#assistantPage input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+#assistantPage .assistant-document { margin-top: 16px; padding: 14px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+#assistantPage .assistant-document summary { cursor: pointer; font-weight: 600; line-height: 1.7; }
+#assistantPage .assistant-document p { white-space: pre-wrap; line-height: 1.7; }
+#assistantPage .assistant-document .assistant-badge { display: inline-block; font-size: 0.8rem; margin-left: 12px; color: var(--gray-700); }
+#assistantPage .assistant-document input:not([type=checkbox]) { width: 100%; padding: 10px; color: var(--gray-900); background: var(--white); border: 1px solid var(--gray-300); border-radius: var(--radius-sm); }
+#assistantPage .assistant-document input[type=checkbox] { margin-right: 8px; }
+#assistantPage .assistant-document .assistant-etape { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; margin: 8px 0; }
+#assistantPage #assistantDocumentStatut { margin-left: 12px; font-size: 0.85rem; }
 @media (max-width: 1024px) {
     body:not(.flx) #assistantPage { padding-top: 36px; }
 }
 @media (max-width: 1000px) {
     #assistantPage .assistant-grille { grid-template-columns: 1fr; }
+    #assistantPage .assistant-depot-grille { grid-template-columns: 1fr; gap: 0; }
 }
 @media (max-width: 540px) {
     #assistantPage .section { padding: 18px; }
     #assistantPage .assistant-entete h1 { font-size: 1.7rem; }
     #assistantPage textarea, #assistantPage select { font-size: 16px; }
+    #assistantPage .assistant-document input { font-size: 16px; }
+    #assistantPage .assistant-document .assistant-etape { grid-template-columns: 1fr; }
     #assistantPage .btn { min-height: 42px; white-space: normal; }
 }

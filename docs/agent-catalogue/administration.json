@@ -1067,10 +1067,11 @@
         "sauvegarder --data-dir --archive --application-arretee : archive complète chiffrée et authentifiée de SQLite, documents, factures, modèles de contrats, contrats générés, exports et configuration effective.",
         "Manifeste avec inventaire, tailles, SHA-256, version Python/SQLite, révision Git, état modifié du code et empreinte de requirements.txt.",
         "restaurer --archive --destination : déchiffrement, contrôles du manifeste et des données, publication dans une destination inexistante ; rapport JSON et table de correspondance des anciens chemins.",
-        "Option --nouvelle-cle-fichier pour rechiffrer atomiquement app_settings au cours de la restauration ; --phrase-fichier et --cle-fichier pour secrets en fichiers privés.",
+        "Option --nouvelle-cle-fichier pour rechiffrer atomiquement app_settings et les contenus chiffrés de l’assistant au cours de la restauration ; --phrase-fichier et --cle-fichier pour secrets en fichiers privés.",
         "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false.",
         "Vérification et rechiffrement des paramètres secrets sans modifier les traces historiques du digest ; parametres_verifies compte seulement les valeurs déchiffrées.",
-        "Sauvegarde possible sans Git ; la provenance d’une version isolée vient de REVISION-SOURCES.txt, sans confondre le dépôt parent avec le code exécuté."
+        "Sauvegarde possible sans Git ; la provenance d’une version isolée vient de REVISION-SOURCES.txt, sans confondre le dépôt parent avec le code exécuté.",
+        "Conversation, mémoire et métadonnées de réception chiffrées sont vérifiées et rechiffrées en restauration ; les PDF reçus sont inclus dans documents et leurs références contrôlées."
       ],
       "entry_points": [],
       "implementation": {
@@ -1080,7 +1081,8 @@
           "resilience.py",
           "stockage_restaure.py",
           "schema_resilience.py",
-          "database.py"
+          "database.py",
+          "schema_assistant_reception.py"
         ],
         "templates": [],
         "tables": [
@@ -1088,13 +1090,15 @@
           "schema_migrations",
           "schema_migrations_tentatives",
           "fiches_versions",
-          "archives_export"
+          "archives_export",
+          "assistant_documents"
         ],
         "tests": [
           "tests/test_resilience.py",
           "tests/test_migrations_resilience.py",
           "tests/test_resilience_parametres.py",
-          "tests/test_propositions.py"
+          "tests/test_propositions.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "docs/resilience.md",
@@ -1484,7 +1488,8 @@
         "Nettoyage tolérant à un fichier déjà absent ; échec disque journalisé et renvoyé comme booléen, sans exposer le chemin système à l’utilisateur.",
         "resoudre_fichier gère les chemins relatifs des cinq stockages et la correspondance explicite restauration-chemins.json pour les anciens chemins absolus.",
         "REPERTOIRES inventorie documents, factures, modeles_contrats, contrats_generes et exports ; le diagnostic de résilience vérifie les références des tables métier.",
-        "Les pièces de propositions sont stockées dans documents/propositions avec des chemins relatifs, des noms aléatoires et une empreinte contrôlée à la lecture."
+        "Les pièces de propositions sont stockées dans documents/propositions avec des chemins relatifs, des noms aléatoires et une empreinte contrôlée à la lecture.",
+        "Réceptions privées dans documents/assistant_reception, copies exclusives sous noms aléatoires vers les circuits métier, références de diagnostic et nettoyage des seules nouvelles copies après rollback."
       ],
       "entry_points": [],
       "implementation": {
@@ -1494,7 +1499,9 @@
           "stockage_restaure.py",
           "resilience.py",
           "database.py",
-          "propositions.py"
+          "propositions.py",
+          "assistant_pdf.py",
+          "schema_assistant_reception.py"
         ],
         "templates": [],
         "tables": [
@@ -1507,13 +1514,15 @@
           "modeles_contrats",
           "contrats_generes",
           "archives_export",
-          "propositions_pieces"
+          "propositions_pieces",
+          "assistant_documents"
         ],
         "tests": [
           "tests/test_nettoyage_documents.py",
           "tests/test_security.py",
           "tests/test_resilience.py",
-          "tests/test_propositions.py"
+          "tests/test_propositions.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "docs/resilience.md"

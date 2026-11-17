@@ -24,20 +24,20 @@ def cle_pour(model):
     return provider, key
 
 
-def appel_json(model, messages):
+def appel_json(model, messages, max_tokens=3000):
     provider, key = cle_pour(model)
     payload = {'model': model}
     if provider == 'anthropic':
         url = 'https://api.anthropic.com/v1/messages'
         headers = {'x-api-key': key, 'anthropic-version': '2023-06-01'}
-        payload.update(system=messages[0]['content'], messages=messages[1:], max_tokens=3000)
+        payload.update(system=messages[0]['content'], messages=messages[1:], max_tokens=max_tokens)
         if anthropic_supports_temperature(model):
             payload['temperature'] = 0
     else:
         url = ('https://api.openai.com/v1/chat/completions' if provider == 'openai'
                else 'https://api.groq.com/openai/v1/chat/completions')
         headers = {'Authorization': 'Bearer ' + key}
-        payload.update(messages=messages, max_completion_tokens=3000,
+        payload.update(messages=messages, max_completion_tokens=max_tokens,
                        response_format={'type': 'json_object'})
         if provider == 'openai':
             payload['reasoning_effort'] = get_openai_reasoning_effort()
