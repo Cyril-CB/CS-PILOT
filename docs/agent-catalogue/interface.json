@@ -918,8 +918,8 @@
     },
     {
       "id": "interface.assistant_personnel",
-      "title": "Assistant personnel et petite mémoire",
-      "purpose": "Consulter les informations accessibles et reprendre un sujet dans une page autonome, sans outil d’écriture métier.",
+      "title": "Assistant personnel, mémoire et boîte de réception",
+      "purpose": "Consulter les informations accessibles, analyser des PDF personnels et alimenter les circuits existants par des créations autorisées.",
       "example_requests": [
         "ouvrir mon assistant",
         "quelles sont mes priorités",
@@ -931,14 +931,24 @@
       "capabilities": [
         "Page /assistant autonome, sans modification du menu ni de l’interface globale ; modèle choisi parmi ceux des fournisseurs déjà configurés.",
         "Accès direction, comptabilité, responsables et salariés dont le secteur est Pilotage (nom comparé après suppression des espaces extérieurs, sans distinction de casse). Prestataires externes exclus.",
-        "Agent en deux appels JSON maximum : choix d’au plus trois consultations, puis réponse ; outils de recherche filtrée, priorités/horizon du profil et planificateur strictement personnel.",
+        "Agent en deux appels JSON maximum : choix d’au plus trois consultations, puis réponse ; outils de recherche filtrée, priorités/horizon du profil, planificateur personnel et lecture des pages du PDF sélectionné.",
         "Planificateur : douze blocs datés maximum, d’aujourd’hui à J+14 inclus ; les rendez-vous conservent leurs horaires. Huit tâches à faire maximum, sans échéance ou avec échéance jusqu’à J+14, retards inclus ; les rendez-vous ne consomment pas ces places.",
         "Recherche métier seulement pour ses profils actuels ; les salariés du secteur Pilotage utilisent leur carte de navigation filtrée. Aucun accès métier supplémentaire accordé par le secteur.",
         "Sources et liens produits par le serveur, réponse affichée comme texte ; aucun HTML ni URL d’action fourni par le modèle n’est exécuté.",
         "Une conversation par utilisateur, vingt messages conservés et résumé de reprise borné ; expiration après trente jours sans mise à jour.",
         "Trente souvenirs explicites maximum : préférences jusqu’à suppression, sujets suivis trente jours ; consultation, édition et oubli individuels. « Retiens que… » ajoute un sujet suivi sans appel IA.",
         "Historique et mémoire chiffrés avec la clé de l’installation ; isolés par utilisateur. Un changement de périmètre efface le contexte précédent. Une modification de mémoire réinitialise le dialogue pour ne pas la réinjecter depuis un résumé.",
-        "Quota de trente tentatives par utilisateur et jour applicatif, six messages par minute ; bail et révision contre la concurrence et les réponses tardives. Réémission du dernier tour avec le même identifiant ne rappelle pas le fournisseur."
+        "Quota de trente tentatives par utilisateur et jour applicatif, six messages par minute ; bail et révision contre la concurrence et les réponses tardives. Réémission du dernier tour avec le même identifiant ne rappelle pas le fournisseur.",
+        "Boîte de réception sur /assistant uniquement : PDF numériques originaux avec commentaire facultatif ; 16 Mo, 60 pages, 150 000 caractères maximum. Pas d’OCR, refus des pages principalement constituées d’images et du texte inexploitable.",
+        "Classification facture, convention de financement, notification de subvention, contrat de travail, arrêt maladie ou autre ; résumé, chiffres et obligations. Champs et échéances confrontés à leurs extraits justificatifs ; dates comparées sur une occurrence complète, sans accepter la sous-chaîne d’une autre date.",
+        "Factures : service d’import partagé avec la page Factures, fournisseur par nom/alias ou nouveau, facture à traiter et approbation en attente. Secteur ou direction uniquement sur indication explicite ; aucune écriture comptable créée.",
+        "Financements : nom et année financée distincte de la signature ; rapprochement unique exact ou question en cas de correspondance partielle. Nouvelle subvention sous _A classer, statut initial habituel, zéro à deux assignés et étapes datées. Une absence d’année, d’assignation ou d’échéance peut appeler une précision, avec choix explicite de laisser vide les champs facultatifs.",
+        "Pièce principale vide complétée ; sinon nouveau sous-élément dédié avec le PDF. Pièces identiques et étapes déjà présentes conservées, montants et affectations des dossiers existants non édités.",
+        "Contrat : ajout au salarié existant et visible, type, dates, temps hebdomadaire et PDF ; lien vers Infos salariés. Protections des fiches verrouillées et de la préparation de paie conservées.",
+        "Arrêt maladie : identification et lien vers Absences seulement, aucune absence créée ; autre document : résumé et discussion sans traitement métier.",
+        "Droits actuels conservés : direction/comptabilité pour créer une facture, profils de gestion pour les subventions et contrats dans leur périmètre ; salariés Pilotage limités au dépôt et à l’analyse.",
+        "PDF, commentaires et résultats privés par utilisateur ; textes et métadonnées chiffrés, fichiers dans documents/assistant_reception avec noms aléatoires, sauvegarde et rechiffrement couverts. Cinquante derniers dépôts affichés, sans suppression par l’oubli conversationnel.",
+        "Empreinte du PDF par propriétaire, bail, révision et contrôles de droits sous transaction contre doublons et retours tardifs. Analyse et réexamens partagent le quota journalier de trente tentatives du dialogue. Réexamen avec précision autorisé avant tout rattachement métier, analyses précédentes conservées."
       ],
       "entry_points": [
         "assistant_bp.assistant",
@@ -947,7 +957,13 @@
         "assistant_bp.ajouter_memoire",
         "assistant_bp.modifier_memoire",
         "assistant_bp.supprimer_memoire",
-        "assistant_bp.reinitialiser"
+        "assistant_bp.reinitialiser",
+        "assistant_bp.documents",
+        "assistant_bp.deposer_document",
+        "assistant_bp.document",
+        "assistant_bp.analyser_document",
+        "assistant_bp.preciser_document",
+        "assistant_bp.document_pdf"
       ],
       "implementation": {
         "route_files": [
@@ -967,29 +983,40 @@
           "search_palette.py",
           "resilience.py",
           "static/js/assistant.js",
-          "static/css/assistant.css"
+          "static/css/assistant.css",
+          "assistant_reception.py",
+          "assistant_pdf.py",
+          "assistant_documents_analyse.py",
+          "assistant_documents_metier.py",
+          "factures_import.py",
+          "schema_assistant_reception.py",
+          "migrations/0085_assistant_reception.py",
+          "static/js/assistant_reception.js"
         ],
         "templates": [
           "templates/assistant.html"
         ],
         "tables": [
           "assistant_etats",
-          "assistant_memoires"
+          "assistant_memoires",
+          "assistant_documents"
         ],
         "tests": [
-          "tests/test_assistant.py"
+          "tests/test_assistant.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "docs/assistant-personnel.md"
         ]
       },
       "access": {
-        "summary": "Connexion et compte courant requis sur toutes les routes. Profils de gestion ou salarié du secteur Pilotage ; mémoire et dialogue uniquement au nom de l’utilisateur connecté.",
+        "summary": "Compte courant autorisé à l’assistant sur toutes les routes ; réception et PDF personnels. Chaque création vérifie en plus les droits du module métier et la cible.",
         "scope": "Installation courante, utilisateur personnel ; consultations cadrées par les helpers métier et la navigation actuelle.",
         "conditions": [
           "Clé d’un fournisseur configurée pour le dialogue ; mémoire utilisable sans clé.",
           "Aucun user_id, profil, historique, instruction système ou URL d’outil du client accepté.",
-          "Vérification des droits avant chaque envoi et avant restitution ; un retour tardif après oubli ou retrait de droits est refusé."
+          "Vérification des droits avant chaque envoi et avant restitution ; un retour tardif après oubli ou retrait de droits est refusé.",
+          "Identifiants de document, salarié, secteur et subvention reçus du navigateur revérifiés côté serveur ; les IDs et opérations ne proviennent jamais d’une commande libre du modèle."
         ],
         "sources": [
           "blueprints/assistant.py",
@@ -999,27 +1026,36 @@
         ]
       },
       "invariants": [
-        "Aucun outil d’écriture métier, de SQL arbitraire, d’email ou de navigation réseau libre.",
+        "Dialogue en lecture seule ; réception limitée aux créations métier prévues. Aucun SQL arbitraire, email, réseau libre, suppression ou édition générale de dossiers.",
         "Aucune clé ni erreur brute de fournisseur renvoyée au navigateur.",
         "Mémoire alimentée seulement par l’utilisateur ; suppression et expiration réinitialisent les résumés susceptibles de reprendre les anciens souvenirs.",
-        "Les changements de rôle, d’équipe, de navigation et d’affectation des ressources bornées invalident le contexte personnel des profils restreints."
+        "Les changements de rôle, d’équipe, de navigation et d’affectation des ressources bornées invalident le contexte personnel des profils restreints.",
+        "Justificatif principal préexistant jamais écrasé ; son absence est la seule condition d’un ajout au champ existant, sinon création d’un sous-élément.",
+        "Ni mémoire oubliée ni réexamen documentaire ne suppriment un PDF ou une donnée métier ; après classement, les corrections se font dans les modules habituels."
       ],
       "extension_points": [
-        "Ajouter un outil à la liste fermée avec ses arguments validés, ses contrôles de droits et des tests négatifs ; garder la consultation séparée des futures propositions d’action.",
-        "Prévoir la recherche documentaire sourcée et la boîte de réception dans un lot ultérieur."
+        "Ajouter un traitement à la liste fermée avec ses validations, droits et tests négatifs ; préserver les circuits existants et les dossiers déjà saisis.",
+        "Autres formats, OCR, nouvelles actions et partage explicite des réceptions pourront être étudiés dans un lot ultérieur."
       ],
       "related_features": [
         "administration.cles_api_ia",
         "administration.authentification",
         "administration.resilience_hors_ligne",
         "interface.recherche",
-        "interface.accueil_flux"
+        "interface.accueil_flux",
+        "finances.factures",
+        "association.subventions_suivi",
+        "association.subventions_documents",
+        "rh.contrats_dossier",
+        "administration.stockage_documents"
       ],
       "limitations": [
-        "Première version en lecture seule ; aucun document importé, OCR, réponse conventionnelle vérifiée ou exécution d’action métier.",
-        "Sources de l’application uniquement ; les cartes et recherches sont bornées, pas un inventaire exhaustif.",
-        "Quota de requêtes, pas une garantie monétaire ; la consommation dépend du modèle choisi. Pas de bascule automatique vers un autre fournisseur.",
-        "La fiabilité rédactionnelle du modèle reste à apprécier sur des cas métier réels."
+        "PDF textuels uniquement ; contrôle heuristique des scans, pas certification de provenance ni antivirus. Pas de traitement OCR.",
+        "Consultations et pages de PDF bornées : elles ne constituent pas un inventaire exhaustif. La convention collective n’est pas chargée automatiquement.",
+        "Les arrêts maladie restent à saisir manuellement ; aucun rendez-vous, paiement, export ou écriture comptable depuis la réception.",
+        "Quota de requêtes, pas plafond monétaire. Les tests simulent les fournisseurs ; qualité des analyses à apprécier sur des documents représentatifs.",
+        "Réceptions privées : un salarié Pilotage transmet manuellement son PDF à un gestionnaire s’il ne peut pas créer le dossier. Aucune notification email automatique.",
+        "Après création ou rattachement, les corrections se font dans les modules métiers ; aucun outil d’édition ou de suppression générale proposé au modèle."
       ]
     }
   ]

@@ -154,11 +154,14 @@ def lire_etat():
         return etat_public(conn, user, row, notice)
 
 
-def reserver(message, model, request_id):
+def reserver(message, model, request_id, document_id=None):
     with transaction() as conn:
         user, row, notice = preparer(conn)
         data = decoder(row['contenu'])
-        signature = hashlib.sha256((model + '\n' + message).encode()).hexdigest()
+        if document_id is not None:
+            from assistant_reception import _document
+            _document(conn, user, document_id)
+        signature = hashlib.sha256((model + '\n' + message + '\n' + (document_id or '')).encode()).hexdigest()
         dernier = data.get('dernier', {})
         if dernier.get('id') == request_id:
             if dernier['signature'] != signature:

@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}Mon assistant — CS-PILOT{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/assistant.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/assistant.css') }}?v={{ static_version['css/assistant.css'] }}">
 <div id="assistantPage"
      data-etat="{{ url_for('assistant_bp.etat') }}"
      data-message="{{ url_for('assistant_bp.message') }}"
      data-memoires="{{ url_for('assistant_bp.ajouter_memoire') }}"
-     data-oublier="{{ url_for('assistant_bp.reinitialiser') }}">
+     data-oublier="{{ url_for('assistant_bp.reinitialiser') }}"
+     data-documents="{{ url_for('assistant_bp.documents') }}">
     <div class="assistant-entete">
         <div><h1>Mon assistant</h1><p class="subtitle">Un espace pour faire le point, retrouver un dossier et garder le fil.</p></div>
         {% if not interdit %}<button type="button" class="btn btn-secondary" id="assistantActualiser">Actualiser</button>{% endif %}
@@ -16,6 +17,33 @@
     {% else %}
     <div id="assistantErreur" class="assistant-erreur" role="alert" hidden></div>
     <p id="assistantNotice" class="assistant-notice" role="status" hidden></p>
+    <section class="section assistant-reception" aria-labelledby="assistantReceptionTitre">
+        <div class="assistant-ligne"><h2 id="assistantReceptionTitre">Boîte de réception</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="assistantDocumentsActualiser">Actualiser les documents</button></div>
+        <p class="assistant-aide">Déposez le PDF numérique original, généré par un logiciel, et non une version scannée. PDF uniquement, 16 Mo et 60 pages maximum. Le texte doit être extractible ; aucun OCR n’est utilisé.</p>
+        <form id="assistantDocumentForm" method="post" enctype="multipart/form-data" action="{{ url_for('assistant_bp.deposer_document') }}" autocomplete="off">
+            <div class="assistant-depot-grille">
+                <div><label for="assistantDocumentFichier">Document PDF</label>
+                    <input type="file" id="assistantDocumentFichier" name="fichier" accept="application/pdf,.pdf" required>
+                    <label for="assistantDocumentModele">Modèle pour l’analyse</label>
+                    <select id="assistantDocumentModele" name="model" {% if not models %}disabled{% endif %}>
+                        {% for m in models %}<option value="{{ m.id }}">{{ m.provider_name }} — {{ m.label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div><label for="assistantDocumentCommentaire">Commentaire facultatif</label>
+                    <textarea id="assistantDocumentCommentaire" name="commentaire" rows="3" maxlength="2000" placeholder="Exemple : cette facture est pour le secteur Enfance."></textarea>
+                    <p class="assistant-aide">Le commentaire permet de préciser le traitement ou l’affectation. Sans indication, aucun secteur n’est deviné.</p>
+                </div>
+            </div>
+            <p class="assistant-aide">Le texte et votre commentaire sont transmis au fournisseur choisi. Selon vos droits, l’assistant peut créer une facture, une subvention, ses étapes ou un contrat. Il conserve les informations et les pièces déjà présentes. Les arrêts maladie restent à saisir manuellement.</p>
+            {% if not models %}<p class="assistant-notice">Sans clé API, le PDF peut être déposé ; son analyse attendra la configuration d’un fournisseur.</p>{% endif %}
+            <button type="submit" class="btn btn-primary" id="assistantDocumentEnvoyer">Déposer le PDF</button>
+            <span id="assistantDocumentStatut" role="status"></span>
+        </form>
+        <p id="assistantDocumentsErreur" class="assistant-erreur" role="alert" hidden></p>
+        <div id="assistantDocuments" aria-live="polite"><p>Chargement de votre boîte de réception…</p></div>
+        <p class="assistant-aide">Vos 50 derniers dépôts sont affichés. Les documents sont personnels ; effacer une conversation ne supprime ni les PDF ni les dossiers créés.</p>
+    </section>
     <div class="assistant-grille">
         <section class="section assistant-conversation" aria-labelledby="assistantDialogueTitre">
             <div class="assistant-ligne">
@@ -35,7 +63,7 @@
             <div id="assistantMessages" aria-live="polite" aria-relevant="additions text"></div>
             <div id="assistantVide" class="assistant-vide">
                 <h3>Par quoi commençons-nous ?</h3>
-                <p>Je peux consulter vos priorités, rechercher une page ou un dossier accessible et lire votre planificateur personnel.</p>
+                <p>Je peux consulter vos priorités, rechercher une page ou un dossier accessible, lire votre planificateur et répondre sur un PDF sélectionné dans la boîte de réception.</p>
                 <div class="assistant-exemples">
                     <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Quelles sont mes priorités et les échéances à venir ?">Mes priorités</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Que contient mon planificateur pour les prochains jours ?">Mon planificateur</button>
@@ -43,6 +71,8 @@
                 </div>
             </div>
             <form id="assistantForm" autocomplete="off">
+                <p id="assistantDocumentSelection" class="assistant-notice" hidden><span></span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="assistantDocumentRetirer">Retirer de la discussion</button></p>
                 <label for="assistantQuestion">Votre demande</label>
                 <textarea id="assistantQuestion" name="assistant_question" rows="3" maxlength="2000" placeholder="Posez votre question…" required {% if not models %}disabled{% endif %}></textarea>
                 <div class="assistant-ligne">
@@ -51,7 +81,7 @@
                 </div>
             </form>
             <details class="assistant-resume"><summary>Le fil que je garde en tête</summary><p id="assistantResume">Aucun résumé pour le moment.</p></details>
-            <p class="assistant-aide">Première version : consultation uniquement. Les validations, les dépôts de documents et les modifications de dossiers se font dans leurs modules habituels.</p>
+            <p class="assistant-aide">Le dialogue consulte vos informations. Les créations documentaires passent par la boîte de réception ; les validations et les modifications de dossiers se font dans leurs modules habituels.</p>
         </section>
         <aside class="section assistant-memoire" aria-labelledby="assistantMemoireTitre">
             <div class="assistant-ligne"><h2 id="assistantMemoireTitre">Ma mémoire</h2><span id="assistantMemoireCompteur">0 / 30</span></div>
@@ -70,7 +100,8 @@
             <p class="assistant-aide">La mémoire est personnelle. Un changement de périmètre réinitialise les échanges et souvenirs associés aux anciens droits.</p>
         </aside>
     </div>
-    <script src="{{ url_for('static', filename='js/assistant.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/assistant.js') }}?v={{ static_version['js/assistant.js'] }}" defer></script>
+    <script src="{{ url_for('static', filename='js/assistant_reception.js') }}?v={{ static_version['js/assistant_reception.js'] }}" defer></script>
     {% endif %}
 </div>
 {% endblock %}

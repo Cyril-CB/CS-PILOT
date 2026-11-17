@@ -177,7 +177,8 @@
         "Enregistrer CDI, CDD, CEE ou Autre avec début, fin éventuelle, forfait, nombre de jours, temps hebdomadaire et PDF facultatif.",
         "Compléter un contrat sans PDF ; télécharger le PDF existant.",
         "Modifier ou retirer la date de fin sans supprimer le contrat ni son PDF.",
-        "Supprimer un contrat en conservant les protections transversales des fiches mensuelles."
+        "Supprimer un contrat en conservant les protections transversales des fiches mensuelles.",
+        "Réception d’un PDF textuel depuis l’assistant : nouveau contrat au salarié accessible avec dates et temps hebdomadaire, contrôles de fiches verrouillées et lien vers Infos salariés ; aucun contrat ou salarié existant modifié."
       ],
       "entry_points": [
         "infos_salaries_bp.infos_salaries",
@@ -195,7 +196,9 @@
           "fiches_versions.py",
           "prepa_paie_donnees.py",
           "document_files.py",
-          "access_log.py"
+          "access_log.py",
+          "assistant_documents_metier.py",
+          "assistant_reception.py"
         ],
         "templates": [
           "templates/infos_salaries.html"
@@ -210,7 +213,8 @@
           "tests/test_infos_salaries.py",
           "tests/test_nouvelles_fonctionnalites.py",
           "tests/test_fiches_versions.py",
-          "tests/test_prestataire_paie.py"
+          "tests/test_prestataire_paie.py",
+          "tests/test_assistant_reception.py"
         ],
         "docs": [
           "docs/fiches-mensuelles.md",

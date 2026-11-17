@@ -14,6 +14,8 @@ OUTILS = [
      'arguments': {}},
     {'nom': 'planificateur', 'description': 'Lire mes blocs planifiés et mes tâches à faire sur les 14 prochains jours.',
      'arguments': {}},
+    {'nom': 'lire_document', 'description': 'Lire les pages pertinentes du PDF personnel sélectionné dans la boîte de réception.',
+     'arguments': {'query': 'Question sur le document, 200 caractères maximum'}},
 ]
 
 
@@ -33,7 +35,7 @@ def valider_appels(appels):
         args = call['arguments']
         if not isinstance(args, dict):
             raise AssistantErreur('Arguments de consultation invalides.', 502)
-        if call['nom'] == 'rechercher':
+        if call['nom'] in ('rechercher', 'lire_document'):
             if (set(args) != {'query'} or not isinstance(args['query'], str)
                     or not 1 <= len(args['query'].strip()) <= 200):
                 raise AssistantErreur('Recherche proposée invalide.', 502)
@@ -110,6 +112,11 @@ def consulter(tour, appels):
                 items = _rechercher(conn, user, call['arguments'])
             elif call['nom'] == 'priorites':
                 items = _priorites(conn, user)
+            elif call['nom'] == 'lire_document':
+                if not tour.get('document_id'):
+                    raise AssistantErreur('Sélectionnez d’abord un PDF dans la boîte de réception.')
+                from assistant_reception import texte_pour_question
+                items = texte_pour_question(conn, user, tour['document_id'], call['arguments']['query'])
             else:
                 items = _planificateur(conn, user)
             for item in items:

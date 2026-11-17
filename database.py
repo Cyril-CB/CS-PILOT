@@ -125,6 +125,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0082', 'Annulations datées des récupérations validées'),
     ('0083', 'Lieux d intervention dans Mon equipe'),
     ('0084', 'Assistant personnel : conversation et mémoire'),
+    ('0085', 'Assistant : boîte de réception documentaire'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2177,6 +2178,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_solidarite(conn)
     from schema_assistant import creer_schema as creer_schema_assistant
     creer_schema_assistant(conn)
+    from schema_assistant_reception import creer_schema as creer_schema_reception
+    creer_schema_reception(conn)
 
 
 def preparer_demarrage():

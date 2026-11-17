@@ -7,6 +7,22 @@
     const model = byId('assistantModele');
     const question = byId('assistantQuestion');
     const csrf = document.querySelector('meta[name="csrf-token"]');
+    let selectedDocument = null;
+    root.addEventListener('assistant:document', e => {
+        selectedDocument = e.detail.id;
+        byId('assistantDocumentSelection').hidden = !selectedDocument;
+        byId('assistantDocumentSelection').querySelector('span').textContent = 'Document consulté : ' + e.detail.nom;
+        question.focus();
+    });
+    byId('assistantDocumentRetirer').addEventListener('click', () => {
+        selectedDocument = null; byId('assistantDocumentSelection').hidden = true;
+    });
+    root.addEventListener('assistant:quota', async () => {
+        if (busy || mutating) return;
+        const current = generation;
+        try { const data = await api(root.dataset.etat); if (current === generation) render(data); }
+        catch (_) { /* Le prochain échange rafraîchira le compteur. */ }
+    });
 
     async function api(url, method, body) {
         const response = await fetch(url, {
@@ -122,7 +138,9 @@
         const message = question.value.trim(), turn = ++generation;
         busy = true; error(''); controls();
         try {
-            const data = await api(root.dataset.message, 'POST', {message, model: model.value, request_id: requestId()});
+            const payload = {message, model: model.value, request_id: requestId()};
+            if (selectedDocument) payload.document_id = selectedDocument;
+            const data = await api(root.dataset.message, 'POST', payload);
             if (turn !== generation) return;
             question.value = ''; render(data);
         } catch (err) { if (turn === generation) error(err.message); }
