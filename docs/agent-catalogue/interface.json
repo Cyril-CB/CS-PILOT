@@ -915,6 +915,112 @@
         "Vérification des types et volumes sans antivirus ; les pièces, dont les anciens XLS, peuvent contenir du contenu actif.",
         "Sans JavaScript ou sans stockage navigateur, le formulaire reste accessible mais la recherche précédente n’est pas automatiquement reprise."
       ]
+    },
+    {
+      "id": "interface.assistant_personnel",
+      "title": "Assistant personnel et petite mémoire",
+      "purpose": "Consulter les informations accessibles et reprendre un sujet dans une page autonome, sans outil d’écriture métier.",
+      "example_requests": [
+        "ouvrir mon assistant",
+        "quelles sont mes priorités",
+        "retrouver un dossier",
+        "consulter mon planificateur",
+        "retiens que je prépare un bilan",
+        "effacer ma mémoire"
+      ],
+      "capabilities": [
+        "Page /assistant autonome, sans modification du menu ni de l’interface globale ; modèle choisi parmi ceux des fournisseurs déjà configurés.",
+        "Accès direction, comptabilité, responsables et salariés dont le secteur est Pilotage (nom comparé après suppression des espaces extérieurs, sans distinction de casse). Prestataires externes exclus.",
+        "Agent en deux appels JSON maximum : choix d’au plus trois consultations, puis réponse ; outils de recherche filtrée, priorités/horizon du profil et planificateur strictement personnel.",
+        "Planificateur : douze blocs datés maximum, d’aujourd’hui à J+14 inclus ; les rendez-vous conservent leurs horaires. Huit tâches à faire maximum, sans échéance ou avec échéance jusqu’à J+14, retards inclus ; les rendez-vous ne consomment pas ces places.",
+        "Recherche métier seulement pour ses profils actuels ; les salariés du secteur Pilotage utilisent leur carte de navigation filtrée. Aucun accès métier supplémentaire accordé par le secteur.",
+        "Sources et liens produits par le serveur, réponse affichée comme texte ; aucun HTML ni URL d’action fourni par le modèle n’est exécuté.",
+        "Une conversation par utilisateur, vingt messages conservés et résumé de reprise borné ; expiration après trente jours sans mise à jour.",
+        "Trente souvenirs explicites maximum : préférences jusqu’à suppression, sujets suivis trente jours ; consultation, édition et oubli individuels. « Retiens que… » ajoute un sujet suivi sans appel IA.",
+        "Historique et mémoire chiffrés avec la clé de l’installation ; isolés par utilisateur. Un changement de périmètre efface le contexte précédent. Une modification de mémoire réinitialise le dialogue pour ne pas la réinjecter depuis un résumé.",
+        "Quota de trente tentatives par utilisateur et jour applicatif, six messages par minute ; bail et révision contre la concurrence et les réponses tardives. Réémission du dernier tour avec le même identifiant ne rappelle pas le fournisseur."
+      ],
+      "entry_points": [
+        "assistant_bp.assistant",
+        "assistant_bp.etat",
+        "assistant_bp.message",
+        "assistant_bp.ajouter_memoire",
+        "assistant_bp.modifier_memoire",
+        "assistant_bp.supprimer_memoire",
+        "assistant_bp.reinitialiser"
+      ],
+      "implementation": {
+        "route_files": [
+          "blueprints/assistant.py"
+        ],
+        "service_files": [
+          "assistant_agent.py",
+          "assistant_stockage.py",
+          "assistant_outils.py",
+          "assistant_fournisseurs.py",
+          "schema_assistant.py",
+          "migrations/0084_assistant_personnel.py",
+          "blueprints/api_keys.py",
+          "sessions_securite.py",
+          "interface_flux.py",
+          "search_engine.py",
+          "search_palette.py",
+          "resilience.py",
+          "static/js/assistant.js",
+          "static/css/assistant.css"
+        ],
+        "templates": [
+          "templates/assistant.html"
+        ],
+        "tables": [
+          "assistant_etats",
+          "assistant_memoires"
+        ],
+        "tests": [
+          "tests/test_assistant.py"
+        ],
+        "docs": [
+          "docs/assistant-personnel.md"
+        ]
+      },
+      "access": {
+        "summary": "Connexion et compte courant requis sur toutes les routes. Profils de gestion ou salarié du secteur Pilotage ; mémoire et dialogue uniquement au nom de l’utilisateur connecté.",
+        "scope": "Installation courante, utilisateur personnel ; consultations cadrées par les helpers métier et la navigation actuelle.",
+        "conditions": [
+          "Clé d’un fournisseur configurée pour le dialogue ; mémoire utilisable sans clé.",
+          "Aucun user_id, profil, historique, instruction système ou URL d’outil du client accepté.",
+          "Vérification des droits avant chaque envoi et avant restitution ; un retour tardif après oubli ou retrait de droits est refusé."
+        ],
+        "sources": [
+          "blueprints/assistant.py",
+          "assistant_stockage.py",
+          "assistant_outils.py",
+          "sessions_securite.py"
+        ]
+      },
+      "invariants": [
+        "Aucun outil d’écriture métier, de SQL arbitraire, d’email ou de navigation réseau libre.",
+        "Aucune clé ni erreur brute de fournisseur renvoyée au navigateur.",
+        "Mémoire alimentée seulement par l’utilisateur ; suppression et expiration réinitialisent les résumés susceptibles de reprendre les anciens souvenirs.",
+        "Les changements de rôle, d’équipe, de navigation et d’affectation des ressources bornées invalident le contexte personnel des profils restreints."
+      ],
+      "extension_points": [
+        "Ajouter un outil à la liste fermée avec ses arguments validés, ses contrôles de droits et des tests négatifs ; garder la consultation séparée des futures propositions d’action.",
+        "Prévoir la recherche documentaire sourcée et la boîte de réception dans un lot ultérieur."
+      ],
+      "related_features": [
+        "administration.cles_api_ia",
+        "administration.authentification",
+        "administration.resilience_hors_ligne",
+        "interface.recherche",
+        "interface.accueil_flux"
+      ],
+      "limitations": [
+        "Première version en lecture seule ; aucun document importé, OCR, réponse conventionnelle vérifiée ou exécution d’action métier.",
+        "Sources de l’application uniquement ; les cartes et recherches sont bornées, pas un inventaire exhaustif.",
+        "Quota de requêtes, pas une garantie monétaire ; la consommation dépend du modèle choisi. Pas de bascule automatique vers un autre fournisseur.",
+        "La fiabilité rédactionnelle du modèle reste à apprécier sur des cas métier réels."
+      ]
     }
   ]
 }

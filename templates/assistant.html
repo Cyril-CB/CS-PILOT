@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Mon assistant — CS-PILOT{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/assistant.css') }}">
+<div id="assistantPage"
+     data-etat="{{ url_for('assistant_bp.etat') }}"
+     data-message="{{ url_for('assistant_bp.message') }}"
+     data-memoires="{{ url_for('assistant_bp.ajouter_memoire') }}"
+     data-oublier="{{ url_for('assistant_bp.reinitialiser') }}">
+    <div class="assistant-entete">
+        <div><h1>Mon assistant</h1><p class="subtitle">Un espace pour faire le point, retrouver un dossier et garder le fil.</p></div>
+        {% if not interdit %}<button type="button" class="btn btn-secondary" id="assistantActualiser">Actualiser</button>{% endif %}
+    </div>
+    {% if interdit %}
+    <div class="section" role="alert"><p>{{ interdit }}</p></div>
+    {% else %}
+    <div id="assistantErreur" class="assistant-erreur" role="alert" hidden></div>
+    <p id="assistantNotice" class="assistant-notice" role="status" hidden></p>
+    <div class="assistant-grille">
+        <section class="section assistant-conversation" aria-labelledby="assistantDialogueTitre">
+            <div class="assistant-ligne">
+                <h2 id="assistantDialogueTitre">Notre conversation</h2>
+                <button type="button" class="btn btn-secondary btn-sm" id="assistantNouveau">Nouvelle conversation</button>
+            </div>
+            {% if models %}
+            <label class="assistant-modele" for="assistantModele">Modèle
+                <select id="assistantModele" class="form-control">
+                {% for m in models %}<option value="{{ m.id }}">{{ m.provider_name }} — {{ m.label }}</option>{% endfor %}
+                </select>
+            </label>
+            <p class="assistant-aide">Les informations utiles à votre demande sont transmises au fournisseur choisi. Les consultations respectent vos accès habituels.</p>
+            {% else %}
+            <div class="assistant-notice">Aucune clé API n’est configurée. Contactez la direction pour activer le dialogue. Votre mémoire personnelle reste disponible.</div>
+            {% endif %}
+            <div id="assistantMessages" aria-live="polite" aria-relevant="additions text"></div>
+            <div id="assistantVide" class="assistant-vide">
+                <h3>Par quoi commençons-nous ?</h3>
+                <p>Je peux consulter vos priorités, rechercher une page ou un dossier accessible et lire votre planificateur personnel.</p>
+                <div class="assistant-exemples">
+                    <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Quelles sont mes priorités et les échéances à venir ?">Mes priorités</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Que contient mon planificateur pour les prochains jours ?">Mon planificateur</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Où retrouver les demandes de congés auxquelles j’ai accès ?">Retrouver un dossier</button>
+                </div>
+            </div>
+            <form id="assistantForm" autocomplete="off">
+                <label for="assistantQuestion">Votre demande</label>
+                <textarea id="assistantQuestion" name="assistant_question" rows="3" maxlength="2000" placeholder="Posez votre question…" required {% if not models %}disabled{% endif %}></textarea>
+                <div class="assistant-ligne">
+                    <span id="assistantStatut" role="status">Chargement de votre espace…</span>
+                    <button type="submit" class="btn btn-primary" id="assistantEnvoyer" disabled>Envoyer</button>
+                </div>
+            </form>
+            <details class="assistant-resume"><summary>Le fil que je garde en tête</summary><p id="assistantResume">Aucun résumé pour le moment.</p></details>
+            <p class="assistant-aide">Première version : consultation uniquement. Les validations, les dépôts de documents et les modifications de dossiers se font dans leurs modules habituels.</p>
+        </section>
+        <aside class="section assistant-memoire" aria-labelledby="assistantMemoireTitre">
+            <div class="assistant-ligne"><h2 id="assistantMemoireTitre">Ma mémoire</h2><span id="assistantMemoireCompteur">0 / 30</span></div>
+            <p class="assistant-aide">Vous décidez de ce que je retiens. Une préférence reste jusqu’à sa suppression ; un sujet suivi expire après 30 jours.</p>
+            <div id="assistantMemoires"></div>
+            <form id="assistantMemoireForm" autocomplete="off">
+                <h3 id="assistantMemoireEdition">Ajouter un souvenir</h3>
+                <label for="assistantMemoireCategorie">Type</label>
+                <select id="assistantMemoireCategorie"><option value="preference">Préférence personnelle</option><option value="suivi">Sujet suivi · 30 jours</option></select>
+                <label for="assistantMemoireTexte">Ce que vous voulez retenir</label>
+                <textarea id="assistantMemoireTexte" rows="3" maxlength="400" required placeholder="Par exemple : je préfère des synthèses courtes."></textarea>
+                <div class="assistant-exemples"><button class="btn btn-primary btn-sm" type="submit">Enregistrer le souvenir</button><button class="btn btn-secondary btn-sm" type="button" id="assistantMemoireAnnuler" hidden>Annuler</button></div>
+            </form>
+            <p class="assistant-aide">Dans la conversation, « Retiens que… » ajoute aussi un sujet suivi pour 30 jours. Une modification de la mémoire réinitialise le dialogue pour éviter de réutiliser une ancienne information.</p>
+            <button type="button" class="btn btn-secondary btn-sm" id="assistantToutOublier">Tout oublier</button>
+            <p class="assistant-aide">La mémoire est personnelle. Un changement de périmètre réinitialise les échanges et souvenirs associés aux anciens droits.</p>
+        </aside>
+    </div>
+    <script src="{{ url_for('static', filename='js/assistant.js') }}" defer></script>
+    {% endif %}
+</div>
+{% endblock %}

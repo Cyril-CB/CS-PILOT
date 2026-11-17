@@ -116,6 +116,7 @@ TABLES_REQUISES = {
     '0081': ('jours_feries',),
     '0082': ('recup_annulations',),
     '0083': ('equipe_lieux_options', 'equipe_lieux_affectations'),
+    '0084': ('assistant_etats', 'assistant_memoires'),
 }
 
 
@@ -157,6 +158,15 @@ def _est_trace_digest(cle, valeur):
         return False
 
 
+def _contenus_assistant(conn):
+    """Colonnes chiffrées facultatives dans les sauvegardes antérieures à 0084."""
+    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for table, identifiant in (('assistant_etats', 'user_id'), ('assistant_memoires', 'id')):
+        if table in tables:
+            for row in conn.execute(f'SELECT {identifiant},contenu FROM {table}'):
+                yield table, identifiant, row[0], row[1]
+
+
 def verifier_parametres(conn, cle):
     fernet = fernet_pour(cle)
     nb = 0
@@ -169,6 +179,12 @@ def verifier_parametres(conn, cle):
             except (InvalidToken, ValueError, UnicodeError):
                 raise ErreurResilience('Paramètres indéchiffrables : vérifiez la SECRET_KEY d’origine.') from None
             nb += 1
+    for _, _, _, valeur in _contenus_assistant(conn):
+        try:
+            fernet.decrypt(valeur.encode()).decode('utf-8')
+        except (InvalidToken, ValueError, UnicodeError):
+            raise ErreurResilience('Mémoire de l’assistant indéchiffrable : vérifiez la SECRET_KEY d’origine.') from None
+        nb += 1
     return nb
 
 
@@ -180,6 +196,9 @@ def rechiffrer_parametres(conn, ancienne, nouvelle):
                for k, v in conn.execute('SELECT key, value FROM app_settings')
                if v and not _est_trace_digest(k, v)]
     conn.executemany('UPDATE app_settings SET value=? WHERE key=?', valeurs)
+    for table, identifiant, cle, valeur in list(_contenus_assistant(conn)):
+        nouveau = apres.encrypt(avant.decrypt(valeur.encode())).decode()
+        conn.execute(f'UPDATE {table} SET contenu=? WHERE {identifiant}=?', (nouveau, cle))
 
 
 def _hash(fichier):
