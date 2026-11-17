@@ -151,6 +151,18 @@ def document(identifiant):
     return _reponse_document(reception.lire, str(identifiant))
 
 
+@assistant_bp.route('/api/assistant/documents/<uuid:identifiant>', methods=['DELETE'])
+@assistant_required
+def supprimer_document(identifiant):
+    data = corps(('revision',))
+    try:
+        return jsonify(reception.supprimer(str(identifiant), data['revision']))
+    except AssistantErreur:
+        raise
+    except Exception:
+        raise AssistantErreur('La suppression n’a pas abouti. Rechargez la boîte de réception et réessayez.', 503) from None
+
+
 @assistant_bp.route('/api/assistant/documents/<uuid:identifiant>/analyser', methods=['POST'])
 @assistant_required
 @limiter.limit('6 per minute', key_func=lambda: str(session.get('user_id')))

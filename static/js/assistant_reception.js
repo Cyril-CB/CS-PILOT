@@ -131,7 +131,16 @@
             const retry = button('Analyser', () => operation(() => api(root.dataset.documents + '/' + d.id + '/analyser', 'POST', {model:model.value})));
             retry.dataset.needsModel = '1'; actions.append(retry);
         }
+        const remove = button('Supprimer le dépôt', () => {
+            if (!confirm('Supprimer ce dépôt, son PDF et son analyse personnels ? Les dossiers créés, leurs pièces et la conversation sont conservés. Une réponse en cours peut être annulée.')) return;
+            operation(async () => {
+                await api(root.dataset.documents + '/' + d.id, 'DELETE', {revision:d.revision});
+                root.dispatchEvent(new CustomEvent('assistant:document-supprime', {detail:{id:d.id}}));
+            });
+        });
+        remove.className = 'btn btn-danger btn-sm'; actions.append(remove);
         details.append(actions);
+        if (d.avertissement) details.append(el('p', d.avertissement, 'assistant-notice'));
         if (d.analyse) {
             details.append(el('h3', d.analyse.titre), el('p', d.analyse.resume));
             if (d.analyse.informations.length) {
@@ -189,7 +198,8 @@
         }
         operation(async () => {
             const data = await api(root.dataset.documents, 'POST', new FormData(form));
-            form.reset(); return data;
+            const selectedModel = model.value;
+            form.reset(); model.value = selectedModel; return data;
         });
     });
     document.getElementById('assistantDocumentsActualiser').addEventListener('click', () => {

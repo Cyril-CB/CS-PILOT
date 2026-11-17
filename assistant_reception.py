@@ -10,7 +10,7 @@ from assistant_documents_analyse import CHAMPS, TYPES, analyser, date_iso
 from assistant_documents_metier import preparer, appliquer
 from assistant_fournisseurs import cle_pour
 from assistant_pdf import (extraire_pdf, enregistrer_pdf, chemin_document,
-                           nettoyer_creations, MAX_PDF)
+                           nettoyer_creations, avertissement_pages, MAX_PDF)
 from assistant_stockage import (AssistantErreur, compte, transaction, encoder, decoder,
                                instant, perimetre, preparer as preparer_compte, MAX_TOURS_JOUR)
 from fiches_versions import FicheVerrouillee
@@ -58,6 +58,8 @@ def _public(conn, user, doc, data):
             'pdf': url_for('assistant_bp.document_pdf', identifiant=doc['id']),
             'type': data.get('analyse', {}).get('type'), 'analyse': data.get('analyse'),
             'resultat': resultat, 'erreur': erreur,
+            'avertissement': avertissement_pages(data['pages']),
+            'pages_non_lues': [p['page'] for p in data['pages'] if p.get('scannee')],
             'questions': plan['questions'] if plan else [], 'choix': plan['choix'] if plan else {},
             'champs': plan['champs'] if plan else {}, 'autorise': plan['autorise'] if plan else False,
             'cree_le': doc['cree_le']}
@@ -76,6 +78,37 @@ def lister():
         rows = conn.execute('''SELECT * FROM assistant_documents WHERE user_id=?
             ORDER BY cree_le DESC,rowid DESC LIMIT 50''', (user['id'],)).fetchall()
         return [_public(conn, user, dict(r), decoder(r['contenu'])) for r in rows]
+
+
+def supprimer(identifiant, revision):
+    """Suppression explicite du dépôt personnel ; aucune pièce métier touchée."""
+    chemin, contenu, retire = None, None, False
+    try:
+        with transaction() as conn:
+            user = compte(conn)
+            doc, _ = _document(conn, user, identifiant)
+            if type(revision) is not int or revision != doc['revision']:
+                raise AssistantErreur('Ce dépôt a changé. Rechargez-le avant de le supprimer.', 409)
+            chemin = chemin_document(doc['fichier_path'])
+            try:
+                contenu = chemin.read_bytes()
+            except FileNotFoundError:
+                pass
+            conn.execute('DELETE FROM assistant_documents WHERE id=? AND user_id=?',
+                         (doc['id'], user['id']))
+            # Annuler les réponses tardives, sans effacer les échanges ni les souvenirs.
+            conn.execute('''UPDATE assistant_etats SET revision=revision+1,
+                en_cours=NULL,verrou_jusqua=0 WHERE user_id=?''', (user['id'],))
+            if contenu is not None:
+                chemin.unlink(missing_ok=True)
+                retire = True
+    except Exception:
+        if retire:
+            # Le PDF (16 Mo maximum) est restauré si le commit échoue.
+            with chemin.open('xb') as fichier:
+                fichier.write(contenu)
+        raise
+    return {'id': str(identifiant), 'supprime': True}
 
 
 def recevoir(fichier, commentaire, model):
@@ -255,7 +288,10 @@ def traiter(identifiant, revision=None, reponses=None):
 def texte_pour_question(conn, user, identifiant, question):
     doc, data = _document(conn, user, identifiant)
     mots = set(re.findall(r'\w{3,}', question.casefold()))
-    pages = sorted(data['pages'], key=lambda p: len(mots & set(re.findall(r'\w{3,}', p['texte'].casefold()))), reverse=True)[:3]
-    return [{'titre': f"{data['nom']} · page {p['page']}", 'texte': p['texte'][:6000],
+    lisibles = [p for p in data['pages'] if p['texte'].strip()]
+    pages = sorted(lisibles, key=lambda p: len(mots & set(re.findall(r'\w{3,}', p['texte'].casefold()))), reverse=True)[:3]
+    avertissement = avertissement_pages(data['pages'])
+    return [{'titre': f"{data['nom']} · page {p['page']}",
+             'texte': (avertissement + '\n' if avertissement else '') + p['texte'][:6000],
              'lien': url_for('assistant_bp.document_pdf', identifiant=doc['id']) + f"#page={p['page']}"}
             for p in pages if p['texte'].strip()]

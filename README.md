@@ -427,6 +427,8 @@ des consultations de CSPILOT et une petite mémoire personnelle. Elle est ouvert
 Pilotage, dans leurs périmètres actuels. Les menus restent inchangés.
 Le lot 4 ajoute une boîte de réception de PDF numériques originaux : commentaire
 facultatif, résumé, précisions et créations dans les circuits existants selon
-les droits du compte. Les scans sont exclus et les informations déjà présentes
+les droits du compte. Les annexes scannées sont conservées et signalées comme
+non analysées ; les scans seuls restent exclus. Un dépôt personnel peut être
+supprimé sans toucher aux dossiers et pièces créés. Les informations déjà présentes
 sont conservées. La réception reste uniquement sur la page assistant.
 [Accès, mémoire, limites et fonctionnement](docs/assistant-personnel.md).

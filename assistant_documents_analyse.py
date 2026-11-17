@@ -96,6 +96,10 @@ de subvention), contrat (travail), arret_maladie ou autre. Ne confonds pas contr
 de prestation et contrat de travail. En cas de doute, baisse la confiance.
 Résume fidèlement le document, chiffres, obligations, montants, conditions de
 versement, dates et démarches : signature, bilan, justificatifs, solde, etc.
+Pour le circuit facture de CSPILOT, seul le montant TTC est nécessaire. Ne demande
+jamais le montant HT, un taux ou un montant de TVA, ni une précision fiscale.
+Les pages indiquées comme non lues sont scannées : leur contenu est inconnu.
+N'affirme pas les avoir lues et ne leur attribue aucune information ou obligation.
 Pour chaque champ extrait, cite un court extrait EXACT du PDF ou une précision
 explicite du commentaire utilisateur dans preuves. Pour chaque échéance extraite,
 cite le PDF dans preuve. Sans information explicite, laisse null. N'invente
@@ -126,7 +130,8 @@ def analyser(pages, commentaire, model):
     data = appel_json(model, [
         {'role': 'system', 'content': SYSTEME + '\nChamps autorisés selon le type : ' + json.dumps(consignes)},
         {'role': 'user', 'content': json.dumps({'commentaire_utilisateur': commentaire,
-                                               'pages_du_document': pages}, ensure_ascii=False)},
+                                               'pages_du_document': [p for p in pages if p['texte'].strip()],
+                                               'pages_non_lues': [p['page'] for p in pages if p.get('scannee')]}, ensure_ascii=False)},
     ], max_tokens=6000)
     return valider_analyse(data, pages, commentaire)
 
@@ -201,6 +206,9 @@ def valider_analyse(data, pages, commentaire):
             instructions['affectation'] = None
         instructions['salaries'] = [n for n in instructions['salaries'] if normaliser(n) in preuve]
     data['instructions'] = instructions
+    if data['type'] == 'facture':
+        data['questions'] = [q for q in data['questions'] if not re.search(
+            r'\b(?:tva|ht|hors taxes?)\b', normaliser(q))]
     if data['type'] in ('autre', 'arret_maladie'):
         data.update(champs={}, preuves={}, etapes=[])
     if data['type'] == 'arret_maladie':

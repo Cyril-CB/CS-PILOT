@@ -17,6 +17,11 @@
     byId('assistantDocumentRetirer').addEventListener('click', () => {
         selectedDocument = null; byId('assistantDocumentSelection').hidden = true;
     });
+    root.addEventListener('assistant:document-supprime', e => {
+        if (selectedDocument === e.detail.id) {
+            selectedDocument = null; byId('assistantDocumentSelection').hidden = true;
+        }
+    });
     root.addEventListener('assistant:quota', async () => {
         if (busy || mutating) return;
         const current = generation;

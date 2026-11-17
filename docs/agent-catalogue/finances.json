@@ -625,7 +625,8 @@
         "Nommage normalisé avec suffixe en cas de collision ; enregistrement fournisseur, numéro, dates, montant TTC et description.",
         "Listes actives/archivées ; affectation à un secteur ou à la direction ; détail avec commentaires, historique, événements comptables et liens aux lots.",
         "Téléchargement du PDF source ; suppression d’une facture non exportée ; après export, archivage motivé et signalement de correction motivé.",
-        "Réception depuis la page assistant avec le même service d’enregistrement que l’import manuel, droits de gestion inchangés ; affectation seulement explicite et doublons par référence/fournisseur/date/montant."
+        "Réception depuis la page assistant avec le même service d’enregistrement que l’import manuel, droits de gestion inchangés ; affectation seulement explicite et doublons par référence/fournisseur/date/montant.",
+        "Réception assistant : seul le TTC est requis, aucune précision HT/TVA. Les PDF mixtes et leurs annexes sont conservés en entier ; supprimer le dépôt personnel ne supprime ni la facture ni son PDF métier."
       ],
       "entry_points": [
         "factures_bp.liste_factures",
@@ -671,7 +672,8 @@
           "tests/test_factures.py",
           "tests/test_exports_comptables.py",
           "tests/test_exports_comptables_migration_ia.py",
-          "tests/test_assistant_reception.py"
+          "tests/test_assistant_reception.py",
+          "tests/test_assistant_reception_retours.py"
         ],
         "docs": [
           "docs/exports-comptables.md"

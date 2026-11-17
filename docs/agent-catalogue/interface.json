@@ -939,7 +939,7 @@
         "Trente souvenirs explicites maximum : préférences jusqu’à suppression, sujets suivis trente jours ; consultation, édition et oubli individuels. « Retiens que… » ajoute un sujet suivi sans appel IA.",
         "Historique et mémoire chiffrés avec la clé de l’installation ; isolés par utilisateur. Un changement de périmètre efface le contexte précédent. Une modification de mémoire réinitialise le dialogue pour ne pas la réinjecter depuis un résumé.",
         "Quota de trente tentatives par utilisateur et jour applicatif, six messages par minute ; bail et révision contre la concurrence et les réponses tardives. Réémission du dernier tour avec le même identifiant ne rappelle pas le fournisseur.",
-        "Boîte de réception sur /assistant uniquement : PDF numériques originaux avec commentaire facultatif ; 16 Mo, 60 pages, 150 000 caractères maximum. Pas d’OCR, refus des pages principalement constituées d’images et du texte inexploitable.",
+        "Boîte de réception sur /assistant uniquement : PDF numériques originaux avec commentaire facultatif ; 16 Mo, 60 pages, 150 000 caractères maximum. Sans OCR : les pages scannées sont exclues de l’analyse et signalées par numéro, les PDF mixtes restent acceptés et conservés en entier ; un scan seul ou sans assez de texte extractible reste refusé.",
         "Classification facture, convention de financement, notification de subvention, contrat de travail, arrêt maladie ou autre ; résumé, chiffres et obligations. Champs et échéances confrontés à leurs extraits justificatifs ; dates comparées sur une occurrence complète, sans accepter la sous-chaîne d’une autre date.",
         "Factures : service d’import partagé avec la page Factures, fournisseur par nom/alias ou nouveau, facture à traiter et approbation en attente. Secteur ou direction uniquement sur indication explicite ; aucune écriture comptable créée.",
         "Financements : nom et année financée distincte de la signature ; rapprochement unique exact ou question en cas de correspondance partielle. Nouvelle subvention sous _A classer, statut initial habituel, zéro à deux assignés et étapes datées. Une absence d’année, d’assignation ou d’échéance peut appeler une précision, avec choix explicite de laisser vide les champs facultatifs.",
@@ -948,7 +948,9 @@
         "Arrêt maladie : identification et lien vers Absences seulement, aucune absence créée ; autre document : résumé et discussion sans traitement métier.",
         "Droits actuels conservés : direction/comptabilité pour créer une facture, profils de gestion pour les subventions et contrats dans leur périmètre ; salariés Pilotage limités au dépôt et à l’analyse.",
         "PDF, commentaires et résultats privés par utilisateur ; textes et métadonnées chiffrés, fichiers dans documents/assistant_reception avec noms aléatoires, sauvegarde et rechiffrement couverts. Cinquante derniers dépôts affichés, sans suppression par l’oubli conversationnel.",
-        "Empreinte du PDF par propriétaire, bail, révision et contrôles de droits sous transaction contre doublons et retours tardifs. Analyse et réexamens partagent le quota journalier de trente tentatives du dialogue. Réexamen avec précision autorisé avant tout rattachement métier, analyses précédentes conservées."
+        "Empreinte du PDF par propriétaire, bail, révision et contrôles de droits sous transaction contre doublons et retours tardifs. Analyse et réexamens partagent le quota journalier de trente tentatives du dialogue. Réexamen avec précision autorisé avant tout rattachement métier, analyses précédentes conservées.",
+        "Le modèle choisi reste sélectionné après un dépôt. Pour une facture, seul le TTC est nécessaire ; aucune précision HT ou TVA n’est demandée.",
+        "Suppression manuelle d’un dépôt par son propriétaire après confirmation : PDF personnel et analyses supprimés, dossiers et pièces métier conservés. Contrôles de droits, CSRF, révision et chemin ; annulation des retours tardifs, conservation des échanges passés et des souvenirs."
       ],
       "entry_points": [
         "assistant_bp.assistant",
@@ -963,7 +965,8 @@
         "assistant_bp.document",
         "assistant_bp.analyser_document",
         "assistant_bp.preciser_document",
-        "assistant_bp.document_pdf"
+        "assistant_bp.document_pdf",
+        "assistant_bp.supprimer_document"
       ],
       "implementation": {
         "route_files": [
@@ -1003,7 +1006,8 @@
         ],
         "tests": [
           "tests/test_assistant.py",
-          "tests/test_assistant_reception.py"
+          "tests/test_assistant_reception.py",
+          "tests/test_assistant_reception_retours.py"
         ],
         "docs": [
           "docs/assistant-personnel.md"
@@ -1031,7 +1035,8 @@
         "Mémoire alimentée seulement par l’utilisateur ; suppression et expiration réinitialisent les résumés susceptibles de reprendre les anciens souvenirs.",
         "Les changements de rôle, d’équipe, de navigation et d’affectation des ressources bornées invalident le contexte personnel des profils restreints.",
         "Justificatif principal préexistant jamais écrasé ; son absence est la seule condition d’un ajout au champ existant, sinon création d’un sous-élément.",
-        "Ni mémoire oubliée ni réexamen documentaire ne suppriment un PDF ou une donnée métier ; après classement, les corrections se font dans les modules habituels."
+        "Ni mémoire oubliée ni réexamen documentaire ne suppriment un PDF ou une donnée métier ; après classement, les corrections se font dans les modules habituels.",
+        "Aucun outil IA ne supprime de dépôt ; seule l’action explicite de son propriétaire est autorisée. La suppression personnelle ne supprime jamais les factures, subventions, contrats ni leurs copies de pièces."
       ],
       "extension_points": [
         "Ajouter un traitement à la liste fermée avec ses validations, droits et tests négatifs ; préserver les circuits existants et les dossiers déjà saisis.",
@@ -1050,7 +1055,7 @@
         "administration.stockage_documents"
       ],
       "limitations": [
-        "PDF textuels uniquement ; contrôle heuristique des scans, pas certification de provenance ni antivirus. Pas de traitement OCR.",
+        "Texte extractible requis ; contrôle heuristique des pages scannées, exclues et signalées. Les annexes scannées sont conservées mais inconnues du modèle ; aucun OCR ni certification de provenance.",
         "Consultations et pages de PDF bornées : elles ne constituent pas un inventaire exhaustif. La convention collective n’est pas chargée automatiquement.",
         "Les arrêts maladie restent à saisir manuellement ; aucun rendez-vous, paiement, export ou écriture comptable depuis la réception.",
         "Quota de requêtes, pas plafond monétaire. Les tests simulent les fournisseurs ; qualité des analyses à apprécier sur des documents représentatifs.",

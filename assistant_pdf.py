@@ -1,4 +1,4 @@
-"""PDF textuels uniquement ; fichiers nouveaux et aucun remplacement."""
+"""Extraction textuelle des PDF, annexes scannées signalées sans OCR."""
 import os
 import logging
 from pathlib import Path
@@ -34,7 +34,8 @@ def extraire_pdf(contenu):
                 images = sum(max(0, i['x1'] - i['x0']) * max(0, i['bottom'] - i['top'])
                              for i in page.images)
                 if images / surface > 0.8 or (page.images and len(texte.strip()) < 20):
-                    raise AssistantErreur(f'La page {numero} semble scannée. Fournissez le PDF numérique original, pas un scan.')
+                    pages.append({'page': numero, 'texte': '', 'scannee': True})
+                    continue
                 taille += len(texte)
                 if taille > MAX_TEXTE:
                     raise AssistantErreur('Le texte du PDF est trop volumineux pour cette première version.')
@@ -46,6 +47,16 @@ def extraire_pdf(contenu):
     if sum(len(p['texte'].strip()) for p in pages) < 40:
         raise AssistantErreur('Ce PDF ne contient pas assez de texte exploitable. Fournissez le PDF numérique original, pas un scan.')
     return pages
+
+
+def avertissement_pages(pages):
+    numeros = [str(p['page']) for p in pages if p.get('scannee')]
+    if not numeros:
+        return ''
+    sujet = ('La page ' if len(numeros) == 1 else 'Les pages ') + ', '.join(numeros)
+    suite = (' semble scannée et n’a pas été analysée.' if len(numeros) == 1
+             else ' semblent scannées et n’ont pas été analysées.')
+    return sujet + suite + ' L’analyse porte sur les pages lisibles. Le PDF complet est conservé.'
 
 
 def chemin_document(chemin):

@@ -20,7 +20,7 @@
     <section class="section assistant-reception" aria-labelledby="assistantReceptionTitre">
         <div class="assistant-ligne"><h2 id="assistantReceptionTitre">Boîte de réception</h2>
             <button type="button" class="btn btn-secondary btn-sm" id="assistantDocumentsActualiser">Actualiser les documents</button></div>
-        <p class="assistant-aide">Déposez le PDF numérique original, généré par un logiciel, et non une version scannée. PDF uniquement, 16 Mo et 60 pages maximum. Le texte doit être extractible ; aucun OCR n’est utilisé.</p>
+        <p class="assistant-aide">Déposez de préférence le PDF numérique original. Les annexes scannées sont acceptées et conservées dans le PDF, mais leurs pages ne sont pas analysées et vous sont signalées. Le document doit contenir du texte lisible : un scan seul reste refusé. PDF uniquement, 16 Mo et 60 pages maximum, sans OCR.</p>
         <form id="assistantDocumentForm" method="post" enctype="multipart/form-data" action="{{ url_for('assistant_bp.deposer_document') }}" autocomplete="off">
             <div class="assistant-depot-grille">
                 <div><label for="assistantDocumentFichier">Document PDF</label>
@@ -42,7 +42,7 @@
         </form>
         <p id="assistantDocumentsErreur" class="assistant-erreur" role="alert" hidden></p>
         <div id="assistantDocuments" aria-live="polite"><p>Chargement de votre boîte de réception…</p></div>
-        <p class="assistant-aide">Vos 50 derniers dépôts sont affichés. Les documents sont personnels ; effacer une conversation ne supprime ni les PDF ni les dossiers créés.</p>
+        <p class="assistant-aide">Vos 50 derniers dépôts sont affichés. Vous pouvez supprimer ceux devenus inutiles : seules la réception personnelle et son analyse sont retirées, les dossiers créés et leurs pièces restent conservés. Effacer une conversation ne supprime aucun dépôt.</p>
     </section>
     <div class="assistant-grille">
         <section class="section assistant-conversation" aria-labelledby="assistantDialogueTitre">
