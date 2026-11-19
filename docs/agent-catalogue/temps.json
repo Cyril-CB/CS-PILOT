@@ -14,9 +14,10 @@
       ],
       "capabilities": [
         "Créer un nouveau planning avec date de début de validité et conserver les versions précédentes.",
+        "Corriger directement la date de début et les horaires pendant 7 × 24 h après création horodatée, sans prolonger la fenêtre en cas de correction.",
         "Définir jusqu’à trois créneaux matin, après-midi et soir pour chacun des jours lundi à vendredi, avec total hebdomadaire calculé.",
         "Choisir un planning fixe ou une alternance semaine_1/semaine_2 avec lundi de référence et consulter la semaine actuelle.",
-        "Consulter tout l’historique et supprimer un planning saisi par erreur.",
+        "Consulter tout l’historique ; correction et suppression réservées aux 7 jours après création. Les anciennes lignes sans date de création restent verrouillées.",
         "La sélection à une date utilise le planning applicable le plus récent ; repli sur planning fixe si alternance absente et sur période scolaire si aucun planning vacances.",
         "Télécharger en PDF les plannings théoriques en vigueur à la date d'impression, en excluant les versions futures et remplacées et en respectant séparément le mode fixe/alterné de chaque période."
       ],
@@ -58,7 +59,7 @@
         ]
       },
       "access": {
-        "summary": "Connexion requise. Chaque utilisateur peut gérer son propre planning ; directeur/comptable peuvent gérer les salariés actifs hors prestataires ; responsable : mêmes conditions plus même secteur OU rattachement direct. Le même contrôle protège lecture, création et suppression.",
+        "summary": "Connexion requise. Chaque utilisateur peut gérer son propre planning ; directeur/comptable peuvent gérer les salariés actifs hors prestataires ; responsable : mêmes conditions plus même secteur OU rattachement direct. Le même contrôle protège lecture, création, correction et suppression ; les deux dernières sont aussi limitées à 7 jours après création connue.",
         "scope": "Personnel ou salariés actifs autorisés par profil et rattachement.",
         "conditions": [],
         "sources": [
@@ -67,8 +68,8 @@
         ]
       },
       "invariants": [
-        "Un planning créé est une nouvelle ligne historisée, pas une réécriture silencieuse des horaires passés.",
-        "Une référence d’alternance doit être un lundi ; la suppression du dernier planning alterné retire les références d’alternance du salarié.",
+        "Un changement d’horaires durable produit une nouvelle version. Une correction de saisie ne modifie la version existante que pendant les 7 jours après sa création, et ne renouvelle jamais ce délai.",
+        "Une référence d’alternance doit être un lundi ; la modification de date d’une alternance partagée est refusée ; la suppression du dernier planning alterné retire les références d’alternance du salarié.",
         "Une date rétroactive peut modifier les calculs de fiches et de soldes ; ConnexionFiches refuse toute modification du contenu d’une fiche verrouillée et rend obsolètes les accords ouverts affectés.",
         "L'export PDF est accessible uniquement pour le salarié courant ou un salarié autorisé par le contrôle de périmètre des plannings ; il ne modifie aucune donnée."
       ],
@@ -85,7 +86,8 @@
         "temps.versions_fiches"
       ],
       "limitations": [
-        "Le formulaire hebdomadaire ne comporte que lundi à vendredi ; le travail réel du samedi relève de la saisie des heures."
+        "Le formulaire hebdomadaire ne comporte que lundi à vendredi ; le travail réel du samedi relève de la saisie des heures.",
+        "Les anciennes lignes non horodatées ne sont pas ouvertes à la correction ; une correction rétroactive récente peut recalculer les heures et reste soumise aux protections des fiches verrouillées."
       ]
     },
     {
