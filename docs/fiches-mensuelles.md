@@ -312,3 +312,25 @@ Contrôle du 9 septembre 2026 : le navigateur distant refuse le serveur local
 sur l'environnement de recette ; les parcours HTTP, le HTML utile et les PDF
 sont contrôlés par les tests. Aucun déploiement n'a été effectué pour cette
 vérification.
+
+
+## Correction récente d’un planning théorique
+
+Le formulaire **Planning théorique** permet de corriger directement la date de début
+et les créneaux d'un planning **durant les 7 × 24 heures qui suivent sa création**.
+La date de création UTC est conservée même après une correction. Le type de période
+(scolaire/vacances) et le type d'alternance ne sont pas modifiables par ce moyen.
+Une alternance avec date de début partagée par plusieurs semaines ne peut pas
+être déplacée de manière isolée : il faut créer de nouvelles versions cohérentes.
+
+Passé ce délai, ni modification ni suppression de la version ne sont autorisées
+par l'interface ou par l'API. Un changement réel d'horaires implique **un nouveau
+planning avec sa date de prise d'effet** afin de conserver les références
+utilisées pour les heures et les fiches. Les anciens plannings antérieurs à cette
+fonction, pour lesquels aucune date de création certaine n'existe, restent
+verrouillés : aucune date artificielle n'est attribuée à la migration.
+
+La fenêtre de sept jours ne neutralise pas le risque d'une modification rétroactive
+sur des heures déjà saisies : les alertes existantes restent affichées et les
+contrôles de cohérence des fiches continuent de s'appliquer. Ce point doit être
+vérifié lors de la revue métier avant déploiement.
