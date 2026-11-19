@@ -6,6 +6,21 @@ Tests pour le module planning.py :
 - Contrôles d'accès
 - Suppression d'un planning
 """
+from datetime import datetime, timedelta, timezone
+import importlib
+import sqlite3
+
+import pytest
+from blueprints import planning as routes
+
+
+HORLOGE_TEST = datetime(2026, 11, 19, 12, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def horloge_planning(monkeypatch):
+    monkeypatch.setattr(routes, '_maintenant_utc', lambda: HORLOGE_TEST)
+    return HORLOGE_TEST
 
 
 def _planning_data(user_id, date_debut='2025-01-06'):
@@ -187,6 +202,11 @@ class TestPlanningSuppression:
         planning_id = sample_planning['planning_id']
 
         with app.app_context():
+            # La fixture est un planning synthétique ancien, sans horodatage.
+            # Pour tester une suppression permise, le marquer comme récent.
+            db.execute('UPDATE planning_theorique SET created_at=? WHERE id=?',
+                       (datetime.now(timezone.utc).isoformat(), planning_id))
+            db.commit()
             response = admin_client.post(
                 f'/planning_theorique/supprimer/{planning_id}',
                 follow_redirects=True,
@@ -222,3 +242,123 @@ class TestPlanningSuppression:
                 "SELECT * FROM planning_theorique WHERE id = ?", (planning_id,)
             ).fetchone()
             assert row is not None
+
+
+class TestPlanningCorrectionSeptJours:
+    """Une correction rectifie une erreur récente sans effacer les versions anciennes."""
+
+    def _creer(self, client, db, uid):
+        result = client.post('/planning_theorique',
+                             data=_planning_data(uid, '2026-12-07'), follow_redirects=True)
+        assert result.status_code == 200
+        row = db.execute('SELECT * FROM planning_theorique WHERE user_id=? ORDER BY id DESC LIMIT 1',
+                         (uid,)).fetchone()
+        assert row['created_at'] == HORLOGE_TEST.isoformat(timespec='seconds')
+        return row['id'], row['created_at']
+
+    def test_creation_date_enregistree_et_correction_possible(self, auth_client, db, sample_users,
+                                                               horloge_planning):
+        uid = sample_users['salarie_id']
+        identifiant, cree_le = self._creer(auth_client, db, uid)
+        page = auth_client.get('/planning_theorique').get_data(as_text=True)
+        assert 'Corriger' in page
+
+        formulaire = _planning_data(uid, '2026-12-14')
+        formulaire.update(planning_id=str(identifiant), lundi_matin_debut='10:00')
+        resultat = auth_client.post('/planning_theorique', data=formulaire, follow_redirects=True)
+        assert resultat.status_code == 200
+        assert 'Planning corrigé' in resultat.get_data(as_text=True)
+        row = db.execute('SELECT * FROM planning_theorique WHERE id=?', (identifiant,)).fetchone()
+        assert row['date_debut_validite'] == '2026-12-14'
+        assert row['lundi_matin_debut'] == '10:00'
+        assert row['created_at'] == cree_le
+        assert db.execute('SELECT COUNT(*) FROM planning_theorique WHERE user_id=?',
+                          (uid,)).fetchone()[0] == 1
+
+    @pytest.mark.parametrize('ecart,autorise', [
+        (timedelta(days=7) - timedelta(seconds=1), True),
+        (timedelta(days=7), False),
+        (timedelta(days=8), False),
+    ])
+    def test_borne_exacte_sept_jours(self, auth_client, db, sample_users,
+                                     horloge_planning, monkeypatch, ecart, autorise):
+        uid = sample_users['salarie_id']
+        identifiant, _ = self._creer(auth_client, db, uid)
+        monkeypatch.setattr(routes, '_maintenant_utc', lambda: HORLOGE_TEST + ecart)
+        formulaire = _planning_data(uid, '2026-12-21')
+        formulaire['planning_id'] = str(identifiant)
+        response = auth_client.post('/planning_theorique', data=formulaire, follow_redirects=True)
+        assert response.status_code == 200
+        row = db.execute('SELECT date_debut_validite FROM planning_theorique WHERE id=?',
+                         (identifiant,)).fetchone()
+        assert row['date_debut_validite'] == ('2026-12-21' if autorise else '2026-12-07')
+        if not autorise:
+            assert 'ne peut plus être modifié après 7 jours' in response.get_data(as_text=True)
+
+    def test_planning_historique_sans_creation_verrouille(self, auth_client, db, sample_users,
+                                                         horloge_planning):
+        uid = sample_users['salarie_id']
+        cur = db.execute('INSERT INTO planning_theorique '
+                         '(user_id, type_periode, date_debut_validite, type_alternance) '
+                         "VALUES (?, 'periode_scolaire', '2024-01-01', 'fixe')", (uid,))
+        db.commit()
+        identifiant = cur.lastrowid
+        assert db.execute('SELECT created_at FROM planning_theorique WHERE id=?',
+                          (identifiant,)).fetchone()[0] is None
+        page = auth_client.get('/planning_theorique').get_data(as_text=True)
+        assert 'Modification et suppression verrouillées' in page
+        formulaire = _planning_data(uid, '2026-12-21')
+        formulaire['planning_id'] = str(identifiant)
+        auth_client.post('/planning_theorique', data=formulaire)
+        row = db.execute('SELECT date_debut_validite FROM planning_theorique WHERE id=?',
+                         (identifiant,)).fetchone()
+        assert row[0] == '2024-01-01'
+        auth_client.post(f'/planning_theorique/supprimer/{identifiant}')
+        assert db.execute('SELECT id FROM planning_theorique WHERE id=?',
+                          (identifiant,)).fetchone() is not None
+
+    def test_suppression_verrouillee_apres_sept_jours(self, auth_client, db, sample_users,
+                                                       horloge_planning, monkeypatch):
+        uid = sample_users['salarie_id']
+        identifiant, _ = self._creer(auth_client, db, uid)
+        monkeypatch.setattr(routes, '_maintenant_utc', lambda: HORLOGE_TEST + timedelta(days=7))
+        response = auth_client.post(f'/planning_theorique/supprimer/{identifiant}',
+                                    follow_redirects=True)
+        assert 'Suppression impossible après 7 jours' in response.get_data(as_text=True)
+        assert db.execute('SELECT id FROM planning_theorique WHERE id=?',
+                          (identifiant,)).fetchone() is not None
+
+    def test_pas_de_correction_chez_autrui(self, auth_client, admin_client, db, sample_users,
+                                           horloge_planning):
+        uid = sample_users['responsable_id']
+        identifiant, _ = self._creer(admin_client, db, uid)
+        formulaire = _planning_data(uid, '2026-12-21')
+        formulaire['planning_id'] = str(identifiant)
+        auth_client.post('/planning_theorique', data=formulaire)
+        row = db.execute('SELECT date_debut_validite FROM planning_theorique WHERE id=?',
+                         (identifiant,)).fetchone()
+        assert row[0] == '2026-12-07'
+
+    def test_pas_de_correction_du_type(self, auth_client, db, sample_users,
+                                        horloge_planning):
+        uid = sample_users['salarie_id']
+        identifiant, _ = self._creer(auth_client, db, uid)
+        formulaire = _planning_data(uid, '2026-12-21')
+        formulaire['planning_id'] = str(identifiant)
+        formulaire['type_periode'] = 'vacances'
+        auth_client.post('/planning_theorique', data=formulaire)
+        row = db.execute('SELECT type_periode, date_debut_validite FROM planning_theorique WHERE id=?',
+                         (identifiant,)).fetchone()
+        assert (row['type_periode'], row['date_debut_validite']) == ('periode_scolaire', '2026-12-07')
+
+    def test_migration_preserve_les_plannings_historiques(self):
+        conn = sqlite3.connect(':memory:')
+        try:
+            conn.execute('CREATE TABLE planning_theorique (id INTEGER PRIMARY KEY, user_id INTEGER)')
+            conn.execute('INSERT INTO planning_theorique (id, user_id) VALUES (1, 42)')
+            migration = importlib.import_module('migrations.0086_planning_creation')
+            migration.upgrade(conn)
+            migration.upgrade(conn)  # migration idempotente
+            assert conn.execute('SELECT created_at FROM planning_theorique WHERE id=1').fetchone()[0] is None
+        finally:
+            conn.close()
