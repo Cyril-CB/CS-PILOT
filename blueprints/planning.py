@@ -2,7 +2,7 @@
 Blueprint planning_bp.
 """
 from flask import Blueprint, render_template, request, redirect, url_for, session, flash, send_file
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from xml.sax.saxutils import escape
 from reportlab.lib import colors
@@ -13,6 +13,29 @@ from database import get_db
 from utils import login_required, calculer_heures, get_semaine_alternance, est_dans_equipe_responsable
 
 planning_bp = Blueprint('planning_bp', __name__)
+
+
+def _maintenant_utc():
+    """Horloge UTC, remplaçable dans les tests de bornes des sept jours."""
+    return datetime.now(timezone.utc)
+
+
+def _planning_modifiable(planning):
+    """Autorise une correction pendant 7 × 24 h après la création connue.
+
+    Une version antérieure à l'ajout de created_at ne peut pas être datée de
+    manière fiable : elle reste donc verrouillée (pas de rétroactivité inventée).
+    """
+    if not planning or not planning['created_at']:
+        return False
+    try:
+        cree_le = datetime.fromisoformat(planning['created_at'].replace('Z', '+00:00'))
+    except (TypeError, ValueError):
+        return False
+    if cree_le.tzinfo is None:  # Ancien format SQLite : UTC.
+        cree_le = cree_le.replace(tzinfo=timezone.utc)
+    age = _maintenant_utc() - cree_le
+    return timedelta(0) <= age < timedelta(days=7)
 
 
 def _peut_gerer_plannings():
@@ -220,6 +243,11 @@ def planning_theorique():
         return redirect(url_for('planning_bp.planning_theorique'))
 
     if request.method == 'POST':
+        planning_id_brut = request.form.get('planning_id', '').strip()
+        if planning_id_brut and (not planning_id_brut.isdecimal() or int(planning_id_brut) < 1):
+            flash('Identifiant de planning invalide.', 'error')
+            return _redirect_planning(user_id_cible)
+        planning_id = int(planning_id_brut) if planning_id_brut else None
         type_periode = request.form.get('type_periode')
         date_debut_validite = request.form.get('date_debut_validite')
         type_alternance = request.form.get('type_alternance', 'fixe')
@@ -275,6 +303,52 @@ def planning_theorique():
 
         conn = get_db()
         try:
+            if planning_id:
+                conn.execute('BEGIN IMMEDIATE')
+                original = conn.execute(
+                    'SELECT * FROM planning_theorique WHERE id = ?', (planning_id,)
+                ).fetchone()
+                if (not original or original['user_id'] != user_id_cible
+                        or not _salarie_accessible(conn, user_id_cible)):
+                    flash('Planning introuvable ou accès refusé.', 'error')
+                    return _redirect_planning(user_id_cible)
+                if not _planning_modifiable(original):
+                    flash('Ce planning ne peut plus être modifié après 7 jours. '
+                          'Créez un nouveau planning avec sa date de prise d’effet.', 'error')
+                    return _redirect_planning(user_id_cible)
+                if (type_periode != original['type_periode'] or
+                        type_alternance != (original['type_alternance'] or 'fixe')):
+                    flash('Le type de période et l’alternance ne sont pas modifiables. '
+                          'Créez un nouveau planning pour changer de configuration.', 'error')
+                    return _redirect_planning(user_id_cible)
+
+                # Ne jamais déplacer une référence d'alternance partagée avec
+                # une autre semaine : son déplacement changerait les deux plannings.
+                if (type_alternance in ('semaine_1', 'semaine_2') and
+                        original['date_debut_validite'] != date_debut_validite):
+                    autre_semaine = conn.execute('''
+                        SELECT 1 FROM planning_theorique
+                        WHERE user_id=? AND date_debut_validite=? AND id!=?
+                          AND type_alternance IN ('semaine_1', 'semaine_2')
+                        LIMIT 1
+                    ''', (user_id_cible, original['date_debut_validite'], planning_id)).fetchone()
+                    reference = conn.execute('''
+                        SELECT id FROM alternance_reference
+                        WHERE user_id=? AND date_debut_validite=?
+                    ''', (user_id_cible, original['date_debut_validite'])).fetchone()
+                    collision = conn.execute('''
+                        SELECT 1 FROM alternance_reference
+                        WHERE user_id=? AND date_debut_validite=? LIMIT 1
+                    ''', (user_id_cible, date_debut_validite)).fetchone()
+                    if autre_semaine or not reference or collision:
+                        flash('Cette date d’alternance est partagée ou ambiguë. '
+                              'Créez de nouveaux plannings alternés pour préserver l’historique.', 'error')
+                        return _redirect_planning(user_id_cible)
+                    conn.execute('''
+                        UPDATE alternance_reference SET date_debut_validite=?
+                        WHERE user_id=? AND date_debut_validite=?
+                    ''', (date_debut_validite, user_id_cible, original['date_debut_validite']))
+
             # CRÉER un nouveau planning (historisation). Les colonnes de créneaux
             # sont générées depuis les constantes (jours × créneaux) : aucune
             # donnée utilisateur n'entre dans le SQL, seulement des valeurs liées.
@@ -283,17 +357,25 @@ def planning_theorique():
                 for suffixe in creneaux:
                     slot_cols.append(f'{jour}_{suffixe}')
                     slot_vals.append(horaires[f'{jour}_{suffixe}'])
-            colonnes = ('user_id, type_periode, date_debut_validite, type_alternance, '
-                        + ', '.join(slot_cols) + ', total_hebdo')
-            placeholders = ', '.join(['?'] * (4 + len(slot_cols) + 1))
-            conn.execute(
-                f'INSERT INTO planning_theorique ({colonnes}) VALUES ({placeholders})',
-                [user_id_cible, type_periode, date_debut_validite, type_alternance]
-                + slot_vals + [total_hebdo]
-            )
+            if planning_id:
+                mises_a_jour = ', '.join(f'{col}=?' for col in slot_cols)
+                conn.execute(
+                    f'UPDATE planning_theorique SET date_debut_validite=?, '
+                    f'{mises_a_jour}, total_hebdo=? WHERE id=?',
+                    [date_debut_validite] + slot_vals + [total_hebdo, planning_id]
+                )
+            else:
+                colonnes = ('user_id, type_periode, date_debut_validite, type_alternance, '
+                            + ', '.join(slot_cols) + ', total_hebdo, created_at')
+                placeholders = ', '.join(['?'] * (4 + len(slot_cols) + 2))
+                conn.execute(
+                    f'INSERT INTO planning_theorique ({colonnes}) VALUES ({placeholders})',
+                    [user_id_cible, type_periode, date_debut_validite, type_alternance]
+                    + slot_vals + [total_hebdo, _maintenant_utc().isoformat(timespec='seconds')]
+                )
 
             # Si alternance, enregistrer la date de référence
-            if type_alternance in ['semaine_1', 'semaine_2'] and date_reference:
+            if not planning_id and type_alternance in ['semaine_1', 'semaine_2'] and date_reference:
                 # Vérifier si on a déjà une référence pour cette date
                 ref_existante = conn.execute('''
                     SELECT id FROM alternance_reference
@@ -308,7 +390,10 @@ def planning_theorique():
 
             conn.commit()
 
-            if type_alternance == 'fixe':
+            if planning_id:
+                flash('✅ Planning corrigé. Sa date de création reste inchangée ; '
+                      'au-delà des 7 jours, créez une nouvelle version.', 'success')
+            elif type_alternance == 'fixe':
                 flash(f'✅ Nouveau planning {type_periode} créé ({total_hebdo:.2f}h/semaine), valable à partir du {date_debut_validite}', 'success')
             else:
                 flash(f'✅ Planning {type_alternance} - {type_periode} créé ({total_hebdo:.2f}h/semaine), valable à partir du {date_debut_validite}', 'success')
@@ -321,11 +406,13 @@ def planning_theorique():
 
     # GET: afficher tous les plannings (historique complet) + infos alternance
     conn = get_db()
-    plannings = conn.execute('''
+    plannings = [dict(row) for row in conn.execute('''
         SELECT * FROM planning_theorique
         WHERE user_id = ?
         ORDER BY type_alternance, type_periode, date_debut_validite DESC
-    ''', (user_id_cible,)).fetchall()
+    ''', (user_id_cible,)).fetchall()]
+    for p in plannings:
+        p['modifiable'] = _planning_modifiable(p)
 
     # Récupérer les dates de référence alternance
     references = conn.execute('''
@@ -333,6 +420,9 @@ def planning_theorique():
         WHERE user_id = ?
         ORDER BY date_debut_validite DESC
     ''', (user_id_cible,)).fetchall()
+    dates_reference = {r['date_debut_validite']: r['date_reference'] for r in references}
+    plannings_modifiables = [dict(p, date_reference=dates_reference.get(p['date_debut_validite']))
+                            for p in plannings if p['modifiable']]
 
     # Calculer la semaine actuelle si alternance configurée
     semaine_actuelle = None
@@ -350,6 +440,7 @@ def planning_theorique():
 
     return render_template('planning_theorique.html',
                          plannings=plannings,
+                         plannings_modifiables=plannings_modifiables,
                          references=references,
                          semaine_actuelle=semaine_actuelle,
                          date_actuelle=datetime.now().strftime('%Y-%m-%d'),
@@ -367,7 +458,7 @@ def supprimer_planning(planning_id):
     redirect_user = session['user_id']
     try:
         planning = conn.execute(
-            'SELECT id, user_id, date_debut_validite FROM planning_theorique WHERE id = ?',
+            'SELECT id, user_id, date_debut_validite, created_at FROM planning_theorique WHERE id = ?',
             (planning_id,)
         ).fetchone()
 
@@ -376,6 +467,10 @@ def supprimer_planning(planning_id):
             return redirect(url_for('planning_bp.planning_theorique'))
 
         redirect_user = planning['user_id']
+        if not _planning_modifiable(planning):
+            flash('Suppression impossible après 7 jours : créez un nouveau planning '
+                  'pour tout changement d’horaires.', 'error')
+            return _redirect_planning(redirect_user)
         conn.execute('DELETE FROM planning_theorique WHERE id = ?', (planning_id,))
 
         # Nettoyer alternance_reference si plus aucun planning alterné ne reste
