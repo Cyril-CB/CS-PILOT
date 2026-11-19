@@ -89,12 +89,20 @@
                     <strong>Valable à partir du :</strong> {{ p.date_debut_validite }}
                     ({{ "%.1f"|format(p.total_hebdo) }}h/semaine)
                 </p>
-                <button type="button"
+                {% if p.modifiable %}
+                <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+                    <button type="button" class="btn btn-secondary btn-sm"
+                            onclick="commencerModification({{ p.id }})">✏️ Corriger</button>
+                    <button type="button"
                         class="btn btn-danger btn-sm"
                         onclick="ouvrirModaleSuppression({{ p.id }}, '{{ p.date_debut_validite }}')"
                         style="background: #dc2626; color: white; border: none; padding: 0.3rem 0.75rem; border-radius: 4px; cursor: pointer; font-size: 0.85rem; white-space: nowrap;">
                     Supprimer
-                </button>
+                    </button>
+                </div>
+                {% else %}
+                <span class="help-text">🔒 Modification et suppression verrouillées après 7 jours.</span>
+                {% endif %}
             </div>
             <div class="table-responsive">
                 <table class="data-table data-table-cards planning-history-table">
@@ -203,10 +211,18 @@
     {% endif %}
     
     <div class="section">
-        <h2>{% if plannings %}Modifier{% else %}Créer{% endif %} un planning</h2>
-        
-        <form method="POST" action="{{ url_for('planning_bp.planning_theorique') }}">
+        <h2 id="titre-form-planning">Créer un nouveau planning</h2>
+        <p id="info-correction-planning" class="help-text" hidden>
+            Correction autorisée pendant les 7 jours suivant la création. Le type de période
+            et l’alternance restent inchangés. Après cette limite, créez une nouvelle version
+            pour tout changement d’horaires.
+        </p>
+        <form id="form-planning" method="POST" action="{{ url_for('planning_bp.planning_theorique') }}">
             <input type="hidden" name="user_id" value="{{ user_id_cible }}">
+            <input type="hidden" id="planning_id" name="planning_id" value="">
+            <input type="hidden" id="correction_type_periode" name="type_periode" disabled>
+            <input type="hidden" id="correction_type_alternance" name="type_alternance" disabled>
+            <input type="hidden" id="correction_date_reference" name="date_reference" disabled>
             <div class="form-group">
                 <label for="type_periode">Type de période *</label>
                 <select id="type_periode" name="type_periode" required>
@@ -257,7 +273,8 @@
                 <input type="date" id="date_debut_validite" name="date_debut_validite" required>
                 <p class="help-text">
                     <strong>Important :</strong> Ce planning sera utilisé pour tous les calculs à partir de cette date.
-                    Si vous modifiez un planning existant, saisissez la date à partir de laquelle le nouveau planning s'applique.
+                    Pour un changement ultérieur d'horaires, créez un nouveau planning en indiquant
+                    sa date de prise d'effet, sans modifier la version précédente.
                 </p>
             </div>
             
@@ -466,8 +483,10 @@
             </div>
             
             <div class="actions">
-                <button type="submit" class="btn btn-primary">💾 Enregistrer le planning</button>
-                <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Annuler</a>
+                <button type="submit" class="btn btn-primary" id="bouton-enregistrement-planning">💾 Créer le planning</button>
+                <button type="button" class="btn btn-secondary" id="annuler-correction-planning"
+                        onclick="annulerModification()" hidden>Annuler la correction</button>
+                <a href="{{ url_for('dashboard_bp.dashboard') }}" class="btn btn-secondary">Retour</a>
             </div>
         </form>
     </div>
@@ -507,6 +526,55 @@
 </div>
 
 <script>
+// Versions récentes autorisées pour préremplir le formulaire de correction.
+const planningsModifiables = {{ plannings_modifiables|tojson }};
+
+function commencerModification(id) {
+    const planning = planningsModifiables.find(p => p.id === id);
+    if (!planning) return;
+
+    const periode = document.getElementById('type_periode');
+    const alternance = document.getElementById('type_alternance');
+    const reference = document.getElementById('date_reference');
+    const vacances = document.getElementById('use_specific_vacation_planning');
+    // Synchroniser les options et le troisième créneau avant de remplir les horaires.
+    vacances.checked = planning.type_periode === 'vacances';
+    vacances.dispatchEvent(new Event('change'));
+    periode.value = planning.type_periode;
+    periode.dispatchEvent(new Event('change'));
+    alternance.value = planning.type_alternance || 'fixe';
+    reference.value = planning.date_reference || '';
+    alternance.dispatchEvent(new Event('change'));
+    document.getElementById('date_debut_validite').value = planning.date_debut_validite;
+    for (const jour of ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi']) {
+        for (const suffixe of ['matin_debut', 'matin_fin', 'aprem_debut', 'aprem_fin', 'soir_debut', 'soir_fin']) {
+            const champ = document.getElementById(jour + '_' + suffixe);
+            if (champ && !champ.disabled) champ.value = planning[jour + '_' + suffixe] || '';
+        }
+    }
+
+    // Selects désactivés en correction : champs cachés avec valeurs contrôlées côté serveur.
+    for (const [champ, cache] of [[periode, 'correction_type_periode'],
+                                   [alternance, 'correction_type_alternance'],
+                                   [reference, 'correction_date_reference']]) {
+        champ.disabled = true;
+        const valeurCachee = document.getElementById(cache);
+        valeurCachee.value = champ.value;
+        valeurCachee.disabled = false;
+    }
+    vacances.disabled = true;
+    document.getElementById('planning_id').value = String(id);
+    document.getElementById('titre-form-planning').textContent = 'Corriger le planning du ' + planning.date_debut_validite;
+    document.getElementById('info-correction-planning').hidden = false;
+    document.getElementById('bouton-enregistrement-planning').textContent = '💾 Enregistrer la correction';
+    document.getElementById('annuler-correction-planning').hidden = false;
+    document.getElementById('form-planning').scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+function annulerModification() {
+    window.location.href = "{{ url_for('planning_bp.planning_theorique', user_id=user_id_cible) }}";
+}
+
 // Changement de salarié cible (sélecteur direction / comptable / responsable)
 function changerSalarie(userId) {
     if (userId) {
