@@ -306,7 +306,7 @@ class TestPlanningCorrectionSeptJours:
         assert db.execute('SELECT created_at FROM planning_theorique WHERE id=?',
                           (identifiant,)).fetchone()[0] is None
         page = auth_client.get('/planning_theorique').get_data(as_text=True)
-        assert 'Modification et suppression verrouillées' in page
+        assert 'Correction indisponible' in page
         formulaire = _planning_data(uid, '2026-12-21')
         formulaire['planning_id'] = str(identifiant)
         auth_client.post('/planning_theorique', data=formulaire)
@@ -362,3 +362,40 @@ class TestPlanningCorrectionSeptJours:
             assert conn.execute('SELECT created_at FROM planning_theorique WHERE id=1').fetchone()[0] is None
         finally:
             conn.close()
+
+    def test_references_alternance_partagees_ne_bougent_pas(self, auth_client, db, sample_users,
+                                                            horloge_planning):
+        uid = sample_users['salarie_id']
+        ids = []
+        for semaine in ('semaine_1', 'semaine_2'):
+            data = _planning_data(uid, '2026-12-07')
+            data.update(type_alternance=semaine, date_reference='2026-12-07')
+            response = auth_client.post('/planning_theorique', data=data, follow_redirects=True)
+            assert response.status_code == 200
+            identifiant = db.execute('SELECT MAX(id) FROM planning_theorique').fetchone()[0]
+            ids.append(identifiant)
+        data = _planning_data(uid, '2026-12-14')
+        data.update(type_alternance='semaine_1', date_reference='2026-12-07', planning_id=str(ids[0]))
+        response = auth_client.post('/planning_theorique', data=data, follow_redirects=True)
+        assert 'date d’alternance est partagée' in response.get_data(as_text=True)
+        for identifiant in ids:
+            assert db.execute('SELECT date_debut_validite FROM planning_theorique WHERE id=?',
+                              (identifiant,)).fetchone()[0] == '2026-12-07'
+        assert db.execute('SELECT date_debut_validite FROM alternance_reference '
+                          'WHERE user_id=?', (uid,)).fetchone()[0] == '2026-12-07'
+
+    def test_reference_unique_se_deplace_avec_date(self, auth_client, db, sample_users,
+                                                    horloge_planning):
+        uid = sample_users['salarie_id']
+        data = _planning_data(uid, '2026-12-07')
+        data.update(type_alternance='semaine_1', date_reference='2026-12-07')
+        auth_client.post('/planning_theorique', data=data)
+        identifiant = db.execute('SELECT MAX(id) FROM planning_theorique').fetchone()[0]
+        data['planning_id'] = str(identifiant)
+        data['date_debut_validite'] = '2026-12-14'
+        response = auth_client.post('/planning_theorique', data=data, follow_redirects=True)
+        assert 'Planning corrigé' in response.get_data(as_text=True)
+        assert db.execute('SELECT date_debut_validite FROM alternance_reference WHERE user_id=?',
+                          (uid,)).fetchone()[0] == '2026-12-14'
+        assert db.execute('SELECT date_debut_validite FROM planning_theorique WHERE id=?',
+                          (identifiant,)).fetchone()[0] == '2026-12-14'
