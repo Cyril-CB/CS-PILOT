@@ -126,6 +126,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0083', 'Lieux d intervention dans Mon equipe'),
     ('0084', 'Assistant personnel : conversation et mémoire'),
     ('0085', 'Assistant : boîte de réception documentaire'),
+    ('0086', 'Date de création du planning théorique'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -366,6 +367,7 @@ def _initialiser_schema(conn, neuve):
             vendredi_soir_debut TEXT,
             vendredi_soir_fin TEXT,
             total_hebdo REAL,
+            created_at TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
