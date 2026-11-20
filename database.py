@@ -367,10 +367,13 @@ def _initialiser_schema(conn, neuve):
             vendredi_soir_debut TEXT,
             vendredi_soir_fin TEXT,
             total_hebdo REAL,
-            created_at TEXT,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     ''')
+
+    # Ajout partagé avec la migration 0086 : anciennes lignes laissées à NULL.
+    from schema_planning import assurer_date_creation_planning
+    assurer_date_creation_planning(conn)
 
     # ===== Table alternance reference =====
     cursor.execute('''
