@@ -6,9 +6,8 @@ DESCRIPTION = ('Ajoute created_at aux plannings pour limiter la correction à 7 
 
 
 def upgrade(conn):
-    colonnes = {row[1] for row in conn.execute('PRAGMA table_info(planning_theorique)')}
-    if 'created_at' not in colonnes:
-        conn.execute('ALTER TABLE planning_theorique ADD COLUMN created_at TEXT')
+    from schema_planning import assurer_date_creation_planning
+    assurer_date_creation_planning(conn)
 
 
 def downgrade(conn):
