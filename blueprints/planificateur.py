@@ -807,7 +807,12 @@ def api_creer_tache():
             creer_element(conn, user_id, data)
         except CreationErreur as exc:
             conn.rollback()
-            return jsonify({'ok': False, 'erreur': str(exc)}), 400
+            logger.exception(
+                "Erreur de creation de tache (user_id=%s): %s",
+                user_id,
+                exc
+            )
+            return jsonify({'ok': False, 'erreur': "Une erreur interne est survenue."}), 400
         conn.commit()
 
         non_planifie = _replanifier(conn, user_id)
