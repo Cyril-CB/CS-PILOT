@@ -11,6 +11,7 @@ from blueprints.api_keys import get_available_models
 from extensions import limiter
 from utils import login_required
 import assistant_reception as reception
+import assistant_actions as actions
 from assistant_pdf import chemin_document, MAX_PDF
 
 assistant_bp = Blueprint('assistant_bp', __name__)
@@ -194,3 +195,46 @@ def document_pdf(identifiant):
     response = send_file(path, mimetype='application/pdf', as_attachment=True, download_name=data['nom'])
     response.headers.update({'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'})
     return response
+
+
+def _reponse_action(fn, *args):
+    try:
+        return jsonify(fn(*args))
+    except AssistantErreur:
+        raise
+    except Exception:
+        raise AssistantErreur('L’action n’a pas abouti. Actualisez les propositions avant de réessayer.', 503) from None
+
+
+@assistant_bp.route('/api/assistant/actions')
+@assistant_required
+def propositions():
+    return _reponse_action(lambda: {'actions':actions.lister()})
+
+
+@assistant_bp.route('/api/assistant/actions/<uuid:identifiant>')
+@assistant_required
+def proposition(identifiant):
+    return _reponse_action(actions.lister, str(identifiant))
+
+
+@assistant_bp.route('/api/assistant/actions/<uuid:identifiant>', methods=['PUT'])
+@assistant_required
+def modifier_proposition(identifiant):
+    data = corps(('revision', 'champs'))
+    return _reponse_action(actions.modifier, str(identifiant), data['revision'], data['champs'])
+
+
+@assistant_bp.route('/api/assistant/actions/<uuid:identifiant>/abandonner', methods=['POST'])
+@assistant_required
+def abandonner_proposition(identifiant):
+    data = corps(('revision',))
+    return _reponse_action(actions.modifier, str(identifiant), data['revision'], None, True)
+
+
+@assistant_bp.route('/api/assistant/actions/<uuid:identifiant>/confirmer', methods=['POST'])
+@assistant_required
+def confirmer_proposition(identifiant):
+    data = corps(('revision', 'comparaisons', 'accepter_doublon'))
+    return _reponse_action(actions.confirmer, str(identifiant), data['revision'],
+                           data['comparaisons'], data['accepter_doublon'])

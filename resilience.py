@@ -119,6 +119,7 @@ TABLES_REQUISES = {
     '0083': ('equipe_lieux_options', 'equipe_lieux_affectations'),
     '0084': ('assistant_etats', 'assistant_memoires'),
     '0085': ('assistant_documents',),
+    '0086': ('assistant_actions',),
 }
 
 
@@ -164,7 +165,7 @@ def _contenus_assistant(conn):
     """Colonnes chiffrées facultatives dans les sauvegardes antérieures à 0084."""
     tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     for table, identifiant in (('assistant_etats', 'user_id'), ('assistant_memoires', 'id'),
-                              ('assistant_documents', 'id')):
+                              ('assistant_documents', 'id'), ('assistant_actions', 'id')):
         if table in tables:
             for row in conn.execute(f'SELECT {identifiant},contenu FROM {table}'):
                 yield table, identifiant, row[0], row[1]

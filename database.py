@@ -126,6 +126,7 @@ ALL_MIGRATION_VERSIONS = [
     ('0083', 'Lieux d intervention dans Mon equipe'),
     ('0084', 'Assistant personnel : conversation et mémoire'),
     ('0085', 'Assistant : boîte de réception documentaire'),
+    ('0086', 'Assistant : rendez-vous et tâches préparés'),
 ]
 
 # Types de subvention par defaut (migration 0052)
@@ -2180,6 +2181,8 @@ def _initialiser_schema(conn, neuve):
     creer_schema_assistant(conn)
     from schema_assistant_reception import creer_schema as creer_schema_reception
     creer_schema_reception(conn)
+    from schema_assistant_actions import creer_schema as creer_schema_actions
+    creer_schema_actions(conn)
 
 
 def preparer_demarrage():

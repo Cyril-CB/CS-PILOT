@@ -478,7 +478,7 @@ def inject_static_version():
     """
     empreintes = {}
     for nom in ('css/style.css', 'css/approvisionnement.css', 'js/flux.js', 'js/propositions.js',
-                'css/assistant.css', 'js/assistant.js', 'js/assistant_reception.js'):
+                'css/assistant.css', 'js/assistant.js', 'js/assistant_reception.js', 'js/assistant_actions.js'):
         chemin = os.path.join(app.static_folder, nom)
         try:
             empreintes[nom] = str(int(os.path.getmtime(chemin)))

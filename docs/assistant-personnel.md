@@ -1,7 +1,7 @@
-# Assistant personnel — lots 1 à 4
+# Assistant personnel — lots 1 à 5
 
 Ouvrir directement **`/assistant`** après installation de la mise à jour et des
-migrations 0084 et 0085. Aucun accès n’est ajouté au menu, à l’accueil ou à la
+migrations 0084 à 0086. Aucun accès n’est ajouté au menu, à l’accueil ou à la
 recherche globale. Les interfaces classique et flux conservent leur présentation.
 
 ## Accès et fournisseurs
@@ -39,9 +39,81 @@ Les résultats sont bornés et datés. Un résultat vide ne prouve pas l’absen
 d’un dossier. Les liens de source proviennent du serveur. Le texte et le résumé
 produits par le modèle ne constituent pas une validation métier.
 
-La convention collective n’est pas chargée automatiquement. Le dialogue reste
-en consultation, ne crée pas de rendez-vous et n’approuve rien. Les créations
-documentaires ci-dessous passent par un traitement distinct à liste fermée.
+La convention collective n’est pas chargée automatiquement. Le dialogue consulte
+les données et peut préparer un rendez-vous ou une tâche ; la création attend
+le bouton de confirmation. Les créations documentaires ci-dessous gardent leur
+traitement distinct à liste fermée.
+
+## Actions préparées — lot 5
+
+Dans la conversation, demander par exemple « Prépare un rendez-vous lundi de
+14 h à 15 h pour le point CAF » ou « Prépare une tâche de 60 minutes pour le bilan ».
+Une carte apparaît dans **Actions préparées**. La réponse du modèle ne crée rien
+dans le planificateur : il faut relire la carte puis **Confirmer la création**.
+Une date relative est résolue avec la date locale au moment de la demande et
+affichée en date complète ; elle n’est pas réinterprétée au prochain accès.
+Une date ou durée inconnue reste à compléter. Les rendez-vous passés, fins avant
+le début et échéances de tâches passées sont refusés à la confirmation.
+
+Le propriétaire peut modifier titre, description/lieu, dates, horaires, durée,
+préférence de placement et fractionnement. **Enregistrer les modifications**
+actualise la carte et sa révision ; les comparaisons doivent être relues.
+**Abandonner** ferme une proposition sans supprimer de tâche ni de rendez-vous.
+La conversation, les souvenirs, les PDF et les propositions sont indépendants.
+
+Les propositions sont personnelles : direction, comptabilité, responsables et
+salariés Pilotage travaillent uniquement dans leur propre planificateur. Le
+modèle ne fournit ni propriétaire, ni ID métier, ni priorité numérique.
+
+### Priorité et placement
+
+Le service de création est commun au planificateur et à l’assistant. Le même
+choix de références et le même calcul de priorité relative sont réutilisés :
+
+- Aucune tâche en cours : première priorité à zéro, sans comparaison.
+- Une tâche : une comparaison.
+- Deux tâches ou plus : deux références distinctes, la plus et la moins urgentes
+  de la fenêtre J+3 ; repli sur l’ensemble des tâches en cours si nécessaire.
+
+Les titres sont présentés dans un ordre aléatoire, sans rang ni priorité visible.
+L’utilisateur choisit « moins prioritaire », « au même niveau » ou « plus prioritaire ».
+Toutes les réponses sont obligatoires et liées aux références affichées. Si les
+réponses exigeraient de réévaluer une ancienne tâche, l’assistant demande de les
+revoir. Le comportement de comparaison dans le planificateur reste inchangé.
+
+Le moteur habituel place la nouvelle tâche autour de tous les blocs existants,
+en respectant horaires de travail, absences, jours fériés, fractionnement et
+horizon de 60 jours. Il ne déplace aucun bloc existant. Un rendez-vous crée son
+propre bloc fixe ; les chevauchements connus sont signalés avant confirmation.
+Si une tâche ne peut pas être entièrement placée, elle reste créée avec un message
+et le lien vers le planificateur. **Replanifier**, dans ce module, reste l’action
+distincte pour réorganiser globalement les créneaux selon les priorités.
+
+### Exécution unique et conservation
+
+Chaque proposition possède un identifiant et une révision. Les droits, le
+périmètre, l’expiration, les références et l’agenda sont revérifiés sous verrou
+avant la création. Un changement appelle une actualisation et une nouvelle
+relecture. La création, ses nouveaux blocs et le résultat de confirmation sont
+enregistrés dans une seule transaction. Un double clic ou une réponse réseau
+perdue retrouve le résultat déjà enregistré, sans seconde création.
+
+Un élément de même titre et mêmes dates/horaires, ou même durée/échéance pour une
+tâche, est signalé comme correspondance possible. Une création distincte exige
+alors une confirmation supplémentaire dans la carte. Aucun rapprochement ne
+modifie les éléments existants. Un élément créé puis supprimé manuellement dans
+le planificateur n’est pas recréé par un rejeu de confirmation.
+
+Dix propositions en attente maximum, valables sept jours ; les vingt dernières
+sont affichées, en privilégiant les propositions en attente. Un changement de
+périmètre empêche l’exécution des anciennes propositions. Les contenus sont
+chiffrés dans `assistant_actions`, couverts par sauvegarde et rechiffrement de
+restauration. La préparation partage le quota du dialogue ; la relecture et la
+confirmation n’appellent pas le fournisseur et fonctionnent même sans clé API.
+
+Ce lot ne prépare que les rendez-vous et tâches personnels. Factures et étapes
+de subvention gardent leur fonctionnement documentaire du lot 4. Aucune action
+de modification ou suppression métier, invitation, e-mail ou SMS n’est ajoutée.
 
 ## Boîte de réception — lot 4
 
@@ -230,5 +302,5 @@ et mobile, avec et sans clé.
 
 Les documents sont testés sur données synthétiques et fournisseurs simulés ;
 leur compréhension par le modèle choisi doit être appréciée sur des exemples
-représentatifs. Lecture des pages scannées/OCR, autres formats, création de rendez-vous, paiements et
+représentatifs. Lecture des pages scannées/OCR, autres formats, paiements et
 génération d’écritures depuis la réception restent hors de ce lot.

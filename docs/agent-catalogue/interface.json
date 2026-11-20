@@ -918,8 +918,8 @@
     },
     {
       "id": "interface.assistant_personnel",
-      "title": "Assistant personnel, mémoire et boîte de réception",
-      "purpose": "Consulter les informations accessibles, analyser des PDF personnels et alimenter les circuits existants par des créations autorisées.",
+      "title": "Assistant personnel, documents et actions préparées",
+      "purpose": "Consulter les informations accessibles, analyser les PDF et préparer des rendez-vous ou tâches personnels à confirmer avant création.",
       "example_requests": [
         "ouvrir mon assistant",
         "quelles sont mes priorités",
@@ -950,7 +950,12 @@
         "PDF, commentaires et résultats privés par utilisateur ; textes et métadonnées chiffrés, fichiers dans documents/assistant_reception avec noms aléatoires, sauvegarde et rechiffrement couverts. Cinquante derniers dépôts affichés, sans suppression par l’oubli conversationnel.",
         "Empreinte du PDF par propriétaire, bail, révision et contrôles de droits sous transaction contre doublons et retours tardifs. Analyse et réexamens partagent le quota journalier de trente tentatives du dialogue. Réexamen avec précision autorisé avant tout rattachement métier, analyses précédentes conservées.",
         "Le modèle choisi reste sélectionné après un dépôt. Pour une facture, seul le TTC est nécessaire ; aucune précision HT ou TVA n’est demandée.",
-        "Suppression manuelle d’un dépôt par son propriétaire après confirmation : PDF personnel et analyses supprimés, dossiers et pièces métier conservés. Contrôles de droits, CSRF, révision et chemin ; annulation des retours tardifs, conservation des échanges passés et des souvenirs."
+        "Suppression manuelle d’un dépôt par son propriétaire après confirmation : PDF personnel et analyses supprimés, dossiers et pièces métier conservés. Contrôles de droits, CSRF, révision et chemin ; annulation des retours tardifs, conservation des échanges passés et des souvenirs.",
+        "Actions préparées sur /assistant : une proposition de rendez-vous ou tâche par message, carte éditable, confirmation explicite, abandon et lien vers le planificateur personnel. Aucun élément métier créé sur la seule réponse IA.",
+        "Priorité : références et calcul habituels du planificateur, zéro/une/deux comparaisons selon les tâches en cours. Réponses humaines obligatoires et aveugles ; incohérences demandées à nouveau sans réévaluer d’anciennes tâches.",
+        "Nouveau rendez-vous avec son bloc fixe ; nouvelle tâche placée par le moteur dans les créneaux libres selon horaires, absences et jours fériés. Aucun bloc existant déplacé ; Replanifier dans le module reste une action globale distincte.",
+        "Propositions chiffrées, propriétaire et périmètre contrôlés, révision et agenda revérifiés avant exécution ; création, nouveaux blocs et résultat atomiques, rejeu unique après double clic/coupure. Correspondance métier signalée et création distincte à confirmer.",
+        "Dix propositions actives maximum, validité sept jours, vingt dernières affichées. Confirmations sans appel IA et possibles après retrait de la clé ; les quotas sont ceux du dialogue. Sauvegarde et rechiffrement de restauration couvrent assistant_actions."
       ],
       "entry_points": [
         "assistant_bp.assistant",
@@ -966,7 +971,12 @@
         "assistant_bp.analyser_document",
         "assistant_bp.preciser_document",
         "assistant_bp.document_pdf",
-        "assistant_bp.supprimer_document"
+        "assistant_bp.supprimer_document",
+        "assistant_bp.propositions",
+        "assistant_bp.proposition",
+        "assistant_bp.modifier_proposition",
+        "assistant_bp.abandonner_proposition",
+        "assistant_bp.confirmer_proposition"
       ],
       "implementation": {
         "route_files": [
@@ -994,7 +1004,12 @@
           "factures_import.py",
           "schema_assistant_reception.py",
           "migrations/0085_assistant_reception.py",
-          "static/js/assistant_reception.js"
+          "static/js/assistant_reception.js",
+          "assistant_actions.py",
+          "planificateur_creation.py",
+          "schema_assistant_actions.py",
+          "migrations/0086_assistant_actions.py",
+          "static/js/assistant_actions.js"
         ],
         "templates": [
           "templates/assistant.html"
@@ -1002,12 +1017,14 @@
         "tables": [
           "assistant_etats",
           "assistant_memoires",
-          "assistant_documents"
+          "assistant_documents",
+          "assistant_actions"
         ],
         "tests": [
           "tests/test_assistant.py",
           "tests/test_assistant_reception.py",
-          "tests/test_assistant_reception_retours.py"
+          "tests/test_assistant_reception_retours.py",
+          "tests/test_assistant_actions.py"
         ],
         "docs": [
           "docs/assistant-personnel.md"
@@ -1030,13 +1047,14 @@
         ]
       },
       "invariants": [
-        "Dialogue en lecture seule ; réception limitée aux créations métier prévues. Aucun SQL arbitraire, email, réseau libre, suppression ou édition générale de dossiers.",
+        "Consultations en lecture seule ; propositions personnelles créées seulement sur confirmation utilisateur, réception limitée aux créations métier prévues. Aucun SQL arbitraire, email, réseau libre, suppression ou édition générale de dossiers.",
         "Aucune clé ni erreur brute de fournisseur renvoyée au navigateur.",
         "Mémoire alimentée seulement par l’utilisateur ; suppression et expiration réinitialisent les résumés susceptibles de reprendre les anciens souvenirs.",
         "Les changements de rôle, d’équipe, de navigation et d’affectation des ressources bornées invalident le contexte personnel des profils restreints.",
         "Justificatif principal préexistant jamais écrasé ; son absence est la seule condition d’un ajout au champ existant, sinon création d’un sous-élément.",
         "Ni mémoire oubliée ni réexamen documentaire ne suppriment un PDF ou une donnée métier ; après classement, les corrections se font dans les modules habituels.",
-        "Aucun outil IA ne supprime de dépôt ; seule l’action explicite de son propriétaire est autorisée. La suppression personnelle ne supprime jamais les factures, subventions, contrats ni leurs copies de pièces."
+        "Aucun outil IA ne supprime de dépôt ; seule l’action explicite de son propriétaire est autorisée. La suppression personnelle ne supprime jamais les factures, subventions, contrats ni leurs copies de pièces.",
+        "Les tâches et rendez-vous sont toujours créés pour le compte courant ; aucun user_id ni rang de priorité libre issu du modèle. L’exécution est indivisible et idempotente par proposition."
       ],
       "extension_points": [
         "Ajouter un traitement à la liste fermée avec ses validations, droits et tests négatifs ; préserver les circuits existants et les dossiers déjà saisis.",
@@ -1052,15 +1070,17 @@
         "association.subventions_suivi",
         "association.subventions_documents",
         "rh.contrats_dossier",
-        "administration.stockage_documents"
+        "administration.stockage_documents",
+        "association.planificateur_personnel"
       ],
       "limitations": [
         "Texte extractible requis ; contrôle heuristique des pages scannées, exclues et signalées. Les annexes scannées sont conservées mais inconnues du modèle ; aucun OCR ni certification de provenance.",
         "Consultations et pages de PDF bornées : elles ne constituent pas un inventaire exhaustif. La convention collective n’est pas chargée automatiquement.",
-        "Les arrêts maladie restent à saisir manuellement ; aucun rendez-vous, paiement, export ou écriture comptable depuis la réception.",
+        "Les arrêts maladie restent à saisir manuellement ; aucun paiement, export ou écriture comptable depuis la réception. Les rendez-vous et tâches passent par des propositions distinctes à confirmer.",
         "Quota de requêtes, pas plafond monétaire. Les tests simulent les fournisseurs ; qualité des analyses à apprécier sur des documents représentatifs.",
         "Réceptions privées : un salarié Pilotage transmet manuellement son PDF à un gestionnaire s’il ne peut pas créer le dossier. Aucune notification email automatique.",
-        "Après création ou rattachement, les corrections se font dans les modules métiers ; aucun outil d’édition ou de suppression générale proposé au modèle."
+        "Après création ou rattachement, les corrections se font dans les modules métiers ; aucun outil d’édition ou de suppression générale proposé au modèle.",
+        "Premier lot d’actions limité aux rendez-vous et tâches personnels : ni facture ni étape de dossier préparée depuis le dialogue, ni invitation ou notification externe. Le moteur ne réorganise pas les blocs existants lors de cette création."
       ]
     }
   ]
