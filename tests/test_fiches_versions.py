@@ -1,5 +1,5 @@
 """Invariants métier des fiches : routes réelles et SQLite, sans mock des calculs."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -424,6 +424,17 @@ def test_routes_indirectes_preservent_fiche_et_pieces(
                        'justificatif': (BytesIO(b'%PDF-fictif'), 'justificatif.pdf')})
         absence = db.execute('SELECT * FROM absences WHERE user_id=?', (uid,)).fetchone()
         assert absence is not None
+    if chemin == 'planning_suppression':
+        # Le planning doit passer la vérification des 7 jours : ce test doit
+        # exercer le véritable garde-fou de commit d'une fiche verrouillée.
+        import blueprints.planning as planning_routes
+        instant = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+        monkeypatch.setattr(planning_routes, '_maintenant_utc', lambda: instant)
+        db.execute(
+            'UPDATE planning_theorique SET created_at=? WHERE user_id=?',
+            (instant.isoformat(), uid),
+        )
+        db.commit()
     verrouiller(app, sample_users, uid)
     avant = etat_metier(uid)
     fichiers_avant = {p.name: p.read_bytes() for p in tmp_path.iterdir() if p.is_file() and p.suffix == '.pdf'}
