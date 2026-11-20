@@ -33,7 +33,9 @@
         "service_files": [
           "utils.py",
           "fiches_db.py",
-          "fiches_versions.py"
+          "fiches_versions.py",
+          "schema_planning.py",
+          "database.py"
         ],
         "templates": [
           "templates/planning_theorique.html"
