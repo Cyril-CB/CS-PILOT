@@ -357,11 +357,20 @@ class TestPlanningCorrectionSeptJours:
             conn.execute('CREATE TABLE planning_theorique (id INTEGER PRIMARY KEY, user_id INTEGER)')
             conn.execute('INSERT INTO planning_theorique (id, user_id) VALUES (1, 42)')
             migration = importlib.import_module('migrations.0086_planning_creation')
+            from schema_planning import assurer_date_creation_planning
+            # Migration et initialisation appellent le même helper idempotent.
             migration.upgrade(conn)
-            migration.upgrade(conn)  # migration idempotente
+            migration.upgrade(conn)
+            assurer_date_creation_planning(conn)
+            colonnes = [r[1] for r in conn.execute('PRAGMA table_info(planning_theorique)')]
+            assert colonnes.count('created_at') == 1
             assert conn.execute('SELECT created_at FROM planning_theorique WHERE id=1').fetchone()[0] is None
         finally:
             conn.close()
+
+    def test_schema_initialise_contient_date_creation(self, db):
+        colonnes = {r[1] for r in db.execute('PRAGMA table_info(planning_theorique)')}
+        assert 'created_at' in colonnes
 
     def test_references_alternance_partagees_ne_bougent_pas(self, auth_client, db, sample_users,
                                                             horloge_planning):
