@@ -1071,7 +1071,8 @@
         "La sortie JSON et le code de retour distinguent données restaurées valides et installation à jour ; une restauration avec migrations en attente peut être publiée avec ok=false.",
         "Vérification et rechiffrement des paramètres secrets sans modifier les traces historiques du digest ; parametres_verifies compte seulement les valeurs déchiffrées.",
         "Sauvegarde possible sans Git ; la provenance d’une version isolée vient de REVISION-SOURCES.txt, sans confondre le dépôt parent avec le code exécuté.",
-        "Conversation, mémoire et métadonnées de réception chiffrées sont vérifiées et rechiffrées en restauration ; les PDF reçus sont inclus dans documents et leurs références contrôlées."
+        "Conversation, mémoire et métadonnées de réception chiffrées sont vérifiées et rechiffrées en restauration ; les PDF reçus sont inclus dans documents et leurs références contrôlées.",
+        "La migration 0086 et le schéma neuf couvrent assistant_actions ; les propositions et résultats chiffrés sont contrôlés et rechiffrés avec les autres contenus privés de l’assistant."
       ],
       "entry_points": [],
       "implementation": {
@@ -1082,7 +1083,8 @@
           "stockage_restaure.py",
           "schema_resilience.py",
           "database.py",
-          "schema_assistant_reception.py"
+          "schema_assistant_reception.py",
+          "schema_assistant_actions.py"
         ],
         "templates": [],
         "tables": [
@@ -1091,14 +1093,16 @@
           "schema_migrations_tentatives",
           "fiches_versions",
           "archives_export",
-          "assistant_documents"
+          "assistant_documents",
+          "assistant_actions"
         ],
         "tests": [
           "tests/test_resilience.py",
           "tests/test_migrations_resilience.py",
           "tests/test_resilience_parametres.py",
           "tests/test_propositions.py",
-          "tests/test_assistant_reception.py"
+          "tests/test_assistant_reception.py",
+          "tests/test_assistant_actions.py"
         ],
         "docs": [
           "docs/resilience.md",

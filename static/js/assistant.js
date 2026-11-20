@@ -50,6 +50,7 @@
         const locked = busy || mutating || !state || state.en_cours || !model;
         byId('assistantEnvoyer').disabled = !!locked;
         question.disabled = !!locked;
+        root.querySelectorAll('[data-assistant-question]').forEach(n => { n.disabled = !!locked; });
         if (model) model.disabled = busy || mutating;
         root.querySelectorAll('#assistantMemoireForm button, #assistantMemoires button, #assistantNouveau, #assistantToutOublier')
             .forEach(el => { el.disabled = mutating || !state; });
@@ -148,6 +149,7 @@
             const data = await api(root.dataset.message, 'POST', payload);
             if (turn !== generation) return;
             question.value = ''; render(data);
+            root.dispatchEvent(new CustomEvent('assistant:actions'));
         } catch (err) { if (turn === generation) error(err.message); }
         finally { if (turn === generation) { busy = false; controls(); if (!question.disabled) question.focus(); } }
     });

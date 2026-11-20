@@ -432,3 +432,7 @@ non analysées ; les scans seuls restent exclus. Un dépôt personnel peut être
 supprimé sans toucher aux dossiers et pièces créés. Les informations déjà présentes
 sont conservées. La réception reste uniquement sur la page assistant.
 [Accès, mémoire, limites et fonctionnement](docs/assistant-personnel.md).
+Le lot 5 permet de préparer un rendez-vous ou une tâche dans la conversation,
+de relire/modifier la proposition puis de confirmer sa création personnelle.
+Le comparatif de priorité du planificateur est conservé, avec zéro, une ou deux
+tâches de référence. Aucun élément n’est créé sur la seule réponse du modèle.

@@ -163,7 +163,7 @@ Fernet des paramètres chiffrés de `app_settings`, y compris ceux non secrets e
 apparence. La changer sans rechiffrement rendrait ces valeurs illisibles.
 
 Les conversations, souvenirs et métadonnées de la boîte de réception de
-l’assistant (`assistant_etats`, `assistant_memoires`, `assistant_documents`)
+l’assistant (`assistant_etats`, `assistant_memoires`, `assistant_documents`, `assistant_actions`)
 utilisent la même dérivation : ils sont vérifiés et rechiffrés dans l’opération.
 Les PDF de réception restent dans le stockage `documents` déjà couvert par le
 protocole de mise à jour ; leurs références sont contrôlées par le diagnostic.

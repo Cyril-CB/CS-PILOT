@@ -801,60 +801,14 @@ def api_creer_tache():
     data = _lire_payload()
     conn = get_db()
     try:
+        from planificateur_creation import creer_element, CreationErreur
         user_id = _uid()
-        type_item = data.get('type', 'tache')
-        titre = (data.get('titre') or '').strip()
-        description = (data.get('description') or '').strip()
-        if not titre:
-            return jsonify({'ok': False, 'erreur': 'Le titre est obligatoire.'}), 400
-
-        if type_item == 'evenement':
-            date_fixe = _valide_date(data.get('date_fixe'))
-            heure_debut = _valide_heure(data.get('heure_debut'))
-            heure_fin = _valide_heure(data.get('heure_fin'))
-            if not (date_fixe and heure_debut and heure_fin):
-                return jsonify({'ok': False, 'erreur': 'Date et horaires de l\'evenement requis.'}), 400
-            if moteur._to_min(heure_fin) <= moteur._to_min(heure_debut):
-                return jsonify({'ok': False, 'erreur': 'L\'heure de fin doit suivre l\'heure de debut.'}), 400
-            cur = conn.execute(
-                '''INSERT INTO planif_taches
-                   (user_id, type, titre, description, date_fixe, heure_debut, heure_fin,
-                    duree_min, statut)
-                   VALUES (?, 'evenement', ?, ?, ?, ?, ?, ?, 'a_faire')''',
-                (user_id, titre, description, date_fixe, heure_debut, heure_fin,
-                 moteur._to_min(heure_fin) - moteur._to_min(heure_debut))
-            )
-            tache = conn.execute('SELECT * FROM planif_taches WHERE id = ?',
-                                 (cur.lastrowid,)).fetchone()
-            _sync_bloc_evenement(conn, tache)
-            conn.commit()
-        else:
-            duree_min = _parse_int(data.get('duree_min'), 60, mini=5, maxi=24 * 60)
-            deadline = _valide_date(data.get('deadline'))
-            priorite = data.get('priorite') if data.get('priorite') in PRIORITES_VALIDES else 'normale'
-            preference = data.get('preference') if data.get('preference') in PREFERENCES_VALIDES else 'aucune'
-            secable = 1 if str(data.get('secable')) in ('1', 'true', 'on', 'True') else 0
-            duree_min_bloc = _parse_int(data.get('duree_min_bloc'), 30, mini=5, maxi=duree_min)
-            # Les comparaisons sont obligatoires des qu'il existe des taches de
-            # reference : sans cela, une soumission avant la fin du chargement
-            # (ou un client d'API) creerait des priorites neutres silencieuses.
-            if (not _parser_reponses(data.get('comparaisons'))
-                    and _candidats_comparaison(conn, user_id)):
-                return jsonify({
-                    'ok': False,
-                    'erreur': 'Situez la priorité de la tâche par rapport aux tâches présentées.'
-                }), 400
-            priorite_num, _reevaluee = _calculer_priorite_num(
-                conn, user_id, data.get('comparaisons'))
-            conn.execute(
-                '''INSERT INTO planif_taches
-                   (user_id, type, titre, description, duree_min, deadline,
-                    priorite, priorite_num, preference, secable, duree_min_bloc, statut)
-                   VALUES (?, 'tache', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'a_faire')''',
-                (user_id, titre, description, duree_min, deadline, priorite,
-                 priorite_num, preference, secable, duree_min_bloc)
-            )
-            conn.commit()
+        try:
+            creer_element(conn, user_id, data)
+        except CreationErreur as exc:
+            conn.rollback()
+            return jsonify({'ok': False, 'erreur': str(exc)}), 400
+        conn.commit()
 
         non_planifie = _replanifier(conn, user_id)
         return jsonify({'ok': True, 'non_planifie': non_planifie})

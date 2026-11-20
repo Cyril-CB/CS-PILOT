@@ -35,6 +35,13 @@
 #assistantPage .assistant-souvenir small { color: var(--gray-500); display: block; margin: 8px 0; }
 #assistantPage .btn { max-width: 100%; }
 #assistantPage .assistant-reception { margin-bottom: 24px; }
+#assistantPage .assistant-actions { margin-bottom: 24px; }
+#assistantPage .assistant-action { padding: 16px; margin: 12px 0; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); overflow-wrap: anywhere; }
+#assistantPage .assistant-action .assistant-champs { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 16px; }
+#assistantPage .assistant-action input:not([type=checkbox]) { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); color: var(--gray-900); background: var(--white); }
+#assistantPage .assistant-action fieldset { margin: 16px 0; padding: 12px; border: 1px solid var(--gray-300); border-radius: var(--radius-sm); min-width: 0; }
+#assistantPage .assistant-action :is(button,summary):focus-visible { outline: 2px solid var(--gray-700); outline-offset: 3px; }
+@media (max-width: 540px) { #assistantPage .assistant-action .assistant-champs { grid-template-columns: 1fr; } #assistantPage .assistant-action input { font-size: 16px; } }
 #assistantPage .assistant-depot-grille { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
 #assistantPage input { max-width: 100%; font: inherit; }
 #assistantPage input[type=file] { width: 100%; color: var(--gray-700); font-size: 0.85rem; }

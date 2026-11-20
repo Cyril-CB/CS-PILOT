@@ -162,6 +162,12 @@ def reserver(message, model, request_id, document_id=None):
             from assistant_reception import _document
             _document(conn, user, document_id)
         signature = hashlib.sha256((model + '\n' + message + '\n' + (document_id or '')).encode()).hexdigest()
+        action = conn.execute('SELECT signature FROM assistant_actions WHERE user_id=? AND demande_id=?',
+                              (user['id'], request_id)).fetchone()
+        if action:
+            if action['signature'] != signature:
+                raise AssistantErreur('Cette demande a déjà servi à une autre proposition.', 409)
+            return {'reponse_existante': etat_public(conn, user, row, notice)}
         dernier = data.get('dernier', {})
         if dernier.get('id') == request_id:
             if dernier['signature'] != signature:
@@ -188,9 +194,12 @@ def verifier_tour(conn, tour):
     return user, row
 
 
-def terminer(tour, question, reponse, sources, resume):
+def terminer(tour, question, reponse, sources, resume, proposition=None):
     with transaction() as conn:
         user, row = verifier_tour(conn, tour)
+        if proposition is not None:
+            from assistant_actions import ajouter
+            ajouter(conn, user, tour, proposition)
         data = tour['data']
         data['messages'] = (data['messages'] + [
             {'role': 'user', 'texte': question, 'sources': []},

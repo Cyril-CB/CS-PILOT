@@ -7,7 +7,8 @@
      data-message="{{ url_for('assistant_bp.message') }}"
      data-memoires="{{ url_for('assistant_bp.ajouter_memoire') }}"
      data-oublier="{{ url_for('assistant_bp.reinitialiser') }}"
-     data-documents="{{ url_for('assistant_bp.documents') }}">
+     data-documents="{{ url_for('assistant_bp.documents') }}"
+     data-actions="{{ url_for('assistant_bp.propositions') }}">
     <div class="assistant-entete">
         <div><h1>Mon assistant</h1><p class="subtitle">Un espace pour faire le point, retrouver un dossier et garder le fil.</p></div>
         {% if not interdit %}<button type="button" class="btn btn-secondary" id="assistantActualiser">Actualiser</button>{% endif %}
@@ -17,6 +18,20 @@
     {% else %}
     <div id="assistantErreur" class="assistant-erreur" role="alert" hidden></div>
     <p id="assistantNotice" class="assistant-notice" role="status" hidden></p>
+    <section class="section assistant-actions" aria-labelledby="assistantActionsTitre">
+        <div class="assistant-ligne"><h2 id="assistantActionsTitre">Actions préparées</h2>
+            <button type="button" class="btn btn-secondary btn-sm" id="assistantActionsActualiser">Actualiser les propositions</button></div>
+        <p class="assistant-aide">Demandez un rendez-vous ou une tâche dans la conversation. Relisez la carte, complétez les champs et confirmez la création dans votre planificateur personnel. La priorité utilise le comparatif habituel avec vos tâches en cours.</p>
+        {% if not models %}<p class="assistant-notice">Sans clé API, la préparation depuis la conversation est indisponible. Les propositions déjà préparées restent utilisables.</p>{% endif %}
+        <div class="assistant-exemples">
+                    <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Prépare un rendez-vous ; je compléterai les dates et horaires dans la proposition.">Préparer un rendez-vous</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-assistant-question="Prépare une tâche pour rédiger un bilan, avec une durée estimée de 60 minutes.">Préparer une tâche</button>
+        </div>
+        <p id="assistantActionsErreur" class="assistant-erreur" role="alert" hidden></p>
+        <p id="assistantActionsStatut" role="status"></p>
+        <div id="assistantActions" aria-live="polite">Chargement des propositions…</div>
+        <p class="assistant-aide">Dix propositions en attente maximum, valables sept jours. Les vingt dernières sont affichées. Abandonner une proposition ne supprime aucun élément du planificateur. La conversation et les propositions sont conservées séparément.</p>
+    </section>
     <section class="section assistant-reception" aria-labelledby="assistantReceptionTitre">
         <div class="assistant-ligne"><h2 id="assistantReceptionTitre">Boîte de réception</h2>
             <button type="button" class="btn btn-secondary btn-sm" id="assistantDocumentsActualiser">Actualiser les documents</button></div>
@@ -81,7 +96,7 @@
                 </div>
             </form>
             <details class="assistant-resume"><summary>Le fil que je garde en tête</summary><p id="assistantResume">Aucun résumé pour le moment.</p></details>
-            <p class="assistant-aide">Le dialogue consulte vos informations. Les créations documentaires passent par la boîte de réception ; les validations et les modifications de dossiers se font dans leurs modules habituels.</p>
+            <p class="assistant-aide">Le dialogue consulte vos informations et prépare des rendez-vous et tâches. Seul votre clic sur la confirmation de la carte les crée. Les documents passent par la boîte de réception ; les modifications de dossiers se font dans leurs modules habituels.</p>
         </section>
         <aside class="section assistant-memoire" aria-labelledby="assistantMemoireTitre">
             <div class="assistant-ligne"><h2 id="assistantMemoireTitre">Ma mémoire</h2><span id="assistantMemoireCompteur">0 / 30</span></div>
@@ -102,6 +117,7 @@
     </div>
     <script src="{{ url_for('static', filename='js/assistant.js') }}?v={{ static_version['js/assistant.js'] }}" defer></script>
     <script src="{{ url_for('static', filename='js/assistant_reception.js') }}?v={{ static_version['js/assistant_reception.js'] }}" defer></script>
+    <script src="{{ url_for('static', filename='js/assistant_actions.js') }}?v={{ static_version['js/assistant_actions.js'] }}" defer></script>
     {% endif %}
 </div>
 {% endblock %}
