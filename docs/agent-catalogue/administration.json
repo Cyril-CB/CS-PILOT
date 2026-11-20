@@ -1489,7 +1489,8 @@
         "resoudre_fichier gère les chemins relatifs des cinq stockages et la correspondance explicite restauration-chemins.json pour les anciens chemins absolus.",
         "REPERTOIRES inventorie documents, factures, modeles_contrats, contrats_generes et exports ; le diagnostic de résilience vérifie les références des tables métier.",
         "Les pièces de propositions sont stockées dans documents/propositions avec des chemins relatifs, des noms aléatoires et une empreinte contrôlée à la lecture.",
-        "Réceptions privées dans documents/assistant_reception, copies exclusives sous noms aléatoires vers les circuits métier, références de diagnostic et nettoyage des seules nouvelles copies après rollback."
+        "Réceptions privées dans documents/assistant_reception, copies exclusives sous noms aléatoires vers les circuits métier, références de diagnostic et nettoyage des seules nouvelles copies après rollback.",
+        "La suppression explicite d’une réception personnelle retire seulement son PDF et ses métadonnées ; les copies métier sont conservées. Les documents mixtes sont conservés en entier même si certaines pages sont ignorées par l’analyse."
       ],
       "entry_points": [],
       "implementation": {
@@ -1522,7 +1523,8 @@
           "tests/test_security.py",
           "tests/test_resilience.py",
           "tests/test_propositions.py",
-          "tests/test_assistant_reception.py"
+          "tests/test_assistant_reception.py",
+          "tests/test_assistant_reception_retours.py"
         ],
         "docs": [
           "docs/resilience.md"

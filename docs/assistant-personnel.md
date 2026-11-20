@@ -14,7 +14,8 @@ nouveaux droits aux données métier : un salarié conserve son propre planning,
 ses accès personnels et ses éventuelles délégations.
 
 Le dialogue utilise les clés API déjà configurées dans l’installation. Le modèle
-est choisi sur la page parmi les fournisseurs configurés. Les clés restent côté
+est choisi sur la page parmi les fournisseurs configurés ; le choix est conservé
+après le dépôt d’un fichier. Les clés restent côté
 serveur ; seules les informations utiles à la demande et les souvenirs retenus
 sont envoyés au fournisseur choisi. Sans clé, l’écran de mémoire reste utilisable.
 Il n’y a pas de bascule automatique vers un autre fournisseur.
@@ -45,11 +46,16 @@ documentaires ci-dessous passent par un traitement distinct à liste fermée.
 ## Boîte de réception — lot 4
 
 Déposer un PDF, avec ou sans commentaire. Exemple : « Cette facture est pour le
-secteur Enfance ». Le fichier attendu est un **PDF numérique original**, issu
-d’un logiciel, **pas un scan**. Limites : 16 Mo, 60 pages, 150 000 caractères
+secteur Enfance ». Le **PDF numérique original** issu d’un logiciel est recommandé.
+Les documents mixtes sont acceptés : par exemple une convention lisible suivie
+d’une charte de laïcité scannée. Les pages qui semblent scannées sont signalées
+par leur numéro et exclues de l’analyse, même si elles possèdent une couche OCR.
+L’assistant ne connaît pas leur contenu. Le PDF complet, annexes comprises,
+reste conservé et joint au dossier métier. Un scan seul ou un document sans
+assez de texte extractible reste refusé. Limites : 16 Mo, 60 pages, 150 000 caractères
 extraits. Aucun OCR, aucune image du PDF envoyée au modèle : seulement le texte
-et les commentaires. Le contrôle refuse les pages principalement constituées
-d’images et les PDF sans texte exploitable ; il ne certifie pas la provenance
+et les commentaires. Le contrôle repère les pages principalement constituées
+d’images ; il ne certifie pas la provenance
 d’un fichier. Les PDF chiffrés ou illisibles sont refusés.
 
 La réception et l’analyse sont privées. Un dépôt sans clé reste conservé pour
@@ -77,6 +83,8 @@ d’enregistrement : fournisseur rapproché par nom/alias ou créé, PDF conserv
 facture « à traiter » et approbation en attente, historique. Aucune écriture
 comptable ni paiement n’est produit par la réception. L’utilisateur poursuit
 dans **Factures**, dont le lien est fourni.
+Seul le montant **TTC** est nécessaire à ce circuit associatif : aucune précision
+sur le montant HT, le taux ou le montant de TVA n’est demandée.
 
 Un secteur ou la direction n’est affecté que sur indication explicite du
 commentaire ou dans les précisions de l’utilisateur. Le contenu du PDF ne sert
@@ -156,6 +164,15 @@ réservé à leur propriétaire. Ils sont sauvegardés et contrôlés avec les a
 documents ; le rechiffrement de restauration couvre aussi leurs métadonnées.
 « Nouvelle conversation » et « Tout oublier » ne suppriment ni PDF ni dossier.
 
+Le bouton **Supprimer le dépôt**, après confirmation, permet à son propriétaire
+de retirer le PDF personnel, son commentaire et ses analyses de la réception.
+Les factures, subventions, contrats, sous-éléments et leurs pièces déjà créés
+restent conservés, ainsi que la conversation et les souvenirs. La sélection du
+PDF dans la discussion est retirée. Une analyse ou réponse en cours ne peut plus
+enregistrer un retour tardif ; les quotas consommés ne sont pas remboursés.
+Les droits, la révision et le chemin du fichier sont contrôlés côté serveur.
+Un échec disque annule la suppression ; le fichier est restauré si le commit échoue.
+
 ## Conversation et petite mémoire
 
 Une conversation privée par utilisateur est conservée côté serveur, avec ses
@@ -213,5 +230,5 @@ et mobile, avec et sans clé.
 
 Les documents sont testés sur données synthétiques et fournisseurs simulés ;
 leur compréhension par le modèle choisi doit être appréciée sur des exemples
-représentatifs. OCR, autres formats, création de rendez-vous, paiements et
+représentatifs. Lecture des pages scannées/OCR, autres formats, création de rendez-vous, paiements et
 génération d’écritures depuis la réception restent hors de ce lot.
